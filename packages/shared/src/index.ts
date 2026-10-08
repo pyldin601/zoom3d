@@ -1,3 +1,4 @@
+export * from './audio/curves';
 export * from './geometry/movement';
 export * from './geometry/raycast';
 export * from './map/level1';
