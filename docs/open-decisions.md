@@ -64,5 +64,13 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 ### D12 — Input and accessibility
 - Keyboard only vs mouse-look vs touch. Colour-blind/readable names above avatars? Captions?
 
+### D13 — Findability
+- *Resolved-pending-spec 2026-10-08:* shared spawn near the blue-diamond start + toggleable automap showing walls and named participant dots.
+
+### Risks (to verify, not assume)
+- **R1 — Echo cancellation vs Web Audio output.** Chrome's AEC historically did not cancel audio played via `AudioContext`. If still true, speakers echo. Verify in an early throwaway audio spike (speakers vs headphones).
+- **R2 — Background tabs.** rAF stops in hidden tabs; nothing peers depend on may be driven by the render loop.
+- **R3 — Safari** WebRTC/Web Audio quirks; best-effort support.
+
 ## Resolved
 _(none yet)_
