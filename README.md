@@ -12,7 +12,7 @@ come from people standing in the room.
 ## Docs
 
 - [docs/vision.md](docs/vision.md) — product goals, scope, non-goals
-- [docs/architecture.md](docs/architecture.md) — draft system architecture (provisional)
+- [docs/superpowers/specs/2026-10-08-zoom3d-design.md](docs/superpowers/specs/2026-10-08-zoom3d-design.md) — design spec
 - [docs/open-decisions.md](docs/open-decisions.md) — decision log: open questions and resolved ones
 - [docs/roadmap.md](docs/roadmap.md) — proposed milestones
 - [AGENTS.md](AGENTS.md) — guidance for AI coding agents working in this repo

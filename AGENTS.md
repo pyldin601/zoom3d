@@ -10,7 +10,7 @@ gain, pan, reverb). Read [docs/vision.md](docs/vision.md) first.
 
 ## Status
 
-Planning phase. Stack and architecture are **not final** — check
+Planning phase. The design spec is [docs/superpowers/specs/2026-10-08-zoom3d-design.md](docs/superpowers/specs/2026-10-08-zoom3d-design.md); also check
 [docs/open-decisions.md](docs/open-decisions.md) before assuming anything. Resolved
 decisions are recorded there with date and rationale; update it when a decision is made.
 
@@ -24,7 +24,7 @@ decisions are recorded there with date and rationale; update it when a decision 
 - Commit small, imperative-mood messages. Don't commit secrets or `.env`.
 - Never block the render loop: no allocations in the per-frame/per-column hot path.
 
-## Intended layout (provisional, see architecture.md)
+## Intended layout (see design spec §3)
 
 ```
 apps/web/        browser client (renderer, input, audio, webrtc)
