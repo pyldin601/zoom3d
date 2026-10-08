@@ -25,7 +25,11 @@ export class SnapshotBuffer {
 
   push(s: Snapshot): void {
     const last = this.latest();
-    if (last && s.t <= last.t) return;
+    if (last && s.t < last.t) return;
+    if (last && s.t === last.t) {
+      Object.assign(last, s);
+      return;
+    }
     if (this.items.length < this.capacity) {
       this.items.push({ ...s });
     } else {

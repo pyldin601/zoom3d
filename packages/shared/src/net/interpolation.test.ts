@@ -37,6 +37,13 @@ describe('SnapshotBuffer', () => {
     expect(b.latest()).toEqual(snap(100, 10));
   });
 
+  test('a snapshot with the same timestamp replaces the newest', () => {
+    const b = new SnapshotBuffer();
+    b.push(snap(100, 10));
+    b.push(snap(100, 12));
+    expect(b.latest()).toEqual(snap(100, 12));
+  });
+
   test('angle takes the short way across 2π and stays wrapped', () => {
     const b = new SnapshotBuffer();
     b.push(snap(0, 0, 6.2));
