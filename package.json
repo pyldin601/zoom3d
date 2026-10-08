@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "pnpm --filter @zoom3d/web dev",
     "test": "vitest run",
-    "typecheck": "tsc -p packages/shared && tsc -p apps/web",
+    "typecheck": "tsc -p packages/shared && tsc -p apps/web && tsc -p apps/server",
     "lint": "biome check .",
     "e2e": "pnpm --filter @zoom3d/web e2e",
     "bench": "vitest bench --run --reporter=verbose"
