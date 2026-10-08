@@ -27,6 +27,14 @@
       #ui .selfview { position: absolute; right: 0.6em; bottom: 0.6em; width: 4.5em; height: 4.5em; border-radius: 50%; overflow: hidden; border: 0.12em solid #ddd; }
       #ui .selfview[hidden] { display: none; }
       #ui .selfview video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+      #ui .audio-panel { position: absolute; top: 2.2em; left: 0.6em; width: 16em; pointer-events: auto; background: rgba(15, 15, 15, 0.92); border: 0.1em solid #555; padding: 0.6em 0.8em; font-size: 0.6em; }
+      #ui .audio-panel h2 { margin: 0 0 0.5em; font-size: 1.1em; }
+      #ui .audio-panel label { display: grid; grid-template-columns: 1fr; margin-bottom: 0.4em; }
+      #ui .audio-panel input[type=range] { width: 100%; margin: 0.2em 0 0; padding: 0; }
+      #ui .audio-panel .value { opacity: 0.75; }
+      #ui .audio-panel .levels { list-style: none; padding: 0; margin: 0.6em 0 0; }
+      #ui .audio-panel .levels li { display: grid; grid-template-columns: 6em 1fr; align-items: center; gap: 0.4em; }
+      #ui .audio-panel .bar { height: 0.5em; background: #6c6; }
       #media { position: fixed; width: 1px; height: 1px; opacity: 0.01; pointer-events: none; overflow: hidden; }
     </style>
   </head>
