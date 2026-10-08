@@ -1,10 +1,12 @@
 // Multiplayer session: remote peers with interpolation buffers, corrections, and timer-driven state sync.
 import {
   type ErrorCode,
+  type IceServer,
   IDLE_INTERVAL_MS,
   type PeerInfo,
   type PlayerState,
   type ServerMessage,
+  type SignalPayload,
   SnapshotBuffer,
   STATE_INTERVAL_MS,
 } from '@zoom3d/shared';
@@ -19,8 +21,20 @@ export interface RemotePeer {
   lastSeq: number;
 }
 
+/** Notified after the session has applied each server event to its own state. */
+export interface SessionListener {
+  welcome?(selfId: string, iceServers: IceServer[], identityChanged: boolean): void;
+  peerJoined?(peer: PeerInfo): void;
+  peerLeft?(id: string): void;
+  peerMedia?(id: string, cam: boolean, mic: boolean): void;
+  signal?(from: string, payload: SignalPayload): void;
+}
+
 export interface Session {
   peers: Map<string, RemotePeer>;
+  iceServers(): IceServer[];
+  sendSignal(to: string, payload: SignalPayload): void;
+  setMedia(cam: boolean, mic: boolean): void;
   selfId(): string | null;
   selfColor(): string | null;
   status(): ConnStatus;
@@ -36,6 +50,7 @@ export interface SessionOptions {
   player: PlayerState;
   now: () => number;
   WebSocketImpl?: typeof WebSocket;
+  listener?: SessionListener;
 }
 
 export function createSession(opts: SessionOptions): Session {
@@ -47,6 +62,9 @@ export function createSession(opts: SessionOptions): Session {
   let status: ConnStatus = 'connecting';
   let error: ErrorCode | null = null;
   let seq = 0;
+  let iceServers: IceServer[] = [];
+  let media: { cam: boolean; mic: boolean } | null = null;
+  const listener = opts.listener ?? {};
   const lastSent = { x: Number.NaN, y: Number.NaN, angle: Number.NaN, at: 0 };
 
   const addPeer = (info: PeerInfo) => {
@@ -57,21 +75,40 @@ export function createSession(opts: SessionOptions): Session {
 
   const handle = (m: ServerMessage) => {
     switch (m.type) {
-      case 'welcome':
+      case 'welcome': {
         // A new identity means a fresh slot (first join, expired grace, server restart): take its spawn.
-        if (m.selfId !== selfId) Object.assign(player, m.spawn);
+        const identityChanged = m.selfId !== selfId;
+        if (identityChanged) Object.assign(player, m.spawn);
         selfId = m.selfId;
         color = m.color;
         resumeToken = m.resumeToken;
+        iceServers = m.iceServers;
         peers.clear();
         for (const p of m.peers) addPeer(p);
         Object.assign(lastSent, { x: player.x, y: player.y, angle: player.angle, at: now() });
+        // The server forgets media state on a fresh identity; resending on resume is harmless.
+        if (media) conn.send({ type: 'media', ...media });
+        listener.welcome?.(m.selfId, m.iceServers, identityChanged);
         break;
+      }
       case 'peer_joined':
         addPeer(m.peer);
+        listener.peerJoined?.(m.peer);
         break;
       case 'peer_left':
         peers.delete(m.id);
+        listener.peerLeft?.(m.id);
+        break;
+      case 'peer_media': {
+        const peer = peers.get(m.id);
+        if (!peer) return;
+        peer.info.cam = m.cam;
+        peer.info.mic = m.mic;
+        listener.peerMedia?.(m.id, m.cam, m.mic);
+        break;
+      }
+      case 'signal':
+        listener.signal?.(m.from, m.payload);
         break;
       case 'peer_state': {
         const peer = peers.get(m.id);
@@ -121,6 +158,14 @@ export function createSession(opts: SessionOptions): Session {
 
   return {
     peers,
+    iceServers: () => iceServers,
+    sendSignal(to, payload) {
+      conn.send({ type: 'signal', to, payload });
+    },
+    setMedia(cam, mic) {
+      media = { cam, mic };
+      if (status === 'open') conn.send({ type: 'media', cam, mic });
+    },
     selfId: () => selfId,
     selfColor: () => color,
     status: () => status,

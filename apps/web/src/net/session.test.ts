@@ -1,10 +1,19 @@
 import type { PeerInfo, PlayerState } from '@zoom3d/shared';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { asWebSocket, FakeWebSocket } from './fake-websocket';
-import { createSession } from './session';
+import { createSession, type Session, type SessionListener } from './session';
 
 const ROOM = 'AAAAAAAAAAAAAAAAAAAAAA';
-const peer = (id: string, x = 2): PeerInfo => ({ id, name: id, color: '#3cb44b', x, y: 2, angle: 0 });
+const peer = (id: string, x = 2): PeerInfo => ({
+  id,
+  name: id,
+  color: '#3cb44b',
+  x,
+  y: 2,
+  angle: 0,
+  cam: true,
+  mic: true,
+});
 const welcome = (peers: PeerInfo[] = [], spawn = { x: 5.5, y: 6.5, angle: 1 }) => ({
   type: 'welcome',
   selfId: 'me',
@@ -12,6 +21,7 @@ const welcome = (peers: PeerInfo[] = [], spawn = { x: 5.5, y: 6.5, angle: 1 }) =
   color: '#e6194b',
   spawn,
   peers,
+  iceServers: [{ urls: ['stun:test'] }],
 });
 
 let player: PlayerState;
@@ -22,14 +32,15 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-function joinedSession(peers: PeerInfo[] = []) {
-  const session = createSession({
+function joinedSession(peers: PeerInfo[] = [], listener: SessionListener = {}) {
+  const session: Session = createSession({
     url: 'ws://t/ws',
     roomId: ROOM,
     name: 'Ada',
     player,
     now: Date.now,
     WebSocketImpl: asWebSocket,
+    listener,
   });
   const ws = FakeWebSocket.latest();
   ws.open();
@@ -120,4 +131,84 @@ test('a fatal error is exposed', () => {
   ws.receive({ type: 'error', code: 'room_full', message: 'full' });
   expect(session.error()).toBe('room_full');
   expect(session.status()).toBe('failed');
+});
+
+test('the listener hears welcomes with identity changes, after the session updated itself', () => {
+  const calls: unknown[][] = [];
+  let session: Session | null = null;
+  const result = joinedSession([peer('a')], {
+    welcome: (id, ice, changed) => calls.push([id, ice, changed, session?.peers.size ?? 'unset']),
+  });
+  session = result.session;
+  expect(calls).toEqual([['me', [{ urls: ['stun:test'] }], true, 'unset']]);
+  expect(session.iceServers()).toEqual([{ urls: ['stun:test'] }]);
+  result.ws.serverClose(1006);
+  vi.advanceTimersByTime(500);
+  FakeWebSocket.latest().open();
+  FakeWebSocket.latest().receive(welcome([peer('a')]));
+  expect(calls[1]).toEqual(['me', [{ urls: ['stun:test'] }], false, 1]);
+  FakeWebSocket.latest().serverClose(1006);
+  vi.advanceTimersByTime(500);
+  FakeWebSocket.latest().open();
+  FakeWebSocket.latest().receive({ ...welcome([]), selfId: 'me2' });
+  expect(calls[2]?.[2]).toBe(true);
+});
+
+test('peer media and signals reach the listener', () => {
+  const media: unknown[] = [];
+  const signals: unknown[] = [];
+  const { session, ws } = joinedSession([peer('a')], {
+    peerMedia: (...args) => media.push(args),
+    signal: (...args) => signals.push(args),
+  });
+  ws.receive({ type: 'peer_media', id: 'a', cam: false, mic: true });
+  expect(session.peers.get('a')?.info.cam).toBe(false);
+  expect(media).toEqual([['a', false, true]]);
+  const payload = { kind: 'candidate', candidate: null };
+  ws.receive({ type: 'signal', from: 'a', payload });
+  expect(signals).toEqual([['a', payload]]);
+});
+
+test('peer joins and leaves reach the listener', () => {
+  const events: string[] = [];
+  const { ws } = joinedSession([], {
+    peerJoined: (p) => events.push(`+${p.id}`),
+    peerLeft: (id) => events.push(`-${id}`),
+  });
+  ws.receive({ type: 'peer_joined', peer: peer('c') });
+  ws.receive({ type: 'peer_left', id: 'c' });
+  expect(events).toEqual(['+c', '-c']);
+});
+
+test('sendSignal sends to the server', () => {
+  const { session, ws } = joinedSession();
+  const payload = { kind: 'candidate', candidate: null } as const;
+  session.sendSignal('a', payload);
+  expect(ws.sent.at(-1)).toEqual({ type: 'signal', to: 'a', payload });
+});
+
+test('media state is sent once open and re-sent after every welcome', () => {
+  const session = createSession({
+    url: 'ws://t/ws',
+    roomId: ROOM,
+    name: 'Ada',
+    player,
+    now: Date.now,
+    WebSocketImpl: asWebSocket,
+  });
+  const ws = FakeWebSocket.latest();
+  const media = (sock: FakeWebSocket) => sock.sent.filter((m) => (m as { type: string }).type === 'media');
+  ws.open();
+  session.setMedia(true, false);
+  expect(media(ws)).toEqual([]);
+  ws.receive(welcome());
+  expect(media(ws)).toEqual([{ type: 'media', cam: true, mic: false }]);
+  session.setMedia(false, false);
+  expect(media(ws).at(-1)).toEqual({ type: 'media', cam: false, mic: false });
+  ws.serverClose(1006);
+  vi.advanceTimersByTime(500);
+  const ws2 = FakeWebSocket.latest();
+  ws2.open();
+  ws2.receive(welcome());
+  expect(media(ws2)).toEqual([{ type: 'media', cam: false, mic: false }]);
 });

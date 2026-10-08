@@ -11,6 +11,7 @@ const welcome = {
   color: '#e6194b',
   spawn: { x: 1, y: 1, angle: 0 },
   peers: [],
+  iceServers: [],
 };
 let statuses: ConnStatus[];
 
