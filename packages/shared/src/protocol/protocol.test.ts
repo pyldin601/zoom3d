@@ -103,7 +103,16 @@ describe('parseClientMessage', () => {
 });
 
 describe('parseServerMessage', () => {
-  const peer: PeerInfo = { id: 'p1', name: 'Ada', color: '#e6194b', x: 1, y: 2, angle: 0 };
+  const peer: PeerInfo = {
+    id: 'p1',
+    name: 'Ada',
+    color: '#e6194b',
+    x: 1,
+    y: 2,
+    angle: 0,
+    cam: true,
+    mic: false,
+  };
   const samples: ServerMessage[] = [
     {
       type: 'welcome',
@@ -112,6 +121,13 @@ describe('parseServerMessage', () => {
       color: '#3cb44b',
       spawn: { x: 1, y: 2, angle: 0 },
       peers: [peer],
+      iceServers: [{ urls: ['stun:x'] }, { urls: ['turn:y'], username: 'u', credential: 'c' }],
+    },
+    { type: 'peer_media', id: 'p1', cam: false, mic: true },
+    {
+      type: 'signal',
+      from: 'p1',
+      payload: { kind: 'description', description: { type: 'answer', sdp: 'v=0' } },
     },
     { type: 'peer_joined', peer },
     { type: 'peer_left', id: 'p1' },
@@ -131,5 +147,74 @@ describe('parseServerMessage', () => {
 
   test('rejects unknown error codes', () => {
     expect(parseServerMessage(json({ type: 'error', code: 'boom', message: '' }))).toBeNull();
+  });
+});
+
+describe('media and signal messages', () => {
+  const offer = { kind: 'description', description: { type: 'offer', sdp: 'v=0\r\n' } };
+  const cand = {
+    candidate: 'candidate:1 1 udp 1 1.2.3.4 5 typ host',
+    sdpMid: '0',
+    sdpMLineIndex: 0,
+    usernameFragment: null,
+  };
+  const candidate = { kind: 'candidate', candidate: cand };
+
+  test('client media is accepted with booleans only', () => {
+    expect(parseClientMessage(json({ type: 'media', cam: true, mic: false, x: 1 }))).toEqual({
+      type: 'media',
+      cam: true,
+      mic: false,
+    });
+    expect(parseClientMessage(json({ type: 'media', cam: 'yes', mic: false }))).toBeNull();
+  });
+
+  test('client signal carries descriptions and candidates, extra fields stripped', () => {
+    expect(parseClientMessage(json({ type: 'signal', to: 'p2', payload: { ...offer, junk: 1 } }))).toEqual({
+      type: 'signal',
+      to: 'p2',
+      payload: offer,
+    });
+    expect(parseClientMessage(json({ type: 'signal', to: 'p2', payload: candidate }))).toEqual({
+      type: 'signal',
+      to: 'p2',
+      payload: candidate,
+    });
+    const end = { kind: 'candidate', candidate: null };
+    expect(parseClientMessage(json({ type: 'signal', to: 'p2', payload: end }))).toEqual({
+      type: 'signal',
+      to: 'p2',
+      payload: end,
+    });
+  });
+
+  test.each([
+    ['bogus description type', { kind: 'description', description: { type: 'bogus', sdp: '' } }],
+    ['oversized sdp', { kind: 'description', description: { type: 'offer', sdp: 'x'.repeat(12001) } }],
+    ['oversized candidate', { kind: 'candidate', candidate: { ...cand, candidate: 'x'.repeat(1025) } }],
+    ['fractional mline', { kind: 'candidate', candidate: { ...cand, sdpMLineIndex: 1.5 } }],
+    ['unknown kind', { kind: 'hello' }],
+  ])('rejects signal with %s', (_name, payload) => {
+    expect(parseClientMessage(json({ type: 'signal', to: 'p2', payload }))).toBeNull();
+  });
+
+  test('rejects signal with a non-string target', () => {
+    expect(parseClientMessage(json({ type: 'signal', to: 5, payload: offer }))).toBeNull();
+  });
+
+  test('rejects a welcome with string urls or a peer without cam', () => {
+    const base = {
+      type: 'welcome',
+      selfId: 'p2',
+      resumeToken: 't',
+      color: '#3cb44b',
+      spawn: { x: 1, y: 2, angle: 0 },
+      peers: [] as unknown[],
+      iceServers: [{ urls: ['stun:x'] }],
+    };
+    expect(parseServerMessage(json(base))).not.toBeNull();
+    expect(parseServerMessage(json({ ...base, iceServers: [{ urls: 'stun:x' }] }))).toBeNull();
+    const noCam = { id: 'a', name: 'A', color: '#fff', x: 1, y: 1, angle: 0, mic: true };
+    expect(parseServerMessage(json({ ...base, peers: [noCam] }))).toBeNull();
   });
 });

@@ -27,11 +27,36 @@ export interface PeerInfo {
   x: number;
   y: number;
   angle: number;
+  cam: boolean;
+  mic: boolean;
 }
+
+export interface IceServer {
+  urls: string[];
+  username?: string;
+  credential?: string;
+}
+
+export const MAX_SDP_CHARS = 12000;
+export const MAX_CANDIDATE_CHARS = 1024;
+
+export type SignalPayload =
+  | { kind: 'description'; description: { type: 'offer' | 'answer' | 'pranswer' | 'rollback'; sdp: string } }
+  | {
+      kind: 'candidate';
+      candidate: {
+        candidate: string;
+        sdpMid: string | null;
+        sdpMLineIndex: number | null;
+        usernameFragment: string | null;
+      } | null;
+    };
 
 export type JoinMessage = { type: 'join'; roomId: string; name: string; resumeToken?: string };
 export type StateMessage = { type: 'state'; x: number; y: number; angle: number; seq: number };
-export type ClientMessage = JoinMessage | StateMessage;
+export type MediaMessage = { type: 'media'; cam: boolean; mic: boolean };
+export type SignalMessage = { type: 'signal'; to: string; payload: SignalPayload };
+export type ClientMessage = JoinMessage | StateMessage | MediaMessage | SignalMessage;
 
 export type ErrorCode = 'room_full' | 'invalid_room' | 'invalid_name' | 'not_joined';
 const ERROR_CODES: readonly ErrorCode[] = ['room_full', 'invalid_room', 'invalid_name', 'not_joined'];
@@ -44,8 +69,11 @@ export type ServerMessage =
       color: string;
       spawn: { x: number; y: number; angle: number };
       peers: PeerInfo[];
+      iceServers: IceServer[];
     }
   | { type: 'peer_joined'; peer: PeerInfo }
+  | { type: 'peer_media'; id: string; cam: boolean; mic: boolean }
+  | { type: 'signal'; from: string; payload: SignalPayload }
   | { type: 'peer_left'; id: string }
   | { type: 'peer_state'; id: string; x: number; y: number; angle: number; seq: number }
   | { type: 'correction'; x: number; y: number; angle: number; seq: number }
@@ -91,6 +119,53 @@ const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const isStr = (v: unknown): v is string => typeof v === 'string';
 const isSeq = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
+const isBool = (v: unknown): v is boolean => typeof v === 'boolean';
+const isStrOrNull = (v: unknown): v is string | null => v === null || isStr(v);
+const DESCRIPTION_TYPES = ['offer', 'answer', 'pranswer', 'rollback'] as const;
+
+export function parseSignalPayload(v: unknown): SignalPayload | null {
+  if (!isObj(v)) return null;
+  if (v.kind === 'description') {
+    const d = v.description;
+    if (!isObj(d) || !DESCRIPTION_TYPES.includes(d.type as never) || !isStr(d.sdp)) return null;
+    if (d.sdp.length > MAX_SDP_CHARS) return null;
+    return {
+      kind: 'description',
+      description: { type: d.type as (typeof DESCRIPTION_TYPES)[number], sdp: d.sdp },
+    };
+  }
+  if (v.kind === 'candidate') {
+    const c = v.candidate;
+    if (c === null) return { kind: 'candidate', candidate: null };
+    if (!isObj(c) || !isStr(c.candidate) || c.candidate.length > MAX_CANDIDATE_CHARS) return null;
+    if (!isStrOrNull(c.sdpMid) || !isStrOrNull(c.usernameFragment)) return null;
+    if (c.sdpMLineIndex !== null && !isSeq(c.sdpMLineIndex)) return null;
+    return {
+      kind: 'candidate',
+      candidate: {
+        candidate: c.candidate,
+        sdpMid: c.sdpMid,
+        sdpMLineIndex: c.sdpMLineIndex as number | null,
+        usernameFragment: c.usernameFragment,
+      },
+    };
+  }
+  return null;
+}
+
+function iceServer(v: unknown): IceServer | null {
+  if (!isObj(v) || !Array.isArray(v.urls) || !v.urls.every(isStr)) return null;
+  const out: IceServer = { urls: [...v.urls] };
+  if (v.username !== undefined) {
+    if (!isStr(v.username)) return null;
+    out.username = v.username;
+  }
+  if (v.credential !== undefined) {
+    if (!isStr(v.credential)) return null;
+    out.credential = v.credential;
+  }
+  return out;
+}
 
 function parseJson(raw: string): Obj | null {
   if (raw.length > MAX_MESSAGE_BYTES) return null;
@@ -120,13 +195,21 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     const p = pose(m);
     return p && isSeq(m.seq) ? { type: 'state', ...p, seq: m.seq } : null;
   }
+  if (m.type === 'media') {
+    return isBool(m.cam) && isBool(m.mic) ? { type: 'media', cam: m.cam, mic: m.mic } : null;
+  }
+  if (m.type === 'signal') {
+    const payload = parseSignalPayload(m.payload);
+    return payload && isStr(m.to) ? { type: 'signal', to: m.to, payload } : null;
+  }
   return null;
 }
 
 function peerInfo(v: unknown): PeerInfo | null {
   if (!isObj(v) || !isStr(v.id) || !isStr(v.name) || !isStr(v.color)) return null;
+  if (!isBool(v.cam) || !isBool(v.mic)) return null;
   const p = pose(v);
-  return p && { id: v.id, name: v.name, color: v.color, ...p };
+  return p && { id: v.id, name: v.name, color: v.color, ...p, cam: v.cam, mic: v.mic };
 }
 
 export function parseServerMessage(raw: string): ServerMessage | null {
@@ -138,8 +221,10 @@ export function parseServerMessage(raw: string): ServerMessage | null {
       if (!isStr(m.selfId) || !isStr(m.resumeToken) || !isStr(m.color) || !spawn || !Array.isArray(m.peers)) {
         return null;
       }
+      if (!Array.isArray(m.iceServers)) return null;
       const peers = m.peers.map(peerInfo);
-      if (peers.some((p) => p === null)) return null;
+      const iceServers = m.iceServers.map(iceServer);
+      if (peers.some((p) => p === null) || iceServers.some((i) => i === null)) return null;
       return {
         type: 'welcome',
         selfId: m.selfId,
@@ -147,11 +232,20 @@ export function parseServerMessage(raw: string): ServerMessage | null {
         color: m.color,
         spawn,
         peers: peers as PeerInfo[],
+        iceServers: iceServers as IceServer[],
       };
     }
     case 'peer_joined': {
       const peer = peerInfo(m.peer);
       return peer && { type: 'peer_joined', peer };
+    }
+    case 'peer_media':
+      return isStr(m.id) && isBool(m.cam) && isBool(m.mic)
+        ? { type: 'peer_media', id: m.id, cam: m.cam, mic: m.mic }
+        : null;
+    case 'signal': {
+      const payload = parseSignalPayload(m.payload);
+      return payload && isStr(m.from) ? { type: 'signal', from: m.from, payload } : null;
     }
     case 'peer_left':
       return isStr(m.id) ? { type: 'peer_left', id: m.id } : null;
