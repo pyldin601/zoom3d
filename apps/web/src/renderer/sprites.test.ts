@@ -177,7 +177,7 @@ describe('floor shadows', () => {
     renderSprites(fb, player, [sprite(3.5)]);
     const centre = px(fb, 320, floorRow(2));
     const nearEdge = px(fb, 320, floorRow(2 - SHADOW_RADIUS * 0.8));
-    expect(red(centre)).toBeLessThan(red(FLOOR) * 0.6);
+    expect(red(centre)).toBe(Math.floor(red(FLOOR) * (1 - 0.33)));
     expect(red(nearEdge)).toBeGreaterThan(red(centre));
     expect(red(nearEdge)).toBeLessThan(red(FLOOR));
   });

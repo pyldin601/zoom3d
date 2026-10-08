@@ -10,7 +10,7 @@ const MIN_DEPTH = 0.1;
 const RING = 0.85; // fraction of the radius where the shaded edge starts
 /** Floor shadow radius (tiles) and how much it darkens the floor at its centre. */
 export const SHADOW_RADIUS = 0.3;
-const SHADOW_DARKNESS = 0.55;
+const SHADOW_DARKNESS = 0.33;
 /** Retro look: the shadow is a low-res floor texture (texel in tiles) with flat darkness bands. */
 const SHADOW_TEXEL = 1 / 16;
 export const SHADOW_LEVELS = 3;
