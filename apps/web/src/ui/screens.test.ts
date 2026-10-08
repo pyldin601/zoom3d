@@ -1,6 +1,15 @@
 // @vitest-environment happy-dom
-import { beforeEach, expect, test, vi } from 'vitest';
-import { clearScreen, showJoin, showLanding, showNotice, showRoomBar, showStatus } from './screens';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import {
+  clearScreen,
+  showBanner,
+  showJoin,
+  showLanding,
+  showNotice,
+  showRoomBar,
+  showSelfPreview,
+  showStatus,
+} from './screens';
 
 let root: HTMLElement;
 beforeEach(() => {
@@ -67,4 +76,63 @@ test('room bar copies the invite link', async () => {
   showRoomBar(root, 'http://x/r/AAAAAAAAAAAAAAAAAAAAAA');
   (root.querySelector('.roombar button') as HTMLButtonElement).click();
   expect(writeText).toHaveBeenCalledWith('http://x/r/AAAAAAAAAAAAAAAAAAAAAA');
+});
+
+test('room bar mic/cam toggles flip aria-pressed and call handlers', () => {
+  const onCam = vi.fn();
+  const onMic = vi.fn();
+  showRoomBar(root, 'http://x', {
+    cam: true,
+    mic: true,
+    camAvailable: true,
+    micAvailable: true,
+    onCam,
+    onMic,
+  });
+  const mic = root.querySelector('button[data-control="mic"]') as HTMLButtonElement;
+  expect(mic.getAttribute('aria-pressed')).toBe('true');
+  mic.click();
+  expect(onMic).toHaveBeenCalledWith(false);
+  expect(mic.getAttribute('aria-pressed')).toBe('false');
+  expect(mic.textContent).toBe('Mic off');
+  mic.click();
+  expect(onMic).toHaveBeenLastCalledWith(true);
+});
+
+test('unavailable devices disable their toggle', () => {
+  showRoomBar(root, 'http://x', {
+    cam: false,
+    mic: true,
+    camAvailable: false,
+    micAvailable: true,
+    onCam: () => {},
+    onMic: () => {},
+  });
+  expect((root.querySelector('button[data-control="cam"]') as HTMLButtonElement).disabled).toBe(true);
+});
+
+afterEach(() => vi.useRealTimers());
+
+test('banners show text literally and hide after 8 s', () => {
+  vi.useFakeTimers();
+  showBanner(root, '<b>Camera unavailable</b>');
+  expect(root.querySelector('.banner')?.textContent).toBe('<b>Camera unavailable</b>');
+  expect(root.querySelector('b')).toBeNull();
+  vi.advanceTimersByTime(8000);
+  expect(root.querySelector('.banner')).toBeNull();
+});
+
+test('self preview shows a muted mirrored video and hides when off', () => {
+  const stream = new MediaStream();
+  showSelfPreview(root, stream, true);
+  const video = root.querySelector('.selfview video') as HTMLVideoElement;
+  expect(video.muted).toBe(true);
+  expect(video.srcObject).toBe(stream);
+  showSelfPreview(root, stream, false);
+  expect((root.querySelector('.selfview') as HTMLElement).hidden).toBe(true);
+});
+
+test('join screen recommends headphones', () => {
+  showJoin(root, { defaultName: '', onJoin: () => {} });
+  expect(root.textContent).toContain('Headphones recommended');
 });

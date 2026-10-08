@@ -9,7 +9,7 @@ export function drawLabels(
   ctx: CanvasRenderingContext2D,
   fb: Framebuffer,
   p: PlayerState,
-  others: readonly { x: number; y: number; name: string }[],
+  others: readonly { x: number; y: number; name: string; mic: boolean }[],
   hudW: number,
   hudH: number,
 ): void {
@@ -26,8 +26,9 @@ export function drawLabels(
     const x = projection.screenX * scale;
     const y = (fb.height / 2 - projection.size / 2) * scale - hudH * 0.01;
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
-    ctx.strokeText(o.name, x, y);
+    const label = o.mic ? o.name : `🔇 ${o.name}`;
+    ctx.strokeText(label, x, y);
     ctx.fillStyle = '#fff';
-    ctx.fillText(o.name, x, y);
+    ctx.fillText(label, x, y);
   }
 }

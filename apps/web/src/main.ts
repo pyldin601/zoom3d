@@ -11,6 +11,11 @@ import {
 import { startLoop } from './game/loop';
 import { layoutStage, watchLayout } from './game/stage';
 import { createInput } from './input/keyboard';
+import { type Call, createCall } from './media/call';
+import { captureLocalMedia, type LocalMedia } from './media/capture';
+import { createFace } from './media/faces';
+import { createMesh } from './media/mesh';
+import { createRemoteMedia } from './media/remote-media';
 import { createSession, type Session } from './net/session';
 import { type AutomapPeer, drawAutomap } from './renderer/automap';
 import { createFramebuffer } from './renderer/framebuffer';
@@ -19,7 +24,16 @@ import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
 import { makeTextures } from './renderer/textures';
 import { renderWalls } from './renderer/walls';
 import { parseRoute } from './ui/route';
-import { clearScreen, showJoin, showLanding, showNotice, showRoomBar, showStatus } from './ui/screens';
+import {
+  clearScreen,
+  showBanner,
+  showJoin,
+  showLanding,
+  showNotice,
+  showRoomBar,
+  showSelfPreview,
+  showStatus,
+} from './ui/screens';
 
 const PIXEL_PERFECT = new URLSearchParams(location.search).has('pixelperfect');
 const NAME_KEY = 'zoom3d.name';
@@ -28,6 +42,7 @@ const stage = document.getElementById('stage') as HTMLDivElement;
 const game = document.getElementById('game') as HTMLCanvasElement;
 const hud = document.getElementById('hud') as HTMLCanvasElement;
 const ui = document.getElementById('ui') as HTMLDivElement;
+const mediaContainer = document.getElementById('media') as HTMLDivElement;
 const gameCtx = game.getContext('2d') as CanvasRenderingContext2D;
 const hudCtx = hud.getContext('2d') as CanvasRenderingContext2D;
 
@@ -38,6 +53,7 @@ const image = new ImageData(new Uint8ClampedArray(fb.pixels.buffer as ArrayBuffe
 const player = spawnPoint(map, Math.random);
 const input = createInput(window, document);
 let session: Session | null = null;
+let call: Call | null = null;
 
 const relayout = () => layoutStage(stage, hud, PIXEL_PERFECT);
 relayout();
@@ -56,6 +72,55 @@ window.addEventListener('keydown', (e) => {
   e.preventDefault();
   if (!e.repeat) automapVisible = !automapVisible;
 });
+
+const PROBLEM_TEXT: Record<NonNullable<LocalMedia['problem']>, string> = {
+  insecure: 'Camera and mic need HTTPS — joined without them.',
+  'no-camera': 'Camera unavailable — others see your initials.',
+  'no-mic': 'Microphone unavailable — you can listen only.',
+  'none-available': 'Camera and mic unavailable — others see your initials, you can listen only.',
+};
+
+let shownStatus: string | null = null;
+function setStatus(text: string | null): void {
+  if (text === shownStatus) return;
+  showStatus(ui, text);
+  shownStatus = text;
+}
+
+async function joinRoom(roomId: string, name: string): Promise<void> {
+  saveName(name);
+  clearScreen(ui);
+  setStatus('Starting camera…');
+  // Runs from the Join click, so the camera prompt and later autoplay have a user gesture.
+  const local = await captureLocalMedia({
+    isSecureContext: window.isSecureContext,
+    getUserMedia: (c) => navigator.mediaDevices.getUserMedia(c),
+  });
+  call = createCall({ local, remote: createRemoteMedia(mediaContainer), document, createFace, createMesh });
+  session = createSession({
+    url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
+    roomId,
+    name,
+    player,
+    now: () => performance.now(),
+    listener: call.listener,
+  });
+  call.attach(session);
+  if (local.problem) showBanner(ui, PROBLEM_TEXT[local.problem]);
+  const activeCall = call;
+  showRoomBar(ui, location.href, {
+    cam: local.cam,
+    mic: local.mic,
+    camAvailable: local.cam,
+    micAvailable: local.mic,
+    onCam(on) {
+      activeCall.setCam(on);
+      showSelfPreview(ui, local.stream, activeCall.localState().cam);
+    },
+    onMic: (on) => activeCall.setMic(on),
+  });
+  showSelfPreview(ui, local.stream, local.cam);
+}
 
 function loadName(): string {
   try {
@@ -84,16 +149,7 @@ if (route.kind === 'landing') {
   showJoin(ui, {
     defaultName: loadName(),
     onJoin(name) {
-      saveName(name);
-      clearScreen(ui);
-      session = createSession({
-        url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
-        roomId: route.roomId,
-        name,
-        player,
-        now: () => performance.now(),
-      });
-      showRoomBar(ui, location.href);
+      void joinRoom(route.roomId, name);
     },
   });
 }
@@ -121,15 +177,17 @@ if (import.meta.env.DEV) {
       get session() {
         return session;
       },
+      get call() {
+        return call;
+      },
     },
   });
 }
 
 const sprites: Sprite[] = [];
-const others: AutomapPeer[] = [];
+const others: (AutomapPeer & { mic: boolean })[] = [];
 const sample = { x: 0, y: 0, angle: 0 };
 const colors = new Map<string, number>();
-let shownStatus: string | null = null;
 
 startLoop((dt) => {
   const mouseTurn = input.consumeMouseTurn();
@@ -140,6 +198,7 @@ startLoop((dt) => {
 
   sprites.length = 0;
   others.length = 0;
+  call?.update(performance.now());
   if (session) {
     const renderTime = performance.now() - INTERP_DELAY_MS;
     for (const peer of session.peers.values()) {
@@ -149,14 +208,16 @@ startLoop((dt) => {
         color = hexToRgb(peer.info.color);
         colors.set(peer.info.color, color);
       }
-      sprites.push({ x: sample.x, y: sample.y, color, face: null });
-      others.push({ x: sample.x, y: sample.y, color: peer.info.color, name: peer.info.name });
+      sprites.push({ x: sample.x, y: sample.y, color, face: call?.faceOf(peer.info.id) ?? null });
+      others.push({
+        x: sample.x,
+        y: sample.y,
+        color: peer.info.color,
+        name: peer.info.name,
+        mic: peer.info.mic,
+      });
     }
-    const text = statusText(session);
-    if (text !== shownStatus) {
-      showStatus(ui, text);
-      shownStatus = text;
-    }
+    setStatus(statusText(session));
   }
 
   renderWalls(fb, map, player, textures);

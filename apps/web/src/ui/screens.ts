@@ -67,7 +67,12 @@ export function showJoin(
     }
     opts.onJoin(name);
   });
-  setScreen(root, el('h1', { textContent: 'Join the room' }), form);
+  setScreen(
+    root,
+    el('h1', { textContent: 'Join the room' }),
+    form,
+    el('p', { className: 'hint', textContent: 'Headphones recommended.' }),
+  );
   input.focus();
 }
 
@@ -83,7 +88,38 @@ export function showStatus(root: HTMLElement, text: string | null): void {
   slot(root, 'status').textContent = text;
 }
 
-export function showRoomBar(root: HTMLElement, inviteUrl: string): void {
+export interface MediaControls {
+  cam: boolean;
+  mic: boolean;
+  camAvailable: boolean;
+  micAvailable: boolean;
+  onCam(on: boolean): void;
+  onMic(on: boolean): void;
+}
+
+function toggle(
+  label: string,
+  control: string,
+  on: boolean,
+  available: boolean,
+  onChange: (on: boolean) => void,
+) {
+  const button = el('button', { type: 'button', disabled: !available });
+  button.dataset.control = control;
+  const render = () => {
+    button.textContent = available ? `${label} ${on ? 'on' : 'off'}` : `No ${label.toLowerCase()}`;
+    button.setAttribute('aria-pressed', String(on));
+  };
+  button.addEventListener('click', () => {
+    on = !on;
+    render();
+    onChange(on);
+  });
+  render();
+  return button;
+}
+
+export function showRoomBar(root: HTMLElement, inviteUrl: string, controls?: MediaControls): void {
   const link = el('input', { readOnly: true, value: inviteUrl, ariaLabel: 'Invite link' });
   const copy = el('button', { type: 'button', textContent: 'Copy invite link' });
   copy.addEventListener('click', () => {
@@ -94,5 +130,40 @@ export function showRoomBar(root: HTMLElement, inviteUrl: string): void {
       () => link.select(),
     ) ?? link.select();
   });
-  slot(root, 'roombar').replaceChildren(link, copy);
+  const toggles = controls
+    ? [
+        toggle('Mic', 'mic', controls.mic, controls.micAvailable, controls.onMic),
+        toggle('Cam', 'cam', controls.cam, controls.camAvailable, controls.onCam),
+      ]
+    : [];
+  slot(root, 'roombar').replaceChildren(...toggles, link, copy);
+}
+
+const BANNER_MS = 8000;
+const bannerTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>();
+
+export function showBanner(root: HTMLElement, text: string | null): void {
+  const existing = root.querySelector<HTMLElement>(':scope > .banner');
+  if (existing) clearTimeout(bannerTimers.get(existing));
+  if (text === null) {
+    existing?.remove();
+    return;
+  }
+  const banner = slot(root, 'banner');
+  banner.textContent = text;
+  bannerTimers.set(
+    banner,
+    setTimeout(() => banner.remove(), BANNER_MS),
+  );
+}
+
+export function showSelfPreview(root: HTMLElement, stream: MediaStream | null, visible: boolean): void {
+  const box = slot(root, 'selfview');
+  let video = box.querySelector('video');
+  if (!video) {
+    video = el('video', { muted: true, autoplay: true, playsInline: true });
+    box.append(video);
+  }
+  if (video.srcObject !== stream) video.srcObject = stream;
+  box.hidden = !visible || stream === null;
 }
