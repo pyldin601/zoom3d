@@ -1,0 +1,21 @@
+# Local smoke run of both images: docker compose up --build, then open http://localhost:8080
+services:
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    image: ghcr.io/pyldin601/zoom3d-server:local
+    environment:
+      # Optional: STUN_URLS, TURN_URLS, TURN_SECRET, TURN_TTL_S, RESUME_GRACE_MS
+      PORT: "8787"
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: ghcr.io/pyldin601/zoom3d-web:local
+    environment:
+      SERVER_URL: http://server:8787
+    ports:
+      - "8080:8080"
+    depends_on:
+      - server

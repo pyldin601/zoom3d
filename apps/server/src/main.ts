@@ -7,3 +7,10 @@ const graceMs = Number(process.env.RESUME_GRACE_MS ?? RESUME_GRACE_MS);
 
 const server = await startServer({ port, graceMs, ice: iceConfigFromEnv(process.env) });
 console.log(`zoom3d server listening on :${server.port}`);
+
+// Containers send SIGTERM on stop; PID 1 gets no default handler, so close explicitly.
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.once(signal, () => {
+    void server.close().then(() => process.exit(0));
+  });
+}

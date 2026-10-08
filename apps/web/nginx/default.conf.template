@@ -1,0 +1,38 @@
+# Rendered by the nginx image entrypoint: only defined env vars (SERVER_URL,
+# NGINX_LOCAL_RESOLVERS) are substituted; nginx's own $variables are left alone.
+server {
+    listen 8080;
+    root /usr/share/nginx/html;
+
+    # Resolve the server at request time so nginx starts even if it is not up yet.
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+
+    location = /ws {
+        set $zoom3d_server ${SERVER_URL};
+        proxy_pass $zoom3d_server;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+    }
+
+    location = /healthz {
+        default_type text/plain;
+        return 200 "ok";
+    }
+
+    # Vite emits content-hashed file names under /assets.
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+    }
+
+    # SPA: room links (/r/<id>) and the landing page are all index.html.
+    location / {
+        add_header Cache-Control "no-cache";
+        try_files $uri /index.html;
+    }
+}

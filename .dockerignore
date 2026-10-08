@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+**/test-results
+**/playwright-report
+.git
+.github
+.idea
+.superpowers
+docs
+spikes
+tools
+**/*.md
+compose.yaml

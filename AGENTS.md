@@ -45,7 +45,18 @@ pnpm typecheck    # tsc --noEmit per package
 pnpm lint         # biome check
 pnpm e2e          # playwright; starts its own server :8788 + web :5174
 pnpm bench        # renderer frame-time benchmark
+docker compose up --build              # both images locally: http://localhost:8080
+scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this before pushing)
 ```
+
+## Containers
+
+- `apps/server/Dockerfile` and `apps/web/Dockerfile` build from the **repo root** context.
+- The server image runs one esbuild bundle (`pnpm --filter @zoom3d/server build`), so any new
+  runtime dependency must be bundleable (or marked external and installed).
+- The web image renders `apps/web/nginx/default.conf.template` at start. Only env vars are
+  substituted, and `/ws` resolves `SERVER_URL` per request, so nginx starts without the server.
+- `.github/workflows/docker.yml`: PRs build + smoke-test only; `main`/`v*` also push to GHCR.
 
 ## Gotchas to remember
 

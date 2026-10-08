@@ -29,6 +29,24 @@ to move, Q/E or arrows to turn, click the view for mouse look, M or Tab for the 
 The browser asks for camera and microphone on Join. They only work on `localhost` or HTTPS, so
 testing from another device on the LAN needs HTTPS (planned for M6).
 
+## Docker
+
+Each service has its own image, published to GHCR by CI on every push to `main` (`latest`,
+`sha-<commit>`) and on `v*` tags (semver):
+
+- `ghcr.io/pyldin601/zoom3d-server`: WebSocket server on port 8787 (`GET /health`).
+  Env: `PORT`, `RESUME_GRACE_MS`, `STUN_URLS`, `TURN_URLS`, `TURN_SECRET`, `TURN_TTL_S`.
+- `ghcr.io/pyldin601/zoom3d-web`: static app on nginx, port 8080 (`GET /healthz`). It
+  proxies `/ws` to `SERVER_URL` (default `http://server:8787`).
+
+Run both locally:
+
+```bash
+docker compose up --build
+```
+
+Then open http://localhost:8080. Camera and mic need `localhost` or HTTPS.
+
 ## Docs
 
 - [docs/vision.md](docs/vision.md) — product goals, scope, non-goals
