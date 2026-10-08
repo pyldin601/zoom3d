@@ -19,6 +19,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 - Node + TypeScript + `ws` (or Fastify + `@fastify/websocket`), in-memory rooms. Shares types with client.
 - Alternatives: Go, Elixir/Phoenix channels, Cloudflare Durable Objects (one DO per room — attractive for rooms).
 - **Rec:** Node/TS monorepo for v1.
+- *Resolved-pending-spec 2026-10-08:* Node/TS monorepo, self-hosted VPS (coturn for TURN). Also narrows D11.
 
 ### D4 — Position authority
 - Client-authoritative (server relays, clamps speed) vs server-authoritative (server runs collision).
