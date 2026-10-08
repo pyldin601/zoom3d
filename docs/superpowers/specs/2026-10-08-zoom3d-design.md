@@ -30,6 +30,7 @@ controls, face tracking or background removal, more than 8 participants, Safari 
 | Media | WebRTC P2P mesh behind a `MediaTransport` interface (SFU swap possible later) |
 | Backend | Node + TypeScript, `ws`, in-memory rooms, self-hosted VPS + coturn |
 | Renderer | Canvas2D software raycaster, low internal res, nearest-neighbour upscale |
+| Aspect ratio | Fixed 16:9 viewport, letterboxed; HUD and overlays anchored to it |
 | Authority | Client-authoritative movement; server validates speed and wall cells |
 | Audio | Native Web Audio nodes: custom distance gain, HRTF panner, shared convolver, wall muffling |
 | Rooms | Ephemeral, unguessable link, display name only |
@@ -78,8 +79,22 @@ glue to browser/Node APIs.
 
 ## 5. Rendering (`apps/web/src/renderer`)
 
-- **Internal buffer:** 640×360 `ImageData` (configurable down to 320×180), drawn to an
-  offscreen canvas and scaled to the window with `imageSmoothingEnabled = false`.
+- **Internal buffer:** 640×360 `ImageData` (configurable down to 320×180, always 16:9), drawn
+  to an offscreen canvas and scaled with `imageSmoothingEnabled = false`.
+- **Fixed aspect ratio (16:9):** the game viewport never stretches or changes shape.
+  - It is the largest 16:9 box that fits the window (or fullscreen), centred, with black
+    letterbox or pillarbox bars filling the rest.
+  - Because the aspect is fixed, the projection (FOV 66°) is identical for every window
+    size, and the raycaster never adapts to the window.
+  - The game canvas and HUD canvas share this one viewport box. All HUD elements (labels,
+    self-preview, automap, toggles) are laid out in viewport-relative units, so they scale
+    with the game and never drift into the bars or overlap differently at other window sizes.
+  - The HUD canvas backing store is `box size × devicePixelRatio` for crisp text.
+  - Resizing uses a `ResizeObserver` plus `devicePixelRatio` changes, recomputing the box
+    only. The internal render resolution stays constant.
+  - Optional "pixel-perfect" setting: snap the scale to the largest integer multiple of the
+    internal resolution that fits, at the cost of wider bars. Off by default.
+  - The join screen and overlays (reconnecting, errors) render inside the same 16:9 box.
 - **Walls:** DDA raycast per column, FOV 66°, fisheye-corrected perpendicular distance. Textures
   are 64×64, procedurally generated per wall type at startup (no asset licensing). Side
   shading on y-facing walls, as in Wolf3D. Flat-colour floor and ceiling.
@@ -242,6 +257,10 @@ spike (§12) must verify this first.** Possible outcomes:
   `--use-fake-ui-for-media-stream`):** 2–3 pages in one room; each sees the others in the
   roster, receives remote tracks, and renders avatars (test hook exposing the visible sprite
   list); camera-denied path shows the fallback.
+- **Viewport (unit, pure function in `shared`):** `fitViewport(windowW, windowH, dpr, pixelPerfect)`
+  always returns a 16:9 box, centred, fully inside the window (tall, wide, tiny and odd sizes,
+  and integer snapping). Playwright checks that the canvas box ratio stays 16:9 at three window
+  sizes.
 - **Performance:** a renderer benchmark on `level1` with 8 billboards. Budget: under 8 ms per
   frame on the dev machine, logged in CI (not gating).
 - **Manual checklist:** spatial audio by ear (direction, distance, occlusion, reverb) with

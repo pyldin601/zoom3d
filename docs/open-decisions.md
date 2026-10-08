@@ -67,6 +67,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 ### D13 — Findability
 - *Resolved-pending-spec 2026-10-08:* shared spawn near the blue-diamond start + toggleable automap showing walls and named participant dots.
 
+### D14 — Aspect ratio
+- *Resolved-pending-spec 2026-10-08:* the UI keeps a stable 16:9 aspect ratio: letterboxed game viewport, fixed FOV, HUD and overlays anchored to the viewport box. Optional integer-scale mode.
+
 ### Risks (to verify, not assume)
 - **R1 — Echo cancellation vs Web Audio output.** Chrome's AEC historically did not cancel audio played via `AudioContext`. If still true, speakers echo. Verify in an early throwaway audio spike (speakers vs headphones).
 - **R2 — Background tabs.** rAF stops in hidden tabs; nothing peers depend on may be driven by the render loop.
