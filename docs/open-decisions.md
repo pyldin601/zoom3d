@@ -7,7 +7,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 ### D1 — Media topology
 - **Mesh (P2P)**: no media server, simplest, cheapest. Upload cost grows with N-1 streams; fine to ~6–8 when faces are tiny (≤160 px, ~15 fps).
 - **SFU** (LiveKit / mediasoup): scales to dozens, simulcast, server-side bandwidth control. More infra.
-- **Rec:** start with mesh behind a thin `MediaTransport` interface; swap to LiveKit if we outgrow it. Needs a decision on target group size.
+- **Rec:** start with mesh behind a thin `MediaTransport` interface; swap to LiveKit if we outgrow it.
+- *Partially resolved 2026-10-08:* target group size is 2–8 participants for v1, so mesh is viable. Final call pending design approval.
 
 ### D2 — Renderer
 - **Canvas2D software raycaster** (ImageData): authentic, fully controllable, CPU-bound at higher res.
