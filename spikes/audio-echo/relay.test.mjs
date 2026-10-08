@@ -6,6 +6,8 @@ class FakeSocket {
   constructor() { this.sent = []; this.closed = null; this.handlers = {}; }
   send(data) { this.sent.push(data); }
   close(code, reason) { this.closed = { code, reason }; }
+  ping() { this.pings = (this.pings ?? 0) + 1; }
+  terminate() { this.terminated = true; this.emit('close'); }
   on(event, handler) { (this.handlers[event] ??= []).push(handler); }
   emit(event, ...args) { for (const h of this.handlers[event] ?? []) h(...args); }
 }
@@ -65,4 +67,18 @@ test('a client joining after a leave gets role offer', () => {
   relay.add(c);
   assert.deepEqual(c.sent, [OFFER]);
   assert.equal(a.sent.at(-1), JOINED);
+});
+
+test('sweep terminates a client that did not answer the previous ping', () => {
+  const relay = createRelay();
+  const a = new FakeSocket(), b = new FakeSocket();
+  relay.add(a); relay.add(b);
+  relay.sweep();
+  assert.equal(a.pings, 1);
+  b.emit('pong');
+  relay.sweep();
+  assert.equal(a.terminated, true);
+  assert.equal(b.terminated, undefined);
+  assert.equal(relay.size(), 1);
+  assert.equal(b.sent.at(-1), LEFT);
 });

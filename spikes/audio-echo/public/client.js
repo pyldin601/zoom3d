@@ -74,10 +74,12 @@ $('start').onclick = async () => {
   ctx = new AudioContext();
   await ctx.resume();
   try {
-    localStream = new URLSearchParams(location.search).has('fake')
+    const params = new URLSearchParams(location.search);
+    // ?noaec: positive control — proves echo is audible at all when cancellation is off.
+    localStream = params.has('fake')
       ? fakeToneStream()
       : await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          audio: { echoCancellation: !params.has('noaec'), noiseSuppression: true, autoGainControl: true },
         });
   } catch (err) {
     setStatus('mic error: ' + err.message);

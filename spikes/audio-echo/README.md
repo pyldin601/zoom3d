@@ -18,6 +18,7 @@ and allow the microphone. The status should read `connected`, and the log should
 
 - `?fake=1` sends a beeping tone instead of the mic. It's useful for judging panning,
   distance and reverb alone with headphones.
+- `?noaec=1` captures with echo cancellation **off** (the positive control below).
 - `HTTP=1 PORT=8080 npm start` serves plain HTTP. This only works on `localhost`, for local checks.
 
 **Controls:**
@@ -30,29 +31,47 @@ and allow the microphone. The status should read `connected`, and the log should
 
 ## Echo test protocol
 
-- **Device A:** laptop on its **built-in speakers**, no headphones.
-- **Device B:** any device with **headphones** (a phone works).
-- Person B talks. Echo means B hears their own voice come back from A.
+**Setup (this matters more than anything else):**
+- **Device A:** laptop on its **built-in speakers**, no headphones, normal conversation volume.
+  Set panning to **equalpower** (the spec's speakers mode).
+- **Device B:** any device with **closed headphones**, in a **different room**, out of earshot
+  of A. Otherwise A's mic picks up B's voice straight from the air and sends it back, which
+  sounds like echo in every mode and the cancellation can't remove it.
+- **B always uses `element` mode**, so B's playback is the known-good path. Only A's mode varies.
+- If B sees `socket closed 4000 full` after a phone slept, wait about 10 s (the relay drops
+  dead peers) and press Start again.
 
-For each A browser (Chrome, Firefox) and each mode:
-1. Select the mode on A. Leave the dot at about 2 tiles, front-right.
-2. Speakers on A at a normal conversation volume.
-3. B counts aloud from 1 to 10 and notes the echo: **none / faint / clear**.
+**Before the table:**
+1. **Hearing check:** someone near A speaks or taps the laptop, and B confirms hearing it.
+   If B hears nothing, stop and fix B's playback first; otherwise every row reads "none".
+2. **Positive control:** open A with `?noaec=1` (echo cancellation off), `element` mode.
+   B counts aloud and should hear **clear** echo. If not, raise A's volume until they do.
+   That proves echo is detectable in this setup. Then reload A without `?noaec`.
+3. **Baseline sanity:** with A in `element` mode and cancellation on, B should hear **no**
+   echo. If B does, that's a setup leak (rooms too close, volume too high), not a result.
+   Fix the setup and repeat.
+
+**Per row** (each A browser × each A mode):
+1. Select the mode on A, leaving the dot at about 2 tiles front-right.
+2. B talks continuously for ~5 s first, so the canceller can adapt after the switch.
+3. B counts aloud 1–10 and records the echo: **none / faint / clear**.
 4. Optional: repeat at 1 tile (louder) to stress the canceller.
 
-| A browser | mode | echo heard by B | notes |
-|---|---|---|---|
-| Chrome | element | | |
-| Chrome | webaudio | | |
-| Chrome | webaudio-element | | |
-| Firefox | element | | |
-| Firefox | webaudio | | |
-| Firefox | webaudio-element | | |
+| A browser + version | A OS | mode | echo heard by B | notes |
+|---|---|---|---|---|
+| Chrome | | element | | |
+| Chrome | | webaudio | | |
+| Chrome | | webaudio-element | | |
+| Firefox | | element | | |
+| Firefox | | webaudio | | |
+| Firefox | | webaudio-element | | |
 
-**Verdict** (spec §9.4):
-- (a) No echo in a Web Audio mode → use that mode.
-- (b) Echo in both Web Audio modes → headphones required, plus a speakers-mode ducking fallback.
-- (c) Only `webaudio-element` is clean → M4 routes through a MediaStreamDestination into `<audio>`.
+**Verdict** (spec §9.4), decided per browser, then combined:
+- (a) `webaudio` (graph → destination) is clean → M4 uses `webaudio`.
+- (c) `webaudio` echoes but `webaudio-element` is clean → M4 routes via MediaStreamDestination → `<audio>`.
+- (b) Both Web Audio modes echo → headphones required, plus a speakers-mode ducking fallback.
+- **Split browsers:** pick the mode that is clean in both if one exists. Otherwise use
+  per-browser routing and note it as a risk for M4.
 
 ## Verified automatically so far (Chromium, `?fake=1`, two tabs)
 

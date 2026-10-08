@@ -3,6 +3,7 @@ const msg = (obj) => JSON.stringify(obj);
 
 export function createRelay() {
   const clients = [];
+  const alive = new WeakMap();
 
   function add(socket) {
     if (clients.length >= 2) {
@@ -10,6 +11,8 @@ export function createRelay() {
       return;
     }
     clients.push(socket);
+    alive.set(socket, true);
+    socket.on('pong', () => alive.set(socket, true));
     const other = clients.find((c) => c !== socket);
     socket.send(msg({ type: 'role', role: other ? 'offer' : 'wait' }));
     if (other) other.send(msg({ type: 'peer-joined' }));
@@ -26,5 +29,17 @@ export function createRelay() {
     });
   }
 
-  return { add, size: () => clients.length };
+  // Call periodically: drops clients that missed the previous ping (e.g. a sleeping phone).
+  function sweep() {
+    for (const socket of [...clients]) {
+      if (!alive.get(socket)) {
+        socket.terminate();
+        continue;
+      }
+      alive.set(socket, false);
+      socket.ping();
+    }
+  }
+
+  return { add, sweep, size: () => clients.length };
 }

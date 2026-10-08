@@ -39,6 +39,7 @@ const server = plainHttp
 
 const relay = createRelay();
 new WebSocketServer({ server, path: '/ws' }).on('connection', (socket) => relay.add(socket));
+setInterval(relay.sweep, 5000);
 
 const scheme = plainHttp ? 'http' : 'https';
 server.listen(port, '0.0.0.0', () => {
