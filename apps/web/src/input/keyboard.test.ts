@@ -91,4 +91,12 @@ describe('createInput', () => {
     key('keyup', 'MetaLeft');
     expect(input.state().forward).toBe(0);
   });
+
+  test('typing in a text field is neither movement nor blocked', () => {
+    const { input, key, prevented } = setup();
+    key('keydown', 'KeyW', { target: { tagName: 'INPUT' } as unknown as EventTarget });
+    key('keydown', 'KeyD', { target: { tagName: 'DIV', isContentEditable: true } as unknown as EventTarget });
+    expect(input.state()).toEqual({ forward: 0, strafe: 0, turn: 0 });
+    expect(prevented()).toBe(0);
+  });
 });

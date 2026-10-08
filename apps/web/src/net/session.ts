@@ -46,7 +46,6 @@ export function createSession(opts: SessionOptions): Session {
   let resumeToken: string | undefined;
   let status: ConnStatus = 'connecting';
   let error: ErrorCode | null = null;
-  let welcomed = false;
   let seq = 0;
   const lastSent = { x: Number.NaN, y: Number.NaN, angle: Number.NaN, at: 0 };
 
@@ -59,10 +58,8 @@ export function createSession(opts: SessionOptions): Session {
   const handle = (m: ServerMessage) => {
     switch (m.type) {
       case 'welcome':
-        if (!welcomed) {
-          Object.assign(player, m.spawn);
-          welcomed = true;
-        }
+        // A new identity means a fresh slot (first join, expired grace, server restart): take its spawn.
+        if (m.selfId !== selfId) Object.assign(player, m.spawn);
         selfId = m.selfId;
         color = m.color;
         resumeToken = m.resumeToken;

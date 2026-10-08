@@ -59,6 +59,16 @@ test('a welcome after reconnect keeps the player but replaces the peer list', ()
   expect([...session.peers.keys()]).toEqual(['b']);
 });
 
+test('a welcome with a new identity (slot expired or server restarted) applies the new spawn', () => {
+  const { ws } = joinedSession();
+  ws.serverClose(1006);
+  vi.advanceTimersByTime(500);
+  const ws2 = FakeWebSocket.latest();
+  ws2.open();
+  ws2.receive({ ...welcome([], { x: 2.5, y: 3.5, angle: 0 }), selfId: 'someone-new' });
+  expect(player).toEqual({ x: 2.5, y: 3.5, angle: 0 });
+});
+
 test('peer_state for unknown or departed peers creates no ghosts, and stale seqs are ignored', () => {
   const { session, ws } = joinedSession([peer('a')]);
   ws.receive({ type: 'peer_state', id: 'zz', x: 3, y: 3, angle: 0, seq: 1 });

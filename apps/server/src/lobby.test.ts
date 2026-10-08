@@ -158,6 +158,22 @@ describe('disconnect and resume', () => {
     expect(to('A')).toHaveLength(aBefore);
   });
 
+  test('resuming while the old connection is still bound replaces it', () => {
+    join('A');
+    join('B');
+    const first = welcome('B');
+    const aBefore = to('A').length;
+    join('B2', 'B', { resumeToken: first.resumeToken });
+    expect(welcome('B2').selfId).toBe(first.selfId);
+    expect(closed).toContainEqual({ conn: 'B', code: 4003 });
+    expect(to('A')).toHaveLength(aBefore);
+    expect(lobby.peerCount(ROOM)).toBe(2);
+    lobby.disconnect('B');
+    time += RESUME_GRACE_MS + 1;
+    lobby.tick();
+    expect(lobby.peerCount(ROOM)).toBe(2);
+  });
+
   test('a resumed peer keeps relaying state through its new connection', () => {
     join('A');
     join('B');

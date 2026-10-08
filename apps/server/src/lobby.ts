@@ -16,6 +16,7 @@ import {
 
 export const CLOSE_ROOM_FULL = 4001;
 export const CLOSE_INVALID = 4002;
+export const CLOSE_REPLACED = 4003;
 
 export interface Outbox {
   send(connId: string, msg: ServerMessage): void;
@@ -73,8 +74,14 @@ export class Lobby {
     }
 
     const room = this.rooms.get(msg.roomId) ?? new Map<string, Peer>();
-    const resumable = [...room.values()].find((p) => p.conn === null && p.resumeToken === msg.resumeToken);
+    const resumable = [...room.values()].find((p) => p.resumeToken === msg.resumeToken);
     if (msg.resumeToken !== undefined && resumable) {
+      // The client often notices a dead link before the server does: hand the slot to the new connection.
+      if (resumable.conn !== null) {
+        const stale = resumable.conn;
+        this.conns.delete(stale);
+        this.opts.out.close(stale, CLOSE_REPLACED, 'replaced');
+      }
       resumable.conn = conn;
       resumable.disconnectedAt = null;
       this.conns.set(conn, { roomId: msg.roomId, peerId: resumable.id });

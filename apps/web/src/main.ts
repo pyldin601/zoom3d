@@ -51,7 +51,8 @@ game.addEventListener('click', () => {
 let automapVisible = false;
 window.addEventListener('keydown', (e) => {
   if (e.code !== 'Tab' && e.code !== 'KeyM') return;
-  if (e.target instanceof HTMLInputElement) return;
+  // Outside the room Tab keeps its keyboard-navigation meaning.
+  if (!inRoom() || e.target instanceof HTMLInputElement) return;
   e.preventDefault();
   if (!e.repeat) automapVisible = !automapVisible;
 });

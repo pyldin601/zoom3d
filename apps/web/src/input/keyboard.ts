@@ -34,6 +34,12 @@ export interface Input {
   reset(): void;
 }
 
+/** Keys typed into text fields belong to the field, not to movement. */
+function isTextEntry(target: EventTarget | null): boolean {
+  const t = target as { tagName?: string; isContentEditable?: boolean } | null;
+  return !!t && (t.isContentEditable === true || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName ?? ''));
+}
+
 export function createInput(win: Listenable, doc: InputDocument): Input {
   const held = new Set<Action>();
   let mouseTurn = 0;
@@ -46,7 +52,7 @@ export function createInput(win: Listenable, doc: InputDocument): Input {
   win.addEventListener('keydown', (event) => {
     const e = event as KeyboardEvent;
     // Leave browser/OS shortcuts alone (Cmd+S, Ctrl+D, ...).
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || isTextEntry(e.target)) return;
     const action = BINDINGS[e.code];
     if (!action) return;
     e.preventDefault();
