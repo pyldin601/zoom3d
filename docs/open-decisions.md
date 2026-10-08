@@ -45,6 +45,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 ### D8 — Rooms, invites, identity
 - Invite = unguessable URL (token) vs signed JWT with expiry vs accounts. Room lifetime (ephemeral vs persistent)? Display names? Host powers (kick, mute)?
 - **Rec:** ephemeral rooms, unguessable link, display name only.
+- *Resolved-pending-spec 2026-10-08:* as recommended. Host controls (kick/mute/lock) deferred.
 
 ### D9 — Maps
 - Hand-made grid in JSON/ASCII vs procedural maze per room. One map or selectable? Textures: generated vs asset pack (licensing).
