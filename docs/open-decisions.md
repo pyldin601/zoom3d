@@ -51,6 +51,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 ### D9 — Maps
 - Hand-made grid in JSON/ASCII vs procedural maze per room. One map or selectable? Textures: generated vs asset pack (licensing).
 - **Rec:** one hand-made ASCII map to start; procedural later.
+- *Resolved-pending-spec 2026-10-08:* use the Wolfenstein-style level in `docs/assets/map-reference.png` as the v1 map. Secret rooms (green walls) are ignored, i.e. treated as plain solid wall. Converting the image to the grid JSON/ASCII format is part of milestone 1.
 
 ### D10 — Tooling
 - pnpm workspaces + Vite + Vitest + Playwright + ESLint/Biome, TypeScript strict.
