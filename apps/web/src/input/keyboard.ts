@@ -45,13 +45,18 @@ export function createInput(win: Listenable, doc: InputDocument): Input {
 
   win.addEventListener('keydown', (event) => {
     const e = event as KeyboardEvent;
+    // Leave browser/OS shortcuts alone (Cmd+S, Ctrl+D, ...).
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
     const action = BINDINGS[e.code];
     if (!action) return;
     e.preventDefault();
     held.add(action);
   });
   win.addEventListener('keyup', (event) => {
-    const action = BINDINGS[(event as KeyboardEvent).code];
+    const code = (event as KeyboardEvent).code;
+    // macOS drops keyup for keys released while Cmd is held; drop everything when Cmd goes up.
+    if (code === 'MetaLeft' || code === 'MetaRight') held.clear();
+    const action = BINDINGS[code];
     if (action) held.delete(action);
   });
   win.addEventListener('blur', reset);

@@ -17,8 +17,16 @@ function setup() {
   const win = new FakeTarget();
   const doc = new FakeTarget();
   const input = createInput(win, doc);
-  const key = (type: 'keydown' | 'keyup', code: string) => win.dispatch(type, { code, preventDefault() {} });
-  return { win, doc, input, key };
+  let prevented = 0;
+  const key = (type: 'keydown' | 'keyup', code: string, mods: Partial<KeyboardEvent> = {}) =>
+    win.dispatch(type, {
+      code,
+      ...mods,
+      preventDefault() {
+        prevented++;
+      },
+    });
+  return { win, doc, input, key, prevented: () => prevented };
 }
 
 describe('createInput', () => {
@@ -66,5 +74,21 @@ describe('createInput', () => {
     doc.dispatch('mousemove', { movementX: 100 });
     expect(input.consumeMouseTurn()).toBeCloseTo(0.25);
     expect(input.consumeMouseTurn()).toBe(0);
+  });
+
+  test('shortcuts with Cmd/Ctrl/Alt are neither movement nor blocked', () => {
+    const { input, key, prevented } = setup();
+    key('keydown', 'KeyS', { metaKey: true });
+    key('keydown', 'KeyD', { ctrlKey: true });
+    key('keydown', 'KeyE', { altKey: true });
+    expect(input.state()).toEqual({ forward: 0, strafe: 0, turn: 0 });
+    expect(prevented()).toBe(0);
+  });
+
+  test('releasing Cmd releases held keys (macOS drops their keyup)', () => {
+    const { input, key } = setup();
+    key('keydown', 'KeyW');
+    key('keyup', 'MetaLeft');
+    expect(input.state().forward).toBe(0);
   });
 });
