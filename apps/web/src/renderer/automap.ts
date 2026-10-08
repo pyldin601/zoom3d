@@ -45,12 +45,20 @@ function wallsToDraw(map: GameMap) {
   return walls;
 }
 
+export interface AutomapPeer {
+  x: number;
+  y: number;
+  color: string;
+  name: string;
+}
+
 export function drawAutomap(
   ctx: CanvasRenderingContext2D,
   map: GameMap,
   p: PlayerState,
   hudW: number,
   hudH: number,
+  others: readonly AutomapPeer[] = [],
 ): void {
   const { originX, originY, cell } = automapLayout(map, hudW, hudH);
   ctx.fillStyle = BACKDROP;
@@ -59,6 +67,21 @@ export function drawAutomap(
     ctx.fillStyle = ZONE_COLORS[w.tile] ?? (ZONE_COLORS[1] as string);
     ctx.fillRect(originX + w.x * cell, originY + w.y * cell, cell, cell);
   }
+  const dot = Math.max(cell * 0.45, 4);
+  ctx.font = `${Math.max(10, Math.round(cell * 0.9))}px system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  for (const o of others) {
+    const ox = originX + o.x * cell;
+    const oy = originY + o.y * cell;
+    ctx.fillStyle = o.color;
+    ctx.beginPath();
+    ctx.arc(ox, oy, dot, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(o.name, ox, oy - dot - 2);
+  }
+
   const size = Math.max(cell * 0.9, 6);
   const px = originX + p.x * cell;
   const py = originY + p.y * cell;

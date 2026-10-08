@@ -8,6 +8,8 @@ export function layoutStage(stage: HTMLElement, hud: HTMLCanvasElement, pixelPer
     top: `${box.y}px`,
     width: `${box.width}px`,
     height: `${box.height}px`,
+    // UI text is sized in em, so it scales with the 16:9 box.
+    fontSize: `${Math.max(8, box.height * 0.032)}px`,
   });
   const dpr = window.devicePixelRatio || 1;
   hud.width = Math.round(box.width * dpr);

@@ -9,5 +9,8 @@
   },
   "dependencies": {
     "@zoom3d/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "happy-dom": "20.14.5"
   }
 }
