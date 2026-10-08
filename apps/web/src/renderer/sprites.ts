@@ -15,6 +15,19 @@ export interface Sprite {
   color: number;
   /** FACE_SIZE² texels shown inside the ring, or null for a flat disc. */
   face: Uint32Array | null;
+  /** 0..1: brightens the ring while the person talks. */
+  speaking: number;
+}
+
+const SPEAKING_GLOW = 0.8;
+
+/** Mixes a packed colour toward white by k (0..1), keeping alpha. */
+export function mixWhite(c: number, k: number): number {
+  const mix = (v: number) => (v + (255 - v) * k) | 0;
+  const r = mix(c & 0xff);
+  const g = mix((c >>> 8) & 0xff);
+  const b = mix((c >>> 16) & 0xff);
+  return ((c & 0xff000000) | (b << 16) | (g << 8) | r) >>> 0;
 }
 
 export interface Projection {
@@ -74,8 +87,9 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
   const faceSize = FACE_SIZE;
   for (const i of visible) {
     const { screenX, depth, size } = projections[i] as Projection;
-    const { color, face } = sprites[i] as Sprite;
-    const edge = face ? color : shade(color);
+    const { color, face, speaking } = sprites[i] as Sprite;
+    const ring = speaking > 0 ? mixWhite(color, Math.min(speaking, 1) * SPEAKING_GLOW) : color;
+    const edge = face ? ring : shade(ring);
     const r = size / 2;
     const r2 = r * r;
     const ring2 = r2 * RING * RING;

@@ -8,6 +8,8 @@ import {
   spawnPoint,
   stepPlayer,
 } from '@zoom3d/shared';
+import { type AudioEngine, createAudioEngine } from './audio/engine';
+import { loadAudioSettings, saveAudioSettings } from './audio/settings-store';
 import { startLoop } from './game/loop';
 import { layoutStage, watchLayout } from './game/stage';
 import { createInput } from './input/keyboard';
@@ -23,6 +25,7 @@ import { drawLabels } from './renderer/labels';
 import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
 import { makeTextures } from './renderer/textures';
 import { renderWalls } from './renderer/walls';
+import { showAudioPanel } from './ui/audio-panel';
 import { parseRoute } from './ui/route';
 import {
   clearScreen,
@@ -54,6 +57,15 @@ const player = spawnPoint(map, Math.random);
 const input = createInput(window, document);
 let session: Session | null = null;
 let call: Call | null = null;
+let audio: AudioEngine | null = null;
+
+const storage = (): Storage | null => {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+};
 
 const relayout = () => layoutStage(stage, hud, PIXEL_PERFECT);
 relayout();
@@ -62,6 +74,38 @@ watchLayout(relayout);
 const inRoom = () => session?.status() === 'open';
 game.addEventListener('click', () => {
   if (inRoom()) game.requestPointerLock();
+});
+
+// Browsers may suspend audio until a gesture (autoplay policy, backgrounded tab): resume on the next one.
+for (const type of ['pointerdown', 'keydown'] as const) {
+  window.addEventListener(type, () => void audio?.resume());
+}
+
+let audioPanelVisible = false;
+function toggleAudioPanel(): void {
+  const engine = audio;
+  audioPanelVisible = !audioPanelVisible && engine !== null;
+  if (!audioPanelVisible || !engine) {
+    showAudioPanel(ui, null);
+    return;
+  }
+  showAudioPanel(ui, {
+    settings: engine.settings(),
+    onChange(s) {
+      engine.setSettings(s);
+      saveAudioSettings(storage(), s);
+    },
+    levels: () =>
+      [...(session?.peers.values() ?? [])].map((p) => ({
+        name: p.info.name,
+        speaking: engine.speaking(p.info.id),
+      })),
+  });
+}
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'Backquote' || e.repeat || !inRoom() || e.target instanceof HTMLInputElement) return;
+  e.preventDefault();
+  toggleAudioPanel();
 });
 
 let automapVisible = false;
@@ -88,6 +132,10 @@ function setStatus(text: string | null): void {
 }
 
 async function joinRoom(roomId: string, name: string): Promise<void> {
+  // Created and resumed synchronously inside the Join click (user gesture), before any await.
+  const audioCtx = new AudioContext({ latencyHint: 'interactive' });
+  void audioCtx.resume();
+  audio = createAudioEngine({ ctx: audioCtx, map, settings: loadAudioSettings(storage()) });
   saveName(name);
   clearScreen(ui);
   setStatus('Starting camera…');
@@ -99,7 +147,7 @@ async function joinRoom(roomId: string, name: string): Promise<void> {
   call = createCall({
     local,
     remote: createRemoteMedia(mediaContainer),
-    audio: null,
+    audio,
     document,
     createFace,
     createMesh,
@@ -127,6 +175,7 @@ async function joinRoom(roomId: string, name: string): Promise<void> {
     onMic: (on) => activeCall.setMic(on),
   });
   showSelfPreview(ui, local.stream, local.cam);
+  if (new URLSearchParams(location.search).has('debug')) toggleAudioPanel();
 }
 
 function loadName(): string {
@@ -187,6 +236,9 @@ if (import.meta.env.DEV) {
       get call() {
         return call;
       },
+      get audio() {
+        return audio;
+      },
     },
   });
 }
@@ -195,6 +247,7 @@ const sprites: Sprite[] = [];
 const others: (AutomapPeer & { mic: boolean })[] = [];
 const sample = { x: 0, y: 0, angle: 0 };
 const colors = new Map<string, number>();
+const positions = new Map<string, { x: number; y: number }>();
 
 startLoop((dt) => {
   const mouseTurn = input.consumeMouseTurn();
@@ -207,15 +260,30 @@ startLoop((dt) => {
   others.length = 0;
   call?.update(performance.now());
   if (session) {
-    const renderTime = performance.now() - INTERP_DELAY_MS;
+    const now = performance.now();
+    const renderTime = now - INTERP_DELAY_MS;
+    for (const id of positions.keys()) if (!session.peers.has(id)) positions.delete(id);
     for (const peer of session.peers.values()) {
       if (!peer.buffer.sample(renderTime, sample)) continue;
+      const pos = positions.get(peer.info.id);
+      if (pos) {
+        pos.x = sample.x;
+        pos.y = sample.y;
+      } else {
+        positions.set(peer.info.id, { x: sample.x, y: sample.y });
+      }
       let color = colors.get(peer.info.color);
       if (color === undefined) {
         color = hexToRgb(peer.info.color);
         colors.set(peer.info.color, color);
       }
-      sprites.push({ x: sample.x, y: sample.y, color, face: call?.faceOf(peer.info.id) ?? null });
+      sprites.push({
+        x: sample.x,
+        y: sample.y,
+        color,
+        face: call?.faceOf(peer.info.id) ?? null,
+        speaking: audio?.speaking(peer.info.id) ?? 0,
+      });
       others.push({
         x: sample.x,
         y: sample.y,
@@ -225,6 +293,7 @@ startLoop((dt) => {
       });
     }
     setStatus(statusText(session));
+    audio?.update(now, player, positions);
   }
 
   renderWalls(fb, map, player, textures);

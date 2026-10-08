@@ -25,6 +25,7 @@ test('renderWalls + 7 face avatars around the player', async ({ bench }) => {
     y: cy + Math.sin(i) * 1.5,
     color: 0xff0000ff,
     face: new Uint32Array(128 * 128).fill(0xff808080),
+    speaking: 0.5,
   }));
   await bench('walls+7 sprites', () => {
     angle += 0.05;

@@ -2,7 +2,7 @@ import { type PlayerState, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { FACE_SIZE } from '../media/faces';
 import { createFramebuffer, rgb } from './framebuffer';
-import { AVATAR_RADIUS, hexToRgb, type Projection, projectSprite, renderSprites } from './sprites';
+import { AVATAR_RADIUS, hexToRgb, mixWhite, type Projection, projectSprite, renderSprites } from './sprites';
 import { makeTextures } from './textures';
 import { FOV, renderWalls, shade } from './walls';
 
@@ -35,7 +35,7 @@ const px = (fb: ReturnType<typeof frame>, x: number, y: number) => fb.pixels[y *
 describe('renderSprites', () => {
   test('a sprite straight ahead is drawn centred with diameter 2R·PROJ/depth', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face: null }]);
+    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face: null, speaking: 0 }]);
     expect(px(fb, 320, 180)).toBe(RED);
     let width = 0;
     for (let x = 0; x < fb.width; x++) {
@@ -47,7 +47,7 @@ describe('renderSprites', () => {
 
   test('the outer ring is shaded', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face: null }]);
+    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face: null, speaking: 0 }]);
     const r = (AVATAR_RADIUS * PROJ) / 2;
     expect(px(fb, Math.floor(320 + 0.92 * r), 180)).toBe(shade(RED));
   });
@@ -55,7 +55,7 @@ describe('renderSprites', () => {
   test('a sprite behind the camera draws nothing', () => {
     const fb = frame();
     const before = fb.pixels.slice();
-    renderSprites(fb, player, [{ x: 0.5, y: 4.5, color: RED, face: null }]);
+    renderSprites(fb, player, [{ x: 0.5, y: 4.5, color: RED, face: null, speaking: 0 }]);
     expect(fb.pixels).toEqual(before);
   });
 
@@ -75,15 +75,15 @@ describe('renderSprites', () => {
     );
     const fb = frame(walled);
     const wallPixel = px(fb, 320, 180);
-    renderSprites(fb, player, [{ x: 5.5, y: 4.5, color: RED, face: null }]);
+    renderSprites(fb, player, [{ x: 5.5, y: 4.5, color: RED, face: null, speaking: 0 }]);
     expect(px(fb, 320, 180)).toBe(wallPixel);
   });
 
   test('the nearer of two overlapping sprites wins regardless of input order', () => {
     const fb = frame();
     renderSprites(fb, player, [
-      { x: 3.5, y: 4.5, color: RED, face: null },
-      { x: 5.5, y: 4.5, color: BLUE, face: null },
+      { x: 3.5, y: 4.5, color: RED, face: null, speaking: 0 },
+      { x: 5.5, y: 4.5, color: BLUE, face: null, speaking: 0 },
     ]);
     expect(px(fb, 320, 180)).toBe(RED);
   });
@@ -114,7 +114,7 @@ describe('face sprites', () => {
 
   test('the disc centre shows the centre of the face texture', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face }]);
+    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0 }]);
     const c = px(fb, 320, 180) as number;
     expect(Math.abs(texelI(c) - 64)).toBeLessThanOrEqual(1);
     expect(Math.abs(((c >> 8) & 0xff) / 2 - 64)).toBeLessThanOrEqual(1);
@@ -122,14 +122,33 @@ describe('face sprites', () => {
 
   test('the outer ring is the peer colour, unshaded', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face }]);
+    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0 }]);
     const r = (AVATAR_RADIUS * PROJ) / 2;
     expect(px(fb, Math.floor(320 + 0.92 * r), 180)).toBe(RED);
   });
 
   test('the face is not mirrored: left of centre samples a smaller column', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face }]);
+    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0 }]);
     expect(texelI(px(fb, 290, 180) as number)).toBeLessThan(texelI(px(fb, 350, 180) as number));
+  });
+});
+
+describe('speaking ring', () => {
+  test('mixWhite blends toward white and keeps alpha', () => {
+    expect(mixWhite(rgb(0, 0, 0), 0)).toBe(rgb(0, 0, 0));
+    expect(mixWhite(rgb(0, 0, 0), 1)).toBe(rgb(255, 255, 255));
+    expect(mixWhite(rgb(200, 0, 100), 0.5)).toBe(rgb(227, 127, 177));
+  });
+
+  test('a speaking avatar lights its ring; a silent one keeps its colour', () => {
+    const face = new Uint32Array(FACE_SIZE * FACE_SIZE).fill(rgb(1, 2, 3));
+    const r = (AVATAR_RADIUS * PROJ) / 2;
+    const quiet = frame();
+    renderSprites(quiet, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0 }]);
+    expect(px(quiet, Math.floor(320 + 0.92 * r), 180)).toBe(RED);
+    const loud = frame();
+    renderSprites(loud, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 1 }]);
+    expect(px(loud, Math.floor(320 + 0.92 * r), 180)).toBe(mixWhite(RED, 0.8));
   });
 });
