@@ -14,6 +14,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 - **Canvas2D software raycaster** (ImageData): authentic, fully controllable, CPU-bound at higher res.
 - **WebGL/WebGPU shader raycaster**: fast, video as texture trivially, easy CRT/post effects.
 - **Rec:** Canvas2D at low res first (matches the retro aesthetic, easiest to test as pure functions); sprites via `drawImage`. Revisit if effects/perf need GPU.
+- *Resolved-pending-spec 2026-10-08:* Canvas2D software raycaster.
 
 ### D3 — Backend stack
 - Node + TypeScript + `ws` (or Fastify + `@fastify/websocket`), in-memory rooms. Shares types with client.
