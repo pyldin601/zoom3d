@@ -142,6 +142,7 @@ Server → client:
 - `peer_joined {peer}`, `peer_left {id}`
 - `peer_state {id, x, y, angle, seq}`, relayed immediately
 - `peer_media {id, cam, mic}`
+- `correction {x, y, angle, seq}`: sent only to the sender when its `state` is rejected
 - `signal {from, payload}`
 - `error {code, message}`
 
