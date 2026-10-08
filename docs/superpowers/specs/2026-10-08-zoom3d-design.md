@@ -62,11 +62,14 @@ glue to browser/Node APIs.
 
 ## 4. Map
 
-- **Source of truth:** `packages/shared/src/map/level1.txt`, an ASCII grid committed to the
-  repo. Generated once by `tools/convert-map` from the reference PNG, then hand-fixed if needed.
-  The PNG stays as a reference only.
-- **Conversion:** sample each tile cell of the image (expected ~8 px per tile, ~64×57 tiles;
-  verify during conversion) and classify by dominant colour:
+- **Source of truth:** `packages/shared/src/map/level1.ts`, an ASCII grid in an exported
+  template string (`LEVEL1`) committed to the repo. A `.ts` file rather than `.txt`, so the
+  browser bundle and the Node server import it without loaders. It is generated once by
+  `tools/convert-map/convert.py` from the reference PNG, then hand-fixed if needed. The PNG
+  stays as a reference only; `docs/assets/map-conversion-preview.png` shows the result.
+- **Conversion:** a 63×57 grid, tile pitch 7.985 px, origin (1.5, 0.4), measured from the
+  image. Each tile is classified from its central 4×4 pixels by dominant colour. Door lines
+  that open onto undrawn areas are sealed as walls. Full parameters are in the M1 plan.
   - grey → wall type `1` (stone), brown → `2` (wood), blue → `3` (blue stone)
   - green (secret wall) → wall of the surrounding type
   - black → floor `.`; red/yellow squares → whatever tile they sit on (treat as floor if in a corridor)
