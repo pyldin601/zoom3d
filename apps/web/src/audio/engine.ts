@@ -17,6 +17,8 @@ const ANALYSER_SIZE = 512;
 const SPEAKING_FLOOR = 0.01;
 const SPEAKING_RANGE = 0.09;
 const SPEAKING_RELEASE_S = 0.3;
+/** About 3 time constants: the occlusion glide is ~95% done. */
+const OCCLUSION_SETTLE_MS = TAU_OCCLUSION * 3000;
 
 export interface AudioEngine {
   attach(peerId: string, stream: MediaStream): void;
@@ -65,6 +67,10 @@ interface Voice {
   samples: Float32Array<ArrayBuffer>;
   occluded: boolean;
   lastOcclusionAt: number;
+  /** Gains keep the slow occlusion time constant this long after a change. */
+  occlusionChangedAt: number;
+  /** False until the first positioned update, which jumps instead of gliding from the origin. */
+  positioned: boolean;
   rms: number;
   speaking: number;
 }
@@ -78,6 +84,7 @@ export function createAudioEngine(opts: {
   let settings = opts.settings ?? DEFAULT_AUDIO_SETTINGS;
   const voices = new Map<string, Voice>();
   let lastUpdate: number | null = null;
+  let listenerPlaced = false;
 
   const reverb = ctx.createConvolver();
   reverb.buffer = makeImpulse(ctx);
@@ -85,20 +92,28 @@ export function createAudioEngine(opts: {
   reverbGain.gain.value = settings.reverb;
   reverb.connect(reverbGain).connect(ctx.destination);
 
+  /** Glides a param, or jumps on the first placement so nothing sweeps in from the origin. */
+  const move = (param: AudioParam, value: number, t: number, jump: boolean) => {
+    if (jump) param.setValueAtTime(value, t);
+    else param.setTargetAtTime(value, t, TAU_POSITION);
+  };
+
   const setListener = (p: PlayerState, t: number) => {
     const l = ctx.listener;
     const fx = Math.cos(p.angle);
     const fz = Math.sin(p.angle);
     if (l.positionX) {
-      l.positionX.setTargetAtTime(p.x, t, TAU_POSITION);
-      l.positionY.setTargetAtTime(0, t, TAU_POSITION);
-      l.positionZ.setTargetAtTime(p.y, t, TAU_POSITION);
-      l.forwardX.setTargetAtTime(fx, t, TAU_POSITION);
-      l.forwardY.setTargetAtTime(0, t, TAU_POSITION);
-      l.forwardZ.setTargetAtTime(fz, t, TAU_POSITION);
-      l.upX.setTargetAtTime(0, t, TAU_POSITION);
-      l.upY.setTargetAtTime(1, t, TAU_POSITION);
-      l.upZ.setTargetAtTime(0, t, TAU_POSITION);
+      const jump = !listenerPlaced;
+      move(l.positionX, p.x, t, jump);
+      move(l.positionY, 0, t, jump);
+      move(l.positionZ, p.y, t, jump);
+      move(l.forwardX, fx, t, jump);
+      move(l.forwardY, 0, t, jump);
+      move(l.forwardZ, fz, t, jump);
+      move(l.upX, 0, t, jump);
+      move(l.upY, 1, t, jump);
+      move(l.upZ, 0, t, jump);
+      listenerPlaced = true;
     } else {
       l.setPosition(p.x, 0, p.y);
       l.setOrientation(fx, 0, fz, 0, 1, 0);
@@ -117,6 +132,8 @@ export function createAudioEngine(opts: {
       const existing = voices.get(peerId);
       if (existing?.stream === stream) return;
       if (existing) detach(peerId);
+      // createMediaStreamSource throws on a stream with no audio (a peer without a mic).
+      if (stream.getAudioTracks().length === 0) return;
 
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
@@ -152,6 +169,8 @@ export function createAudioEngine(opts: {
         samples: new Float32Array(ANALYSER_SIZE),
         occluded: false,
         lastOcclusionAt: Number.NEGATIVE_INFINITY,
+        occlusionChangedAt: Number.NEGATIVE_INFINITY,
+        positioned: false,
         rms: 0,
         speaking: 0,
       });
@@ -179,13 +198,12 @@ export function createAudioEngine(opts: {
           continue;
         }
 
-        let tau = TAU_POSITION;
         if (now - v.lastOcclusionAt >= OCCLUSION_INTERVAL_MS) {
           v.lastOcclusionAt = now;
           const occluded = !hasLineOfSight(map, listener.x, listener.y, pos.x, pos.y);
           if (occluded !== v.occluded) {
             v.occluded = occluded;
-            tau = TAU_OCCLUSION;
+            v.occlusionChangedAt = now;
             v.filter.frequency.setTargetAtTime(
               occluded ? settings.muffleHz : MUFFLE_OPEN_HZ,
               t,
@@ -194,12 +212,16 @@ export function createAudioEngine(opts: {
           }
         }
 
+        // Each setTargetAtTime replaces the running curve, so keep the slow constant until it settles.
+        const tau = now - v.occlusionChangedAt < OCCLUSION_SETTLE_MS ? TAU_OCCLUSION : TAU_POSITION;
         const g = voiceGains(Math.hypot(pos.x - listener.x, pos.y - listener.y), v.occluded, settings);
         v.dry.gain.setTargetAtTime(g.dry, t, tau);
         v.send.gain.setTargetAtTime(g.send, t, tau);
-        v.panner.positionX.setTargetAtTime(pos.x, t, TAU_POSITION);
-        v.panner.positionY.setTargetAtTime(0, t, TAU_POSITION);
-        v.panner.positionZ.setTargetAtTime(pos.y, t, TAU_POSITION);
+        const jump = !v.positioned;
+        move(v.panner.positionX, pos.x, t, jump);
+        move(v.panner.positionY, 0, t, jump);
+        move(v.panner.positionZ, pos.y, t, jump);
+        v.positioned = true;
       }
     },
 

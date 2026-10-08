@@ -216,8 +216,9 @@ With `d` the distance in tiles, `REF = 1.5`, `MAX = 12`, and `n = clamp((d - REF
 
 ### 9.3 Updates
 - Per frame: listener pose, panner positions, and gain targets via `setTargetAtTime(τ = 0.05 s)`.
-- Every 100 ms per peer: a grid DDA ray from listener to speaker (shared code with the
-  renderer) for occlusion. Cutoff and gain transitions use `τ = 0.15 s`.
+- Every 100 ms per peer: a grid DDA ray from listener to speaker (`hasLineOfSight` in
+  `packages/shared`) for occlusion. While the tab is hidden, audio keeps updating from a 100 ms
+  timer. Cutoff and gain transitions use `τ = 0.15 s`.
 - Speaking level: an `AnalyserNode` taps each peer's source and drives the avatar ring.
 - **Debug panel** (`?debug` or `` ` ``): sliders for `REF`, `MAX`, reverb level, muffle
   cutoff and attenuation, and a headphones/speakers toggle. Values persist in

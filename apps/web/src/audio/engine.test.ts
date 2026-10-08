@@ -5,7 +5,8 @@ import { asAudioContext, FakeAudioContext, type FakeNode, type FakeParam } from 
 
 const OPEN = parseMap('1111111\n1.....1\n1.....1\n1S....1\n1111111');
 const WALLED = parseMap('1111111\n1..1..1\n1..1..1\n1S.1..1\n1111111');
-const stream = (id = 's') => ({ id }) as unknown as MediaStream;
+const stream = (id = 's', audio = true) =>
+  ({ id, getAudioTracks: () => (audio ? [{ kind: 'audio' }] : []) }) as unknown as MediaStream;
 const at = (x: number, y: number) => new Map([['b', { x, y }]]);
 const listener = { x: 1.5, y: 1.5, angle: 0 };
 
@@ -41,10 +42,10 @@ describe('createAudioEngine', () => {
     const e = engine();
     e.attach('b', stream());
     e.update(0, listener, at(4.5, 1.5));
-    expect(param('panner', 'positionX').last?.[0]).toBe(4.5);
-    expect(param('panner', 'positionZ').last?.[0]).toBe(1.5);
-    expect(ctx.listener.forwardX.last?.[0]).toBeCloseTo(1);
-    expect(ctx.listener.forwardZ.last?.[0]).toBeCloseTo(0);
+    expect(param('panner', 'positionX').value).toBe(4.5);
+    expect(param('panner', 'positionZ').value).toBe(1.5);
+    expect(ctx.listener.forwardX.value).toBeCloseTo(1);
+    expect(ctx.listener.forwardZ.value).toBeCloseTo(0);
     const [dry] = one('biquad').connections as (FakeNode & { gain: FakeParam })[];
     expect(dry?.gain.last).toEqual([voiceGains(3, false, DEFAULT_AUDIO_SETTINGS).dry, ctx.currentTime, 0.05]);
   });
@@ -145,5 +146,43 @@ describe('makeImpulse', () => {
     expect(data.slice(0, 480).every((v) => v === 0)).toBe(true);
     const energy = (from: number, to: number) => data.slice(from, to).reduce((s, v) => s + v * v, 0);
     expect(energy(30000, 38000)).toBeLessThan(energy(480, 8480) / 100);
+  });
+});
+
+describe('review fixes', () => {
+  const dryOf = () =>
+    (one('biquad').connections as (FakeNode & { gain: FakeParam })[])[0] as FakeNode & { gain: FakeParam };
+
+  test('a stream without audio tracks is ignored instead of throwing', () => {
+    const e = engine();
+    expect(() => e.attach('b', stream('video-only', false))).not.toThrow();
+    expect(ctx.byKind('source')).toHaveLength(0);
+    expect(() => e.update(0, listener, at(3.5, 1.5))).not.toThrow();
+    expect(e.speaking('b')).toBe(0);
+  });
+
+  test('occlusion gain changes keep the slow time constant for a few frames, then return to normal', () => {
+    const e = engine(WALLED);
+    e.attach('b', stream());
+    e.update(0, listener, at(2.5, 1.5));
+    e.update(100, listener, at(4.5, 1.5));
+    expect(dryOf().gain.last?.[2]).toBe(0.15);
+    e.update(116, listener, at(4.5, 1.5));
+    expect(dryOf().gain.last?.[2]).toBe(0.15);
+    e.update(600, listener, at(4.5, 1.5));
+    expect(dryOf().gain.last?.[2]).toBe(0.05);
+  });
+
+  test('a new voice and the listener jump to their first position instead of gliding from the origin', () => {
+    const e = engine();
+    e.attach('b', stream());
+    e.update(0, listener, at(4.5, 1.5));
+    const px = param('panner', 'positionX');
+    expect(px.value).toBe(4.5);
+    expect(px.targets).toEqual([]);
+    expect(ctx.listener.positionX.value).toBe(1.5);
+    expect(ctx.listener.positionX.targets).toEqual([]);
+    e.update(16, listener, at(4.6, 1.5));
+    expect(px.last?.[0]).toBe(4.6);
   });
 });

@@ -10,6 +10,7 @@ import {
 } from '@zoom3d/shared';
 import { type AudioEngine, createAudioEngine } from './audio/engine';
 import { loadAudioSettings, saveAudioSettings } from './audio/settings-store';
+import { startHiddenTicker } from './audio/ticker';
 import { startLoop } from './game/loop';
 import { layoutStage, watchLayout } from './game/stage';
 import { createInput } from './input/keyboard';
@@ -249,6 +250,33 @@ const sample = { x: 0, y: 0, angle: 0 };
 const colors = new Map<string, number>();
 const positions = new Map<string, { x: number; y: number }>();
 
+/** Samples every peer's interpolated position into `positions` (reused objects). */
+function refreshPositions(s: Session, now: number): void {
+  const renderTime = now - INTERP_DELAY_MS;
+  for (const id of positions.keys()) if (!s.peers.has(id)) positions.delete(id);
+  for (const peer of s.peers.values()) {
+    if (!peer.buffer.sample(renderTime, sample)) continue;
+    const pos = positions.get(peer.info.id);
+    if (pos) {
+      pos.x = sample.x;
+      pos.y = sample.y;
+    } else {
+      positions.set(peer.info.id, { x: sample.x, y: sample.y });
+    }
+  }
+}
+
+// rAF stops while the tab is hidden: keep voices (and newcomers) audible from a timer meanwhile.
+startHiddenTicker(
+  () => {
+    if (!session || !audio) return;
+    const now = performance.now();
+    refreshPositions(session, now);
+    audio.update(now, player, positions);
+  },
+  () => document.hidden,
+);
+
 startLoop((dt) => {
   const mouseTurn = input.consumeMouseTurn();
   if (inRoom()) {
@@ -261,32 +289,25 @@ startLoop((dt) => {
   call?.update(performance.now());
   if (session) {
     const now = performance.now();
-    const renderTime = now - INTERP_DELAY_MS;
-    for (const id of positions.keys()) if (!session.peers.has(id)) positions.delete(id);
+    refreshPositions(session, now);
     for (const peer of session.peers.values()) {
-      if (!peer.buffer.sample(renderTime, sample)) continue;
       const pos = positions.get(peer.info.id);
-      if (pos) {
-        pos.x = sample.x;
-        pos.y = sample.y;
-      } else {
-        positions.set(peer.info.id, { x: sample.x, y: sample.y });
-      }
+      if (!pos) continue;
       let color = colors.get(peer.info.color);
       if (color === undefined) {
         color = hexToRgb(peer.info.color);
         colors.set(peer.info.color, color);
       }
       sprites.push({
-        x: sample.x,
-        y: sample.y,
+        x: pos.x,
+        y: pos.y,
         color,
         face: call?.faceOf(peer.info.id) ?? null,
         speaking: audio?.speaking(peer.info.id) ?? 0,
       });
       others.push({
-        x: sample.x,
-        y: sample.y,
+        x: pos.x,
+        y: pos.y,
         color: peer.info.color,
         name: peer.info.name,
         mic: peer.info.mic,
