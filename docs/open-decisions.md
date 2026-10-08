@@ -35,6 +35,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 - Wall occlusion (low-pass when line of sight blocked)? Hear-through-walls at all?
 - Max audible range / "whisper zones"?
 - **Rec:** occlusion as a later milestone; hard range cut-off in v1.
+- *Resolved-pending-spec 2026-10-08:* muffle through walls (low-pass + extra attenuation when line of sight is blocked); supersedes the "later milestone" rec, so move it into milestone 4.
 
 ### D7 — Face capture
 - Raw camera square-crop vs face-detected crop (MediaPipe / `FaceDetector`) vs background removal.
