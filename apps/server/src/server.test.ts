@@ -122,3 +122,12 @@ test('a vanished client is announced as left after the grace period', async () =
   b.ws.terminate();
   expect((await a.waitFor('peer_left')).id).toBe(b.welcome.selfId);
 });
+
+test('signals are relayed over real sockets and the welcome has ICE servers', async () => {
+  const a = await joined('Ada');
+  const b = await joined('Bob');
+  expect(b.welcome.iceServers.length).toBeGreaterThan(0);
+  const payload = { kind: 'description', description: { type: 'offer', sdp: 'v=0' } };
+  a.send({ type: 'signal', to: b.welcome.selfId, payload });
+  expect(await b.waitFor('signal')).toEqual({ type: 'signal', from: a.welcome.selfId, payload });
+});

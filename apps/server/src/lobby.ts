@@ -1,14 +1,17 @@
 // Room membership, colours, resume grace and move validation. Pure: no sockets or timers.
 import {
   type GameMap,
+  type IceServer,
   isPlausibleMove,
   isValidRoomId,
   type JoinMessage,
   MAX_PEERS,
+  type MediaMessage,
   PEER_COLORS,
   type PeerInfo,
   RESUME_GRACE_MS,
   type ServerMessage,
+  type SignalMessage,
   type StateMessage,
   sanitizeName,
   spawnPoint,
@@ -31,6 +34,7 @@ export interface LobbyOptions {
   /** Creates peer ids and resume tokens. */
   newToken: () => string;
   graceMs?: number;
+  iceServersFor?: (peerId: string) => IceServer[];
 }
 
 interface Peer extends PeerInfo {
@@ -42,7 +46,16 @@ interface Peer extends PeerInfo {
 
 type Room = Map<string, Peer>;
 
-const info = ({ id, name, color, x, y, angle }: Peer): PeerInfo => ({ id, name, color, x, y, angle });
+const info = ({ id, name, color, x, y, angle, cam, mic }: Peer): PeerInfo => ({
+  id,
+  name,
+  color,
+  x,
+  y,
+  angle,
+  cam,
+  mic,
+});
 
 export class Lobby {
   private readonly rooms = new Map<string, Room>();
@@ -101,6 +114,8 @@ export class Lobby {
       name,
       color,
       ...spawn,
+      cam: false,
+      mic: false,
       resumeToken: this.opts.newToken(),
       conn,
       lastAcceptedAt: this.opts.now(),
@@ -134,6 +149,27 @@ export class Lobby {
       angle: msg.angle,
       seq: msg.seq,
     });
+  }
+
+  media(conn: string, msg: MediaMessage): void {
+    const found = this.lookup(conn);
+    if (!found) return;
+    found.peer.cam = msg.cam;
+    found.peer.mic = msg.mic;
+    this.broadcast(found.room, found.peer.id, {
+      type: 'peer_media',
+      id: found.peer.id,
+      cam: msg.cam,
+      mic: msg.mic,
+    });
+  }
+
+  /** Relays WebRTC signalling only to another live peer of the sender's room. */
+  signal(conn: string, msg: SignalMessage): void {
+    const found = this.lookup(conn);
+    const target = found?.room.get(msg.to);
+    if (!found || !target || target.id === found.peer.id || target.conn === null) return;
+    this.opts.out.send(target.conn, { type: 'signal', from: found.peer.id, payload: msg.payload });
   }
 
   disconnect(conn: string): void {
@@ -173,6 +209,7 @@ export class Lobby {
       color: self.color,
       spawn: { x: self.x, y: self.y, angle: self.angle },
       peers: [...room.values()].filter((p) => p.id !== self.id).map(info),
+      iceServers: this.opts.iceServersFor?.(self.id) ?? [],
     });
   }
 

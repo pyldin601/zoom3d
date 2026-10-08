@@ -29,7 +29,14 @@ beforeEach(() => {
   closed = [];
   time = 0;
   let n = 0;
-  lobby = new Lobby({ map, out: outbox, now: () => time, rng: () => 0, newToken: () => `t${++n}` });
+  lobby = new Lobby({
+    map,
+    out: outbox,
+    now: () => time,
+    rng: () => 0,
+    newToken: () => `t${++n}`,
+    iceServersFor: (id) => [{ urls: [`stun:${id}`] }],
+  });
 });
 
 const join = (conn: string, name = conn, extra: Partial<JoinMessage> = {}) =>
@@ -214,5 +221,46 @@ describe('disconnect and resume', () => {
 
   test('disconnect of an unknown connection is harmless', () => {
     expect(() => lobby.disconnect('nobody')).not.toThrow();
+  });
+});
+
+describe('media and signalling', () => {
+  const payload = { kind: 'candidate', candidate: null } as const;
+  const deliveredTo = (conn: string) => to(conn).filter((m) => m.type === 'signal');
+
+  test('the welcome carries ICE servers for the joiner', () => {
+    join('A');
+    expect(welcome('A').iceServers).toEqual([{ urls: [`stun:${welcome('A').selfId}`] }]);
+  });
+
+  test('a signal is delivered to its target in the same room', () => {
+    join('A');
+    join('B');
+    lobby.signal('A', { type: 'signal', to: welcome('B').selfId, payload });
+    expect(deliveredTo('B')).toEqual([{ type: 'signal', from: welcome('A').selfId, payload }]);
+  });
+
+  test('signals to self, unknown ids, other rooms or disconnected peers are dropped', () => {
+    join('A');
+    join('B');
+    lobby.join('X', { type: 'join', roomId: 'BBBBBBBBBBBBBBBBBBBBBB', name: 'X' });
+    const xId = welcome('X').selfId;
+    lobby.signal('A', { type: 'signal', to: welcome('A').selfId, payload });
+    lobby.signal('A', { type: 'signal', to: 'nobody', payload });
+    lobby.signal('A', { type: 'signal', to: xId, payload });
+    lobby.disconnect('B');
+    lobby.signal('A', { type: 'signal', to: welcome('B').selfId, payload });
+    lobby.signal('ghost', { type: 'signal', to: welcome('A').selfId, payload });
+    expect(sent.filter((s) => s.msg.type === 'signal')).toEqual([]);
+  });
+
+  test('media state is broadcast and shown to later joiners', () => {
+    join('A');
+    join('B');
+    lobby.media('A', { type: 'media', cam: true, mic: false });
+    expect(last('B')).toEqual({ type: 'peer_media', id: welcome('A').selfId, cam: true, mic: false });
+    join('C');
+    expect(welcome('C').peers.find((p) => p.name === 'A')).toMatchObject({ cam: true, mic: false });
+    expect(welcome('C').peers.find((p) => p.name === 'B')).toMatchObject({ cam: false, mic: false });
   });
 });

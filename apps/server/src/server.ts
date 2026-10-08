@@ -11,6 +11,7 @@ import {
   RATE_PER_SEC,
 } from '@zoom3d/shared';
 import { type WebSocket, WebSocketServer } from 'ws';
+import { type IceConfig, iceConfigFromEnv, iceServersFor } from './ice';
 import { Lobby, type Outbox } from './lobby';
 import { createTokenBucket } from './rate-limit';
 
@@ -22,6 +23,7 @@ export interface ServerOptions {
   port: number;
   graceMs?: number;
   heartbeatMs?: number;
+  ice?: IceConfig;
 }
 
 export interface RunningServer {
@@ -30,6 +32,7 @@ export interface RunningServer {
 }
 
 export async function startServer(opts: ServerOptions): Promise<RunningServer> {
+  const ice = opts.ice ?? iceConfigFromEnv({});
   const sockets = new Map<string, { ws: WebSocket; alive: boolean }>();
   const out: Outbox = {
     send(conn, msg) {
@@ -47,6 +50,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     rng: Math.random,
     newToken: () => randomBytes(12).toString('base64url'),
     graceMs: opts.graceMs,
+    iceServersFor: (peerId) => iceServersFor(ice, peerId, Date.now()),
   });
 
   const http = createServer((req, res) => {
@@ -77,6 +81,8 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
       const msg = parseClientMessage(String(data));
       if (msg?.type === 'join') lobby.join(conn, msg);
       else if (msg?.type === 'state') lobby.state(conn, msg);
+      else if (msg?.type === 'media') lobby.media(conn, msg);
+      else if (msg?.type === 'signal') lobby.signal(conn, msg);
     });
     ws.on('close', () => {
       sockets.delete(conn);
