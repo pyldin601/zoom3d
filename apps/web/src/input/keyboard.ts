@@ -1,0 +1,78 @@
+// Keyboard + pointer-lock mouse input. Held keys are released on blur / tab hide.
+import type { MoveInput } from '@zoom3d/shared';
+
+export const MOUSE_TURN_PER_PX = 0.0025; // radians
+
+interface Listenable {
+  addEventListener(type: string, listener: EventListener): void;
+}
+
+export interface InputDocument extends Listenable {
+  visibilityState: DocumentVisibilityState;
+  pointerLockElement: Element | null;
+}
+
+type Action = 'forward' | 'back' | 'left' | 'right' | 'turnLeft' | 'turnRight';
+
+const BINDINGS: Record<string, Action> = {
+  KeyW: 'forward',
+  ArrowUp: 'forward',
+  KeyS: 'back',
+  ArrowDown: 'back',
+  KeyA: 'left',
+  KeyD: 'right',
+  ArrowLeft: 'turnLeft',
+  KeyQ: 'turnLeft',
+  ArrowRight: 'turnRight',
+  KeyE: 'turnRight',
+};
+
+export interface Input {
+  state(): MoveInput;
+  /** Radians of mouse turn since the last call. */
+  consumeMouseTurn(): number;
+  reset(): void;
+}
+
+export function createInput(win: Listenable, doc: InputDocument): Input {
+  const held = new Set<Action>();
+  let mouseTurn = 0;
+  const axis = (pos: Action, neg: Action) => (held.has(pos) ? 1 : 0) - (held.has(neg) ? 1 : 0);
+  const reset = () => {
+    held.clear();
+    mouseTurn = 0;
+  };
+
+  win.addEventListener('keydown', (event) => {
+    const e = event as KeyboardEvent;
+    const action = BINDINGS[e.code];
+    if (!action) return;
+    e.preventDefault();
+    held.add(action);
+  });
+  win.addEventListener('keyup', (event) => {
+    const action = BINDINGS[(event as KeyboardEvent).code];
+    if (action) held.delete(action);
+  });
+  win.addEventListener('blur', reset);
+  doc.addEventListener('visibilitychange', () => {
+    if (doc.visibilityState === 'hidden') reset();
+  });
+  doc.addEventListener('mousemove', (event) => {
+    if (doc.pointerLockElement) mouseTurn += (event as MouseEvent).movementX * MOUSE_TURN_PER_PX;
+  });
+
+  return {
+    state: () => ({
+      forward: axis('forward', 'back'),
+      strafe: axis('right', 'left'),
+      turn: axis('turnRight', 'turnLeft'),
+    }),
+    consumeMouseTurn() {
+      const turn = mouseTurn;
+      mouseTurn = 0;
+      return turn;
+    },
+    reset,
+  };
+}
