@@ -2,9 +2,17 @@ import { type PlayerState, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { FACE_SIZE } from '../media/faces';
 import { createFramebuffer, rgb } from './framebuffer';
-import { AVATAR_RADIUS, hexToRgb, mixWhite, type Projection, projectSprite, renderSprites } from './sprites';
+import {
+  AVATAR_RADIUS,
+  hexToRgb,
+  mixWhite,
+  type Projection,
+  projectSprite,
+  renderSprites,
+  SHADOW_RADIUS,
+} from './sprites';
 import { makeTextures } from './textures';
-import { FOV, renderWalls, shade } from './walls';
+import { FLOOR, FOV, renderWalls, shade } from './walls';
 
 const OPEN = parseMap(
   [
@@ -154,5 +162,70 @@ describe('speaking ring', () => {
     const loud = frame();
     renderSprites(loud, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 1 }]);
     expect(px(loud, Math.floor(320 + 0.92 * r), 180)).toBe(mixWhite(RED, 0.8));
+  });
+});
+
+describe('floor shadows', () => {
+  const red = (c: number | undefined) => (c ?? 0) & 0xff;
+  /** Floor row under a point `depth` tiles straight ahead (camera at half wall height). */
+  const floorRow = (depth: number) => Math.floor(180 + (0.5 * PROJ) / depth);
+  const sprite = (x: number, y = 4.5, color = RED) => ({ x, y, color, face: null, speaking: 0 });
+
+  test('the floor right under an avatar is darkened, most at the centre', () => {
+    const fb = frame();
+    renderSprites(fb, player, [sprite(3.5)]);
+    const centre = px(fb, 320, floorRow(2));
+    const nearEdge = px(fb, 320, floorRow(2 - SHADOW_RADIUS * 0.8));
+    expect(red(centre)).toBeLessThan(red(FLOOR) * 0.6);
+    expect(red(nearEdge)).toBeGreaterThan(red(centre));
+    expect(red(nearEdge)).toBeLessThan(red(FLOOR));
+  });
+
+  test('there is a gap of floor between the floating disc and its shadow', () => {
+    const fb = frame();
+    renderSprites(fb, player, [sprite(3.5)]);
+    const discBottom = Math.ceil(180 + (AVATAR_RADIUS * PROJ) / 2);
+    const shadowTop = floorRow(2 + SHADOW_RADIUS);
+    expect(shadowTop).toBeGreaterThan(discBottom + 2);
+    expect(px(fb, 320, discBottom + 1)).toBe(FLOOR);
+  });
+
+  test('only floor under the shadow changes: walls, ceiling and other floor are untouched', () => {
+    const fb = frame();
+    const before = fb.pixels.slice();
+    renderSprites(fb, player, [sprite(3.5)]);
+    for (let i = 0; i < before.length; i++) {
+      if (fb.pixels[i] === before[i]) continue;
+      const row = Math.floor(i / fb.width);
+      const isDisc = fb.pixels[i] === RED || fb.pixels[i] === shade(RED);
+      expect(isDisc || (before[i] === FLOOR && row >= floorRow(2 + SHADOW_RADIUS) - 1)).toBe(true);
+    }
+    expect(px(fb, 100, 350)).toBe(FLOOR);
+  });
+
+  test('an avatar hidden behind a wall casts no visible shadow', () => {
+    const walled = parseMap(
+      [
+        '111111111',
+        '1.......1',
+        '1.......1',
+        '1.......1',
+        '1S.1....1',
+        '1.......1',
+        '1.......1',
+        '1.......1',
+        '111111111',
+      ].join('\n'),
+    );
+    const fb = frame(walled);
+    const before = fb.pixels.slice();
+    renderSprites(fb, player, [sprite(5.5)]);
+    expect(fb.pixels).toEqual(before);
+  });
+
+  test("a nearer disc covers a farther avatar's shadow", () => {
+    const fb = frame();
+    renderSprites(fb, player, [sprite(4.5, 4.5, BLUE), sprite(2.5)]);
+    expect(px(fb, 320, floorRow(3))).toBe(RED);
   });
 });
