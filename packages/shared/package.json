@@ -1,0 +1,6 @@
+{
+  "name": "@zoom3d/shared",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts"
+}

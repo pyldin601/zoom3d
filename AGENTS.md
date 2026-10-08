@@ -35,7 +35,16 @@ docs/            vision, architecture, decisions, roadmap
 
 ## Commands
 
-None yet. Add them here once the toolchain exists (install, dev, test, lint, typecheck).
+Node ≥ 22, pnpm 9.
+
+```
+pnpm install      # install workspace deps
+pnpm dev          # web app at http://localhost:5173
+pnpm test         # vitest, all projects
+pnpm typecheck    # tsc --noEmit per package
+pnpm lint         # biome check
+pnpm e2e          # playwright (apps/web/e2e)
+```
 
 ## Gotchas to remember
 
