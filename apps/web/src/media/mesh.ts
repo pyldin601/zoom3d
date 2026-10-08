@@ -1,5 +1,8 @@
-// Mesh MediaTransport: one RTCPeerConnection per remote peer, MDN "perfect negotiation".
-// The peer with the lexicographically smaller id is polite (yields on offer collisions).
+// Mesh MediaTransport: one RTCPeerConnection per remote peer.
+// Only the peer with the greater id initiates (sends the first offer); the other side answers and
+// attaches its tracks to the offered transceivers. This avoids initial glare, whose rollback makes
+// Chrome stop gathering ICE candidates. Later renegotiations use MDN "perfect negotiation", where the
+// peer with the smaller id is polite.
 import type { IceServer, SignalPayload } from '@zoom3d/shared';
 
 export const VIDEO_MAX_BITRATE = 150_000;
@@ -26,6 +29,8 @@ interface Conn {
   polite: boolean;
   makingOffer: boolean;
   ignoreOffer: boolean;
+  /** Answerer side: local tracks get attached once the first offer has created transceivers. */
+  tracksAttached: boolean;
 }
 
 export function createMesh(opts: MeshOptions): MediaTransport {
@@ -38,25 +43,58 @@ export function createMesh(opts: MeshOptions): MediaTransport {
     return { kind: 'description', description: { type: d.type, sdp: d.sdp } };
   };
 
-  function create(peerId: string): Conn {
+  const localTrack = (kind: string) =>
+    (kind === 'video' ? local?.getVideoTracks()[0] : local?.getAudioTracks()[0]) ?? null;
+
+  /** Answerer: send our tracks on the transceivers the remote offer created. */
+  async function attachTracks(conn: Conn) {
+    conn.tracksAttached = true;
+    for (const t of conn.pc.getTransceivers()) {
+      const kind = t.receiver.track.kind;
+      const track = localTrack(kind);
+      if (!track || !local) continue;
+      t.direction = 'sendrecv';
+      await t.sender.replaceTrack(track);
+      t.sender.setStreams?.(local);
+      if (kind === 'video') {
+        try {
+          const params = t.sender.getParameters();
+          if (params.encodings[0]) params.encodings[0].maxBitrate = VIDEO_MAX_BITRATE;
+          await t.sender.setParameters(params);
+        } catch (err) {
+          console.warn('could not cap video bitrate', err);
+        }
+      }
+    }
+  }
+
+  function create(peerId: string, initiator: boolean): Conn {
     const pc = new Impl({ iceServers: opts.iceServers });
-    const conn: Conn = { pc, polite: opts.selfId < peerId, makingOffer: false, ignoreOffer: false };
+    const conn: Conn = {
+      pc,
+      polite: opts.selfId < peerId,
+      makingOffer: false,
+      ignoreOffer: false,
+      tracksAttached: initiator,
+    };
     conns.set(peerId, conn);
 
-    // Video and audio share the local stream so the remote side sees one MediaStream.
-    const video = local?.getVideoTracks()[0];
-    const audio = local?.getAudioTracks()[0];
-    if (video && local) {
-      pc.addTransceiver(video, {
-        direction: 'sendrecv',
-        streams: [local],
-        sendEncodings: [{ maxBitrate: VIDEO_MAX_BITRATE }],
-      });
-    } else {
-      pc.addTransceiver('video', { direction: 'recvonly' });
+    if (initiator) {
+      // Video and audio share the local stream so the remote side sees one MediaStream.
+      const video = localTrack('video');
+      const audio = localTrack('audio');
+      if (video && local) {
+        pc.addTransceiver(video, {
+          direction: 'sendrecv',
+          streams: [local],
+          sendEncodings: [{ maxBitrate: VIDEO_MAX_BITRATE }],
+        });
+      } else {
+        pc.addTransceiver('video', { direction: 'recvonly' });
+      }
+      if (audio && local) pc.addTrack(audio, local);
+      else pc.addTransceiver('audio', { direction: 'recvonly' });
     }
-    if (audio && local) pc.addTrack(audio, local);
-    else pc.addTransceiver('audio', { direction: 'recvonly' });
 
     pc.onnegotiationneeded = async () => {
       try {
@@ -94,7 +132,8 @@ export function createMesh(opts: MeshOptions): MediaTransport {
 
   return {
     connect(peerId) {
-      if (!conns.has(peerId)) create(peerId);
+      // The smaller id waits for the other side's offer.
+      if (!conns.has(peerId) && opts.selfId > peerId) create(peerId, true);
     },
 
     async handleSignal(from, payload) {
@@ -102,7 +141,7 @@ export function createMesh(opts: MeshOptions): MediaTransport {
       if (!conn) {
         // Only a fresh offer may open a connection; stray candidates/answers are stale.
         if (payload.kind !== 'description' || payload.description.type !== 'offer') return;
-        conn = create(from);
+        conn = create(from, false);
       }
       const { pc } = conn;
       try {
@@ -113,6 +152,7 @@ export function createMesh(opts: MeshOptions): MediaTransport {
           if (conn.ignoreOffer) return;
           await pc.setRemoteDescription(d);
           if (d.type === 'offer') {
+            if (!conn.tracksAttached) await attachTracks(conn);
             await pc.setLocalDescription();
             opts.sendSignal(from, describe(pc));
           }

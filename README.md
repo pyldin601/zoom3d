@@ -7,9 +7,10 @@ face (streamed over WebRTC). Everyone walks around; audio is spatialised — vol
 panning and room reverb depend on distance and position, so voices sound like they
 come from people standing in the room.
 
-**Status:** M2 done. Create a room, share the link, and walk the level together. Other
-people show as coloured discs with name labels and dots on the automap. Faces (WebRTC) and
-spatial audio are next; see the [roadmap](docs/roadmap.md).
+**Status:** M3 done. Create a room, share the link, and walk the level together. Everyone's
+avatar shows their live camera face (peer-to-peer WebRTC), and you hear each other, not yet
+spatialised. With the camera off or denied, the avatar shows initials. Spatial audio (M4) is
+next; see the [roadmap](docs/roadmap.md).
 
 ## Quick start
 
@@ -25,6 +26,8 @@ pnpm e2e        # Playwright (uses the installed Google Chrome)
 To try it: open http://localhost:5173, click **Create room**, enter a name, then open the same
 room link in a second window (or a second browser) with another name. Controls: WASD/arrows
 to move, Q/E or arrows to turn, click the view for mouse look, M or Tab for the automap.
+The browser asks for camera and microphone on Join. They only work on `localhost` or HTTPS, so
+testing from another device on the LAN needs HTTPS (planned for M6).
 
 ## Docs
 

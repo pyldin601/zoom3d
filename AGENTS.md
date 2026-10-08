@@ -52,3 +52,6 @@ pnpm bench        # renderer frame-time benchmark
 - Browsers require a user gesture before `AudioContext` starts; `getUserMedia` needs HTTPS (or localhost).
 - Chrome only delivers remote WebRTC audio into Web Audio if the stream is also attached to a (muted) `<audio>` element.
 - Echo: use `echoCancellation` on capture and avoid playing remote audio through paths that bypass it.
+- WebRTC: only the greater peer id initiates (see spec §8). Don't add initiators on both sides:
+  rollback during ICE gathering silently kills candidate gathering in Chrome.
+- E2E runs Chrome with `--use-fake-device-for-media-stream`; `window.__game.call` exposes `isLive`/`stats` (dev only).

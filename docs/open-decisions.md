@@ -9,6 +9,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 - **SFU** (LiveKit / mediasoup): scales to dozens, simulcast, server-side bandwidth control. More infra.
 - **Rec:** start with mesh behind a thin `MediaTransport` interface; swap to LiveKit if we outgrow it.
 - *Partially resolved 2026-10-08:* target group size is 2–8 participants for v1, so mesh is viable. Final call pending design approval.
+- *Resolved 2026-10-08 (M3):* mesh implemented behind `MediaTransport` (`apps/web/src/media/mesh.ts`). Single initiator (greater id offers), perfect negotiation for renegotiation, 150 kbps video cap.
 
 ### D2 — Renderer
 - **Canvas2D software raycaster** (ImageData): authentic, fully controllable, CPU-bound at higher res.

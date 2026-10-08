@@ -176,8 +176,11 @@ server keeps the peer slot for 30 s, so others see the avatar freeze, not disapp
 - **MediaTransport interface:**
   `connect(peerId)`, `disconnect(peerId)`, `onRemoteStream(cb)`,
   `setLocalTracks(tracks)`, `close()`. The v1 implementation is a mesh of `RTCPeerConnection`s.
-- **Negotiation:** the "perfect negotiation" pattern. The peer with the lexicographically
-  smaller id is *polite*. The joiner initiates connections to existing peers.
+- **Negotiation:** exactly one side initiates: the peer with the lexicographically greater id
+  sends the first offer, and the other side attaches its tracks to the offered transceivers and
+  answers. Initial glare is avoided because rolling back an offer during ICE gathering made
+  Chrome stop emitting candidates (found in M3). Later renegotiations (ICE restarts) use the
+  "perfect negotiation" pattern, where the smaller id is *polite*.
 - **Bandwidth:** video `maxBitrate` 150 kbps per sender; audio is Opus with default settings.
 - **ICE:** the server returns STUN plus short-lived TURN credentials (coturn
   `use-auth-secret`, HMAC over expiry and user, valid for 6 h). ICE restart on `failed`.

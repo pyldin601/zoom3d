@@ -7,7 +7,12 @@ const WEB_PORT = 5174;
 export default defineConfig({
   testDir: 'e2e',
   // Uses the locally installed Google Chrome; set PW_CHANNEL= (empty) to use Playwright's Chromium.
-  use: { baseURL: `http://localhost:${WEB_PORT}`, channel: process.env.PW_CHANNEL ?? 'chrome' },
+  use: {
+    baseURL: `http://localhost:${WEB_PORT}`,
+    channel: process.env.PW_CHANNEL ?? 'chrome',
+    // Synthetic camera/mic, auto-accepted prompts.
+    launchOptions: { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] },
+  },
   webServer: [
     {
       command: 'pnpm --filter @zoom3d/server start',
