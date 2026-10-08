@@ -72,6 +72,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 
 ### Risks (to verify, not assume)
 - **R1 — Echo cancellation vs Web Audio output.** Chrome's AEC historically did not cancel audio played via `AudioContext`. If still true, speakers echo. Verify in an early throwaway audio spike (speakers vs headphones).
+  - *Verdict 2026-10-08 (provisional):* user tested Chrome on both devices with the spike and reported it "sounds good", i.e. no echo problem heard. Interpreted as outcome (a): M4 uses the `webaudio` path (graph → `AudioContext.destination`). The per-mode table was not filled in and **Firefox is untested**, so re-check Firefox (and speakers at higher volume) in M5 before relying on (a) there.
 - **R2 — Background tabs.** rAF stops in hidden tabs; nothing peers depend on may be driven by the render loop.
 - **R3 — Safari** WebRTC/Web Audio quirks; best-effort support.
 

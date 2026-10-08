@@ -73,6 +73,10 @@ and allow the microphone. The status should read `connected`, and the log should
 - **Split browsers:** pick the mode that is clean in both if one exists. Otherwise use
   per-browser routing and note it as a risk for M4.
 
+## Result (2026-10-08)
+
+Chrome on both devices: the user reported it "sounds good", with no echo problem heard. The per-row table was not filled in, and Firefox is not tested. Provisional verdict (a); see R1 in `docs/open-decisions.md`.
+
 ## Verified automatically so far (Chromium, `?fake=1`, two tabs)
 
 - The connection is established, and rejoin after a peer reload works without reloading the survivor.
