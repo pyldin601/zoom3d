@@ -1,0 +1,13 @@
+{
+  "name": "audio-echo-spike",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "cert": "sh gen-cert.sh",
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
