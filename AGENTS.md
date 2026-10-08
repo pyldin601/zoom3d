@@ -66,6 +66,8 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
 - WebRTC: only the greater peer id initiates (see spec §8). Don't add initiators on both sides:
   rollback during ICE gathering silently kills candidate gathering in Chrome.
 - E2E runs Chrome with `--use-fake-device-for-media-stream`; `window.__game.call` exposes `isLive`/`stats` (dev only).
+- Frame rate: the remote `<video>` container must be `visibility: hidden` (not `opacity`). A
+  playing video Chrome considers visible paces the whole page to 30 fps (guarded by `e2e/frame-rate.spec.ts`).
 - Audio: remote `<video>` elements must stay **muted but playing**. Chrome only feeds WebRTC
   audio into Web Audio while the stream plays in an element; the spatial engine (`apps/web/src/audio/engine.ts`)
   is the only thing that should be audible. The `AudioContext` is created synchronously in the

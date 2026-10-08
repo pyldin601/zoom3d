@@ -35,7 +35,9 @@
       #ui .audio-panel .levels { list-style: none; padding: 0; margin: 0.6em 0 0; }
       #ui .audio-panel .levels li { display: grid; grid-template-columns: 6em 1fr; align-items: center; gap: 0.4em; }
       #ui .audio-panel .bar { height: 0.5em; background: #6c6; }
-      #media { position: fixed; width: 1px; height: 1px; opacity: 0.01; pointer-events: none; overflow: hidden; }
+      /* visibility:hidden, not opacity: a visible playing <video> makes Chrome pace the page to the
+         video's 30 fps. Hidden elements keep decoding, firing requestVideoFrameCallback and feeding Web Audio. */
+      #media { position: fixed; width: 1px; height: 1px; visibility: hidden; pointer-events: none; overflow: hidden; }
     </style>
   </head>
   <body>
