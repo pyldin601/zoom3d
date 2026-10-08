@@ -29,6 +29,7 @@ let meshes: {
   close: ReturnType<typeof vi.fn>;
 }[];
 let faces: Map<string, FaceSource & { [k: string]: unknown }>;
+let faceAvatars: Map<string, string | null | undefined>;
 let session: Session;
 let remote: {
   attach: ReturnType<typeof vi.fn>;
@@ -59,7 +60,8 @@ function makeCall(local?: Partial<LocalMedia>) {
     remote: remote as unknown as RemoteMedia,
     audio: audio as unknown as Pick<AudioEngine, 'attach' | 'detach'>,
     document: {} as Document,
-    createFace: ({ name }) => {
+    createFace: ({ name, avatar }) => {
+      faceAvatars.set(name, avatar);
       const face = {
         texels: new Uint32Array([name.length]),
         live: () => false,
@@ -91,6 +93,7 @@ function makeCall(local?: Partial<LocalMedia>) {
 beforeEach(() => {
   meshes = [];
   faces = new Map();
+  faceAvatars = new Map();
   videoTrack = { enabled: true };
   audioTrack = { enabled: true };
   remote = { attach: vi.fn(() => ({ id: 'video-el' })), detach: vi.fn(), detachAll: vi.fn() };
@@ -116,6 +119,16 @@ test('a fresh welcome creates a mesh and connects every peer with a face', () =>
   expect(meshes[0]?.connect.mock.calls.map((c) => c[0])).toEqual(['a', 'b']);
   expect(faces.get('b')?.setCam).toHaveBeenCalledWith(false);
   expect(call.faceOf('a')).toBe(faces.get('a')?.texels);
+});
+
+test("faces get the peer's avatar picture", () => {
+  const call = makeCall();
+  const pic = 'data:image/jpeg;base64,/9j/';
+  setPeers({ ...info('a'), avatar: pic });
+  call.listener.welcome?.('me', ICE, true);
+  call.listener.peerJoined?.(info('b'));
+  expect(faceAvatars.get('a')).toBe(pic);
+  expect(faceAvatars.get('b')).toBeNull();
 });
 
 test('a resume keeps the mesh, connects newcomers and drops peers that are gone', () => {

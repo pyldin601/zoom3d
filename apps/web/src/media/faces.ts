@@ -1,4 +1,5 @@
-// Per-peer face textures (FACE_SIZE² texels, packed like rgb()) from live video, or an initials disc.
+// Per-peer face textures (FACE_SIZE² texels, packed like rgb()) from live video, else the peer's
+// avatar picture, else an initials disc.
 export const FACE_SIZE = 256;
 export const FACE_STALL_MS = 2000;
 /** Fallback polling when requestVideoFrameCallback is missing: one 24 fps frame. */
@@ -20,7 +21,7 @@ export function initials(name: string): string {
 }
 
 export interface FaceSource {
-  /** Live video texels, or the initials disc when the camera is off, missing or stalled. */
+  /** Live video texels; the avatar picture or initials disc when the camera is off, missing or stalled. */
   readonly texels: Uint32Array;
   live(): boolean;
   update(now: number): void;
@@ -34,7 +35,16 @@ type FrameVideo = HTMLVideoElement & {
   cancelVideoFrameCallback?: (handle: number) => void;
 };
 
-export function createFace(opts: { name: string; color: string; document: Document }): FaceSource {
+export interface FaceOptions {
+  name: string;
+  color: string;
+  document: Document;
+  /** Validated JPEG data URL; replaces the initials disc once it decodes. */
+  avatar?: string | null;
+  createImage?: () => HTMLImageElement;
+}
+
+export function createFace(opts: FaceOptions): FaceSource {
   const canvas = opts.document.createElement('canvas');
   canvas.width = FACE_SIZE;
   canvas.height = FACE_SIZE;
@@ -48,7 +58,7 @@ export function createFace(opts: { name: string; color: string; document: Docume
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(initials(opts.name), FACE_SIZE / 2, FACE_SIZE / 2 + FACE_SIZE * 0.03);
-  const initialsTexels = read();
+  let fallbackTexels = read();
   // Reused for every frame: no per-frame texture allocation beyond what getImageData itself does.
   const liveTexels = new Uint32Array(FACE_SIZE * FACE_SIZE);
 
@@ -59,6 +69,18 @@ export function createFace(opts: { name: string; color: string; document: Docume
   let lastVideoTime = -1;
   let lastPollAt = Number.NEGATIVE_INFINITY;
   let now = 0;
+  let disposed = false;
+
+  if (opts.avatar) {
+    const img = opts.createImage?.() ?? new Image();
+    img.onload = () => {
+      if (disposed) return;
+      const { sx, sy, size } = squareCrop(img.naturalWidth, img.naturalHeight);
+      ctx.drawImage(img, sx, sy, size, size, 0, 0, FACE_SIZE, FACE_SIZE);
+      fallbackTexels = read();
+    };
+    img.src = opts.avatar;
+  }
 
   const grab = (at: number) => {
     // A disabled camera still delivers black frames; they are never shown, so skip the work.
@@ -84,7 +106,7 @@ export function createFace(opts: { name: string; color: string; document: Docume
 
   return {
     get texels() {
-      return isLive() ? liveTexels : initialsTexels;
+      return isLive() ? liveTexels : fallbackTexels;
     },
     live: isLive,
     update(at) {
@@ -110,6 +132,7 @@ export function createFace(opts: { name: string; color: string; document: Docume
       camOn = on;
     },
     dispose() {
+      disposed = true;
       stopFrames();
       video = null;
     },

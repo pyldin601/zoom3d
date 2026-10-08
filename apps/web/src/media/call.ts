@@ -41,7 +41,12 @@ export function createCall(opts: CallOptions): Call {
   const ensureFace = (peer: PeerInfo) => {
     let face = faces.get(peer.id);
     if (!face) {
-      face = opts.createFace({ name: peer.name, color: peer.color, document: opts.document });
+      face = opts.createFace({
+        name: peer.name,
+        color: peer.color,
+        avatar: peer.avatar,
+        document: opts.document,
+      });
       faces.set(peer.id, face);
     }
     face.setCam(peer.cam);

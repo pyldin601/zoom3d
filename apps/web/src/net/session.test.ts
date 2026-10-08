@@ -33,8 +33,9 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-function joinedSession(peers: PeerInfo[] = [], listener: SessionListener = {}) {
+function joinedSession(peers: PeerInfo[] = [], listener: SessionListener = {}, avatar: string | null = null) {
   const session: Session = createSession({
+    avatar,
     url: 'ws://t/ws',
     roomId: ROOM,
     name: 'Ada',
@@ -92,6 +93,22 @@ test('peer_state for unknown or departed peers creates no ghosts, and stale seqs
   ws.receive({ type: 'peer_left', id: 'a' });
   ws.receive({ type: 'peer_state', id: 'a', x: 4, y: 2, angle: 0, seq: 6 });
   expect(session.peers.size).toBe(0);
+});
+
+test('join carries the avatar picture, also when resuming', () => {
+  const pic = 'data:image/jpeg;base64,/9j/';
+  const { ws } = joinedSession([], {}, pic);
+  expect(ws.sent[0]).toEqual({ type: 'join', roomId: ROOM, name: 'Ada', avatar: pic });
+  ws.serverClose(1006);
+  vi.advanceTimersByTime(500);
+  const ws2 = FakeWebSocket.latest();
+  ws2.open();
+  expect(ws2.sent[0]).toMatchObject({ type: 'join', resumeToken: 'tok', avatar: pic });
+});
+
+test('join without a picture has no avatar field', () => {
+  const { ws } = joinedSession();
+  expect(ws.sent[0]).not.toHaveProperty('avatar');
 });
 
 test('peer_joined adds a peer seeded at its position', () => {

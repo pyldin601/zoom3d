@@ -142,3 +142,88 @@ describe('frame buffers', () => {
     expect(context.drawImage).not.toHaveBeenCalled();
   });
 });
+
+describe('avatar picture', () => {
+  const PIC = 'data:image/jpeg;base64,/9j/4AAQ';
+  function fakeImage(width = 128, height = 128) {
+    return {
+      naturalWidth: width,
+      naturalHeight: height,
+      src: '',
+      onload: null as (() => void) | null,
+      onerror: null as (() => void) | null,
+    };
+  }
+  const withImage = (img: ReturnType<typeof fakeImage>) => () => img as unknown as HTMLImageElement;
+
+  test('replaces the initials once it decodes, centre-cropped to the face', () => {
+    const { document, context } = fakeDocument();
+    const img = fakeImage(200, 100);
+    const face = createFace({
+      name: 'Ada',
+      color: '#e6194b',
+      document,
+      avatar: PIC,
+      createImage: withImage(img),
+    });
+    const initialsTexels = face.texels;
+    expect(img.src).toBe(PIC);
+    img.onload?.();
+    expect(context.drawImage).toHaveBeenCalledWith(img, 50, 0, 100, 100, 0, 0, FACE_SIZE, FACE_SIZE);
+    expect(face.texels).not.toBe(initialsTexels);
+    expect(face.live()).toBe(false);
+  });
+
+  test('a picture that fails to decode keeps the initials', () => {
+    const { document } = fakeDocument();
+    const img = fakeImage();
+    const face = createFace({
+      name: 'Ada',
+      color: '#e6194b',
+      document,
+      avatar: PIC,
+      createImage: withImage(img),
+    });
+    const initialsTexels = face.texels;
+    img.onerror?.();
+    expect(face.texels).toBe(initialsTexels);
+  });
+
+  test('live video wins over the picture, which returns when the camera goes off', () => {
+    const { document } = fakeDocument();
+    const img = fakeImage();
+    const face = createFace({
+      name: 'Ada',
+      color: '#e6194b',
+      document,
+      avatar: PIC,
+      createImage: withImage(img),
+    });
+    img.onload?.();
+    const pictureTexels = face.texels;
+    face.setVideo(fakeVideo() as unknown as HTMLVideoElement);
+    face.update(0);
+    expect(face.live()).toBe(true);
+    expect(face.texels).not.toBe(pictureTexels);
+    face.setCam(false);
+    expect(face.texels).toBe(pictureTexels);
+  });
+
+  test('no picture is loaded without an avatar, and a late decode after dispose is ignored', () => {
+    const { document, context } = fakeDocument();
+    const create = vi.fn(() => fakeImage() as unknown as HTMLImageElement);
+    createFace({ name: 'Ada', color: '#e6194b', document, avatar: null, createImage: create });
+    expect(create).not.toHaveBeenCalled();
+    const img = fakeImage();
+    const face = createFace({
+      name: 'Ada',
+      color: '#e6194b',
+      document,
+      avatar: PIC,
+      createImage: withImage(img),
+    });
+    face.dispose();
+    img.onload?.();
+    expect(context.drawImage).not.toHaveBeenCalled();
+  });
+});

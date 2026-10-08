@@ -46,6 +46,8 @@ export interface SessionOptions {
   url: string;
   roomId: string;
   name: string;
+  /** Avatar picture (validated JPEG data URL) shown to others while the camera is off. */
+  avatar?: string | null;
   /** Mutated in place by spawn and corrections; read by the state sender. */
   player: PlayerState;
   now: () => number;
@@ -134,6 +136,7 @@ export function createSession(opts: SessionOptions): Session {
       roomId: opts.roomId,
       name: opts.name,
       ...(resumeToken ? { resumeToken } : {}),
+      ...(opts.avatar ? { avatar: opts.avatar } : {}),
     }),
     onMessage: handle,
     onStatus: (s) => {
