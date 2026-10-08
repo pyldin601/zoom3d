@@ -121,7 +121,13 @@ describe('parseClientMessage', () => {
 
   test('a join with a full-size avatar fits the client message cap', () => {
     const avatar = `data:image/jpeg;base64,${'A'.repeat(AVATAR_MAX_CHARS - 23)}`;
-    const raw = json({ type: 'join', roomId: ROOM, name: 'x'.repeat(24), resumeToken: 't'.repeat(64), avatar });
+    const raw = json({
+      type: 'join',
+      roomId: ROOM,
+      name: 'x'.repeat(24),
+      resumeToken: 't'.repeat(64),
+      avatar,
+    });
     expect(parseClientMessage(raw)).not.toBeNull();
   });
 
@@ -201,11 +207,15 @@ describe('parseServerMessage', () => {
 
   test('rejects a peer with a non-string avatar or a missing avatar field', () => {
     expect(parseServerMessage(json({ type: 'peer_joined', peer: { ...peer, avatar: 5 } }))).toBeNull();
-    expect(parseServerMessage(json({ type: 'peer_joined', peer: { ...peer, avatar: undefined } }))).toBeNull();
+    expect(
+      parseServerMessage(json({ type: 'peer_joined', peer: { ...peer, avatar: undefined } })),
+    ).toBeNull();
   });
 
   test('a peer with an invalid avatar parses with avatar null', () => {
-    expect(parseServerMessage(json({ type: 'peer_joined', peer: { ...peer, avatar: 'javascript:x' } }))).toEqual({
+    expect(
+      parseServerMessage(json({ type: 'peer_joined', peer: { ...peer, avatar: 'javascript:x' } })),
+    ).toEqual({
       type: 'peer_joined',
       peer: { ...peer, avatar: null },
     });
@@ -213,7 +223,10 @@ describe('parseServerMessage', () => {
 
   test('server messages may exceed the client cap up to their own cap', () => {
     const avatar = `data:image/jpeg;base64,${'A'.repeat(AVATAR_MAX_CHARS - 23)}`;
-    const welcome = { ...samples[0], peers: Array.from({ length: 7 }, (_, i) => ({ ...peer, id: `p${i}`, avatar })) };
+    const welcome = {
+      ...samples[0],
+      peers: Array.from({ length: 7 }, (_, i) => ({ ...peer, id: `p${i}`, avatar })),
+    };
     expect(json(welcome).length).toBeGreaterThan(MAX_MESSAGE_BYTES);
     expect(parseServerMessage(json(welcome))).not.toBeNull();
     const huge = { ...welcome, pad: 'x'.repeat(MAX_SERVER_MESSAGE_BYTES) };

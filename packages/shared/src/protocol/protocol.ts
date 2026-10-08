@@ -59,7 +59,13 @@ export type SignalPayload =
       } | null;
     };
 
-export type JoinMessage = { type: 'join'; roomId: string; name: string; resumeToken?: string; avatar?: string };
+export type JoinMessage = {
+  type: 'join';
+  roomId: string;
+  name: string;
+  resumeToken?: string;
+  avatar?: string;
+};
 export type StateMessage = { type: 'state'; x: number; y: number; angle: number; seq: number };
 export type MediaMessage = { type: 'media'; cam: boolean; mic: boolean };
 export type SignalMessage = { type: 'signal'; to: string; payload: SignalPayload };
