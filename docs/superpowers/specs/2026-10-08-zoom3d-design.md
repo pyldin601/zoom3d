@@ -34,7 +34,7 @@ controls, face tracking or background removal, more than 8 participants, Safari 
 | Authority | Client-authoritative movement; server validates speed and wall cells |
 | Audio | Native Web Audio nodes: custom distance gain, HRTF panner, shared convolver, wall muffling |
 | Rooms | Ephemeral, unguessable link, display name only |
-| Faces | Square crop at capture (160 px, 15 fps), round mask on receive; initials disc fallback |
+| Faces | Square crop at capture (256 px, 24 fps; raised from 160 px/15 fps on 2026-10-08), round mask on receive; initials disc fallback |
 | Map | Level from `docs/assets/map-reference.png`, secret rooms ignored, 3 wall zones |
 | Findability | Shared spawn at the blue-diamond start + toggleable automap with named dots |
 | Tooling | pnpm workspaces, Vite, Vitest, Playwright, strict TypeScript |
@@ -104,7 +104,7 @@ glue to browser/Node APIs.
 - **Z-buffer:** per-column wall distance, kept for the sprite pass.
 - **Avatars (billboards):** disc of radius 0.35 tiles, centred at eye level. Sorted far to near,
   then drawn as vertical slices with `drawImage` from the peer's face canvas, skipping columns
-  where the z-buffer is closer. Face canvas: 128×128, refreshed via
+  where the z-buffer is closer. Face canvas: 256×256, refreshed via
   `requestVideoFrameCallback` (fallback: every 66 ms), with a circular clip. Fallback face:
   coloured disc with initials. Speaking ring: outline brightness from the audio level.
 - **HUD layer:** a separate full-resolution canvas above the scaled game canvas, for crisp
@@ -168,8 +168,8 @@ server keeps the peer slot for 30 s, so others see the avatar freeze, not disapp
 
 ## 8. Media (`apps/web/src/media`)
 
-- **Capture:** `getUserMedia({ video: { width: 160, height: 160, aspectRatio: 1,
-  frameRate: 15, resizeMode: 'crop-and-scale' }, audio: { echoCancellation: true,
+- **Capture:** `getUserMedia({ video: { width: 256, height: 256, aspectRatio: 1,
+  frameRate: 24, resizeMode: 'crop-and-scale' }, audio: { echoCancellation: true,
   noiseSuppression: true, autoGainControl: true } })`. No `canvas.captureStream()`, because
   it costs CPU and stalls in background tabs. Browsers may ignore `resizeMode` (e.g.
   Firefox), so the receiver always center-crops to a square when drawing the face canvas.
@@ -181,7 +181,7 @@ server keeps the peer slot for 30 s, so others see the avatar freeze, not disapp
   answers. Initial glare is avoided because rolling back an offer during ICE gathering made
   Chrome stop emitting candidates (found in M3). Later renegotiations (ICE restarts) use the
   "perfect negotiation" pattern, where the smaller id is *polite*.
-- **Bandwidth:** video `maxBitrate` 150 kbps per sender; audio is Opus with default settings.
+- **Bandwidth:** video `maxBitrate` 350 kbps per sender (≈2.5 Mbps upload with 8 people); audio is Opus with default settings.
 - **ICE:** the server returns STUN plus short-lived TURN credentials (coturn
   `use-auth-secret`, HMAC over expiry and user, valid for 6 h). ICE restart on `failed`.
 - **Remote streams:** each is attached to a muted, playing `<video>` element kept in the DOM

@@ -5,7 +5,7 @@
 // peer with the smaller id is polite.
 import type { IceServer, SignalPayload } from '@zoom3d/shared';
 
-export const VIDEO_MAX_BITRATE = 150_000;
+export const VIDEO_MAX_BITRATE = 350_000;
 /** An initiator connection that is not `connected` for this long is recreated with a fresh offer. */
 export const WATCHDOG_MS = 10_000;
 export const WATCHDOG_CHECK_MS = 2_000;

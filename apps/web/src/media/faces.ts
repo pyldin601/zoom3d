@@ -1,7 +1,8 @@
 // Per-peer face textures (FACE_SIZE² texels, packed like rgb()) from live video, or an initials disc.
-export const FACE_SIZE = 128;
+export const FACE_SIZE = 256;
 export const FACE_STALL_MS = 2000;
-const POLL_MS = 66;
+/** Fallback polling when requestVideoFrameCallback is missing: one 24 fps frame. */
+const POLL_MS = 42;
 
 export function squareCrop(w: number, h: number): { sx: number; sy: number; size: number } {
   const size = Math.min(w, h);

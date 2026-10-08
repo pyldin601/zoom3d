@@ -109,15 +109,19 @@ test('hexToRgb packs like rgb()', () => {
 describe('face sprites', () => {
   const face = new Uint32Array(FACE_SIZE * FACE_SIZE);
   for (let j = 0; j < FACE_SIZE; j++)
-    for (let i = 0; i < FACE_SIZE; i++) face[j * FACE_SIZE + i] = rgb(i * 2, j * 2, 0);
-  const texelI = (c: number) => (c & 0xff) / 2;
+    for (let i = 0; i < FACE_SIZE; i++)
+      face[j * FACE_SIZE + i] = rgb((i * 256) / FACE_SIZE, (j * 256) / FACE_SIZE, 0);
+  // Texel column/row encoded in the red/green channels, independent of FACE_SIZE.
+  const texelI = (c: number) => ((c & 0xff) * FACE_SIZE) / 256;
+  const texelJ = (c: number) => (((c >> 8) & 0xff) * FACE_SIZE) / 256;
+  const tolerance = FACE_SIZE / 128 + 1;
 
   test('the disc centre shows the centre of the face texture', () => {
     const fb = frame();
     renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0 }]);
     const c = px(fb, 320, 180) as number;
-    expect(Math.abs(texelI(c) - 64)).toBeLessThanOrEqual(1);
-    expect(Math.abs(((c >> 8) & 0xff) / 2 - 64)).toBeLessThanOrEqual(1);
+    expect(Math.abs(texelI(c) - FACE_SIZE / 2)).toBeLessThanOrEqual(tolerance);
+    expect(Math.abs(texelJ(c) - FACE_SIZE / 2)).toBeLessThanOrEqual(tolerance);
   });
 
   test('the outer ring is the peer colour, unshaded', () => {

@@ -50,7 +50,7 @@ test('the initiator adds a bitrate-capped video transceiver and the audio track,
   expect(pc().transceivers[0]?.trackOrKind).toBe(videoTrack);
   expect(pc().transceivers[0]?.init).toMatchObject({
     direction: 'sendrecv',
-    sendEncodings: [{ maxBitrate: 150_000 }],
+    sendEncodings: [{ maxBitrate: 350_000 }],
   });
   expect(pc().tracks).toEqual([audioTrack]);
   await pc().fireNegotiationNeeded();
@@ -76,7 +76,7 @@ test('the answerer attaches its local tracks to the offered transceivers before 
   expect(video?.direction).toBe('sendrecv');
   expect(video?.sender.track).toBe(videoTrack);
   expect(video?.sender.streams).toEqual([localStream]);
-  expect(video?.sender.parameters.encodings[0]?.maxBitrate).toBe(150_000);
+  expect(video?.sender.parameters.encodings[0]?.maxBitrate).toBe(350_000);
   expect(audio?.sender.track).toBe(audioTrack);
   expect(sent.at(-1)).toEqual({
     to: 'b',

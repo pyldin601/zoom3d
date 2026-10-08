@@ -1,10 +1,10 @@
 // Camera + microphone capture with graceful fallbacks. Must run inside a user gesture (Join click).
 
 export const VIDEO_CONSTRAINTS = {
-  width: 160,
-  height: 160,
+  width: 256,
+  height: 256,
   aspectRatio: 1,
-  frameRate: 15,
+  frameRate: 24,
   resizeMode: 'crop-and-scale',
 } as MediaTrackConstraints;
 

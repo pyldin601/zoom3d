@@ -25,10 +25,10 @@ function fakeGetUserMedia(allow: { video: boolean; audio: boolean }) {
 
 test('constraints match the spec', () => {
   expect(VIDEO_CONSTRAINTS).toEqual({
-    width: 160,
-    height: 160,
+    width: 256,
+    height: 256,
     aspectRatio: 1,
-    frameRate: 15,
+    frameRate: 24,
     resizeMode: 'crop-and-scale',
   });
   expect(AUDIO_CONSTRAINTS).toEqual({

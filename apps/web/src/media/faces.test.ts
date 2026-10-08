@@ -1,6 +1,10 @@
 import { describe, expect, test, vi } from 'vitest';
 import { createFace, FACE_SIZE, FACE_STALL_MS, initials, squareCrop } from './faces';
 
+test('face textures are 256 px', () => {
+  expect(FACE_SIZE).toBe(256);
+});
+
 describe('squareCrop', () => {
   test.each([
     [160, 160, { sx: 0, sy: 0, size: 160 }],
