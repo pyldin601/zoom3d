@@ -112,3 +112,29 @@ describe('createFace', () => {
     expect(video.cancelVideoFrameCallback).toHaveBeenCalledWith(7);
   });
 });
+
+describe('frame buffers', () => {
+  test('live frames reuse one texel buffer', () => {
+    const { document } = fakeDocument();
+    const face = createFace({ name: 'Ada', color: '#e6194b', document });
+    const video = fakeVideo({ rvfc: true });
+    face.setVideo(video as unknown as HTMLVideoElement);
+    video.callback?.(10);
+    face.update(10);
+    const first = face.texels;
+    video.callback?.(20);
+    face.update(20);
+    expect(face.texels).toBe(first);
+  });
+
+  test('no frames are grabbed while the camera is off', () => {
+    const { document, context } = fakeDocument();
+    const face = createFace({ name: 'Ada', color: '#e6194b', document });
+    const video = fakeVideo({ rvfc: true });
+    face.setCam(false);
+    face.setVideo(video as unknown as HTMLVideoElement);
+    video.callback?.(10);
+    video.callback?.(20);
+    expect(context.drawImage).not.toHaveBeenCalled();
+  });
+});

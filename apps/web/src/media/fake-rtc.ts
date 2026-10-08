@@ -40,8 +40,14 @@ export class FakeRTCPeerConnection {
     this.localDescription = { type, sdp: `fake-${type}` };
     this.signalingState = type === 'offer' ? 'have-local-offer' : 'stable';
   }
+  /** Makes the next setRemoteDescription reject (e.g. a DTLS fingerprint change). */
+  failNextRemote = false;
   async setRemoteDescription(desc: Desc) {
     this.calls.push(`setRemote:${desc.type}`);
+    if (this.failNextRemote) {
+      this.failNextRemote = false;
+      throw new Error('fingerprint changed');
+    }
     if (desc.type === 'offer' && this.remoteTransceivers.length === 0) {
       this.remoteTransceivers = [new FakeTransceiver('video'), new FakeTransceiver('audio')];
     }

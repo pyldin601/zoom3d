@@ -6,6 +6,9 @@
 import type { IceServer, SignalPayload } from '@zoom3d/shared';
 
 export const VIDEO_MAX_BITRATE = 150_000;
+/** An initiator connection that is not `connected` for this long is recreated with a fresh offer. */
+export const WATCHDOG_MS = 10_000;
+export const WATCHDOG_CHECK_MS = 2_000;
 
 export interface MediaTransport {
   connect(peerId: string): void;
@@ -31,12 +34,36 @@ interface Conn {
   ignoreOffer: boolean;
   /** Answerer side: local tracks get attached once the first offer has created transceivers. */
   tracksAttached: boolean;
+  initiator: boolean;
+  /** Last time this connection was known healthy (or was created). */
+  since: number;
+  /** DTLS fingerprint of the remote offer this connection was built for. */
+  remoteFingerprint: string | null;
 }
+
+const fingerprintOf = (sdp: string) => /^a=fingerprint:(.+)$/m.exec(sdp)?.[1]?.trim() ?? null;
 
 export function createMesh(opts: MeshOptions): MediaTransport {
   const Impl = opts.RTCPeerConnectionImpl ?? RTCPeerConnection;
   const conns = new Map<string, Conn>();
   const local = opts.localStream;
+  let watchdog: ReturnType<typeof setInterval> | null = null;
+
+  // Signalling can be lost (socket blip, peer in resume grace); only the initiator can fix that,
+  // by replacing a connection that never became healthy.
+  const checkConnections = () => {
+    const now = Date.now();
+    for (const [peerId, conn] of [...conns]) {
+      if (!conn.initiator) continue;
+      if (conn.pc.connectionState === 'connected') {
+        conn.since = now;
+      } else if (now - conn.since >= WATCHDOG_MS) {
+        conn.pc.close();
+        conns.delete(peerId);
+        create(peerId, true);
+      }
+    }
+  };
 
   const describe = (pc: RTCPeerConnection): SignalPayload => {
     const d = pc.localDescription as RTCSessionDescription;
@@ -68,6 +95,24 @@ export function createMesh(opts: MeshOptions): MediaTransport {
     }
   }
 
+  async function applyDescription(
+    peerId: string,
+    conn: Conn,
+    d: Extract<SignalPayload, { kind: 'description' }>['description'],
+  ): Promise<void> {
+    const { pc } = conn;
+    const collision = d.type === 'offer' && (conn.makingOffer || pc.signalingState !== 'stable');
+    conn.ignoreOffer = !conn.polite && collision;
+    if (conn.ignoreOffer) return;
+    await pc.setRemoteDescription(d);
+    if (d.type === 'offer') {
+      conn.remoteFingerprint = fingerprintOf(d.sdp);
+      if (!conn.tracksAttached) await attachTracks(conn);
+      await pc.setLocalDescription();
+      opts.sendSignal(peerId, describe(pc));
+    }
+  }
+
   function create(peerId: string, initiator: boolean): Conn {
     const pc = new Impl({ iceServers: opts.iceServers });
     const conn: Conn = {
@@ -76,8 +121,12 @@ export function createMesh(opts: MeshOptions): MediaTransport {
       makingOffer: false,
       ignoreOffer: false,
       tracksAttached: initiator,
+      initiator,
+      since: Date.now(),
+      remoteFingerprint: null,
     };
     conns.set(peerId, conn);
+    watchdog ??= setInterval(checkConnections, WATCHDOG_CHECK_MS);
 
     if (initiator) {
       // Video and audio share the local stream so the remote side sees one MediaStream.
@@ -124,8 +173,9 @@ export function createMesh(opts: MeshOptions): MediaTransport {
       const stream = streams[0];
       if (stream) opts.onRemoteStream(peerId, stream);
     };
+    // Only the initiator restarts ICE, so restarts never collide (see the module comment).
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed') pc.restartIce();
+      if (pc.connectionState === 'failed' && conn.initiator) pc.restartIce();
     };
     return conn;
   }
@@ -138,27 +188,37 @@ export function createMesh(opts: MeshOptions): MediaTransport {
 
     async handleSignal(from, payload) {
       let conn = conns.get(from);
+      const isOffer = payload.kind === 'description' && payload.description.type === 'offer';
+      // A new DTLS fingerprint means the initiator rebuilt its connection (watchdog). Chrome would
+      // apply the offer to our old connection and then hang in "connecting", so start over too.
+      if (conn && isOffer && !conn.initiator && conn.remoteFingerprint !== null) {
+        const fingerprint = fingerprintOf(payload.description.sdp);
+        if (fingerprint !== null && fingerprint !== conn.remoteFingerprint) {
+          conn.pc.close();
+          conns.delete(from);
+          conn = undefined;
+        }
+      }
       if (!conn) {
         // Only a fresh offer may open a connection; stray candidates/answers are stale.
-        if (payload.kind !== 'description' || payload.description.type !== 'offer') return;
+        if (!isOffer) return;
         conn = create(from, false);
       }
-      const { pc } = conn;
       try {
         if (payload.kind === 'description') {
-          const d = payload.description;
-          const collision = d.type === 'offer' && (conn.makingOffer || pc.signalingState !== 'stable');
-          conn.ignoreOffer = !conn.polite && collision;
-          if (conn.ignoreOffer) return;
-          await pc.setRemoteDescription(d);
-          if (d.type === 'offer') {
-            if (!conn.tracksAttached) await attachTracks(conn);
-            await pc.setLocalDescription();
-            opts.sendSignal(from, describe(pc));
+          try {
+            await applyDescription(from, conn, payload.description);
+          } catch (err) {
+            // A recreated initiator connection (new DTLS fingerprint) cannot be applied to our old
+            // one: replace ours and answer afresh.
+            if (payload.description.type !== 'offer' || conn.initiator) throw err;
+            conn.pc.close();
+            conns.delete(from);
+            await applyDescription(from, create(from, false), payload.description);
           }
         } else {
           try {
-            await pc.addIceCandidate(payload.candidate ?? undefined);
+            await conn.pc.addIceCandidate(payload.candidate ?? undefined);
           } catch (err) {
             if (!conn.ignoreOffer) throw err;
           }
@@ -174,6 +234,8 @@ export function createMesh(opts: MeshOptions): MediaTransport {
     },
 
     close() {
+      if (watchdog) clearInterval(watchdog);
+      watchdog = null;
       for (const { pc } of conns.values()) pc.close();
       conns.clear();
     },

@@ -48,7 +48,8 @@ export function createFace(opts: { name: string; color: string; document: Docume
   ctx.textBaseline = 'middle';
   ctx.fillText(initials(opts.name), FACE_SIZE / 2, FACE_SIZE / 2 + FACE_SIZE * 0.03);
   const initialsTexels = read();
-  let liveTexels = new Uint32Array(FACE_SIZE * FACE_SIZE);
+  // Reused for every frame: no per-frame texture allocation beyond what getImageData itself does.
+  const liveTexels = new Uint32Array(FACE_SIZE * FACE_SIZE);
 
   let video: FrameVideo | null = null;
   let frameHandle: number | null = null;
@@ -59,10 +60,12 @@ export function createFace(opts: { name: string; color: string; document: Docume
   let now = 0;
 
   const grab = (at: number) => {
-    if (!video || video.videoWidth === 0) return;
+    // A disabled camera still delivers black frames; they are never shown, so skip the work.
+    if (!camOn || !video || video.videoWidth === 0) return;
     const { sx, sy, size } = squareCrop(video.videoWidth, video.videoHeight);
     ctx.drawImage(video, sx, sy, size, size, 0, 0, FACE_SIZE, FACE_SIZE);
-    liveTexels = read();
+    const { data } = ctx.getImageData(0, 0, FACE_SIZE, FACE_SIZE);
+    liveTexels.set(new Uint32Array(data.buffer, data.byteOffset, data.byteLength / 4));
     lastFrameAt = at;
   };
 

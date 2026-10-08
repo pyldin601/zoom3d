@@ -1,7 +1,7 @@
 import type { SignalPayload } from '@zoom3d/shared';
-import { beforeEach, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { asRTCPeerConnection, FakeRTCPeerConnection } from './fake-rtc';
-import { createMesh } from './mesh';
+import { createMesh, WATCHDOG_CHECK_MS, WATCHDOG_MS } from './mesh';
 
 const videoTrack = { kind: 'video' };
 const audioTrack = { kind: 'audio' };
@@ -134,10 +134,13 @@ test('remote tracks are reported with their stream', () => {
   expect(remote).toEqual([{ peerId: 'b', stream }]);
 });
 
-test('a failed connection restarts ICE', () => {
+test('a failed connection restarts ICE on the initiator only', async () => {
   mesh('c').connect('b');
   pc().setConnectionState('failed');
   expect(pc().restarts).toBe(1);
+  await mesh('a').handleSignal('b', offer);
+  pc(1).setConnectionState('failed');
+  expect(pc(1).restarts).toBe(0);
 });
 
 test('disconnect closes; stray candidates create nothing, a new offer reconnects', async () => {
@@ -166,4 +169,75 @@ test('stats sum inbound bytes; close closes everything', async () => {
   m.close();
   await tick();
   expect(FakeRTCPeerConnection.instances.every((p) => p.closed)).toBe(true);
+});
+
+describe('recovery from lost signalling', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  test('the initiator recreates a connection that is not connected within the watchdog window', () => {
+    const m = mesh('c');
+    m.connect('b');
+    vi.advanceTimersByTime(WATCHDOG_MS - 1);
+    expect(FakeRTCPeerConnection.instances).toHaveLength(1);
+    vi.advanceTimersByTime(WATCHDOG_CHECK_MS + 1);
+    expect(pc(0).closed).toBe(true);
+    expect(FakeRTCPeerConnection.instances).toHaveLength(2);
+    expect(pc(1).transceivers).toHaveLength(1);
+    expect(pc(1).tracks).toHaveLength(1);
+    m.close();
+  });
+
+  test('a connected pair is left alone', () => {
+    const m = mesh('c');
+    m.connect('b');
+    pc().setConnectionState('connected');
+    vi.advanceTimersByTime(WATCHDOG_MS * 3);
+    expect(FakeRTCPeerConnection.instances).toHaveLength(1);
+    m.close();
+  });
+
+  test('the answerer never recreates on its own', async () => {
+    const m = mesh('a');
+    await m.handleSignal('b', offer);
+    vi.advanceTimersByTime(WATCHDOG_MS * 3);
+    expect(FakeRTCPeerConnection.instances).toHaveLength(1);
+    m.close();
+  });
+
+  test('an offer that no longer applies (new fingerprint) replaces the answerer connection', async () => {
+    const m = mesh('a');
+    await m.handleSignal('b', offer);
+    pc(0).failNextRemote = true;
+    await m.handleSignal('b', {
+      kind: 'description',
+      description: { type: 'offer', sdp: 'recreated-offer' },
+    });
+    expect(pc(0).closed).toBe(true);
+    expect(FakeRTCPeerConnection.instances).toHaveLength(2);
+    expect(pc(1).calls).toEqual(['setRemote:offer', 'setLocal:answer']);
+    expect(sent.at(-1)?.payload).toMatchObject({ kind: 'description', description: { type: 'answer' } });
+    m.close();
+  });
+
+  test('an offer with a different DTLS fingerprint replaces the answerer connection', async () => {
+    const m = mesh('a');
+    const sdp = (fp: string) => `v=0\r\na=fingerprint:sha-256 ${fp}\r\n`;
+    await m.handleSignal('b', { kind: 'description', description: { type: 'offer', sdp: sdp('AA:01') } });
+    await m.handleSignal('b', { kind: 'description', description: { type: 'offer', sdp: sdp('AA:01') } });
+    expect(FakeRTCPeerConnection.instances).toHaveLength(1);
+    await m.handleSignal('b', { kind: 'description', description: { type: 'offer', sdp: sdp('BB:02') } });
+    expect(pc(0).closed).toBe(true);
+    expect(FakeRTCPeerConnection.instances).toHaveLength(2);
+    expect(pc(1).calls).toEqual(['setRemote:offer', 'setLocal:answer']);
+    m.close();
+  });
+
+  test('close stops the watchdog', () => {
+    const m = mesh('c');
+    m.connect('b');
+    m.close();
+    vi.advanceTimersByTime(WATCHDOG_MS * 3);
+    expect(FakeRTCPeerConnection.instances).toHaveLength(1);
+  });
 });
