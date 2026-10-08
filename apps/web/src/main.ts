@@ -2,6 +2,7 @@ import { INTERNAL_H, INTERNAL_W, LEVEL1, parseMap, spawnPoint, stepPlayer } from
 import { startLoop } from './game/loop';
 import { layoutStage, watchLayout } from './game/stage';
 import { createInput } from './input/keyboard';
+import { drawAutomap } from './renderer/automap';
 import { createFramebuffer } from './renderer/framebuffer';
 import { makeTextures } from './renderer/textures';
 import { renderWalls } from './renderer/walls';
@@ -12,6 +13,7 @@ const stage = document.getElementById('stage') as HTMLDivElement;
 const game = document.getElementById('game') as HTMLCanvasElement;
 const hud = document.getElementById('hud') as HTMLCanvasElement;
 const gameCtx = game.getContext('2d') as CanvasRenderingContext2D;
+const hudCtx = hud.getContext('2d') as CanvasRenderingContext2D;
 
 const map = parseMap(LEVEL1);
 const textures = makeTextures(1);
@@ -26,6 +28,13 @@ watchLayout(relayout);
 
 game.addEventListener('click', () => game.requestPointerLock());
 
+let automapVisible = false;
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'Tab' && e.code !== 'KeyM') return;
+  e.preventDefault();
+  if (!e.repeat) automapVisible = !automapVisible;
+});
+
 // Dev-only inspection hook for manual checks and e2e tests.
 if (import.meta.env.DEV) Object.assign(window, { __game: { map, player, input } });
 
@@ -35,4 +44,6 @@ startLoop((dt) => {
   stepPlayer(map, player, move, dt, player);
   renderWalls(fb, map, player, textures);
   gameCtx.putImageData(image, 0, 0);
+  hudCtx.clearRect(0, 0, hud.width, hud.height);
+  if (automapVisible) drawAutomap(hudCtx, map, player, hud.width, hud.height);
 });
