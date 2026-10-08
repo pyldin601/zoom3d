@@ -1,5 +1,6 @@
 import type { IceServer, PeerInfo, SignalPayload } from '@zoom3d/shared';
 import { beforeEach, expect, test, vi } from 'vitest';
+import type { AudioEngine } from '../audio/engine';
 import type { RemotePeer, Session } from '../net/session';
 import { createCall } from './call';
 import type { LocalMedia } from './capture';
@@ -34,6 +35,7 @@ let remote: {
   detachAll: ReturnType<typeof vi.fn>;
 };
 let videoTrack: { enabled: boolean };
+let audio: { attach: ReturnType<typeof vi.fn>; detach: ReturnType<typeof vi.fn> };
 let audioTrack: { enabled: boolean };
 
 function setPeers(...peers: PeerInfo[]) {
@@ -54,6 +56,7 @@ function makeCall(local?: Partial<LocalMedia>) {
       ...local,
     },
     remote: remote as unknown as RemoteMedia,
+    audio: audio as unknown as Pick<AudioEngine, 'attach' | 'detach'>,
     document: {} as Document,
     createFace: ({ name }) => {
       const face = {
@@ -90,6 +93,7 @@ beforeEach(() => {
   videoTrack = { enabled: true };
   audioTrack = { enabled: true };
   remote = { attach: vi.fn(() => ({ id: 'video-el' })), detach: vi.fn(), detachAll: vi.fn() };
+  audio = { attach: vi.fn(), detach: vi.fn() };
   session = {
     peers: new Map(),
     sendSignal: vi.fn(),
@@ -199,4 +203,23 @@ test('dispose closes the mesh and removes elements and faces', () => {
   expect(meshes[0]?.close).toHaveBeenCalled();
   expect(remote.detachAll).toHaveBeenCalled();
   expect(faces.get('a')?.dispose).toHaveBeenCalled();
+});
+
+test('remote voices go to the audio engine and are detached when the peer goes', () => {
+  const call = makeCall();
+  call.listener.welcome?.('me', ICE, true);
+  call.listener.peerJoined?.(info('b'));
+  const stream = { id: 's' } as unknown as MediaStream;
+  meshes[0]?.opts.onRemoteStream('b', stream);
+  expect(audio.attach).toHaveBeenCalledWith('b', stream);
+  call.listener.peerLeft?.('b');
+  expect(audio.detach).toHaveBeenCalledWith('b');
+});
+
+test('a new identity detaches every voice', () => {
+  const call = makeCall();
+  setPeers(info('a'));
+  call.listener.welcome?.('me', ICE, true);
+  call.listener.welcome?.('me2', ICE, true);
+  expect(audio.detach).toHaveBeenCalledWith('a');
 });

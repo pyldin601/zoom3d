@@ -96,7 +96,14 @@ async function joinRoom(roomId: string, name: string): Promise<void> {
     isSecureContext: window.isSecureContext,
     getUserMedia: (c) => navigator.mediaDevices.getUserMedia(c),
   });
-  call = createCall({ local, remote: createRemoteMedia(mediaContainer), document, createFace, createMesh });
+  call = createCall({
+    local,
+    remote: createRemoteMedia(mediaContainer),
+    audio: null,
+    document,
+    createFace,
+    createMesh,
+  });
   session = createSession({
     url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
     roomId,

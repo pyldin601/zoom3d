@@ -1,5 +1,6 @@
 // Glue between the session (signalling, presence) and media: mesh connections, remote elements, faces.
 import type { PeerInfo } from '@zoom3d/shared';
+import type { AudioEngine } from '../audio/engine';
 import type { Session, SessionListener } from '../net/session';
 import type { LocalMedia } from './capture';
 import type { createFace as CreateFace, FaceSource } from './faces';
@@ -23,6 +24,8 @@ export interface Call {
 export interface CallOptions {
   local: LocalMedia;
   remote: RemoteMedia;
+  /** Spatial voice engine; remote audio plays only through it. */
+  audio: Pick<AudioEngine, 'attach' | 'detach'> | null;
   document: Document;
   createFace: typeof CreateFace;
   createMesh: typeof CreateMesh;
@@ -47,6 +50,7 @@ export function createCall(opts: CallOptions): Call {
   const drop = (peerId: string) => {
     mesh?.disconnect(peerId);
     remote.detach(peerId);
+    opts.audio?.detach(peerId);
     faces.get(peerId)?.dispose();
     faces.delete(peerId);
   };
@@ -55,6 +59,7 @@ export function createCall(opts: CallOptions): Call {
     mesh?.close();
     mesh = null;
     remote.detachAll();
+    for (const id of faces.keys()) opts.audio?.detach(id);
     for (const face of faces.values()) face.dispose();
     faces.clear();
   };
@@ -76,7 +81,9 @@ export function createCall(opts: CallOptions): Call {
           sendSignal: (to, payload) => session?.sendSignal(to, payload),
           onRemoteStream: (peerId, stream) => {
             const face = faces.get(peerId);
-            if (face) face.setVideo(remote.attach(peerId, stream));
+            if (!face) return;
+            face.setVideo(remote.attach(peerId, stream));
+            opts.audio?.attach(peerId, stream);
           },
         });
       }

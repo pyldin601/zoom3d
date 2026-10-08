@@ -1,5 +1,5 @@
-// One hidden-but-playing <video> per remote peer. Kept in the DOM so Chrome decodes it;
-// in M3 it also plays the remote audio (M4 mutes it and routes audio through Web Audio).
+// One hidden-but-playing <video> per remote peer. Kept in the DOM so Chrome decodes it and feeds
+// the WebRTC audio into Web Audio; muted because the spatial engine plays the voice.
 export interface RemoteMedia {
   attach(peerId: string, stream: MediaStream): HTMLVideoElement;
   detach(peerId: string): void;
@@ -22,6 +22,7 @@ export function createRemoteMedia(container: HTMLElement): RemoteMedia {
         el = container.ownerDocument.createElement('video');
         el.autoplay = true;
         el.playsInline = true;
+        el.muted = true;
         el.dataset.peer = peerId;
         container.append(el);
         elements.set(peerId, el);
