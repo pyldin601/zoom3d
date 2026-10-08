@@ -43,6 +43,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 - Resolution/fps budget per avatar; behaviour when camera is off (initials/colour disc, or static avatar).
 - **Rec:** center square crop v1, optional face tracking later.
 - *Resolved-pending-spec 2026-10-08:* centre square crop (~128 px, ~15 fps, round mask); camera off/denied shows a coloured disc with initials; mic-only join allowed.
+- *Resolved 2026-10-09:* camera off shows an optional static avatar picture (128×128 JPEG, relayed by the server in `join`/`Peer`, stored in `localStorage`), else initials. Spec §8.1.
 
 ### D8 — Rooms, invites, identity
 - Invite = unguessable URL (token) vs signed JWT with expiry vs accounts. Room lifetime (ephemeral vs persistent)? Display names? Host powers (kick, mute)?

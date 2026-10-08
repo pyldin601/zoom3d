@@ -132,7 +132,7 @@ glue to browser/Node APIs.
 
 ### 7.2 Protocol (JSON over WebSocket, types and validators in `shared`)
 Client → server:
-- `join {roomId, name, resumeToken?}`
+- `join {roomId, name, resumeToken?, avatar?}`
 - `state {x, y, angle, seq}`, sent at 15 Hz while moving and 1 Hz while idle
 - `media {cam: bool, mic: bool}`
 - `signal {to, payload}`, where `payload` is an SDP description or an ICE candidate
@@ -146,11 +146,15 @@ Server → client:
 - `signal {from, payload}`
 - `error {code, message}`
 
-where `Peer = {id, name, color, x, y, angle, cam, mic}`.
+where `Peer = {id, name, color, x, y, angle, cam, mic, avatar}`. `avatar` is a
+`data:image/jpeg;base64,…` URL of a 128×128 picture (≤ 12 000 chars) or `null` (§8.1).
 
 ### 7.3 Server validation
 - Names are trimmed to 1–24 chars. `roomId` must match the format above.
-- Messages are capped at 16 KB. Rate limit per socket: a token bucket at 60 msg/s with a
+- Client messages are capped at 16 KB (a `join` with an avatar is ≈ 12 KB); server messages at
+  128 KB (a `welcome` listing 7 avatars is ≈ 85 KB). An invalid `avatar` is dropped (the peer
+  gets initials), not rejected. On resume the peer keeps its original name and avatar.
+- Rate limit per socket: a token bucket at 60 msg/s with a
   burst of 200 (ICE candidates arrive in bursts). Excess is dropped; persistent abuse closes
   the socket.
 - `state`: rejected if the target tile is a wall, or if the distance since the last accepted
@@ -188,7 +192,16 @@ server keeps the peer slot for 30 s, so others see the avatar freeze, not disapp
   (1×1 px, `opacity: 0.01`) so Chrome decodes it and feeds it to Web Audio. The video is
   the source for the face canvas.
 - **Camera off or denied:** the video track is absent or disabled, and the receiver shows the
-  initials disc. Mic denied: the user joins as a listener, shown as muted.
+  peer's avatar picture if it has one (§8.1), else the initials disc. Mic denied: the user joins as a listener, shown as muted.
+
+### 8.1 Avatar picture
+- Picked on the join screen (file input, `image/*`), remembered in `localStorage`
+  (`zoom3d.avatar`, re-validated on load), removable. Changing it in the room is out of scope.
+- `makeAvatar(blob)` decodes the image, takes the centre square, draws it at 128×128 and
+  encodes JPEG at quality 0.85, stepping down by 0.1 to 0.35 until it fits 12 000 chars.
+- Sent in `join`, relayed in `Peer.avatar`. Receivers decode it with an `Image` and draw it
+  into the face canvas (only ever drawn, never inserted as HTML). Face priority: live camera,
+  else picture, else initials.
 
 ## 9. Spatial audio (`apps/web/src/audio`)
 
@@ -237,13 +250,13 @@ spike (§12) must verify this first.** Possible outcomes:
 ## 10. UI flow and errors
 
 1. **Landing `/`:** "Create room" generates a `roomId` and navigates to `/r/<id>`.
-2. **Join screen `/r/<id>`:** name input, camera/mic preview and pickers, headphones hint, Join button.
+2. **Join screen `/r/<id>`:** name input, avatar picture (§8.1), camera/mic preview and pickers, headphones hint, Join button.
 3. **Join click:** resume the `AudioContext`, open the WebSocket, receive `welcome`, spawn, connect to peers.
 4. **In room:** game view, HUD, automap toggle, mic/cam toggles, copy-invite-link button.
 
 | Situation | Behaviour |
 |---|---|
-| Camera denied/unavailable | Join with initials disc; banner explaining how to re-enable |
+| Camera denied/unavailable | Join with avatar picture or initials disc; banner explaining how to re-enable |
 | Mic denied | Join as listener; muted icon |
 | Not HTTPS (non-localhost) | Blocking message: needs HTTPS |
 | Room full | Message on join screen |
