@@ -209,6 +209,22 @@ describe('avatar picture', () => {
     expect(face.texels).toBe(pictureTexels);
   });
 
+  test('a picture declaring huge dimensions is never drawn', () => {
+    const { document, context } = fakeDocument();
+    const img = fakeImage(20000, 20000);
+    const face = createFace({
+      name: 'Ada',
+      color: '#e6194b',
+      document,
+      avatar: PIC,
+      createImage: withImage(img),
+    });
+    const initialsTexels = face.texels;
+    img.onload?.();
+    expect(context.drawImage).not.toHaveBeenCalled();
+    expect(face.texels).toBe(initialsTexels);
+  });
+
   test('no picture is loaded without an avatar, and a late decode after dispose is ignored', () => {
     const { document, context } = fakeDocument();
     const create = vi.fn(() => fakeImage() as unknown as HTMLImageElement);

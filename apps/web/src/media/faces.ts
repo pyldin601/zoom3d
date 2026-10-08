@@ -2,6 +2,8 @@
 // avatar picture, else an initials disc.
 export const FACE_SIZE = 256;
 export const FACE_STALL_MS = 2000;
+/** Avatars are AVATAR_SIZE²; anything much larger is a hostile decode bomb and is never drawn. */
+export const AVATAR_MAX_DIM = 512;
 /** Fallback polling when requestVideoFrameCallback is missing: one 24 fps frame. */
 const POLL_MS = 42;
 
@@ -74,7 +76,7 @@ export function createFace(opts: FaceOptions): FaceSource {
   if (opts.avatar) {
     const img = opts.createImage?.() ?? new Image();
     img.onload = () => {
-      if (disposed) return;
+      if (disposed || img.naturalWidth > AVATAR_MAX_DIM || img.naturalHeight > AVATAR_MAX_DIM) return;
       const { sx, sy, size } = squareCrop(img.naturalWidth, img.naturalHeight);
       ctx.drawImage(img, sx, sy, size, size, 0, 0, FACE_SIZE, FACE_SIZE);
       fallbackTexels = read();

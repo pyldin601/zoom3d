@@ -232,7 +232,9 @@ export function parseClientMessage(raw: string): ClientMessage | null {
 
 function peerInfo(v: unknown): PeerInfo | null {
   if (!isObj(v) || !isStr(v.id) || !isStr(v.name) || !isStr(v.color)) return null;
-  if (!isBool(v.cam) || !isBool(v.mic) || !isStrOrNull(v.avatar)) return null;
+  if (!isBool(v.cam) || !isBool(v.mic)) return null;
+  // A missing avatar (a server from before avatars) is no avatar, so mixed versions still connect.
+  if (v.avatar !== undefined && !isStrOrNull(v.avatar)) return null;
   const p = pose(v);
   const avatar = isValidAvatar(v.avatar) ? v.avatar : null;
   return p && { id: v.id, name: v.name, color: v.color, ...p, cam: v.cam, mic: v.mic, avatar };

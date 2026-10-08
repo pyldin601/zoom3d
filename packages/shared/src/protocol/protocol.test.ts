@@ -205,11 +205,16 @@ describe('parseServerMessage', () => {
     expect(parseServerMessage(JSON.stringify(bad))).toBeNull();
   });
 
-  test('rejects a peer with a non-string avatar or a missing avatar field', () => {
+  test('rejects a peer with a non-string avatar', () => {
     expect(parseServerMessage(json({ type: 'peer_joined', peer: { ...peer, avatar: 5 } }))).toBeNull();
-    expect(
-      parseServerMessage(json({ type: 'peer_joined', peer: { ...peer, avatar: undefined } })),
-    ).toBeNull();
+  });
+
+  test('a peer without an avatar field (older server) parses with avatar null', () => {
+    const { avatar: _omit, ...older } = peer;
+    expect(parseServerMessage(json({ type: 'peer_joined', peer: older }))).toEqual({
+      type: 'peer_joined',
+      peer: { ...peer, avatar: null },
+    });
   });
 
   test('a peer with an invalid avatar parses with avatar null', () => {

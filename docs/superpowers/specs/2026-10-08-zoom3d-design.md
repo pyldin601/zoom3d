@@ -200,7 +200,8 @@ server keeps the peer slot for 30 s, so others see the avatar freeze, not disapp
 - `makeAvatar(blob)` decodes the image, takes the centre square, draws it at 128×128 and
   encodes JPEG at quality 0.85, stepping down by 0.1 to 0.35 until it fits 12 000 chars.
 - Sent in `join`, relayed in `Peer.avatar`. Receivers decode it with an `Image` and draw it
-  into the face canvas (only ever drawn, never inserted as HTML). Face priority: live camera,
+  into the face canvas (only ever drawn, never inserted as HTML); a picture declaring more than
+  512 px a side is ignored (decode bomb). A `Peer` without the field (older server) means no picture. Face priority: live camera,
   else picture, else initials.
 
 ## 9. Spatial audio (`apps/web/src/audio`)

@@ -112,6 +112,37 @@ test('an unreadable file shows an error and keeps the previous picture', async (
   expect(preview().querySelector('img')?.getAttribute('src')).toBe(PIC);
 });
 
+test('a slower earlier pick never overwrites a later one, and Join waits for encoding', async () => {
+  const onJoin = vi.fn();
+  const resolvers: ((url: string) => void)[] = [];
+  const pickAvatar = vi.fn(() => new Promise<string>((r) => resolvers.push(r)));
+  showJoin(root, { defaultName: 'Ada', onJoin, pickAvatar });
+  pickFile(new File(['1'], 'big.jpg'));
+  pickFile(new File(['2'], 'small.jpg'));
+  const join = button('Join');
+  expect(join.disabled).toBe(true);
+  submit('Ada');
+  expect(onJoin).not.toHaveBeenCalled();
+  resolvers[1]?.(`${PIC}B`);
+  await flush();
+  resolvers[0]?.(`${PIC}A`);
+  await flush();
+  expect(preview().querySelector('img')?.getAttribute('src')).toBe(`${PIC}B`);
+  expect(join.disabled).toBe(false);
+  submit('Ada');
+  expect(onJoin).toHaveBeenCalledWith('Ada', `${PIC}B`);
+});
+
+test('Join is re-enabled when encoding fails', async () => {
+  const pickAvatar = vi.fn(async () => {
+    throw new Error('unreadable');
+  });
+  showJoin(root, { defaultName: 'Ada', onJoin: () => {}, pickAvatar });
+  pickFile(new File(['x'], 'x.jpg'));
+  await flush();
+  expect(button('Join').disabled).toBe(false);
+});
+
 test('Choose picture opens the file picker for images', () => {
   showJoin(root, { defaultName: '', onJoin: () => {} });
   const input = root.querySelector('input[type="file"]') as HTMLInputElement;
