@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import {
+  AVATAR_MAX_CHARS,
+  AVATAR_SIZE,
+  isValidAvatar,
   isValidRoomId,
   MAX_MESSAGE_BYTES,
+  MAX_SERVER_MESSAGE_BYTES,
   newRoomId,
   type PeerInfo,
   parseClientMessage,
@@ -12,6 +16,36 @@ import {
 
 const ROOM = 'AAAAAAAAAAAAAAAAAAAAAA';
 const json = (v: unknown) => JSON.stringify(v);
+const AVATAR = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==';
+
+describe('avatars', () => {
+  test('constants', () => {
+    expect(AVATAR_SIZE).toBe(128);
+    expect(AVATAR_MAX_CHARS).toBe(12_000);
+    expect(MAX_SERVER_MESSAGE_BYTES).toBe(131_072);
+  });
+
+  test('accepts a JPEG data URL up to the cap', () => {
+    expect(isValidAvatar(AVATAR)).toBe(true);
+    const prefix = 'data:image/jpeg;base64,';
+    expect(isValidAvatar(prefix + 'A'.repeat(AVATAR_MAX_CHARS - prefix.length))).toBe(true);
+    expect(isValidAvatar(prefix + 'A'.repeat(AVATAR_MAX_CHARS - prefix.length + 1))).toBe(false);
+  });
+
+  test.each([
+    ['png', 'data:image/png;base64,iVBORw0KGgo='],
+    ['svg', 'data:image/svg+xml;base64,PHN2Zz4='],
+    ['script url', 'javascript:alert(1)'],
+    ['http url', 'https://example.com/a.jpg'],
+    ['non-base64', 'data:image/jpeg;base64,<b>'],
+    ['empty payload', 'data:image/jpeg;base64,'],
+    ['padding in the middle', 'data:image/jpeg;base64,AA=A'],
+    ['number', 42],
+    ['null', null],
+  ])('rejects %s', (_name, v) => {
+    expect(isValidAvatar(v)).toBe(false);
+  });
+});
 
 describe('room ids', () => {
   test('newRoomId encodes 16 bytes as 22 base64url chars', () => {
@@ -73,6 +107,24 @@ describe('parseClientMessage', () => {
     );
   });
 
+  test('keeps a valid join avatar and drops an invalid one', () => {
+    expect(parseClientMessage(json({ type: 'join', roomId: ROOM, name: 'Ada', avatar: AVATAR }))).toEqual({
+      type: 'join',
+      roomId: ROOM,
+      name: 'Ada',
+      avatar: AVATAR,
+    });
+    expect(
+      parseClientMessage(json({ type: 'join', roomId: ROOM, name: 'Ada', resumeToken: 't', avatar: 'nope' })),
+    ).toEqual({ type: 'join', roomId: ROOM, name: 'Ada', resumeToken: 't' });
+  });
+
+  test('a join with a full-size avatar fits the client message cap', () => {
+    const avatar = `data:image/jpeg;base64,${'A'.repeat(AVATAR_MAX_CHARS - 23)}`;
+    const raw = json({ type: 'join', roomId: ROOM, name: 'x'.repeat(24), resumeToken: 't'.repeat(64), avatar });
+    expect(parseClientMessage(raw)).not.toBeNull();
+  });
+
   test('accepts state', () => {
     expect(parseClientMessage(json({ type: 'state', x: 1.5, y: 2, angle: 0.1, seq: 3, z: 9 }))).toEqual({
       type: 'state',
@@ -112,6 +164,7 @@ describe('parseServerMessage', () => {
     angle: 0,
     cam: true,
     mic: false,
+    avatar: null,
   };
   const samples: ServerMessage[] = [
     {
@@ -130,6 +183,7 @@ describe('parseServerMessage', () => {
       payload: { kind: 'description', description: { type: 'answer', sdp: 'v=0' } },
     },
     { type: 'peer_joined', peer },
+    { type: 'peer_joined', peer: { ...peer, avatar: AVATAR } },
     { type: 'peer_left', id: 'p1' },
     { type: 'peer_state', id: 'p1', x: 1, y: 2, angle: 3, seq: 4 },
     { type: 'correction', x: 1, y: 2, angle: 3, seq: 4 },
@@ -143,6 +197,27 @@ describe('parseServerMessage', () => {
   test('rejects a welcome whose peer lacks a colour', () => {
     const bad = { ...samples[0], peers: [{ ...peer, color: undefined }] };
     expect(parseServerMessage(JSON.stringify(bad))).toBeNull();
+  });
+
+  test('rejects a peer with a non-string avatar or a missing avatar field', () => {
+    expect(parseServerMessage(json({ type: 'peer_joined', peer: { ...peer, avatar: 5 } }))).toBeNull();
+    expect(parseServerMessage(json({ type: 'peer_joined', peer: { ...peer, avatar: undefined } }))).toBeNull();
+  });
+
+  test('a peer with an invalid avatar parses with avatar null', () => {
+    expect(parseServerMessage(json({ type: 'peer_joined', peer: { ...peer, avatar: 'javascript:x' } }))).toEqual({
+      type: 'peer_joined',
+      peer: { ...peer, avatar: null },
+    });
+  });
+
+  test('server messages may exceed the client cap up to their own cap', () => {
+    const avatar = `data:image/jpeg;base64,${'A'.repeat(AVATAR_MAX_CHARS - 23)}`;
+    const welcome = { ...samples[0], peers: Array.from({ length: 7 }, (_, i) => ({ ...peer, id: `p${i}`, avatar })) };
+    expect(json(welcome).length).toBeGreaterThan(MAX_MESSAGE_BYTES);
+    expect(parseServerMessage(json(welcome))).not.toBeNull();
+    const huge = { ...welcome, pad: 'x'.repeat(MAX_SERVER_MESSAGE_BYTES) };
+    expect(parseServerMessage(json(huge))).toBeNull();
   });
 
   test('rejects unknown error codes', () => {

@@ -100,6 +100,37 @@ describe('join', () => {
   });
 });
 
+describe('avatars', () => {
+  const PIC = 'data:image/jpeg;base64,/9j/4AAQ';
+
+  test('an avatar is relayed to others and to later joiners', () => {
+    join('A', 'A', { avatar: PIC });
+    join('B');
+    const announced = to('A').find((m) => m.type === 'peer_joined');
+    expect(announced?.type === 'peer_joined' && announced.peer.avatar).toBeNull();
+    expect(welcome('B').peers[0]?.avatar).toBe(PIC);
+    join('C', 'C', { avatar: PIC });
+    const toB = last('B');
+    expect(toB?.type === 'peer_joined' && toB.peer.avatar).toBe(PIC);
+  });
+
+  test('an invalid avatar is dropped, not rejected', () => {
+    join('A', 'A', { avatar: 'javascript:alert(1)' });
+    join('B');
+    expect(welcome('B').peers[0]?.avatar).toBeNull();
+    expect(closed).toEqual([]);
+  });
+
+  test('resume keeps the original avatar', () => {
+    join('A', 'A', { avatar: PIC });
+    const token = welcome('A').resumeToken;
+    lobby.disconnect('A');
+    lobby.join('A2', { type: 'join', roomId: ROOM, name: 'A', resumeToken: token });
+    join('B');
+    expect(welcome('B').peers[0]?.avatar).toBe(PIC);
+  });
+});
+
 describe('state', () => {
   test('a plausible state is relayed to others with the same seq', () => {
     join('A');

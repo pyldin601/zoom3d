@@ -3,6 +3,7 @@ import {
   type GameMap,
   type IceServer,
   isPlausibleMove,
+  isValidAvatar,
   isValidRoomId,
   type JoinMessage,
   MAX_PEERS,
@@ -46,7 +47,7 @@ interface Peer extends PeerInfo {
 
 type Room = Map<string, Peer>;
 
-const info = ({ id, name, color, x, y, angle, cam, mic }: Peer): PeerInfo => ({
+const info = ({ id, name, color, x, y, angle, cam, mic, avatar }: Peer): PeerInfo => ({
   id,
   name,
   color,
@@ -55,6 +56,7 @@ const info = ({ id, name, color, x, y, angle, cam, mic }: Peer): PeerInfo => ({
   angle,
   cam,
   mic,
+  avatar,
 });
 
 export class Lobby {
@@ -116,6 +118,7 @@ export class Lobby {
       ...spawn,
       cam: false,
       mic: false,
+      avatar: isValidAvatar(msg.avatar) ? msg.avatar : null,
       resumeToken: this.opts.newToken(),
       conn,
       lastAcceptedAt: this.opts.now(),

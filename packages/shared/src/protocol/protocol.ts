@@ -2,7 +2,12 @@
 
 export const MAX_PEERS = 8;
 export const NAME_MAX = 24;
+/** Client → server. A join carrying a full-size avatar is ≈ 12 KB. */
 export const MAX_MESSAGE_BYTES = 16384;
+/** Server → client: a welcome listing 7 avatars is ≈ 85 KB. */
+export const MAX_SERVER_MESSAGE_BYTES = 131072;
+export const AVATAR_SIZE = 128;
+export const AVATAR_MAX_CHARS = 12_000;
 export const RESUME_GRACE_MS = 30000;
 export const STATE_INTERVAL_MS = 66;
 export const IDLE_INTERVAL_MS = 1000;
@@ -29,6 +34,8 @@ export interface PeerInfo {
   angle: number;
   cam: boolean;
   mic: boolean;
+  /** JPEG data URL (see isValidAvatar), shown while the camera is off. */
+  avatar: string | null;
 }
 
 export interface IceServer {
@@ -52,7 +59,7 @@ export type SignalPayload =
       } | null;
     };
 
-export type JoinMessage = { type: 'join'; roomId: string; name: string; resumeToken?: string };
+export type JoinMessage = { type: 'join'; roomId: string; name: string; resumeToken?: string; avatar?: string };
 export type StateMessage = { type: 'state'; x: number; y: number; angle: number; seq: number };
 export type MediaMessage = { type: 'media'; cam: boolean; mic: boolean };
 export type SignalMessage = { type: 'signal'; to: string; payload: SignalPayload };
@@ -96,6 +103,13 @@ export function newRoomId(bytes: Uint8Array): string {
     for (let c = 0; c < chars; c++) out += B64URL[(n >> (18 - 6 * c)) & 63];
   }
   return out;
+}
+
+const AVATAR = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/;
+
+/** A JPEG data URL of at most AVATAR_MAX_CHARS. Receivers only ever draw it onto a canvas. */
+export function isValidAvatar(v: unknown): v is string {
+  return typeof v === 'string' && v.length <= AVATAR_MAX_CHARS && AVATAR.test(v);
 }
 
 const isControl = (ch: string) => {
@@ -167,8 +181,8 @@ function iceServer(v: unknown): IceServer | null {
   return out;
 }
 
-function parseJson(raw: string): Obj | null {
-  if (raw.length > MAX_MESSAGE_BYTES) return null;
+function parseJson(raw: string, limit: number): Obj | null {
+  if (raw.length > limit) return null;
   try {
     const v: unknown = JSON.parse(raw);
     return isObj(v) && isStr(v.type) ? v : null;
@@ -182,14 +196,19 @@ function pose(m: Obj): { x: number; y: number; angle: number } | null {
 }
 
 export function parseClientMessage(raw: string): ClientMessage | null {
-  const m = parseJson(raw);
+  const m = parseJson(raw, MAX_MESSAGE_BYTES);
   if (!m) return null;
   if (m.type === 'join') {
     const name = sanitizeName(m.name);
     if (!isValidRoomId(m.roomId) || name === null) return null;
-    if (m.resumeToken === undefined) return { type: 'join', roomId: m.roomId, name };
-    if (!isStr(m.resumeToken) || m.resumeToken.length > 64) return null;
-    return { type: 'join', roomId: m.roomId, name, resumeToken: m.resumeToken };
+    const join: JoinMessage = { type: 'join', roomId: m.roomId, name };
+    if (m.resumeToken !== undefined) {
+      if (!isStr(m.resumeToken) || m.resumeToken.length > 64) return null;
+      join.resumeToken = m.resumeToken;
+    }
+    // A bad picture is not worth refusing the join over: the peer just shows initials.
+    if (isValidAvatar(m.avatar)) join.avatar = m.avatar;
+    return join;
   }
   if (m.type === 'state') {
     const p = pose(m);
@@ -207,13 +226,14 @@ export function parseClientMessage(raw: string): ClientMessage | null {
 
 function peerInfo(v: unknown): PeerInfo | null {
   if (!isObj(v) || !isStr(v.id) || !isStr(v.name) || !isStr(v.color)) return null;
-  if (!isBool(v.cam) || !isBool(v.mic)) return null;
+  if (!isBool(v.cam) || !isBool(v.mic) || !isStrOrNull(v.avatar)) return null;
   const p = pose(v);
-  return p && { id: v.id, name: v.name, color: v.color, ...p, cam: v.cam, mic: v.mic };
+  const avatar = isValidAvatar(v.avatar) ? v.avatar : null;
+  return p && { id: v.id, name: v.name, color: v.color, ...p, cam: v.cam, mic: v.mic, avatar };
 }
 
 export function parseServerMessage(raw: string): ServerMessage | null {
-  const m = parseJson(raw);
+  const m = parseJson(raw, MAX_SERVER_MESSAGE_BYTES);
   if (!m) return null;
   switch (m.type) {
     case 'welcome': {
