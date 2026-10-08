@@ -7,7 +7,20 @@ face (streamed over WebRTC). Everyone walks around; audio is spatialised — vol
 panning and room reverb depend on distance and position, so voices sound like they
 come from people standing in the room.
 
-**Status:** planning. No code yet. See [docs/](docs/).
+**Status:** milestone 1 done. Single-player walk through the level in a fixed 16:9 retro
+ray-cast view, with an automap (M/Tab). Multiplayer, faces and spatial audio are next; see
+the [roadmap](docs/roadmap.md).
+
+## Quick start
+
+Requires Node ≥ 22 and pnpm 9.
+
+```bash
+pnpm install
+pnpm dev        # http://localhost:5173 — WASD/arrows to move, click for mouse look, M for the map
+pnpm test       # unit tests
+pnpm e2e        # Playwright (uses the installed Google Chrome)
+```
 
 ## Docs
 
