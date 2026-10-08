@@ -52,6 +52,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 - Hand-made grid in JSON/ASCII vs procedural maze per room. One map or selectable? Textures: generated vs asset pack (licensing).
 - **Rec:** one hand-made ASCII map to start; procedural later.
 - *Resolved-pending-spec 2026-10-08:* use the Wolfenstein-style level in `docs/assets/map-reference.png` as the v1 map. Secret rooms (green walls) are ignored, i.e. treated as plain solid wall. Converting the image to the grid JSON/ASCII format is part of milestone 1.
+- Colours: grey, brown and blue walls become three wall types/textures (zones). Green secret-door squares become plain wall of the surrounding type. Red/yellow squares are ordinary tiles; the blue diamond marks a spawn point. Pixel-to-tile scale (image is 505x456, likely 64x57 tiles at ~8 px) to be verified during conversion.
 
 ### D10 — Tooling
 - pnpm workspaces + Vite + Vitest + Playwright + ESLint/Biome, TypeScript strict.
