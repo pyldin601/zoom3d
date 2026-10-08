@@ -1,5 +1,6 @@
 import { type PlayerState, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
+import { FACE_SIZE } from '../media/faces';
 import { createFramebuffer, rgb } from './framebuffer';
 import { AVATAR_RADIUS, hexToRgb, type Projection, projectSprite, renderSprites } from './sprites';
 import { makeTextures } from './textures';
@@ -34,7 +35,7 @@ const px = (fb: ReturnType<typeof frame>, x: number, y: number) => fb.pixels[y *
 describe('renderSprites', () => {
   test('a sprite straight ahead is drawn centred with diameter 2R·PROJ/depth', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED }]);
+    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face: null }]);
     expect(px(fb, 320, 180)).toBe(RED);
     let width = 0;
     for (let x = 0; x < fb.width; x++) {
@@ -46,7 +47,7 @@ describe('renderSprites', () => {
 
   test('the outer ring is shaded', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED }]);
+    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face: null }]);
     const r = (AVATAR_RADIUS * PROJ) / 2;
     expect(px(fb, Math.floor(320 + 0.92 * r), 180)).toBe(shade(RED));
   });
@@ -54,7 +55,7 @@ describe('renderSprites', () => {
   test('a sprite behind the camera draws nothing', () => {
     const fb = frame();
     const before = fb.pixels.slice();
-    renderSprites(fb, player, [{ x: 0.5, y: 4.5, color: RED }]);
+    renderSprites(fb, player, [{ x: 0.5, y: 4.5, color: RED, face: null }]);
     expect(fb.pixels).toEqual(before);
   });
 
@@ -74,15 +75,15 @@ describe('renderSprites', () => {
     );
     const fb = frame(walled);
     const wallPixel = px(fb, 320, 180);
-    renderSprites(fb, player, [{ x: 5.5, y: 4.5, color: RED }]);
+    renderSprites(fb, player, [{ x: 5.5, y: 4.5, color: RED, face: null }]);
     expect(px(fb, 320, 180)).toBe(wallPixel);
   });
 
   test('the nearer of two overlapping sprites wins regardless of input order', () => {
     const fb = frame();
     renderSprites(fb, player, [
-      { x: 3.5, y: 4.5, color: RED },
-      { x: 5.5, y: 4.5, color: BLUE },
+      { x: 3.5, y: 4.5, color: RED, face: null },
+      { x: 5.5, y: 4.5, color: BLUE, face: null },
     ]);
     expect(px(fb, 320, 180)).toBe(RED);
   });
@@ -103,4 +104,32 @@ describe('projectSprite', () => {
 
 test('hexToRgb packs like rgb()', () => {
   expect(hexToRgb('#e6194b')).toBe(rgb(0xe6, 0x19, 0x4b));
+});
+
+describe('face sprites', () => {
+  const face = new Uint32Array(FACE_SIZE * FACE_SIZE);
+  for (let j = 0; j < FACE_SIZE; j++)
+    for (let i = 0; i < FACE_SIZE; i++) face[j * FACE_SIZE + i] = rgb(i * 2, j * 2, 0);
+  const texelI = (c: number) => (c & 0xff) / 2;
+
+  test('the disc centre shows the centre of the face texture', () => {
+    const fb = frame();
+    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face }]);
+    const c = px(fb, 320, 180) as number;
+    expect(Math.abs(texelI(c) - 64)).toBeLessThanOrEqual(1);
+    expect(Math.abs(((c >> 8) & 0xff) / 2 - 64)).toBeLessThanOrEqual(1);
+  });
+
+  test('the outer ring is the peer colour, unshaded', () => {
+    const fb = frame();
+    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face }]);
+    const r = (AVATAR_RADIUS * PROJ) / 2;
+    expect(px(fb, Math.floor(320 + 0.92 * r), 180)).toBe(RED);
+  });
+
+  test('the face is not mirrored: left of centre samples a smaller column', () => {
+    const fb = frame();
+    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face }]);
+    expect(texelI(px(fb, 290, 180) as number)).toBeLessThan(texelI(px(fb, 350, 180) as number));
+  });
 });

@@ -149,7 +149,7 @@ startLoop((dt) => {
         color = hexToRgb(peer.info.color);
         colors.set(peer.info.color, color);
       }
-      sprites.push({ x: sample.x, y: sample.y, color });
+      sprites.push({ x: sample.x, y: sample.y, color, face: null });
       others.push({ x: sample.x, y: sample.y, color: peer.info.color, name: peer.info.name });
     }
     const text = statusText(session);

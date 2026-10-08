@@ -16,7 +16,7 @@ test('renderWalls 640x360 on LEVEL1 from spawn', async ({ bench }) => {
   }).run();
 });
 
-test('renderWalls + 7 avatar sprites around the player', async ({ bench }) => {
+test('renderWalls + 7 face avatars around the player', async ({ bench }) => {
   const { renderSprites } = await import('./sprites');
   const cx = map.spawn.x + 0.5;
   const cy = map.spawn.y + 0.5;
@@ -24,6 +24,7 @@ test('renderWalls + 7 avatar sprites around the player', async ({ bench }) => {
     x: cx + Math.cos(i) * 1.5,
     y: cy + Math.sin(i) * 1.5,
     color: 0xff0000ff,
+    face: new Uint32Array(128 * 128).fill(0xff808080),
   }));
   await bench('walls+7 sprites', () => {
     angle += 0.05;

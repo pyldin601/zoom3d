@@ -1,5 +1,6 @@
 // Billboard disc avatars, depth-tested per column against the wall z-buffer.
 import type { PlayerState } from '@zoom3d/shared';
+import { FACE_SIZE } from '../media/faces';
 import { type Framebuffer, rgb } from './framebuffer';
 import { FOV, shade } from './walls';
 
@@ -12,6 +13,8 @@ export interface Sprite {
   y: number;
   /** Packed like rgb(). */
   color: number;
+  /** FACE_SIZE² texels shown inside the ring, or null for a flat disc. */
+  face: Uint32Array | null;
 }
 
 export interface Projection {
@@ -68,13 +71,15 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
   visible.sort((a, b) => (projections[b] as Projection).depth - (projections[a] as Projection).depth);
 
   const half = h / 2;
+  const faceSize = FACE_SIZE;
   for (const i of visible) {
     const { screenX, depth, size } = projections[i] as Projection;
-    const color = (sprites[i] as Sprite).color;
-    const edge = shade(color);
+    const { color, face } = sprites[i] as Sprite;
+    const edge = face ? color : shade(color);
     const r = size / 2;
     const r2 = r * r;
     const ring2 = r2 * RING * RING;
+    const inner = r * RING;
     const x0 = Math.max(0, Math.floor(screenX - r));
     const x1 = Math.min(w - 1, Math.ceil(screenX + r));
     const y0 = Math.max(0, Math.floor(half - r));
@@ -86,7 +91,16 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
         const dy = row + 0.5 - half;
         const d2 = dx * dx + dy * dy;
         if (d2 > r2) continue;
-        pixels[row * w + col] = d2 > ring2 ? edge : color;
+        if (d2 > ring2) {
+          pixels[row * w + col] = edge;
+        } else if (face) {
+          // Map the inner circle onto the whole texture (not mirrored: we face the person).
+          const u = Math.min(faceSize - 1, Math.max(0, ((dx / inner + 1) * 0.5 * faceSize) | 0));
+          const v = Math.min(faceSize - 1, Math.max(0, ((dy / inner + 1) * 0.5 * faceSize) | 0));
+          pixels[row * w + col] = face[v * faceSize + u] as number;
+        } else {
+          pixels[row * w + col] = color;
+        }
       }
     }
   }
