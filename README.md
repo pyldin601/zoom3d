@@ -8,7 +8,8 @@ panning and room reverb depend on distance and position, so voices sound like th
 come from people standing in the room.
 
 **Status:** M4 done. Create a room, share the link, and walk the level together. Avatars show
-live camera faces (peer-to-peer WebRTC), and voices are spatial: they get quieter with
+live camera faces (peer-to-peer WebRTC), or a picture you pick on the join screen while
+your camera is off, and voices are spatial: they get quieter with
 distance (silent beyond 12 tiles), come from the speaker's direction (HRTF, best on
 headphones), get roomier further away, and sound muffled through walls. A ring lights up
 around whoever is talking. Press `` ` `` in a room to tune the audio. See the

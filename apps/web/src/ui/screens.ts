@@ -1,5 +1,7 @@
 // DOM screens and overlays inside the 16:9 stage. User-provided text only ever goes through textContent.
 import { NAME_MAX, sanitizeName } from '@zoom3d/shared';
+import { makeAvatar } from '../media/avatar';
+import { initials } from '../media/faces';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -39,10 +41,23 @@ export function showLanding(root: HTMLElement, onCreate: () => void): void {
   );
 }
 
-export function showJoin(
-  root: HTMLElement,
-  opts: { defaultName: string; error?: string; onJoin: (name: string) => void },
-): void {
+export interface JoinOptions {
+  defaultName: string;
+  /** Previously picked picture (validated), or null. */
+  defaultAvatar?: string | null;
+  error?: string;
+  /** Turns a picked file into an avatar data URL; rejects with 'unreadable' or 'too_big'. */
+  pickAvatar?: (file: File) => Promise<string>;
+  onJoin: (name: string, avatar: string | null) => void;
+}
+
+const AVATAR_ERRORS: Record<string, string> = {
+  too_big: 'That picture is too detailed — try another',
+};
+
+export function showJoin(root: HTMLElement, opts: JoinOptions): void {
+  const pickAvatar = opts.pickAvatar ?? ((file: File) => makeAvatar(file));
+  let avatar = opts.defaultAvatar ?? null;
   const input = el('input', {
     name: 'name',
     value: opts.defaultName,
@@ -51,9 +66,47 @@ export function showJoin(
   });
   input.setAttribute('autocomplete', 'nickname');
   const error = el('p', { className: 'error', textContent: opts.error ?? '' });
+
+  const preview = el('div', { className: 'avatar' });
+  const file = el('input', { type: 'file', accept: 'image/*', hidden: true });
+  file.setAttribute('aria-label', 'Avatar picture');
+  const choose = el('button', { type: 'button', textContent: 'Choose picture…' });
+  const remove = el('button', { type: 'button', textContent: 'Remove' });
+  const renderAvatar = () => {
+    // The picture is a validated data: URL, set as an attribute only; names go through textContent.
+    preview.replaceChildren(avatar ? el('img', { src: avatar, alt: '' }) : initials(input.value));
+    remove.hidden = avatar === null;
+  };
+  input.addEventListener('input', () => {
+    if (!avatar) renderAvatar();
+  });
+  choose.addEventListener('click', () => file.click());
+  remove.addEventListener('click', () => {
+    avatar = null;
+    renderAvatar();
+  });
+  file.addEventListener('change', () => {
+    const picked = file.files?.[0];
+    file.value = '';
+    if (!picked) return;
+    pickAvatar(picked).then(
+      (url) => {
+        avatar = url;
+        error.textContent = '';
+        renderAvatar();
+      },
+      (err: unknown) => {
+        const code = err instanceof Error ? err.message : '';
+        error.textContent = AVATAR_ERRORS[code] ?? "Couldn't read that picture";
+      },
+    );
+  });
+  renderAvatar();
+
   const form = el(
     'form',
     {},
+    el('div', { className: 'avatar-row' }, preview, el('div', {}, choose, remove), file),
     el('label', {}, 'Your name', input),
     el('button', { type: 'submit', textContent: 'Join' }),
     error,
@@ -65,7 +118,7 @@ export function showJoin(
       error.textContent = `Enter a name (1–${NAME_MAX} characters)`;
       return;
     }
-    opts.onJoin(name);
+    opts.onJoin(name, avatar);
   });
   setScreen(
     root,

@@ -34,7 +34,7 @@ test('a name with markup is passed through literally and never parsed', () => {
   const onJoin = vi.fn();
   showJoin(root, { defaultName: '', onJoin });
   submit('<img src=x onerror=1>');
-  expect(onJoin).toHaveBeenCalledWith('<img src=x onerror=1>');
+  expect(onJoin).toHaveBeenCalledWith('<img src=x onerror=1>', null);
   expect(root.querySelector('img')).toBeNull();
 });
 
@@ -51,6 +51,74 @@ test('the default name is prefilled and an error message is shown as text', () =
   expect((root.querySelector('input[name="name"]') as HTMLInputElement).value).toBe('Ada');
   expect(root.querySelector('b')).toBeNull();
   expect(root.querySelector('.error')?.textContent).toBe('<b>full</b>');
+});
+
+const PIC = 'data:image/jpeg;base64,/9j/4AAQ';
+const preview = () => root.querySelector('.avatar') as HTMLElement;
+const button = (name: string) =>
+  [...root.querySelectorAll('button')].find((b) => b.textContent === name) as HTMLButtonElement;
+function pickFile(file: File) {
+  const input = root.querySelector('input[type="file"]') as HTMLInputElement;
+  Object.defineProperty(input, 'files', { value: [file], configurable: true });
+  input.dispatchEvent(new Event('change'));
+}
+const flush = () => new Promise((r) => setTimeout(r, 0));
+
+test('without a picture the preview shows the initials of the typed name', () => {
+  showJoin(root, { defaultName: 'Ada Lovelace', onJoin: () => {} });
+  expect(preview().querySelector('img')).toBeNull();
+  expect(preview().textContent).toBe('AL');
+  const input = root.querySelector('input[name="name"]') as HTMLInputElement;
+  input.value = 'Bob';
+  input.dispatchEvent(new Event('input'));
+  expect(preview().textContent).toBe('B');
+  expect(button('Remove').hidden).toBe(true);
+});
+
+test('a stored picture is previewed and sent with the join; Remove clears it', () => {
+  const onJoin = vi.fn();
+  showJoin(root, { defaultName: 'Ada', defaultAvatar: PIC, onJoin });
+  expect(preview().querySelector('img')?.getAttribute('src')).toBe(PIC);
+  submit('Ada');
+  expect(onJoin).toHaveBeenLastCalledWith('Ada', PIC);
+  button('Remove').click();
+  expect(preview().querySelector('img')).toBeNull();
+  submit('Ada');
+  expect(onJoin).toHaveBeenLastCalledWith('Ada', null);
+});
+
+test('choosing a file encodes it into the preview', async () => {
+  const onJoin = vi.fn();
+  const pickAvatar = vi.fn(async () => PIC);
+  showJoin(root, { defaultName: 'Ada', onJoin, pickAvatar });
+  const file = new File(['x'], 'me.png', { type: 'image/png' });
+  pickFile(file);
+  await flush();
+  expect(pickAvatar).toHaveBeenCalledWith(file);
+  expect(preview().querySelector('img')?.getAttribute('src')).toBe(PIC);
+  expect(button('Remove').hidden).toBe(false);
+  submit('Ada');
+  expect(onJoin).toHaveBeenCalledWith('Ada', PIC);
+});
+
+test('an unreadable file shows an error and keeps the previous picture', async () => {
+  const pickAvatar = vi.fn(async () => {
+    throw new Error('unreadable');
+  });
+  showJoin(root, { defaultName: 'Ada', defaultAvatar: PIC, onJoin: () => {}, pickAvatar });
+  pickFile(new File(['%PDF'], 'doc.jpg'));
+  await flush();
+  expect(root.querySelector('.error')?.textContent).toMatch(/couldn.t read that picture/i);
+  expect(preview().querySelector('img')?.getAttribute('src')).toBe(PIC);
+});
+
+test('Choose picture opens the file picker for images', () => {
+  showJoin(root, { defaultName: '', onJoin: () => {} });
+  const input = root.querySelector('input[type="file"]') as HTMLInputElement;
+  expect(input.accept).toBe('image/*');
+  const click = vi.spyOn(input, 'click');
+  button('Choose picture…').click();
+  expect(click).toHaveBeenCalled();
 });
 
 test('status overlay shows and clears independently of the screen', () => {

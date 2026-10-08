@@ -14,6 +14,7 @@ import { startHiddenTicker } from './audio/ticker';
 import { startLoop } from './game/loop';
 import { layoutStage, watchLayout } from './game/stage';
 import { createInput } from './input/keyboard';
+import { loadAvatar, saveAvatar } from './media/avatar';
 import { type Call, createCall } from './media/call';
 import { captureLocalMedia, type LocalMedia } from './media/capture';
 import { createFace } from './media/faces';
@@ -120,9 +121,9 @@ window.addEventListener('keydown', (e) => {
 
 const PROBLEM_TEXT: Record<NonNullable<LocalMedia['problem']>, string> = {
   insecure: 'Camera and mic need HTTPS — joined without them.',
-  'no-camera': 'Camera unavailable — others see your initials.',
+  'no-camera': 'Camera unavailable — others see your picture or initials.',
   'no-mic': 'Microphone unavailable — you can listen only.',
-  'none-available': 'Camera and mic unavailable — others see your initials, you can listen only.',
+  'none-available': 'Camera and mic unavailable — others see your picture or initials, you can listen only.',
 };
 
 let shownStatus: string | null = null;
@@ -132,12 +133,13 @@ function setStatus(text: string | null): void {
   shownStatus = text;
 }
 
-async function joinRoom(roomId: string, name: string): Promise<void> {
+async function joinRoom(roomId: string, name: string, avatar: string | null): Promise<void> {
   // Created and resumed synchronously inside the Join click (user gesture), before any await.
   const audioCtx = new AudioContext({ latencyHint: 'interactive' });
   void audioCtx.resume();
   audio = createAudioEngine({ ctx: audioCtx, map, settings: loadAudioSettings(storage()) });
   saveName(name);
+  saveAvatar(storage(), avatar);
   clearScreen(ui);
   setStatus('Starting camera…');
   // Runs from the Join click, so the camera prompt and later autoplay have a user gesture.
@@ -157,6 +159,7 @@ async function joinRoom(roomId: string, name: string): Promise<void> {
     url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
     roomId,
     name,
+    avatar,
     player,
     now: () => performance.now(),
     listener: call.listener,
@@ -205,8 +208,9 @@ if (route.kind === 'landing') {
 } else {
   showJoin(ui, {
     defaultName: loadName(),
-    onJoin(name) {
-      void joinRoom(route.roomId, name);
+    defaultAvatar: loadAvatar(storage()),
+    onJoin(name, avatar) {
+      void joinRoom(route.roomId, name, avatar);
     },
   });
 }
