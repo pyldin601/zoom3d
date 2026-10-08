@@ -9,6 +9,7 @@ import {
   type Projection,
   projectSprite,
   renderSprites,
+  SHADOW_LEVELS,
   SHADOW_RADIUS,
 } from './sprites';
 import { makeTextures } from './textures';
@@ -179,6 +180,23 @@ describe('floor shadows', () => {
     expect(red(centre)).toBeLessThan(red(FLOOR) * 0.6);
     expect(red(nearEdge)).toBeGreaterThan(red(centre));
     expect(red(nearEdge)).toBeLessThan(red(FLOOR));
+  });
+
+  test('the shadow is pixelated: a few flat bands, blocky in world space', () => {
+    const fb = frame();
+    const before = fb.pixels.slice();
+    renderSprites(fb, player, [sprite(3.5)]);
+    const shades = new Set<number>();
+    fb.pixels.forEach((c, i) => {
+      if (before[i] === FLOOR && c !== FLOOR && c !== RED && c !== shade(RED)) shades.add(c);
+    });
+    expect(shades.size).toBeGreaterThan(1);
+    expect(shades.size).toBeLessThanOrEqual(SHADOW_LEVELS);
+    // Near the centre a world texel spans several screen pixels: neighbours share a colour.
+    const row = floorRow(2);
+    let same = 0;
+    for (let x = 300; x < 340; x++) if (px(fb, x, row) === px(fb, x + 1, row)) same++;
+    expect(same).toBeGreaterThan(30);
   });
 
   test('there is a gap of floor between the floating disc and its shadow', () => {

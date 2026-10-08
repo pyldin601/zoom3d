@@ -11,6 +11,9 @@ const RING = 0.85; // fraction of the radius where the shaded edge starts
 /** Floor shadow radius (tiles) and how much it darkens the floor at its centre. */
 export const SHADOW_RADIUS = 0.3;
 const SHADOW_DARKNESS = 0.55;
+/** Retro look: the shadow is a low-res floor texture (texel in tiles) with flat darkness bands. */
+const SHADOW_TEXEL = 1 / 16;
+export const SHADOW_LEVELS = 3;
 /** The camera (and every disc centre) sits at half wall height above the floor. */
 const EYE_HEIGHT = 0.5;
 
@@ -113,12 +116,14 @@ function renderShadow(fb: Framebuffer, p: PlayerState, sx: number, sy: number, d
     for (let row = row0; row <= row1; row++) {
       const dist = floorK / (row + 0.5 - half);
       if (dist >= wall) continue;
-      const dx = p.x + rayX * dist - sx;
-      const dy = p.y + rayY * dist - sy;
+      // Snap the floor point to its texel centre (grid centred on the avatar, so it stays symmetric).
+      const dx = (Math.floor((p.x + rayX * dist - sx) / SHADOW_TEXEL) + 0.5) * SHADOW_TEXEL;
+      const dy = (Math.floor((p.y + rayY * dist - sy) / SHADOW_TEXEL) + 0.5) * SHADOW_TEXEL;
       const d2 = dx * dx + dy * dy;
       if (d2 >= r2) continue;
+      const band = Math.ceil((1 - d2 / r2) * SHADOW_LEVELS) / SHADOW_LEVELS;
       const i = row * w + col;
-      pixels[i] = darken(pixels[i] as number, 1 - SHADOW_DARKNESS * (1 - d2 / r2));
+      pixels[i] = darken(pixels[i] as number, 1 - SHADOW_DARKNESS * band);
     }
   }
 }

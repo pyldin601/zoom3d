@@ -107,9 +107,10 @@ glue to browser/Node APIs.
   where the z-buffer is closer. Face canvas: 256×256, refreshed via
   `requestVideoFrameCallback` (fallback: every 66 ms), with a circular clip. Fallback face:
   coloured disc with initials. Speaking ring: outline brightness from the audio level.
-- **Floor shadow:** each avatar darkens the floor within 0.3 tiles of its position (55% at the
-  centre, fading to 0 at the edge), floor-cast per pixel and only where the floor is nearer than
-  the column's wall. Shadows are drawn before any disc, so discs always cover them.
+- **Floor shadow:** each avatar darkens the floor within 0.3 tiles of its position, floor-cast
+  per pixel and only where the floor is nearer than the column's wall. It is pixelated like a
+  low-res floor texture: snapped to a 1/16-tile world grid, in 3 flat bands up to 55% darker at
+  the centre. Shadows are drawn before any disc, so discs always cover them.
 - **HUD layer:** a separate full-resolution canvas above the scaled game canvas, for crisp
   text. It shows name labels above avatars (projected position), the self-preview (small
   mirrored circle), mic/cam state and the automap.
