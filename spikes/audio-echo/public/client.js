@@ -1,9 +1,12 @@
 // Spike client: mic capture + one RTCPeerConnection via the 2-peer relay.
+import { createSpatial } from './audio.js';
+import { createPad } from './pad.js';
+
 const $ = (id) => document.getElementById(id);
 const log = (...parts) => { $('log').textContent += parts.join(' ') + '\n'; };
 const setStatus = (s) => { $('status').textContent = s; log('status:', s); };
 
-let ws, pc, localStream;
+let ws, pc, localStream, ctx;
 let queue = Promise.resolve();
 const remoteListeners = [];
 
@@ -11,7 +14,6 @@ export function onRemoteStream(cb) { remoteListeners.push(cb); }
 
 // ?fake: a beeping tone instead of the mic, for automated checks and solo listening tests.
 function fakeToneStream() {
-  const ctx = new AudioContext();
   const osc = new OscillatorNode(ctx, { frequency: 440 });
   const gate = new GainNode(ctx, { gain: 0 });
   for (let t = 0; t < 3600; t += 1) {
@@ -68,6 +70,9 @@ async function handle(m) {
 
 $('start').onclick = async () => {
   $('start').disabled = true;
+  // Created and resumed inside the click so autoplay policy allows output.
+  ctx = new AudioContext();
+  await ctx.resume();
   try {
     localStream = new URLSearchParams(location.search).has('fake')
       ? fakeToneStream()
@@ -85,9 +90,50 @@ $('start').onclick = async () => {
   ws.onclose = (e) => setStatus(`socket closed ${e.code} ${e.reason}`);
 };
 
-// Baseline playback (Task 3): remote stream straight into an <audio> element.
+// Output modes: 'element' plays the stream directly (baseline); 'webaudio' and
+// 'webaudio-element' play through the spatial graph.
+let spatial = null;
+let remoteStream = null;
+const checked = (name) => document.querySelector(`input[name=${name}]:checked`).value;
+
+const pad = createPad($('pad'), (dx, dy) => spatial?.setPosition(dx, dy));
+
+function applyMode() {
+  if (!spatial) return;
+  const mode = checked('mode');
+  const remote = $('remote');
+  const spatialEl = $('spatial');
+  // Chrome only feeds WebRTC audio into Web Audio while the stream plays in a media element,
+  // so #remote keeps playing in every mode and is merely muted for the Web Audio modes.
+  remote.muted = mode !== 'element';
+  const out = spatial.connectTo(mode === 'element' ? 'none' : mode);
+  if (out) {
+    spatialEl.srcObject = out;
+    spatialEl.play().catch((err) => log('play error', err.message));
+  } else {
+    spatialEl.pause();
+    spatialEl.srcObject = null;
+  }
+  log('mode:', mode);
+}
+
 onRemoteStream((stream) => {
-  const el = $('remote');
-  el.srcObject = stream;
-  el.play().catch((err) => log('play error', err.message));
+  remoteStream = stream;
+  const remote = $('remote');
+  remote.srcObject = remoteStream;
+  remote.play().catch((err) => log('play error', err.message));
+  spatial?.dispose();
+  spatial = createSpatial(ctx, remoteStream);
+  const { dx, dy } = pad.get();
+  spatial.setPosition(dx, dy);
+  spatial.setOccluded($('occluded').checked);
+  spatial.setPanningModel(checked('panning'));
+  applyMode();
+  Object.assign(window.spike, { ctx, remoteStream, spatial });
 });
+
+for (const el of document.querySelectorAll('input[name=mode]')) el.onchange = applyMode;
+for (const el of document.querySelectorAll('input[name=panning]')) {
+  el.onchange = () => spatial?.setPanningModel(checked('panning'));
+}
+$('occluded').onchange = () => spatial?.setOccluded($('occluded').checked);

@@ -10,12 +10,29 @@
     #status { margin-left: 12px; font-weight: bold; }
     #log { background: #000; color: #8f8; padding: 8px; max-height: 200px; overflow: auto; font-size: 12px; }
     audio { display: none; }
+    fieldset { border: 1px solid #444; margin: 8px 0; }
+    label { margin-right: 14px; }
+    #pad { display: block; width: min(480px, 100%); touch-action: none; cursor: crosshair; }
   </style>
 </head>
 <body>
   <h1>audio-echo spike</h1>
   <p><button id="start">Start</button><span id="status">idle</span></p>
+  <fieldset>
+    <legend>Output mode</legend>
+    <label><input type="radio" name="mode" value="element"> element (baseline, no spatial)</label>
+    <label><input type="radio" name="mode" value="webaudio" checked> webaudio → destination</label>
+    <label><input type="radio" name="mode" value="webaudio-element"> webaudio → &lt;audio&gt;</label>
+  </fieldset>
+  <fieldset>
+    <legend>Panning</legend>
+    <label><input type="radio" name="panning" value="HRTF" checked> HRTF (headphones)</label>
+    <label><input type="radio" name="panning" value="equalpower"> equalpower (speakers)</label>
+    <label><input type="checkbox" id="occluded"> occluded (wall between)</label>
+  </fieldset>
+  <canvas id="pad" width="480" height="480"></canvas>
   <audio id="remote" autoplay playsinline></audio>
+  <audio id="spatial" autoplay playsinline></audio>
   <pre id="log"></pre>
   <script type="module" src="client.js"></script>
 </body>
