@@ -28,6 +28,7 @@ test('renderWalls + 7 face avatars around the player', async ({ bench }) => {
     speaking: 0.5,
     bob: 0.5,
     itemBob: 0.5,
+    sip: 0,
     held: 'beer' as const,
   }));
   await bench('walls+7 sprites', () => {
