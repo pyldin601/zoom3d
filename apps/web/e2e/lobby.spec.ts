@@ -97,6 +97,18 @@ test('choosing a microphone really switches to it, and is restored after a reloa
   await expect.poll(lastMic).toBe('Fake Audio Input 2');
 });
 
+test('the lobby controls are centred in the panel', async ({ page }) => {
+  await openRoom(page);
+  const centre = async (selector: string) => {
+    const box = await page.locator(selector).first().boundingBox();
+    return box ? box.x + box.width / 2 : Number.NaN;
+  };
+  const panel = await centre('.panel');
+  for (const selector of ['.lobby-disc', '.lobby .devices', '.lobby input[name="name"]', '.lobby [type="submit"]']) {
+    expect(Math.abs((await centre(selector)) - panel), selector).toBeLessThan(2);
+  }
+});
+
 test('closed menus stay out of sight', async ({ page }) => {
   await openRoom(page);
   await page.getByRole('button', { name: 'Turn camera off' }).click();
