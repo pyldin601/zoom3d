@@ -143,3 +143,12 @@ test('held is relayed over real sockets', async () => {
   a.send({ type: 'held', item: 'coffee' });
   expect(await b.waitFor('peer_held')).toEqual({ type: 'peer_held', id: a.welcome.selfId, item: 'coffee' });
 });
+
+test('sips are relayed over real sockets', async () => {
+  const a = await joined('Ada');
+  const b = await joined('Bob');
+  a.send({ type: 'held', item: 'coffee' });
+  await b.waitFor('peer_held');
+  a.send({ type: 'drink' });
+  expect(await b.waitFor('peer_drink')).toEqual({ type: 'peer_drink', id: a.welcome.selfId });
+});

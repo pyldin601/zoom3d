@@ -269,3 +269,31 @@ test('peer_held updates the peer and ignores unknown ids', () => {
   expect(session.peers.get('a')?.info.held).toBe('coffee');
   expect(() => ws.receive({ type: 'peer_held', id: 'zzz', item: 'beer' })).not.toThrow();
 });
+
+test('sendDrink sends only while open', () => {
+  const session = createSession({
+    url: 'ws://t/ws',
+    roomId: ROOM,
+    name: 'Ada',
+    player,
+    now: Date.now,
+    WebSocketImpl: asWebSocket,
+  });
+  const ws = FakeWebSocket.latest();
+  const drinks = () => ws.sent.filter((m) => (m as { type: string }).type === 'drink');
+  ws.open();
+  session.sendDrink();
+  expect(drinks()).toEqual([]);
+  ws.receive(welcome());
+  session.sendDrink();
+  expect(ws.sent.at(-1)).toEqual({ type: 'drink' });
+});
+
+test('peer_drink stamps the peer and ignores unknown ids', () => {
+  const { session, ws } = joinedSession([peer('a')]);
+  expect(session.peers.get('a')?.drinkAt).toBe(Number.NEGATIVE_INFINITY);
+  vi.advanceTimersByTime(1234);
+  ws.receive({ type: 'peer_drink', id: 'a' });
+  expect(session.peers.get('a')?.drinkAt).toBe(Date.now());
+  expect(() => ws.receive({ type: 'peer_drink', id: 'zzz' })).not.toThrow();
+});

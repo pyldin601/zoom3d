@@ -71,8 +71,9 @@ export type JoinMessage = {
 export type StateMessage = { type: 'state'; x: number; y: number; angle: number; seq: number };
 export type MediaMessage = { type: 'media'; cam: boolean; mic: boolean };
 export type HeldMessage = { type: 'held'; item: HeldItem | null };
+export type DrinkMessage = { type: 'drink' };
 export type SignalMessage = { type: 'signal'; to: string; payload: SignalPayload };
-export type ClientMessage = JoinMessage | StateMessage | MediaMessage | HeldMessage | SignalMessage;
+export type ClientMessage = JoinMessage | StateMessage | MediaMessage | HeldMessage | DrinkMessage | SignalMessage;
 
 export type ErrorCode = 'room_full' | 'invalid_room' | 'invalid_name' | 'not_joined';
 const ERROR_CODES: readonly ErrorCode[] = ['room_full', 'invalid_room', 'invalid_name', 'not_joined'];
@@ -90,6 +91,7 @@ export type ServerMessage =
   | { type: 'peer_joined'; peer: PeerInfo }
   | { type: 'peer_media'; id: string; cam: boolean; mic: boolean }
   | { type: 'peer_held'; id: string; item: HeldItem | null }
+  | { type: 'peer_drink'; id: string }
   | { type: 'signal'; from: string; payload: SignalPayload }
   | { type: 'peer_left'; id: string }
   | { type: 'peer_state'; id: string; x: number; y: number; angle: number; seq: number }
@@ -129,6 +131,11 @@ export function isValidAvatar(v: unknown): v is string {
 /** Drinks a peer can hold beside its avatar; "nothing" is null. */
 export const HELD_ITEMS = ['beer', 'coffee', 'wine'] as const;
 export type HeldItem = (typeof HELD_ITEMS)[number];
+
+/** One sip of the held drink lasts this long (held items spec §2.3). */
+export const SIP_MS = 1400;
+/** The server relays at most one sip per peer per this gap: shorter than a sip, so network jitter can't drop an honest one. */
+export const DRINK_GAP_MS = 1000;
 
 export function isHeldItem(v: unknown): v is HeldItem {
   return HELD_ITEMS.includes(v as HeldItem);
@@ -274,6 +281,9 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   if (m.type === 'held') {
     return m.item === null || isHeldItem(m.item) ? { type: 'held', item: m.item } : null;
   }
+  if (m.type === 'drink') {
+    return { type: 'drink' };
+  }
   if (m.type === 'signal') {
     const payload = parseSignalPayload(m.payload);
     return payload && isStr(m.to) ? { type: 'signal', to: m.to, payload } : null;
@@ -338,6 +348,8 @@ export function parseServerMessage(raw: string): ServerMessage | null {
         : null;
     case 'peer_held':
       return isStr(m.id) ? { type: 'peer_held', id: m.id, item: isHeldItem(m.item) ? m.item : null } : null;
+    case 'peer_drink':
+      return isStr(m.id) ? { type: 'peer_drink', id: m.id } : null;
     case 'signal': {
       const payload = parseSignalPayload(m.payload);
       return payload && isStr(m.from) ? { type: 'signal', from: m.from, payload } : null;

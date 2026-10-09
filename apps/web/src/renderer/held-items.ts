@@ -10,6 +10,9 @@ import { rgb } from './framebuffer';
 export const HELD_TEXEL = 0.08;
 export const HELD_LEFT = 0.15;
 export const HELD_TOP = -0.3;
+/** At the top of a sip the drink is at the disc's mouth (held items spec §2.3). */
+export const SIP_LEFT = -0.55;
+export const SIP_TOP = -0.05;
 
 export interface HeldSprite {
   w: number;

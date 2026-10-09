@@ -3,7 +3,7 @@
 import type { HeldItem, PlayerState } from '@zoom3d/shared';
 import { FACE_SIZE } from '../media/faces';
 import { type Framebuffer, rgb } from './framebuffer';
-import { HELD_LEFT, HELD_SPRITES, HELD_TEXEL, HELD_TOP } from './held-items';
+import { HELD_LEFT, HELD_SPRITES, HELD_TEXEL, HELD_TOP, SIP_LEFT, SIP_TOP } from './held-items';
 import { FOV, shade } from './walls';
 
 export const AVATAR_RADIUS = 0.35; // tiles
@@ -33,6 +33,8 @@ export interface Sprite {
   bob: number;
   /** 0..1: walking bob of the held item, which trails the disc's. */
   itemBob: number;
+  /** 0..1: sip progress, from resting in front of the body (0) to at the mouth (1). */
+  sip: number;
   /** Drawn in a hand on the viewer's right of the disc. */
   held: HeldItem | null;
 }
@@ -176,7 +178,7 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
     if (s.held) {
       // Under the item, which sits beside the disc along the camera plane, so at the same depth.
       const radius = (HELD_TEXEL * HELD_SPRITES[s.held].w * AVATAR_RADIUS) / 2;
-      const offset = HELD_LEFT * AVATAR_RADIUS + radius;
+      const offset = heldLeft(s.sip) * AVATAR_RADIUS + radius;
       renderShadow(fb, p, s.x - Math.sin(p.angle) * offset, s.y + Math.cos(p.angle) * offset, depth, radius);
     }
   }
@@ -185,7 +187,7 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
   const faceSize = FACE_SIZE;
   for (const i of visible) {
     const { screenX, depth, size } = projections[i] as Projection;
-    const { color, face, speaking, held, bob, itemBob } = sprites[i] as Sprite;
+    const { color, face, speaking, held, bob, itemBob, sip } = sprites[i] as Sprite;
     const ring = speaking > 0 ? mixWhite(color, Math.min(speaking, 1) * SPEAKING_GLOW) : color;
     const edge = face ? ring : shade(ring);
     const r = size / 2;
@@ -221,18 +223,30 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
       }
     }
     if (held) {
-      renderHeld(fb, held, screenX, depth, r, itemBob);
+      renderHeld(fb, held, screenX, depth, r, itemBob, sip);
     }
   }
 }
 
 /** Draws the held item beside a disc of on-screen radius r, depth-tested like the disc. */
-function renderHeld(fb: Framebuffer, item: HeldItem, screenX: number, depth: number, r: number, lift: number): void {
+/** The held item's left edge and top, in disc radii, partway (`sip` 0..1) to the mouth. */
+const heldLeft = (sip: number) => HELD_LEFT + (SIP_LEFT - HELD_LEFT) * sip;
+const heldTop = (sip: number) => HELD_TOP + (SIP_TOP - HELD_TOP) * sip;
+
+function renderHeld(
+  fb: Framebuffer,
+  item: HeldItem,
+  screenX: number,
+  depth: number,
+  r: number,
+  lift: number,
+  sip: number
+): void {
   const { width: w, height: h, pixels, zbuffer } = fb;
   const { w: tw, h: th, texels } = HELD_SPRITES[item];
   const t = HELD_TEXEL * r;
-  const left = screenX + HELD_LEFT * r;
-  const top = h / 2 - (HELD_TOP + lift * BOB_HEIGHT) * r;
+  const left = screenX + heldLeft(sip) * r;
+  const top = h / 2 - (heldTop(sip) + lift * BOB_HEIGHT) * r;
   const x0 = Math.max(0, Math.floor(left));
   const x1 = Math.min(w - 1, Math.ceil(left + tw * t) - 1);
   const y0 = Math.max(0, Math.floor(top));

@@ -12,12 +12,13 @@ In scope:
 - Other people see the item on your avatar disc.
 - You see your own drink in first person (§2.1, added 2026-10-09).
 - Avatars and drinks bob while walking (§2.2, added 2026-10-09).
+- Taking a sip, seen by you and by others (§2.3, added 2026-10-09).
 - You pick it from the room bar.
 - The choice is remembered per browser.
 
 Out of scope:
 - Custom or uploaded items.
-- Drinking or other gesture animations.
+- Other gestures (cheers, waving), and drinks that empty.
 - Any interaction with the map.
 
 ## 2. Look
@@ -96,6 +97,30 @@ walkers use their interpolated positions.
 - After stopping, the bob eases out over 150 ms. A jump of a tile or more in one frame (resume,
   correction) is not counted as walking.
 
+### 2.3 Taking a sip
+
+**Trigger:**
+- In a room, press the number key of the drink you already hold (`1` beer, `2` coffee, `3`
+  wine; §6.3).
+- `0`, a key for another drink, key repeat and the room-bar picker never sip.
+- A press while a sip is playing is ignored.
+
+**Timing:** a sip lasts 1.4 s: 0.35 s there, 0.7 s held, 0.35 s back. Both moves ease in and
+out, and there is no tilt. `sipPose(elapsedMs)` in `apps/web/src/renderer/sip.ts` returns the
+progress: 0 at rest, 1 while held.
+
+**Your view (variant "A", chosen 2026-10-09):**
+- The drink moves from its resting spot (left edge at 8.3% of the width, 55% visible) to the
+  bottom-centre (horizontally centred), sinking until 30% is visible, then goes back.
+- Your mouth is below the view, so the drink goes down, not up.
+- The walking bob still applies on top.
+
+**Others' view (variant "A"):**
+- The hand and drink move from the disc's lower right to its mouth, then back.
+- The sprite's left edge goes from +0.15 r to −0.55 r, and its top from 0.3 r to 0.05 r below
+  the horizon.
+- Its floor shadow follows it sideways.
+
 ## 3. Data
 
 In `packages/shared`:
@@ -123,6 +148,17 @@ Validation:
     invalid message, so a newer server that adds items doesn't break older clients.
 - The existing token bucket (60 msg/s) covers `held`. It gets no limit of its own.
 
+**Sips** (added 2026-10-09):
+- Client → server: `drink {}`. Extra fields are dropped.
+- Server → client: `peer_drink {id}`, sent to the rest of the room.
+- The server relays a sip only if the sender holds something, and drops another `drink` from the
+  same peer within 1 s (`DRINK_GAP_MS`), so mashing the key can't flood the room.
+  - The gap is shorter than a sip (`SIP_MS`, 1.4 s) on purpose: two honest sips sent 1.4 s apart
+    can arrive a little closer together, and must not be dropped. The client itself never starts
+    a sip while one is playing.
+- Nothing is stored, so a late joiner never replays an old sip.
+- An older server ignores `drink`, and an older client ignores `peer_drink`.
+
 There's no `held` field in `join`, which follows the `media` pattern:
 - After every `welcome` (fresh or resumed), the client sends its current `held` once it has
   one, **including `null`**. Otherwise a "Nothing" picked while disconnected would never reach a
@@ -130,6 +166,10 @@ There's no `held` field in `join`, which follows the `media` pattern:
 - A fresh identity starts at `null` on the server.
 
 ## 5. Server (`apps/server`)
+
+- `Lobby.drink(conn)` relays `peer_drink` per §4 and keeps the peer's last relayed sip time
+  (`lastDrinkAt`) for the 1 s gap.
+
 
 - `Peer.held` starts as `null` and is included in `info()`, which feeds `welcome.peers` and
   `peer_joined`.
