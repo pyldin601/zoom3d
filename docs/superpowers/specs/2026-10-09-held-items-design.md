@@ -13,7 +13,7 @@ In scope:
 - You see your own drink in first person (§2.1, added 2026-10-09).
 - Avatars and drinks bob while walking (§2.2, added 2026-10-09).
 - Taking a sip, seen by you and by others (§2.3, added 2026-10-09).
-- You pick it from the room bar.
+- You pick it with the number keys (§6.3).
 - The choice is remembered per browser.
 
 Out of scope:
@@ -102,7 +102,7 @@ walkers use their interpolated positions.
 **Trigger:**
 - In a room, press the number key of the drink you already hold (`1` beer, `2` coffee, `3`
   wine; §6.3).
-- `0`, a key for another drink, key repeat and the room-bar picker never sip.
+- `0`, a key for another drink and key repeat never sip.
 - A press while a sip is playing is ignored.
 
 **Timing:** a sip lasts 1.4 s: 0.35 s there, 0.7 s held, 0.35 s back. Both moves ease in and
@@ -132,7 +132,7 @@ progress: 0 at rest, 1 while held.
 - A `peer_drink` that arrives while that peer's sip is still playing (bunched by the network) is
   ignored, so the drink never snaps back to the start mid-sip.
 
-**Putting the drink down** (`0`, or the picker) ends a playing sip at once, in both views. A
+**Putting the drink down** (`0`) ends a playing sip at once, in both views. A
 drink picked up afterwards starts at rest.
 
 ## 3. Data
@@ -206,26 +206,16 @@ There's no `held` field in `join`, which follows the `media` pattern:
 - `setHeld(item)` sends immediately when connected.
 - Handles `peer_held` by updating `peer.info.held`.
 
-### 6.3 Room bar (`apps/web/src/ui/screens.ts`)
+### 6.3 Picking a drink
 
-- A native `<select aria-label="In hand">` sits after the Mic and Cam toggles, with the options
-  "Nothing in hand", "Beer", "Coffee" and "Wine". A native control is accessible and needs no
-  custom menu code.
-- On `change`: call `onHeld(item)`, then `blur()` the select. Otherwise letter keys would pick an
-  option by typeahead (W → Wine) instead of moving the player.
-- A letter-key `keydown` on the focused select (left focused when the menu closed without a
-  change) is cancelled and blurs it, for the same reason.
-- Arrow keys still move through the options while the select has focus: the game ignores keys
-  aimed at a `SELECT`. Where a closed select commits each arrow step (Windows/Linux Chrome), it
-  blurs after one step.
-- `showRoomBar` takes a separate `HeldControl { held, onHeld }`, so held items stay out of `MediaControls`.
+- *Removed 2026-10-09:* the room bar's `<select aria-label="In hand">` picker. The number keys
+  below cover it, so the room bar holds only Mic, Cam and the invite link.
 - **Number keys** (added 2026-10-09): in a room, `1` Beer, `2` Coffee, `3` Wine, `0` Nothing.
   - Top-row digits and the numpad both work. Keys are matched by `e.code`, so any keyboard
     layout behaves the same.
   - Ignored with Cmd/Ctrl/Alt (browser shortcuts), on key repeat, and while typing in a text
     field.
-  - They go through the same path as the picker: draw, save, send. The picker then shows the new
-    choice via the setter `showRoomBar` returns. Re-picking the current drink sends nothing.
+  - A pick draws, saves and sends the new choice. Re-picking the current drink sends nothing.
 
 ### 6.4 Renderer (`apps/web/src/renderer/`)
 
@@ -265,8 +255,6 @@ There's no `held` field in `join`, which follows the `media` pattern:
   - A farther sprite has a proportionally smaller item.
   - A wall nearer than the sprite hides the item.
   - `held: null` draws nothing extra.
-- **room bar:** selecting an option calls `onHeld` with the item (or `null`) and blurs the
-  select.
-- **Manual check:** two tabs in one room. Pick beer in one tab and watch it appear on that
+- **Manual check:** two tabs in one room. Press `1` (beer) in one tab and watch it appear on that
   avatar in the other. Reload; the choice is kept. Walk behind a wall; the item is hidden along
   with the disc.
