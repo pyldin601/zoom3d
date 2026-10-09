@@ -1,6 +1,8 @@
 import { defineConfig } from 'vitest/config';
+import { mediapipeWasm } from './mediapipe-wasm';
 
 export default defineConfig({
+  plugins: [mediapipeWasm()],
   server: {
     port: 5173,
     strictPort: true,
