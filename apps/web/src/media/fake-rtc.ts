@@ -3,8 +3,11 @@ type Desc = { type: RTCSdpType; sdp: string };
 
 export class FakeRTCPeerConnection {
   static instances: FakeRTCPeerConnection[] = [];
+  /** m-line kinds of a remote offer, in order: video, mic, boombox (boombox spec §5.1). */
+  static offerKinds = ['video', 'audio', 'audio'];
   static reset() {
     FakeRTCPeerConnection.instances = [];
+    FakeRTCPeerConnection.offerKinds = ['video', 'audio', 'audio'];
   }
 
   signalingState: RTCSignalingState = 'stable';
@@ -23,7 +26,9 @@ export class FakeRTCPeerConnection {
   bytesReceived = 0;
   onnegotiationneeded: (() => unknown) | null = null;
   onicecandidate: ((e: { candidate: unknown }) => void) | null = null;
-  ontrack: ((e: { streams: unknown[]; track: unknown }) => void) | null = null;
+  ontrack: ((e: { streams: unknown[]; track: unknown; transceiver: unknown }) => void) | null = null;
+  /** inbound-rtp reports returned by getStats; defaults to one report of `bytesReceived`. */
+  inboundReports: { mid: string; bytesReceived: number }[] | null = null;
   onconnectionstatechange: (() => void) | null = null;
 
   constructor(readonly config: RTCConfiguration) {
@@ -36,10 +41,20 @@ export class FakeRTCPeerConnection {
     const t = new FakeTransceiver(withTrack ? (trackOrKind as { kind: string }).kind : (trackOrKind as string));
     t.sender.track = withTrack ? trackOrKind : null;
     t.direction = init?.direction ?? 'sendrecv';
+    if (init?.sendEncodings) {
+      t.sender.parameters = { encodings: init.sendEncodings.map((e) => ({ ...e })) };
+    }
+    t.mid = String(this.localTransceivers.length);
     this.localTransceivers.push(t);
   }
+  /** Like the real one, adds a sending transceiver of the track's kind. */
   addTrack(track: unknown) {
     this.tracks.push(track);
+    const t = new FakeTransceiver((track as { kind: string }).kind);
+    t.sender.track = track;
+    t.direction = 'sendrecv';
+    t.mid = String(this.localTransceivers.length);
+    this.localTransceivers.push(t);
   }
   async setLocalDescription(desc?: Desc) {
     const type = desc?.type ?? (this.signalingState === 'have-remote-offer' ? 'answer' : 'offer');
@@ -56,7 +71,11 @@ export class FakeRTCPeerConnection {
       throw new Error('fingerprint changed');
     }
     if (desc.type === 'offer' && this.remoteTransceivers.length === 0) {
-      this.remoteTransceivers = [new FakeTransceiver('video'), new FakeTransceiver('audio')];
+      this.remoteTransceivers = FakeRTCPeerConnection.offerKinds.map((kind, i) => {
+        const t = new FakeTransceiver(kind);
+        t.mid = String(i);
+        return t;
+      });
     }
     this.remoteDescription = desc;
     this.signalingState = desc.type === 'offer' ? 'have-remote-offer' : 'stable';
@@ -77,15 +96,16 @@ export class FakeRTCPeerConnection {
     this.closed = true;
   }
   async getStats() {
-    return new Map([['in', { type: 'inbound-rtp', bytesReceived: this.bytesReceived }]]);
+    const reports = this.inboundReports ?? [{ mid: '0', bytesReceived: this.bytesReceived }];
+    return new Map(reports.map((r, i) => [`in${i}`, { type: 'inbound-rtp', ...r }]));
   }
 
   // Test drivers
   fireNegotiationNeeded() {
     return this.onnegotiationneeded?.();
   }
-  fireTrack(stream: unknown) {
-    this.ontrack?.({ streams: [stream], track: {} });
+  fireTrack(stream: unknown, transceiver?: unknown, track: unknown = {}) {
+    this.ontrack?.({ streams: stream ? [stream] : [], track, transceiver });
   }
   setConnectionState(state: RTCPeerConnectionState) {
     this.connectionState = state;
@@ -97,6 +117,7 @@ export const asRTCPeerConnection = FakeRTCPeerConnection as unknown as typeof RT
 
 export class FakeTransceiver {
   direction: RTCRtpTransceiverDirection = 'recvonly';
+  mid: string | null = null;
   receiver: { track: { kind: string } };
   sender = {
     track: null as unknown,

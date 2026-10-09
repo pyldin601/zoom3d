@@ -1,7 +1,7 @@
 import type { SignalPayload } from '@zoom3d/shared';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { asRTCPeerConnection, FakeRTCPeerConnection } from './fake-rtc';
-import { createMesh, WATCHDOG_CHECK_MS, WATCHDOG_MS } from './mesh';
+import { BOOMBOX_MAX_BITRATE, createMesh, WATCHDOG_CHECK_MS, WATCHDOG_MS } from './mesh';
 
 const videoTrack = { kind: 'video' };
 const audioTrack = { kind: 'audio' };
@@ -12,11 +12,14 @@ const localStream = {
 
 let sent: { to: string; payload: SignalPayload }[];
 let remote: { peerId: string; stream: unknown }[];
+let boomboxes: { peerId: string; stream: unknown }[];
+const music = { kind: 'audio', id: 'music' };
 
 beforeEach(() => {
   FakeRTCPeerConnection.reset();
   sent = [];
   remote = [];
+  boomboxes = [];
 });
 
 const mesh = (selfId: string, stream: MediaStream | null = localStream) =>
@@ -26,6 +29,8 @@ const mesh = (selfId: string, stream: MediaStream | null = localStream) =>
     localStream: stream,
     sendSignal: (to, payload) => sent.push({ to, payload }),
     onRemoteStream: (peerId, s) => remote.push({ peerId, stream: s }),
+    onRemoteBoombox: (peerId, s) => boomboxes.push({ peerId, stream: s }),
+    createStream: (track) => ({ wraps: track }) as unknown as MediaStream,
     RTCPeerConnectionImpl: asRTCPeerConnection,
   });
 const pc = (i = 0) => FakeRTCPeerConnection.instances[i] as FakeRTCPeerConnection;
@@ -64,6 +69,7 @@ test('without local media the initiator still receives video and audio', () => {
   expect(pc().transceivers.map((t) => [t.trackOrKind, t.init?.direction])).toEqual([
     ['video', 'recvonly'],
     ['audio', 'recvonly'],
+    ['audio', 'sendrecv'],
   ]);
 });
 
@@ -86,7 +92,8 @@ test('the answerer attaches its local tracks to the offered transceivers before 
 
 test('an answerer without local media only receives', async () => {
   await mesh('a', null).handleSignal('b', offer);
-  expect(pc().remoteTransceivers.map((t) => t.direction)).toEqual(['recvonly', 'recvonly']);
+  // The boombox slot still opens: a player with no camera or mic can play music.
+  expect(pc().remoteTransceivers.map((t) => t.direction)).toEqual(['recvonly', 'recvonly', 'sendrecv']);
 });
 
 test('glare on renegotiation: the impolite side ignores the colliding offer and swallows its candidates', async () => {
@@ -164,7 +171,7 @@ test('stats sum inbound bytes; close closes everything', async () => {
   m.connect('b');
   m.connect('c');
   pc(0).bytesReceived = 42;
-  expect(await m.stats('b')).toEqual({ bytesReceived: 42 });
+  expect(await m.stats('b')).toEqual({ bytesReceived: 42, boomboxBytesReceived: 0 });
   expect(await m.stats('nobody')).toBeNull();
   m.close();
   await tick();
@@ -183,7 +190,8 @@ describe('recovery from lost signalling', () => {
     vi.advanceTimersByTime(WATCHDOG_CHECK_MS + 1);
     expect(pc(0).closed).toBe(true);
     expect(FakeRTCPeerConnection.instances).toHaveLength(2);
-    expect(pc(1).transceivers).toHaveLength(1);
+    // Video and the boombox slot by addTransceiver, the mic by addTrack.
+    expect(pc(1).transceivers.map((t) => t.init?.direction)).toEqual(['sendrecv', 'sendrecv']);
     expect(pc(1).tracks).toHaveLength(1);
     m.close();
   });
@@ -278,4 +286,108 @@ test('setVideoTrack does not start sending on a receive-only connection', async 
   m.setVideoTrack(rawTrack);
   await tick();
   expect(pc().getTransceivers()[0]?.sender.track).toBeNull();
+});
+
+describe('boombox transceiver', () => {
+  /** An answered initiator connection to `peer`. */
+  async function initiatorTo(m: ReturnType<typeof mesh>, peer: string, i: number) {
+    m.connect(peer);
+    await pc(i).fireNegotiationNeeded();
+    await m.handleSignal(peer, { kind: 'description', description: { type: 'answer', sdp: 'remote-answer' } });
+  }
+
+  test('the initiator adds a sendrecv boombox transceiver after video and mic, capped at 128 kbps', () => {
+    mesh('b').connect('a');
+    expect(BOOMBOX_MAX_BITRATE).toBe(128_000);
+    expect(pc().transceivers.at(-1)).toEqual({
+      trackOrKind: 'audio',
+      init: { direction: 'sendrecv', sendEncodings: [{ maxBitrate: 128_000 }] },
+    });
+    const [video, mic, boombox] = pc().getTransceivers();
+    expect([video?.receiver.track.kind, mic?.sender.track, boombox?.sender.track]).toEqual(['video', audioTrack, null]);
+  });
+
+  test('a connection made while playing sends the music from the start (initiator)', () => {
+    const m = mesh('b');
+    m.setBoomboxTrack(music as unknown as MediaStreamTrack);
+    m.connect('a');
+    expect(pc().transceivers.at(-1)?.trackOrKind).toBe(music);
+  });
+
+  test('the answerer opens the boombox slot, caps it and keeps the mic off it', async () => {
+    await mesh('a').handleSignal('b', offer);
+    const [, mic, boombox] = pc().remoteTransceivers;
+    expect(boombox?.direction).toBe('sendrecv');
+    expect(boombox?.sender.track).toBeNull();
+    expect(boombox?.sender.parameters.encodings[0]?.maxBitrate).toBe(128_000);
+    expect(mic?.sender.track).toBe(audioTrack);
+  });
+
+  test('a connection made while playing sends the music from the start (answerer)', async () => {
+    const m = mesh('a');
+    m.setBoomboxTrack(music as unknown as MediaStreamTrack);
+    await m.handleSignal('b', offer);
+    expect(pc().remoteTransceivers[2]?.sender.track).toBe(music);
+  });
+
+  test('without local media the answerer can still play music', async () => {
+    const m = mesh('a', null);
+    await m.handleSignal('b', offer);
+    m.setBoomboxTrack(music as unknown as MediaStreamTrack);
+    await tick();
+    const [video, mic, boombox] = pc().remoteTransceivers;
+    expect([video?.direction, mic?.direction]).toEqual(['recvonly', 'recvonly']);
+    expect([video?.sender.track, mic?.sender.track]).toEqual([null, null]);
+    expect(boombox?.direction).toBe('sendrecv');
+    expect(boombox?.sender.track).toBe(music);
+  });
+
+  test('setBoomboxTrack swaps the track on live connections without renegotiating', async () => {
+    const m = mesh('m');
+    await initiatorTo(m, 'a', 0);
+    await m.handleSignal('z', offer);
+    const calls = [pc(0).calls.length, pc(1).calls.length];
+    const slots = () => [pc(0).getTransceivers()[2]?.sender.track, pc(1).getTransceivers()[2]?.sender.track];
+    m.setBoomboxTrack(music as unknown as MediaStreamTrack);
+    await tick();
+    expect(slots()).toEqual([music, music]);
+    m.setBoomboxTrack(null);
+    await tick();
+    expect(slots()).toEqual([null, null]);
+    expect([pc(0).calls.length, pc(1).calls.length]).toEqual(calls);
+    expect(pc(0).getTransceivers()[1]?.sender.track).toBe(audioTrack);
+    expect(pc(1).getTransceivers()[0]?.sender.track).toBe(videoTrack);
+  });
+
+  test('a stale peer offering only video and mic still connects, and its mic stays the mic', async () => {
+    FakeRTCPeerConnection.offerKinds = ['video', 'audio'];
+    const m = mesh('a');
+    await m.handleSignal('b', offer);
+    expect(sent.at(-1)?.payload).toMatchObject({ description: { type: 'answer' } });
+    expect(() => m.setBoomboxTrack(music as unknown as MediaStreamTrack)).not.toThrow();
+    await tick();
+    expect(pc().remoteTransceivers[1]?.sender.track).toBe(audioTrack);
+  });
+
+  test('a track on the boombox transceiver goes to onRemoteBoombox, once per track', () => {
+    mesh('c').connect('b');
+    const slot = pc().getTransceivers()[2];
+    pc().fireTrack(undefined, slot, music);
+    pc().fireTrack(undefined, slot, music);
+    expect(boomboxes).toEqual([{ peerId: 'b', stream: { wraps: music } }]);
+    expect(remote).toEqual([]);
+    const stream = { id: 's' };
+    pc().fireTrack(stream, pc().getTransceivers()[1], audioTrack);
+    expect(remote).toEqual([{ peerId: 'b', stream }]);
+  });
+
+  test('stats count the boombox m-line separately', async () => {
+    const m = mesh('c');
+    m.connect('b');
+    pc().inboundReports = [
+      { mid: '1', bytesReceived: 100 },
+      { mid: '2', bytesReceived: 40 },
+    ];
+    expect(await m.stats('b')).toEqual({ bytesReceived: 140, boomboxBytesReceived: 40 });
+  });
 });

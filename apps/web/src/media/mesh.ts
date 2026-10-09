@@ -3,9 +3,15 @@
 // attaches its tracks to the offered transceivers. This avoids initial glare, whose rollback makes
 // Chrome stop gathering ICE candidates. Later renegotiations use MDN "perfect negotiation", where the
 // peer with the smaller id is polite.
+// The m-line order is fixed: video, mic, then the boombox (index 2). The boombox transceiver is
+// opened sendrecv at creation and only ever swapped with replaceTrack, so music never renegotiates.
 import type { IceServer, SignalPayload } from '@zoom3d/shared';
 
 export const VIDEO_MAX_BITRATE = 350_000;
+/** Index of the boombox transceiver in getTransceivers() on both sides (boombox spec §5.1). */
+export const BOOMBOX_INDEX = 2;
+/** Music, not speech: well above Opus's ~32 kbps default (boombox spec §5.3). */
+export const BOOMBOX_MAX_BITRATE = 128_000;
 /** An initiator connection that is not `connected` for this long is recreated with a fresh offer. */
 export const WATCHDOG_MS = 10_000;
 export const WATCHDOG_CHECK_MS = 2_000;
@@ -15,9 +21,11 @@ export interface MediaTransport {
   handleSignal(from: string, payload: SignalPayload): Promise<void>;
   disconnect(peerId: string): void;
   close(): void;
-  stats(peerId: string): Promise<{ bytesReceived: number } | null>;
+  stats(peerId: string): Promise<{ bytesReceived: number; boomboxBytesReceived: number } | null>;
   /** Sends `track` instead of the stream's video track, on current and future connections. */
   setVideoTrack(track: MediaStreamTrack): void;
+  /** Sends `track` (or nothing) on the boombox transceiver, on current and future connections. */
+  setBoomboxTrack(track: MediaStreamTrack | null): void;
 }
 
 export interface MeshOptions {
@@ -26,6 +34,9 @@ export interface MeshOptions {
   localStream: MediaStream | null;
   sendSignal: (to: string, payload: SignalPayload) => void;
   onRemoteStream: (peerId: string, stream: MediaStream) => void;
+  onRemoteBoombox: (peerId: string, stream: MediaStream) => void;
+  /** Wraps a received boombox track, which arrives without a stream. */
+  createStream?: (track: MediaStreamTrack) => MediaStream;
   RTCPeerConnectionImpl?: typeof RTCPeerConnection;
 }
 
@@ -41,12 +52,15 @@ interface Conn {
   since: number;
   /** DTLS fingerprint of the remote offer this connection was built for. */
   remoteFingerprint: string | null;
+  /** Last boombox track reported, so a repeated ontrack doesn't re-attach it. */
+  boomboxTrack: MediaStreamTrack | null;
 }
 
 const fingerprintOf = (sdp: string) => /^a=fingerprint:(.+)$/m.exec(sdp)?.[1]?.trim() ?? null;
 
 export function createMesh(opts: MeshOptions): MediaTransport {
   const Impl = opts.RTCPeerConnectionImpl ?? RTCPeerConnection;
+  const createStream = opts.createStream ?? ((track: MediaStreamTrack) => new MediaStream([track]));
   const conns = new Map<string, Conn>();
   const local = opts.localStream;
   let watchdog: ReturnType<typeof setInterval> | null = null;
@@ -75,6 +89,19 @@ export function createMesh(opts: MeshOptions): MediaTransport {
   };
 
   let videoOverride: MediaStreamTrack | null = null;
+  let boombox: MediaStreamTrack | null = null;
+
+  async function capBitrate(sender: RTCRtpSender, bps: number) {
+    try {
+      const params = sender.getParameters();
+      if (params.encodings[0]) {
+        params.encodings[0].maxBitrate = bps;
+      }
+      await sender.setParameters(params);
+    } catch (err) {
+      console.warn('could not cap bitrate', err);
+    }
+  }
 
   const localTrack = (kind: string) =>
     (kind === 'video' ? (videoOverride ?? local?.getVideoTracks()[0]) : local?.getAudioTracks()[0]) ?? null;
@@ -82,7 +109,16 @@ export function createMesh(opts: MeshOptions): MediaTransport {
   /** Answerer: send our tracks on the transceivers the remote offer created. */
   async function attachTracks(conn: Conn) {
     conn.tracksAttached = true;
-    for (const t of conn.pc.getTransceivers()) {
+    const transceivers = conn.pc.getTransceivers();
+    for (let i = 0; i < transceivers.length; i++) {
+      const t = transceivers[i] as RTCRtpTransceiver;
+      if (i === BOOMBOX_INDEX) {
+        // Opened even without local media: a player with no camera or mic can still play music.
+        t.direction = 'sendrecv';
+        await t.sender.replaceTrack(boombox);
+        await capBitrate(t.sender, BOOMBOX_MAX_BITRATE);
+        continue;
+      }
       const kind = t.receiver.track.kind;
       const track = localTrack(kind);
       if (!track || !local) {
@@ -92,15 +128,7 @@ export function createMesh(opts: MeshOptions): MediaTransport {
       await t.sender.replaceTrack(track);
       t.sender.setStreams?.(local);
       if (kind === 'video') {
-        try {
-          const params = t.sender.getParameters();
-          if (params.encodings[0]) {
-            params.encodings[0].maxBitrate = VIDEO_MAX_BITRATE;
-          }
-          await t.sender.setParameters(params);
-        } catch (err) {
-          console.warn('could not cap video bitrate', err);
-        }
+        await capBitrate(t.sender, VIDEO_MAX_BITRATE);
       }
     }
   }
@@ -138,6 +166,7 @@ export function createMesh(opts: MeshOptions): MediaTransport {
       initiator,
       since: Date.now(),
       remoteFingerprint: null,
+      boomboxTrack: null,
     };
     conns.set(peerId, conn);
     watchdog ??= setInterval(checkConnections, WATCHDOG_CHECK_MS);
@@ -160,6 +189,11 @@ export function createMesh(opts: MeshOptions): MediaTransport {
       } else {
         pc.addTransceiver('audio', { direction: 'recvonly' });
       }
+      // After the mic: addTrack would otherwise take this free audio transceiver for the mic.
+      pc.addTransceiver(boombox ?? 'audio', {
+        direction: 'sendrecv',
+        sendEncodings: [{ maxBitrate: BOOMBOX_MAX_BITRATE }],
+      });
     }
 
     pc.onnegotiationneeded = async () => {
@@ -186,7 +220,14 @@ export function createMesh(opts: MeshOptions): MediaTransport {
           : null,
       });
     };
-    pc.ontrack = ({ streams }) => {
+    pc.ontrack = ({ streams, track, transceiver }) => {
+      if (transceiver === pc.getTransceivers()[BOOMBOX_INDEX]) {
+        if (track !== conn.boomboxTrack) {
+          conn.boomboxTrack = track;
+          opts.onRemoteBoombox(peerId, createStream(track));
+        }
+        return;
+      }
       const stream = streams[0];
       if (stream) {
         opts.onRemoteStream(peerId, stream);
@@ -279,12 +320,17 @@ export function createMesh(opts: MeshOptions): MediaTransport {
         return null;
       }
       let bytesReceived = 0;
-      (await conn.pc.getStats()).forEach((r: { type: string; bytesReceived?: number }) => {
+      let boomboxBytesReceived = 0;
+      const boomboxMid = conn.pc.getTransceivers()[BOOMBOX_INDEX]?.mid ?? null;
+      (await conn.pc.getStats()).forEach((r: { type: string; bytesReceived?: number; mid?: string }) => {
         if (r.type === 'inbound-rtp') {
           bytesReceived += r.bytesReceived ?? 0;
+          if (boomboxMid !== null && r.mid === boomboxMid) {
+            boomboxBytesReceived += r.bytesReceived ?? 0;
+          }
         }
       });
-      return { bytesReceived };
+      return { bytesReceived, boomboxBytesReceived };
     },
 
     setVideoTrack(track) {
@@ -298,6 +344,17 @@ export function createMesh(opts: MeshOptions): MediaTransport {
           if (t.receiver.track.kind === 'video' && t.sender.track) {
             t.sender.replaceTrack(track).catch((err) => console.warn('could not swap video track', err));
           }
+        }
+      }
+    },
+
+    setBoomboxTrack(track) {
+      boombox = track;
+      for (const conn of conns.values()) {
+        // An answerer that hasn't attached yet picks the track up in attachTracks.
+        const slot = conn.pc.getTransceivers()[BOOMBOX_INDEX];
+        if (slot && (conn.initiator || conn.tracksAttached)) {
+          slot.sender.replaceTrack(track).catch((err) => console.warn('could not swap boombox track', err));
         }
       }
     },
