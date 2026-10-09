@@ -3,11 +3,22 @@
 
 /** How loud the carrier hears their own music; it's in their hand, not out in the room. */
 export const BOOMBOX_SELF_GAIN = 0.5;
+/** Volume changes glide this fast (s), so dragging the slider doesn't click. */
+const VOLUME_TAU = 0.02;
 
 export interface Boombox {
   /** The B key: opens the file picker when off (only if `canOpen`: in a room), and always stops. */
   toggle(canOpen: boolean): void;
   playing(): boolean;
+  /** 0..1, before the split: what we hear and what we send to the room alike. Kept across tracks. */
+  volume(): number;
+  setVolume(v: number): void;
+  /** Seconds into the playing track; zeros when off or before the length is known. */
+  progress(): { current: number; duration: number };
+  /** Jumps the playing track to `seconds`; the room hears the jump, since the music is live. */
+  seek(seconds: number): void;
+  /** The playing file's name, or null when off. */
+  title(): string | null;
 }
 
 export interface BoomboxOptions {
@@ -40,17 +51,23 @@ export function createBoombox(opts: BoomboxOptions): Boombox {
   /** Bumped by every start and stop, so a late play() result from an old attempt is ignored. */
   let attempt = 0;
   let track: MediaStreamTrack | null = null;
+  let volume: GainNode | null = null;
+  let level = 1;
+  let title: string | null = null;
 
   const graph = (): MediaStreamTrack | null => {
     if (track) {
       return track;
     }
     const source = ctx.createMediaElementSource(audio);
+    volume = ctx.createGain();
+    volume.gain.value = level;
     const stream = ctx.createMediaStreamDestination();
     const self = ctx.createGain();
     self.gain.value = BOOMBOX_SELF_GAIN;
-    source.connect(stream);
-    source.connect(self);
+    source.connect(volume);
+    volume.connect(stream);
+    volume.connect(self);
     self.connect(ctx.destination);
     track = stream.stream.getAudioTracks()[0] ?? null;
     return track;
@@ -63,6 +80,7 @@ export function createBoombox(opts: BoomboxOptions): Boombox {
     const wasOn = state === 'playing';
     state = 'off';
     attempt++;
+    title = null;
     audio.pause();
     audio.removeAttribute('src');
     audio.load();
@@ -84,6 +102,7 @@ export function createBoombox(opts: BoomboxOptions): Boombox {
       return;
     }
     state = 'starting';
+    title = file.name;
     const mine = ++attempt;
     // Built before play() so the element never sounds outside the graph.
     const out = graph();
@@ -124,5 +143,22 @@ export function createBoombox(opts: BoomboxOptions): Boombox {
       }
     },
     playing: () => state === 'playing',
+    volume: () => level,
+    setVolume(v) {
+      level = Math.min(Math.max(v, 0), 1);
+      volume?.gain.setTargetAtTime(level, ctx.currentTime, VOLUME_TAU);
+    },
+    progress() {
+      const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+      return state === 'off' ? { current: 0, duration: 0 } : { current: audio.currentTime, duration };
+    },
+    seek(seconds) {
+      if (state === 'off') {
+        return;
+      }
+      const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+      audio.currentTime = Math.min(Math.max(seconds, 0), duration);
+    },
+    title: () => title,
   };
 }
