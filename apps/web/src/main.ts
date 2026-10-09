@@ -36,6 +36,7 @@ import { makeTextures } from './renderer/textures';
 import { renderWalls } from './renderer/walls';
 import { setAudioPanelBoombox, showAudioPanel } from './ui/audio-panel';
 import type { BoomboxPanelOptions } from './ui/boombox-panel';
+import { loadBoomboxVolume, saveBoomboxVolume } from './ui/boombox-store';
 import { heldForKey, heldKeyAction, loadHeld, saveHeld } from './ui/held-store';
 import { parseRoute } from './ui/route';
 import {
@@ -125,7 +126,10 @@ function boomboxControls(): BoomboxPanelOptions | null {
     title: box.title() ?? '',
     volume: box.volume(),
     progress: () => box.progress(),
-    onVolume: (v) => box.setVolume(v),
+    onVolume(v) {
+      box.setVolume(v);
+      saveBoomboxVolume(storage(), box.volume());
+    },
     onSeek: (seconds) => box.seek(seconds),
     onStop: () => box.toggle(true),
   };
@@ -272,6 +276,7 @@ async function joinRoom(roomId: string, name: string, avatar: string | null): Pr
       setAudioPanelBoombox(ui, boomboxControls());
     },
   });
+  boombox.setVolume(loadBoomboxVolume(storage()));
   showRoomBar(ui, location.href, {
     cam: local.cam,
     mic: local.mic,
