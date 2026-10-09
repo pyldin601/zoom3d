@@ -30,12 +30,14 @@ let meshes: {
   handleSignal: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
   setVideoTrack: ReturnType<typeof vi.fn>;
+  setBoomboxTrack: ReturnType<typeof vi.fn>;
 }[];
 let faces: Map<string, FaceSource & { [k: string]: unknown }>;
 let faceAvatars: Map<string, string | null | undefined>;
 let session: Session;
 let remote: {
   attach: ReturnType<typeof vi.fn>;
+  attachAudio: ReturnType<typeof vi.fn>;
   detach: ReturnType<typeof vi.fn>;
   detachAll: ReturnType<typeof vi.fn>;
 };
@@ -86,8 +88,9 @@ function makeCall(local?: Partial<LocalMedia>) {
         disconnect: vi.fn(),
         handleSignal: vi.fn(async () => {}),
         close: vi.fn(),
-        stats: vi.fn(async () => ({ bytesReceived: 5 })),
+        stats: vi.fn(async () => ({ bytesReceived: 5, boomboxBytesReceived: 2 })),
         setVideoTrack: vi.fn(),
+        setBoomboxTrack: vi.fn(),
       };
       meshes.push(mesh);
       return mesh;
@@ -103,7 +106,12 @@ beforeEach(() => {
   faceAvatars = new Map();
   videoTrack = { enabled: true };
   audioTrack = { enabled: true };
-  remote = { attach: vi.fn(() => ({ id: 'video-el' })), detach: vi.fn(), detachAll: vi.fn() };
+  remote = {
+    attach: vi.fn(() => ({ id: 'video-el' })),
+    attachAudio: vi.fn(),
+    detach: vi.fn(),
+    detachAll: vi.fn(),
+  };
   audio = { attach: vi.fn(), detach: vi.fn() };
   session = {
     peers: new Map(),
@@ -278,4 +286,48 @@ test('without a framer the mesh keeps the stream track', () => {
   const call = makeCall();
   call.listener.welcome?.('me', ICE, true);
   expect(meshes[0]?.setVideoTrack).not.toHaveBeenCalled();
+});
+
+test('a boombox stream plays through the engine at its owner', () => {
+  const call = makeCall();
+  setPeers(info('b'));
+  call.listener.welcome?.('me', ICE, true);
+  const music = { id: 'music' } as unknown as MediaStream;
+  meshes[0]?.opts.onRemoteBoombox('b', music);
+  expect(remote.attachAudio).toHaveBeenCalledWith('boombox:b', music);
+  expect(audio.attach).toHaveBeenCalledWith('boombox:b', music, 'b');
+  remote.attachAudio.mockClear();
+  audio.attach.mockClear();
+  meshes[0]?.opts.onRemoteBoombox('stranger', music);
+  expect(remote.attachAudio).not.toHaveBeenCalled();
+  expect(audio.attach).not.toHaveBeenCalled();
+});
+
+test('dropping a peer detaches its boombox', () => {
+  const call = makeCall();
+  setPeers(info('b'));
+  call.listener.welcome?.('me', ICE, true);
+  call.listener.peerLeft?.('b');
+  expect(remote.detach).toHaveBeenCalledWith('boombox:b');
+  expect(audio.detach).toHaveBeenCalledWith('boombox:b');
+});
+
+test('a new identity detaches every boombox from the engine', () => {
+  const call = makeCall();
+  setPeers(info('b'));
+  call.listener.welcome?.('me', ICE, true);
+  call.listener.welcome?.('me2', ICE, true);
+  expect(audio.detach).toHaveBeenCalledWith('boombox:b');
+});
+
+test('the boombox track reaches the mesh and survives a new identity', () => {
+  const call = makeCall();
+  call.listener.welcome?.('me', ICE, true);
+  const track = { kind: 'audio' } as unknown as MediaStreamTrack;
+  call.setBoomboxTrack(track);
+  expect(meshes[0]?.setBoomboxTrack).toHaveBeenLastCalledWith(track);
+  call.listener.welcome?.('me2', ICE, true);
+  expect(meshes[1]?.setBoomboxTrack).toHaveBeenLastCalledWith(track);
+  call.setBoomboxTrack(null);
+  expect(meshes[1]?.setBoomboxTrack).toHaveBeenLastCalledWith(null);
 });

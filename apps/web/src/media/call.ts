@@ -13,7 +13,9 @@ export interface Call {
   attach(session: Session): void;
   faceOf(peerId: string): Uint32Array | null;
   isLive(peerId: string): boolean;
-  stats(peerId: string): Promise<{ bytesReceived: number } | null>;
+  stats(peerId: string): Promise<{ bytesReceived: number; boomboxBytesReceived: number } | null>;
+  /** Our boombox music, or null when it is off; kept across a recreated mesh. */
+  setBoomboxTrack(track: MediaStreamTrack | null): void;
   setCam(on: boolean): void;
   setMic(on: boolean): void;
   localState(): { cam: boolean; mic: boolean };
@@ -31,12 +33,16 @@ export interface CallOptions {
   createMesh: typeof CreateMesh;
 }
 
+/** Engine and element key of a peer's boombox music (boombox spec §4). */
+export const boomboxKey = (peerId: string) => `boombox:${peerId}`;
+
 export function createCall(opts: CallOptions): Call {
   const { local, remote } = opts;
   const faces = new Map<string, FaceSource>();
   const state = { cam: local.cam, mic: local.mic };
   let session: Session | null = null;
   let mesh: MediaTransport | null = null;
+  let boomboxTrack: MediaStreamTrack | null = null;
   const { framer } = local;
   if (framer) {
     framer.onSendTrackChange = () => mesh?.setVideoTrack(framer.sendTrack);
@@ -59,7 +65,9 @@ export function createCall(opts: CallOptions): Call {
   const drop = (peerId: string) => {
     mesh?.disconnect(peerId);
     remote.detach(peerId);
+    remote.detach(boomboxKey(peerId));
     opts.audio?.detach(peerId);
+    opts.audio?.detach(boomboxKey(peerId));
     faces.get(peerId)?.dispose();
     faces.delete(peerId);
   };
@@ -70,6 +78,7 @@ export function createCall(opts: CallOptions): Call {
     remote.detachAll();
     for (const id of faces.keys()) {
       opts.audio?.detach(id);
+      opts.audio?.detach(boomboxKey(id));
     }
     for (const face of faces.values()) {
       face.dispose();
@@ -102,7 +111,16 @@ export function createCall(opts: CallOptions): Call {
             face.setVideo(remote.attach(peerId, stream));
             opts.audio?.attach(peerId, stream);
           },
+          onRemoteBoombox: (peerId, stream) => {
+            if (!faces.has(peerId)) {
+              return;
+            }
+            const key = boomboxKey(peerId);
+            remote.attachAudio(key, stream);
+            opts.audio?.attach(key, stream, peerId);
+          },
         });
+        mesh.setBoomboxTrack(boomboxTrack);
         // The tab may already be hidden, in which case peers get the raw camera track.
         if (local.framer) {
           mesh.setVideoTrack(local.framer.sendTrack);
@@ -141,6 +159,10 @@ export function createCall(opts: CallOptions): Call {
     faceOf: (id) => faces.get(id)?.texels ?? null,
     isLive: (id) => faces.get(id)?.live() ?? false,
     stats: async (id) => (mesh ? mesh.stats(id) : null),
+    setBoomboxTrack(track) {
+      boomboxTrack = track;
+      mesh?.setBoomboxTrack(track);
+    },
     setCam(on) {
       state.cam = on && local.cam;
       setEnabled(local.stream?.getVideoTracks(), state.cam);
