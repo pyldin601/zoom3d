@@ -33,16 +33,19 @@
       #ui .lobby-disc video { object-fit: cover; transform: scaleX(-1); font-size: inherit; }
       #ui .lobby-disc .face img { width: 100%; height: 100%; object-fit: cover; }
       #ui .lobby .pencil { position: absolute; right: 0.2em; bottom: 0.2em; width: 1.5em; height: 1.5em; padding: 0; border-radius: 50%; font-size: 0.8em; }
-      #ui .lobby .picture-menu, #ui .lobby .device-menu { position: absolute; z-index: 1; display: grid; background: #1b1b1b; border: 0.1em solid #555; padding: 0.2em; font-size: 0.7em; text-align: left; white-space: nowrap; }
+      #ui .lobby .picture-menu, #ui .lobby .device-menu { position: absolute; z-index: 1; display: flex; flex-direction: column; min-width: 10em; background: #1b1b1b; border: 0.1em solid #555; padding: 0.2em 0; font-size: 0.6em; white-space: nowrap; }
       #ui .lobby .picture-menu { left: 100%; bottom: 0; }
-      #ui .lobby .device-menu { top: 100%; left: 0; }
-      #ui .lobby .picture-menu button, #ui .lobby .device-menu button { background: none; border: 0; color: inherit; text-align: left; padding: 0.3em 0.6em; }
-      #ui .lobby .device-menu [aria-checked="true"]::before { content: '✓ '; }
+      #ui .lobby .device-menu { top: calc(100% + 0.3em); left: 0; }
+      #ui .lobby .picture-menu button, #ui .lobby .device-menu button { display: block; width: 100%; background: none; border: 0; color: inherit; text-align: left; padding: 0.35em 0.8em; overflow: hidden; text-overflow: ellipsis; }
+      #ui .lobby .picture-menu button:hover, #ui .lobby .device-menu button:hover { background: #333; }
+      /* A fixed check column keeps every device name aligned, ticked or not. */
+      #ui .lobby .device-menu button::before { content: ''; display: inline-block; width: 1.3em; }
+      #ui .lobby .device-menu [aria-checked="true"]::before { content: '✓'; }
       #ui .lobby .devices { display: flex; gap: 0.4em; justify-content: center; margin-bottom: 0.6em; }
       #ui .lobby .split { position: relative; display: flex; border: 0.08em solid #777; }
       #ui .lobby .split.off { border-color: #c55; }
-      #ui .lobby .split button { padding: 0.2em 0.35em; border: 0; display: grid; place-items: center; }
-      #ui .lobby .split .chevron { border-left: 0.05em solid #777; font-size: 0.7em; }
+      #ui .lobby .split > button { padding: 0.2em 0.35em; border: 0; display: grid; place-items: center; }
+      #ui .lobby .split > .chevron { border-left: 0.05em solid #777; font-size: 0.7em; }
       #ui .lobby .split svg { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
       #ui .lobby .split.off .toggle { color: #f88; }
       #ui .lobby form input { text-align: center; margin: 0 0 0.4em; }
