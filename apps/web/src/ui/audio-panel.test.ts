@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { DEFAULT_AUDIO_SETTINGS } from '@zoom3d/shared';
-import { beforeEach, expect, test, vi } from 'vitest';
-import { showAudioPanel } from './audio-panel';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { setAudioPanelBoombox, showAudioPanel } from './audio-panel';
+import { PROGRESS_MS } from './boombox-panel';
 
 let root: HTMLElement;
 beforeEach(() => {
@@ -56,4 +57,51 @@ test('speaking levels are listed by name as text', () => {
   });
   expect(root.querySelector('b')).toBeNull();
   expect(root.textContent).toContain('<b>Bob</b>');
+});
+
+describe('boombox column', () => {
+  const boombox = (progress = vi.fn(() => ({ current: 0, duration: 0 }))) => ({
+    title: 'song.mp3',
+    volume: 1,
+    progress,
+    onVolume: vi.fn(),
+    onSeek: vi.fn(),
+    onStop: vi.fn(),
+  });
+
+  test('sits to the right of the tuning settings, empty until filled', () => {
+    showAudioPanel(root, { settings: DEFAULT_AUDIO_SETTINGS, onChange: vi.fn() });
+    const children = [...(root.querySelector('.audio-panel') as HTMLElement).children].map((c) => c.className);
+    expect(children).toEqual(['tuning', 'boombox-slot']);
+    expect(root.querySelector('.tuning')?.textContent).toContain('Silent beyond');
+    expect(root.querySelector('.boombox-slot')?.children).toHaveLength(0);
+  });
+
+  test('setAudioPanelBoombox fills and clears the column', () => {
+    showAudioPanel(root, { settings: DEFAULT_AUDIO_SETTINGS, onChange: vi.fn() });
+    setAudioPanelBoombox(root, boombox());
+    expect(root.querySelector('.boombox-slot .boombox-panel')?.textContent).toContain('song.mp3');
+    setAudioPanelBoombox(root, null);
+    expect(root.querySelector('.boombox-panel')).toBeNull();
+  });
+
+  test('with the audio panel closed, setAudioPanelBoombox does nothing', () => {
+    setAudioPanelBoombox(root, boombox());
+    expect(root.children).toHaveLength(0);
+  });
+
+  test('closing the audio panel stops the boombox column updating', () => {
+    vi.useFakeTimers();
+    try {
+      showAudioPanel(root, { settings: DEFAULT_AUDIO_SETTINGS, onChange: vi.fn() });
+      const progress = vi.fn(() => ({ current: 0, duration: 0 }));
+      setAudioPanelBoombox(root, boombox(progress));
+      showAudioPanel(root, null);
+      progress.mockClear();
+      vi.advanceTimersByTime(PROGRESS_MS * 3);
+      expect(progress).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

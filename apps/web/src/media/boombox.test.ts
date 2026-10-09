@@ -25,6 +25,8 @@ class FakeInput extends FakeElement {
 
 class FakeAudio extends FakeElement {
   src = '';
+  currentTime = 0;
+  duration = Number.NaN;
   loop = true;
   pause = vi.fn();
   load = vi.fn();
@@ -53,7 +55,7 @@ let box: Boombox;
 let order: string[];
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
-const file = { name: 'song.mp3' };
+const file = { name: 'Song – live.mp3' };
 
 beforeEach(() => {
   ctx = new FakeAudioContext();
@@ -121,14 +123,17 @@ test('picking a file plays it once and sends the track', async () => {
   expect(input.value).toBe('');
 });
 
-test('the graph splits to the stream and to the speakers at BOOMBOX_SELF_GAIN, built once', async () => {
+test('the graph goes through the volume, then splits to the stream and to the speakers, built once', async () => {
   expect(BOOMBOX_SELF_GAIN).toBe(0.5);
   await pickAndPlay();
   box.toggle(true);
   await pickAndPlay();
   const sources = ctx.byKind('element-source');
   expect(sources).toHaveLength(1);
-  const [toStream, toSelf] = (sources[0] as FakeNode).connections as (FakeNode & { gain?: { value: number } })[];
+  const [volume] = (sources[0] as FakeNode).connections as (FakeNode & { gain: { value: number } })[];
+  expect(volume?.kind).toBe('gain');
+  expect(volume?.gain.value).toBe(1);
+  const [toStream, toSelf] = (volume as FakeNode).connections as (FakeNode & { gain?: { value: number } })[];
   expect(toStream?.kind).toBe('stream-destination');
   expect(toSelf?.kind).toBe('gain');
   expect(toSelf?.gain?.value).toBe(0.5);
@@ -191,4 +196,54 @@ test('outside a room B never opens the picker, but still stops the music', async
   box.toggle(false);
   expect(onChange).toHaveBeenLastCalledWith(false);
   expect(box.playing()).toBe(false);
+});
+
+const volumeGain = () =>
+  ((ctx.byKind('element-source')[0] as FakeNode).connections[0] as FakeNode & { gain: { value: number } }).gain;
+
+test('setVolume turns down both what we hear and what we send, clamped to 0..1', async () => {
+  await pickAndPlay();
+  box.setVolume(0.25);
+  expect(volumeGain().value).toBe(0.25);
+  expect(box.volume()).toBe(0.25);
+  box.setVolume(7);
+  expect(volumeGain().value).toBe(1);
+  box.setVolume(-1);
+  expect(volumeGain().value).toBe(0);
+});
+
+test('a volume set before the first track applies to it, and is kept for the next', async () => {
+  box.setVolume(0.4);
+  await pickAndPlay();
+  expect(volumeGain().value).toBe(0.4);
+  box.toggle(true);
+  await pickAndPlay();
+  expect(volumeGain().value).toBe(0.4);
+});
+
+test('progress and title follow the playing track, and are empty when off', async () => {
+  expect(box.progress()).toEqual({ current: 0, duration: 0 });
+  expect(box.title()).toBeNull();
+  await pickAndPlay();
+  expect(box.progress()).toEqual({ current: 0, duration: 0 });
+  audio.duration = 200;
+  audio.currentTime = 12.5;
+  expect(box.progress()).toEqual({ current: 12.5, duration: 200 });
+  expect(box.title()).toBe('Song – live.mp3');
+  box.toggle(true);
+  expect(box.title()).toBeNull();
+  expect(box.progress()).toEqual({ current: 0, duration: 0 });
+});
+
+test('seek moves the playing track, clamped to its length, and does nothing when off', async () => {
+  box.seek(30);
+  expect(audio.currentTime).toBe(0);
+  await pickAndPlay();
+  audio.duration = 200;
+  box.seek(90);
+  expect(audio.currentTime).toBe(90);
+  box.seek(500);
+  expect(audio.currentTime).toBe(200);
+  box.seek(-3);
+  expect(audio.currentTime).toBe(0);
 });
