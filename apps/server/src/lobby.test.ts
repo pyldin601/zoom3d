@@ -411,3 +411,88 @@ describe('boombox', () => {
     expect(sent).toEqual([]);
   });
 });
+
+describe('snapshot and restore', () => {
+  let m = 0;
+  /** Replaces the lobby with a new one restored from its JSON snapshot, as a restarted server would. */
+  const restart = () => {
+    const next = new Lobby({ map, out: outbox, now: () => time, rng: () => 0, newToken: () => `r${++m}` });
+    next.restore(JSON.parse(JSON.stringify(lobby.snapshot())));
+    lobby = next;
+  };
+
+  test('a restored slot resumes with its id, colour, pose and flags, and sees the others', () => {
+    join('A');
+    join('B');
+    const a = welcome('A');
+    lobby.media('A', { type: 'media', cam: true, mic: true });
+    lobby.held('A', { type: 'held', item: 'beer' });
+    lobby.boombox('A', { type: 'boombox', on: true });
+    time = 5000;
+    restart();
+    expect(lobby.peerCount(ROOM)).toBe(2);
+
+    join('A2', 'A', { resumeToken: a.resumeToken });
+    const resumed = welcome('A2');
+    expect(resumed.selfId).toBe(a.selfId);
+    expect(resumed.color).toBe(a.color);
+    expect(resumed.spawn).toEqual(a.spawn);
+    expect(resumed.peers.map((p) => p.name)).toEqual(['B']);
+    join('C');
+    expect(welcome('C').peers.find((p) => p.name === 'A')).toMatchObject({
+      cam: true,
+      mic: true,
+      held: 'beer',
+      boombox: true,
+    });
+  });
+
+  test('a fresh join after restore gets a colour nobody holds', () => {
+    join('A');
+    join('B');
+    restart();
+    join('C');
+    expect(welcome('C').color).toBe(PEER_COLORS[2]);
+  });
+
+  test('the snapshot holds no connection or sip state', () => {
+    join('A');
+    expect(Object.keys(lobby.snapshot().rooms[0]?.peers[0] ?? {}).sort()).toEqual(
+      [
+        'angle',
+        'avatar',
+        'boombox',
+        'cam',
+        'color',
+        'held',
+        'id',
+        'lastAcceptedAt',
+        'mic',
+        'name',
+        'resumeToken',
+        'x',
+        'y',
+      ].sort()
+    );
+  });
+
+  test('restored slots get a full grace period from the restore, then expire', () => {
+    join('A');
+    join('B');
+    const a = welcome('A');
+    time = 100_000;
+    restart();
+    join('A2', 'A', { resumeToken: a.resumeToken });
+    time += RESUME_GRACE_MS - 1;
+    lobby.tick();
+    expect(lobby.peerCount(ROOM)).toBe(2);
+    time += 1;
+    lobby.tick();
+    expect(lobby.peerCount(ROOM)).toBe(1);
+    expect(last('A2')).toEqual({ type: 'peer_left', id: welcome('B').selfId });
+    lobby.disconnect('A2');
+    time += RESUME_GRACE_MS;
+    lobby.tick();
+    expect(lobby.roomCount()).toBe(0);
+  });
+});

@@ -52,6 +52,18 @@ interface Peer extends PeerInfo {
 
 type Room = Map<string, Peer>;
 
+/** A peer as written to the restart snapshot: no connection, no sip timing. */
+export interface SnapshotPeer extends PeerInfo {
+  resumeToken: string;
+  lastAcceptedAt: number;
+}
+
+/** Bump `version` when SnapshotPeer changes in a way parsePeerInfo's defaults can't absorb. */
+export interface LobbySnapshot {
+  version: 1;
+  rooms: { id: string; peers: SnapshotPeer[] }[];
+}
+
 const info = ({ id, name, color, x, y, angle, cam, mic, avatar, held, boombox }: Peer): PeerInfo => ({
   id,
   name,
@@ -245,6 +257,32 @@ export class Lobby {
       if (room.size === 0) {
         this.rooms.delete(roomId);
       }
+    }
+  }
+
+  snapshot(): LobbySnapshot {
+    return {
+      version: 1,
+      rooms: [...this.rooms].map(([id, room]) => ({
+        id,
+        peers: [...room.values()].map((p) => ({
+          ...info(p),
+          resumeToken: p.resumeToken,
+          lastAcceptedAt: p.lastAcceptedAt,
+        })),
+      })),
+    };
+  }
+
+  /** Loads a snapshot into an empty lobby. Every slot starts a fresh grace period, waiting for its owner to resume. */
+  restore(snap: LobbySnapshot): void {
+    const now = this.opts.now();
+    for (const { id, peers } of snap.rooms) {
+      const room: Room = new Map();
+      for (const p of peers) {
+        room.set(p.id, { ...p, conn: null, disconnectedAt: now, lastDrinkAt: Number.NEGATIVE_INFINITY });
+      }
+      this.rooms.set(id, room);
     }
   }
 
