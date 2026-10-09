@@ -129,6 +129,19 @@ describe('createAudioEngine', () => {
   });
 });
 
+describe('owned voices', () => {
+  test('a voice attached with an owner follows the owner position', () => {
+    const e = engine();
+    e.attach('boombox:b', stream('music'), 'b');
+    e.update(0, listener, at(4.5, 1.5));
+    expect(param('panner', 'positionX').value).toBe(4.5);
+    const [dry] = one('biquad').connections as (FakeNode & { gain: FakeParam })[];
+    expect(dry?.gain.last?.[0]).toBeCloseTo(voiceGains(3, false, DEFAULT_AUDIO_SETTINGS).dry);
+    expect(e.inputLevel('boombox:b')).toBe(0);
+    expect(e.speaking('b')).toBe(0);
+  });
+});
+
 describe('speakingLevel', () => {
   test('instant attack, exponential release, quiet floor', () => {
     expect(speakingLevel(0, 0.1, 0.016)).toBe(1);
