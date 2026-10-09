@@ -1,10 +1,11 @@
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { AUDIO_CONSTRAINTS, captureLocalMedia, VIDEO_CONSTRAINTS } from './capture';
+import type { Framer } from './framer';
 
 function fakeStream(kinds: { video: boolean; audio: boolean }) {
   return {
-    getVideoTracks: () => (kinds.video ? [{ kind: 'video' }] : []),
-    getAudioTracks: () => (kinds.audio ? [{ kind: 'audio' }] : []),
+    getVideoTracks: () => (kinds.video ? [{ kind: 'video', id: 'raw' }] : []),
+    getAudioTracks: () => (kinds.audio ? [{ kind: 'audio', id: 'mic' }] : []),
   } as unknown as MediaStream;
 }
 
@@ -24,13 +25,7 @@ function fakeGetUserMedia(allow: { video: boolean; audio: boolean }) {
 }
 
 test('constraints match the spec', () => {
-  expect(VIDEO_CONSTRAINTS).toEqual({
-    width: 256,
-    height: 256,
-    aspectRatio: 1,
-    frameRate: 24,
-    resizeMode: 'crop-and-scale',
-  });
+  expect(VIDEO_CONSTRAINTS).toEqual({ width: 640, height: 480, frameRate: 24 });
   expect(AUDIO_CONSTRAINTS).toEqual({
     echoCancellation: true,
     noiseSuppression: true,
@@ -68,6 +63,7 @@ test('nothing available still joins, with no stream', async () => {
     cam: false,
     mic: false,
     problem: 'none-available',
+    framer: null,
   });
 });
 
@@ -78,6 +74,34 @@ test('insecure context does not even ask', async () => {
     cam: false,
     mic: false,
     problem: 'insecure',
+    framer: null,
   });
   expect(calls).toEqual([]);
+});
+
+const fakeFramer = (raw: unknown) => ({ track: { kind: 'video', id: 'framed' }, rawTrack: raw }) as unknown as Framer;
+
+test('a camera is framed: the stream carries the framed track and the original audio', async () => {
+  const { getUserMedia } = fakeGetUserMedia({ video: true, audio: true });
+  const frame = vi.fn(fakeFramer);
+  const local = await captureLocalMedia({
+    isSecureContext: true,
+    getUserMedia,
+    frame,
+    createStream: (tracks) => ({ tracks }) as unknown as MediaStream,
+  });
+  expect(frame).toHaveBeenCalledWith({ kind: 'video', id: 'raw' });
+  expect(local.framer).toBe(frame.mock.results[0]?.value);
+  expect((local.stream as unknown as { tracks: unknown[] }).tracks).toEqual([
+    { kind: 'video', id: 'framed' },
+    { kind: 'audio', id: 'mic' },
+  ]);
+});
+
+test('no camera, no framer', async () => {
+  const { getUserMedia } = fakeGetUserMedia({ video: false, audio: true });
+  const frame = vi.fn(fakeFramer);
+  const local = await captureLocalMedia({ isSecureContext: true, getUserMedia, frame });
+  expect(frame).not.toHaveBeenCalled();
+  expect(local.framer).toBeNull();
 });

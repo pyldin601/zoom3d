@@ -28,6 +28,7 @@ let meshes: {
   disconnect: ReturnType<typeof vi.fn>;
   handleSignal: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
+  setVideoTrack: ReturnType<typeof vi.fn>;
 }[];
 let faces: Map<string, FaceSource & { [k: string]: unknown }>;
 let faceAvatars: Map<string, string | null | undefined>;
@@ -58,6 +59,7 @@ function makeCall(local?: Partial<LocalMedia>) {
       cam: true,
       mic: true,
       problem: null,
+      framer: null,
       ...local,
     },
     remote: remote as unknown as RemoteMedia,
@@ -240,4 +242,39 @@ test('a new identity detaches every voice', () => {
   call.listener.welcome?.('me', ICE, true);
   call.listener.welcome?.('me2', ICE, true);
   expect(audio.detach).toHaveBeenCalledWith('a');
+});
+
+function fakeFramer(sendTrack: unknown) {
+  return { sendTrack, setEnabled: vi.fn(), onSendTrackChange: null as (() => void) | null };
+}
+
+test("a new mesh starts with the framer's send track", () => {
+  const framer = fakeFramer({ id: 'raw' });
+  const call = makeCall({ framer: framer as never });
+  call.listener.welcome?.('me', ICE, true);
+  expect(meshes[0]?.setVideoTrack).toHaveBeenCalledWith({ id: 'raw' });
+});
+
+test('a send-track change reaches the current mesh', () => {
+  const framer = fakeFramer({ id: 'framed' });
+  const call = makeCall({ framer: framer as never });
+  call.listener.welcome?.('me', ICE, true);
+  framer.sendTrack = { id: 'raw' };
+  framer.onSendTrackChange?.();
+  expect(meshes[0]?.setVideoTrack).toHaveBeenLastCalledWith({ id: 'raw' });
+});
+
+test('turning the camera off disables the framer', () => {
+  const framer = fakeFramer({ id: 'framed' });
+  const call = makeCall({ framer: framer as never });
+  call.setCam(false);
+  expect(framer.setEnabled).toHaveBeenLastCalledWith(false);
+  call.setCam(true);
+  expect(framer.setEnabled).toHaveBeenLastCalledWith(true);
+});
+
+test('without a framer the mesh keeps the stream track', () => {
+  const call = makeCall();
+  call.listener.welcome?.('me', ICE, true);
+  expect(meshes[0]?.setVideoTrack).not.toHaveBeenCalled();
 });

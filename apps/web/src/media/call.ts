@@ -37,6 +37,10 @@ export function createCall(opts: CallOptions): Call {
   const state = { cam: local.cam, mic: local.mic };
   let session: Session | null = null;
   let mesh: MediaTransport | null = null;
+  const { framer } = local;
+  if (framer) {
+    framer.onSendTrackChange = () => mesh?.setVideoTrack(framer.sendTrack);
+  }
 
   const ensureFace = (peer: PeerInfo) => {
     let face = faces.get(peer.id);
@@ -99,6 +103,10 @@ export function createCall(opts: CallOptions): Call {
             opts.audio?.attach(peerId, stream);
           },
         });
+        // The tab may already be hidden, in which case peers get the raw camera track.
+        if (local.framer) {
+          mesh.setVideoTrack(local.framer.sendTrack);
+        }
       }
       const present = session?.peers ?? new Map();
       for (const id of [...faces.keys()]) {
@@ -136,6 +144,7 @@ export function createCall(opts: CallOptions): Call {
     setCam(on) {
       state.cam = on && local.cam;
       setEnabled(local.stream?.getVideoTracks(), state.cam);
+      local.framer?.setEnabled(state.cam);
       publish();
     },
     setMic(on) {
