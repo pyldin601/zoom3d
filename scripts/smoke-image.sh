@@ -42,6 +42,12 @@ case "$service" in
     expect "hashed JS asset is served immutable" sh -c "curl -fsSI http://127.0.0.1:18080$asset | grep -qi 'cache-control: public, max-age=31536000, immutable'"
     expect "/ws is proxied (502 with no upstream)" sh -c 'test "$(curl -s -o /dev/null -w %{http_code} http://127.0.0.1:18080/ws)" = 502'
     expect "runs as non-root" sh -c "test \"\$(docker exec $name id -u)\" != 0"
+    # An upstream that drops packets (a Service with no endpoints) must fail fast: a hung handshake stalls
+    # every reconnect, since browsers allow one connecting WebSocket per host. 192.0.2.1 is TEST-NET-1.
+    docker rm -f "$name" >/dev/null
+    docker run -d --name "$name" -p 18080:8080 -e SERVER_URL=http://192.0.2.1:8787 "$image" >/dev/null
+    wait_for http://127.0.0.1:18080/healthz
+    expect "/ws gives up on a silent upstream within 10 s (504)" sh -c 'test "$(curl -s -m 10 -o /dev/null -w %{http_code} http://127.0.0.1:18080/ws)" = 504'
     ;;
   *)
     echo "usage: $0 server|web <image>" >&2
