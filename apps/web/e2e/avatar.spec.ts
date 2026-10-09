@@ -48,12 +48,16 @@ test('a picked picture replaces initials while the camera is off, and is remembe
   await expect(a).toHaveURL(/\/r\//);
   const url = a.url();
 
+  // The picture shows (and can be changed) only while the camera is off.
+  await a.getByRole('button', { name: 'Turn camera off' }).click();
   await a.locator('input[type="file"]').setInputFiles({
     name: 'me.png',
     mimeType: 'image/png',
     buffer: await bluePng(a),
   });
   await expect(a.locator('.avatar img')).toHaveAttribute('src', /^data:image\/jpeg;base64,/);
+  await a.getByRole('button', { name: 'Turn camera on' }).click();
+  await expect(a.locator('.avatar img')).toHaveCount(0);
   await joinAs(a, 'Ada');
 
   const b = await (await browser.newContext()).newPage();
@@ -69,8 +73,11 @@ test('a picked picture replaces initials while the camera is off, and is remembe
   await expect.poll(() => faceCentre(a, 'Bob'), { timeout: 15_000 }).not.toBeNull();
   expect(isBlue((await faceCentre(a, 'Bob'))?.rgb)).toBe(false);
 
+  // Ada turned her camera off in the room, and the lobby remembers it.
   await a.reload();
+  await expect(a.getByRole('button', { name: 'Turn camera on' })).toBeVisible();
   await expect(a.locator('.avatar img')).toHaveAttribute('src', /^data:image\/jpeg;base64,/);
+  await a.getByRole('button', { name: 'Change picture' }).click();
   await a.getByRole('button', { name: 'Remove' }).click();
   await expect(a.locator('.avatar img')).toHaveCount(0);
 });
