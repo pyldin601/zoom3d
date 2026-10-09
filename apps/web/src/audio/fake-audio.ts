@@ -90,6 +90,15 @@ export class FakeAudioContext {
   createMediaStreamSource(mediaStream: MediaStream) {
     return this.track(Object.assign(new FakeNode('source'), { mediaStream }));
   }
+  createMediaElementSource(mediaElement: unknown) {
+    return this.track(Object.assign(new FakeNode('element-source'), { mediaElement }));
+  }
+  /** Every destination streams this one track. */
+  readonly streamTrack = { kind: 'audio', id: 'stream-destination-track' };
+  createMediaStreamDestination() {
+    const track = this.streamTrack;
+    return this.track(Object.assign(new FakeNode('stream-destination'), { stream: { getAudioTracks: () => [track] } }));
+  }
   createBuffer(channels: number, length: number, sampleRate: number) {
     const data = Array.from({ length: channels }, () => new Float32Array(length));
     return { numberOfChannels: channels, length, sampleRate, getChannelData: (c: number) => data[c] };
