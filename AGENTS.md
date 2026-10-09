@@ -76,6 +76,10 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
 - Echo: use `echoCancellation` on capture and avoid playing remote audio through paths that bypass it.
 - WebRTC: only the greater peer id initiates (see spec §8). Don't add initiators on both sides:
   rollback during ICE gathering silently kills candidate gathering in Chrome.
+- Browsers allow one CONNECTING WebSocket per host, so a single hung handshake blocks every retry in every
+  tab. In prod, while the server restarts, Traefik drops the `/ws` route and it falls through to the web nginx,
+  whose connect to the endpoint-less Service hangs. Keep nginx's `proxy_connect_timeout` short and the client's
+  welcome deadline (`connection.ts`) in place.
 - E2E runs Chrome with `--use-fake-device-for-media-stream`; `window.__game.call` exposes `isLive`/`stats` (dev only).
 - Frame rate: the remote `<video>` container must be `visibility: hidden` (not `opacity`). A
   playing video Chrome considers visible paces the whole page to 30 fps (guarded by `e2e/frame-rate.spec.ts`).

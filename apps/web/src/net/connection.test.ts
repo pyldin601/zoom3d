@@ -66,6 +66,33 @@ test('a welcome resets the backoff', () => {
   expect(FakeWebSocket.instances).toHaveLength(3);
 });
 
+test('a handshake that never completes is abandoned after 10 s and retried', () => {
+  start();
+  vi.advanceTimersByTime(9_999);
+  expect(FakeWebSocket.latest().readyState).toBe(0);
+  vi.advanceTimersByTime(1);
+  expect(FakeWebSocket.instances[0]?.readyState).toBe(3);
+  expect(statuses.at(-1)).toBe('reconnecting');
+  vi.advanceTimersByTime(500);
+  expect(FakeWebSocket.instances).toHaveLength(2);
+});
+
+test('an open socket that never gets a welcome is abandoned too', () => {
+  start();
+  FakeWebSocket.latest().open();
+  vi.advanceTimersByTime(10_000);
+  expect(FakeWebSocket.latest().readyState).toBe(3);
+});
+
+test('a welcome cancels the deadline', () => {
+  start();
+  FakeWebSocket.latest().open();
+  FakeWebSocket.latest().receive(welcome);
+  vi.advanceTimersByTime(60_000);
+  expect(FakeWebSocket.latest().readyState).toBe(1);
+  expect(FakeWebSocket.instances).toHaveLength(1);
+});
+
 test('a fatal error stops reconnecting', () => {
   start();
   FakeWebSocket.latest().open();
