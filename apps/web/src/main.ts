@@ -69,10 +69,7 @@ let session: Session | null = null;
 let ownHeld: HeldItem | null = null;
 /** The local player's sip, on the performance.now() clock (held items spec §2.3). */
 const ownSip = createSipClock();
-/** Shows a held item picked by key in the room-bar picker. */
-let showHeldInBar: ((item: HeldItem | null) => void) | null = null;
-
-/** The one path for changing the drink in hand, from the picker or a number key. */
+/** The one path for changing the drink in hand, from a number key. */
 function chooseHeld(item: HeldItem | null): void {
   if (item === ownHeld) {
     return;
@@ -83,7 +80,6 @@ function chooseHeld(item: HeldItem | null): void {
   }
   saveHeld(storage(), item);
   session?.setHeld(item);
-  showHeldInBar?.(item);
 }
 let call: Call | null = null;
 let audio: AudioEngine | null = null;
@@ -141,7 +137,7 @@ window.addEventListener('keydown', (e) => {
   toggleAudioPanel();
 });
 
-// 1–3 pick a drink, 0 puts it down (same as the room-bar picker).
+// 1–3 pick a drink, 0 puts it down.
 window.addEventListener('keydown', (e) => {
   const item = heldForKey(e.code);
   if (item === undefined || e.repeat || e.metaKey || e.ctrlKey || e.altKey) {
@@ -229,22 +225,17 @@ async function joinRoom(roomId: string, name: string, avatar: string | null): Pr
     showBanner(ui, PROBLEM_TEXT[local.problem]);
   }
   const activeCall = call;
-  showHeldInBar = showRoomBar(
-    ui,
-    location.href,
-    {
-      cam: local.cam,
-      mic: local.mic,
-      camAvailable: local.cam,
-      micAvailable: local.mic,
-      onCam(on) {
-        activeCall.setCam(on);
-        showSelfPreview(ui, local.stream, activeCall.localState().cam);
-      },
-      onMic: (on) => activeCall.setMic(on),
+  showRoomBar(ui, location.href, {
+    cam: local.cam,
+    mic: local.mic,
+    camAvailable: local.cam,
+    micAvailable: local.mic,
+    onCam(on) {
+      activeCall.setCam(on);
+      showSelfPreview(ui, local.stream, activeCall.localState().cam);
     },
-    { held, onHeld: chooseHeld }
-  );
+    onMic: (on) => activeCall.setMic(on),
+  });
   showSelfPreview(ui, local.stream, local.cam);
   if (new URLSearchParams(location.search).has('debug')) {
     toggleAudioPanel();

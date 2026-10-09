@@ -1,5 +1,5 @@
 // DOM screens and overlays inside the 16:9 stage. User-provided text only ever goes through textContent.
-import { HELD_ITEMS, type HeldItem, isHeldItem, NAME_MAX, sanitizeName } from '@zoom3d/shared';
+import { NAME_MAX, sanitizeName } from '@zoom3d/shared';
 import { makeAvatar } from '../media/avatar';
 import { initials } from '../media/faces';
 
@@ -193,45 +193,7 @@ function toggle(label: string, control: string, on: boolean, available: boolean,
   return button;
 }
 
-export interface HeldControl {
-  held: HeldItem | null;
-  onHeld(item: HeldItem | null): void;
-}
-
-const HELD_LABELS: Record<HeldItem, string> = { beer: 'Beer', coffee: 'Coffee', wine: 'Wine' };
-
-function heldPicker({ held, onHeld }: HeldControl): HTMLSelectElement {
-  const select = el(
-    'select',
-    {},
-    el('option', { value: '', textContent: 'Nothing in hand' }),
-    ...HELD_ITEMS.map((item) => el('option', { value: item, textContent: HELD_LABELS[item] }))
-  );
-  select.dataset.control = 'held';
-  select.setAttribute('aria-label', 'In hand');
-  select.value = held ?? '';
-  select.addEventListener('change', () => {
-    onHeld(isHeldItem(select.value) ? select.value : null);
-    // Focus would keep letters for the select's typeahead (B, C) instead of the game.
-    select.blur();
-  });
-  // Closed without a change it keeps focus: a letter (W → Wine) must leave it, not pick an item.
-  select.addEventListener('keydown', (e) => {
-    if (/^Key[A-Z]$/.test(e.code)) {
-      e.preventDefault();
-      select.blur();
-    }
-  });
-  return select;
-}
-
-/** Returns a setter that shows another held item in the picker (e.g. picked by key) without reporting it. */
-export function showRoomBar(
-  root: HTMLElement,
-  inviteUrl: string,
-  controls?: MediaControls,
-  held?: HeldControl
-): (item: HeldItem | null) => void {
+export function showRoomBar(root: HTMLElement, inviteUrl: string, controls?: MediaControls): void {
   const link = el('input', { readOnly: true, value: inviteUrl, ariaLabel: 'Invite link' });
   const copy = el('button', { type: 'button', textContent: 'Copy invite link' });
   copy.addEventListener('click', () => {
@@ -248,13 +210,7 @@ export function showRoomBar(
         toggle('Cam', 'cam', controls.cam, controls.camAvailable, controls.onCam),
       ]
     : [];
-  const picker = held ? heldPicker(held) : null;
-  slot(root, 'roombar').replaceChildren(...toggles, ...(picker ? [picker] : []), link, copy);
-  return (item) => {
-    if (picker) {
-      picker.value = item ?? '';
-    }
-  };
+  slot(root, 'roombar').replaceChildren(...toggles, link, copy);
 }
 
 const BANNER_MS = 8000;
