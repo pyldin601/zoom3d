@@ -20,6 +20,8 @@ export interface RemotePeer {
   info: PeerInfo;
   buffer: SnapshotBuffer;
   lastSeq: number;
+  /** now() when this peer's last sip arrived; −Infinity before any. */
+  drinkAt: number;
 }
 
 /** Notified after the session has applied each server event to its own state. */
@@ -37,6 +39,8 @@ export interface Session {
   sendSignal(to: string, payload: SignalPayload): void;
   setMedia(cam: boolean, mic: boolean): void;
   setHeld(item: HeldItem | null): void;
+  /** Takes a sip of the held drink; not resent after a reconnect. */
+  sendDrink(): void;
   selfId(): string | null;
   selfColor(): string | null;
   status(): ConnStatus;
@@ -76,7 +80,7 @@ export function createSession(opts: SessionOptions): Session {
   const addPeer = (info: PeerInfo) => {
     const buffer = new SnapshotBuffer();
     buffer.push({ t: now(), x: info.x, y: info.y, angle: info.angle });
-    peers.set(info.id, { info: { ...info }, buffer, lastSeq: -1 });
+    peers.set(info.id, { info: { ...info }, buffer, lastSeq: -1, drinkAt: Number.NEGATIVE_INFINITY });
   };
 
   const handle = (m: ServerMessage) => {
@@ -122,6 +126,13 @@ export function createSession(opts: SessionOptions): Session {
         peer.info.cam = m.cam;
         peer.info.mic = m.mic;
         listener.peerMedia?.(m.id, m.cam, m.mic);
+        break;
+      }
+      case 'peer_drink': {
+        const peer = peers.get(m.id);
+        if (peer) {
+          peer.drinkAt = now();
+        }
         break;
       }
       case 'peer_held': {
@@ -203,6 +214,11 @@ export function createSession(opts: SessionOptions): Session {
       held = item;
       if (status === 'open') {
         conn.send({ type: 'held', item });
+      }
+    },
+    sendDrink() {
+      if (status === 'open') {
+        conn.send({ type: 'drink' });
       }
     },
     selfId: () => selfId,
