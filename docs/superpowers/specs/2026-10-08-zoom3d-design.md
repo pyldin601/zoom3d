@@ -223,6 +223,8 @@ MediaStreamSource → BiquadFilter(lowpass, "muffle") ─┬─ dryGain → Pann
   same height.
 - **Reverb:** one `ConvolverNode` with a synthesized impulse response: stereo decorrelated
   noise with exponential decay, RT ~0.8 s and a short pre-delay. It is generated at startup.
+  Each channel is scaled to unit energy, and the node has `normalize = false`, so the reverb
+  passes at 0 dB. The browser's own normalization cost ~13 dB, which made the reverb inaudible.
 
 ### 9.2 Curves (pure, in `shared/audio`, unit-tested)
 With `d` the distance in tiles, `REF = 1.5`, `MAX = 24`, `a = REF / max(d, REF)`, and
