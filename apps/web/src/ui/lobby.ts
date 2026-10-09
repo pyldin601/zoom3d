@@ -185,9 +185,10 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
   const file = el('input', { type: 'file', accept: 'image/*', hidden: true });
   file.setAttribute('aria-label', 'Avatar picture');
 
-  const menus: HTMLElement[] = [pictureMenu];
+  /** Each menu with the button that opens it; a press on either one isn't "outside". */
+  const menus: { menu: HTMLElement; opener: HTMLElement }[] = [{ menu: pictureMenu, opener: pencil }];
   const closeOthers = (except: HTMLElement | null) => {
-    for (const m of menus) {
+    for (const { menu: m } of menus) {
       if (m !== except) {
         m.hidden = true;
       }
@@ -195,7 +196,21 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
   };
   const cam = splitButton('cam', opts, closeOthers);
   const mic = splitButton('mic', opts, closeOthers);
-  menus.push(...[cam, mic].map((s) => s.root.querySelector('.device-menu') as HTMLElement));
+  for (const split of [cam, mic]) {
+    menus.push({
+      menu: split.root.querySelector('.device-menu') as HTMLElement,
+      opener: split.root.querySelector('.chevron') as HTMLElement,
+    });
+  }
+  const closeOnOutsidePress = (e: Event) => {
+    const target = e.target as Node;
+    for (const { menu, opener } of menus) {
+      if (!menu.hidden && !menu.contains(target) && !opener.contains(target)) {
+        menu.hidden = true;
+      }
+    }
+  };
+  document.addEventListener('pointerdown', closeOnOutsidePress);
 
   const input = el('input', {
     name: 'name',
@@ -333,6 +348,7 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
   frame = requestAnimationFrame(tick);
 
   return () => {
+    document.removeEventListener('pointerdown', closeOnOutsidePress);
     cancelAnimationFrame(frame);
     watchPending(false);
     unsubscribe();

@@ -304,6 +304,36 @@ test('a quick restart shows no waiting line; one that stalls (a permission promp
   vi.useRealTimers();
 });
 
+test('a click outside closes an open menu; a click inside it does not', async () => {
+  show({ defaultAvatar: PIC, media: camOff() });
+  const press = (target: Element) => target.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  const pictureMenu = root.querySelector('.picture-menu') as HTMLElement;
+  byLabel('Change picture')?.click();
+  expect(pictureMenu.hidden).toBe(false);
+  press(button('Remove'));
+  expect(pictureMenu.hidden).toBe(false);
+  press(nameInput());
+  expect(pictureMenu.hidden).toBe(true);
+
+  byLabel('Choose camera')?.click();
+  await flush();
+  const cameraMenu = root.querySelector('[data-device="cam"] .device-menu') as HTMLElement;
+  expect(cameraMenu.hidden).toBe(false);
+  press(document.body);
+  expect(cameraMenu.hidden).toBe(true);
+});
+
+test('the button that opened a menu still toggles it closed', async () => {
+  show();
+  const chevron = byLabel('Choose camera') as HTMLButtonElement;
+  chevron.click();
+  await flush();
+  const cameraMenu = root.querySelector('[data-device="cam"] .device-menu') as HTMLElement;
+  chevron.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  chevron.click();
+  expect(cameraMenu.hidden).toBe(true);
+});
+
 test('mic toggle mutes and unmutes', () => {
   const { media, controller, set } = fakeMedia();
   show({ media: controller });

@@ -105,6 +105,12 @@ test('closed menus stay out of sight', async ({ page }) => {
   await expect(page.locator('.device-menu').first()).toBeHidden();
   await page.getByRole('button', { name: 'Change picture' }).click();
   await expect(page.getByRole('button', { name: 'Choose picture…' })).toBeVisible();
+  await page.getByPlaceholder('Your name').click();
+  await expect(page.getByRole('button', { name: 'Choose picture…' })).toBeHidden();
+  await page.getByRole('button', { name: 'Choose microphone' }).click();
+  await expect(page.getByRole('menuitemradio').first()).toBeVisible();
+  await page.mouse.click(5, 5);
+  await expect(page.getByRole('menuitemradio')).toHaveCount(0);
 });
 
 test('the camera choice is remembered', async ({ page }) => {
