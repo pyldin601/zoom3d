@@ -1,6 +1,7 @@
 // Room membership, colours, resume grace and move validation. Pure: no sockets or timers.
 import {
   type GameMap,
+  type HeldMessage,
   type IceServer,
   isPlausibleMove,
   isValidAvatar,
@@ -47,7 +48,7 @@ interface Peer extends PeerInfo {
 
 type Room = Map<string, Peer>;
 
-const info = ({ id, name, color, x, y, angle, cam, mic, avatar }: Peer): PeerInfo => ({
+const info = ({ id, name, color, x, y, angle, cam, mic, avatar, held }: Peer): PeerInfo => ({
   id,
   name,
   color,
@@ -57,6 +58,7 @@ const info = ({ id, name, color, x, y, angle, cam, mic, avatar }: Peer): PeerInf
   cam,
   mic,
   avatar,
+  held,
 });
 
 export class Lobby {
@@ -121,6 +123,7 @@ export class Lobby {
       cam: false,
       mic: false,
       avatar: isValidAvatar(msg.avatar) ? msg.avatar : null,
+      held: null,
       resumeToken: this.opts.newToken(),
       conn,
       lastAcceptedAt: this.opts.now(),
@@ -171,6 +174,15 @@ export class Lobby {
       cam: msg.cam,
       mic: msg.mic,
     });
+  }
+
+  held(conn: string, msg: HeldMessage): void {
+    const found = this.lookup(conn);
+    if (!found) {
+      return;
+    }
+    found.peer.held = msg.item;
+    this.broadcast(found.room, found.peer.id, { type: 'peer_held', id: found.peer.id, item: msg.item });
   }
 
   /** Relays WebRTC signalling only to another live peer of the sender's room. */

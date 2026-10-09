@@ -1,8 +1,9 @@
 // Billboard disc avatars, depth-tested per column against the wall z-buffer, each with a soft
 // shadow on the floor right under it.
-import type { PlayerState } from '@zoom3d/shared';
+import type { HeldItem, PlayerState } from '@zoom3d/shared';
 import { FACE_SIZE } from '../media/faces';
 import { type Framebuffer, rgb } from './framebuffer';
+import { HELD_LEFT, HELD_SPRITES, HELD_TEXEL, HELD_TOP } from './held-items';
 import { FOV, shade } from './walls';
 
 export const AVATAR_RADIUS = 0.35; // tiles
@@ -26,6 +27,8 @@ export interface Sprite {
   face: Uint32Array | null;
   /** 0..1: brightens the ring while the person talks. */
   speaking: number;
+  /** Drawn in a hand on the viewer's right of the disc. */
+  held: HeldItem | null;
 }
 
 const SPEAKING_GLOW = 0.8;
@@ -169,7 +172,7 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
   const faceSize = FACE_SIZE;
   for (const i of visible) {
     const { screenX, depth, size } = projections[i] as Projection;
-    const { color, face, speaking } = sprites[i] as Sprite;
+    const { color, face, speaking, held } = sprites[i] as Sprite;
     const ring = speaking > 0 ? mixWhite(color, Math.min(speaking, 1) * SPEAKING_GLOW) : color;
     const edge = face ? ring : shade(ring);
     const r = size / 2;
@@ -201,6 +204,41 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
         } else {
           pixels[row * w + col] = color;
         }
+      }
+    }
+    if (held) {
+      renderHeld(fb, held, screenX, depth, r);
+    }
+  }
+}
+
+/** Draws the held item beside a disc of on-screen radius r, depth-tested like the disc. */
+function renderHeld(fb: Framebuffer, item: HeldItem, screenX: number, depth: number, r: number): void {
+  const { width: w, height: h, pixels, zbuffer } = fb;
+  const { w: tw, h: th, texels } = HELD_SPRITES[item];
+  const t = HELD_TEXEL * r;
+  const left = screenX + HELD_LEFT * r;
+  const top = h / 2 - HELD_TOP * r;
+  const x0 = Math.max(0, Math.floor(left));
+  const x1 = Math.min(w - 1, Math.ceil(left + tw * t) - 1);
+  const y0 = Math.max(0, Math.floor(top));
+  const y1 = Math.min(h - 1, Math.ceil(top + th * t) - 1);
+  for (let col = x0; col <= x1; col++) {
+    if (depth >= (zbuffer[col] as number)) {
+      continue;
+    }
+    const u = Math.floor((col + 0.5 - left) / t);
+    if (u < 0 || u >= tw) {
+      continue;
+    }
+    for (let row = y0; row <= y1; row++) {
+      const v = Math.floor((row + 0.5 - top) / t);
+      if (v < 0 || v >= th) {
+        continue;
+      }
+      const c = texels[v * tw + u] as number;
+      if (c !== 0) {
+        pixels[row * w + col] = c;
       }
     }
   }

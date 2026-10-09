@@ -1,6 +1,7 @@
 // Multiplayer session: remote peers with interpolation buffers, corrections, and timer-driven state sync.
 import {
   type ErrorCode,
+  type HeldItem,
   type IceServer,
   IDLE_INTERVAL_MS,
   type PeerInfo,
@@ -35,6 +36,7 @@ export interface Session {
   iceServers(): IceServer[];
   sendSignal(to: string, payload: SignalPayload): void;
   setMedia(cam: boolean, mic: boolean): void;
+  setHeld(item: HeldItem | null): void;
   selfId(): string | null;
   selfColor(): string | null;
   status(): ConnStatus;
@@ -66,6 +68,8 @@ export function createSession(opts: SessionOptions): Session {
   let seq = 0;
   let iceServers: IceServer[] = [];
   let media: { cam: boolean; mic: boolean } | null = null;
+  /** undefined until setHeld: null is a real choice that must reach a resumed slot. */
+  let held: HeldItem | null | undefined;
   const listener = opts.listener ?? {};
   const lastSent = { x: Number.NaN, y: Number.NaN, angle: Number.NaN, at: 0 };
 
@@ -96,6 +100,9 @@ export function createSession(opts: SessionOptions): Session {
         if (media) {
           conn.send({ type: 'media', ...media });
         }
+        if (held !== undefined) {
+          conn.send({ type: 'held', item: held });
+        }
         listener.welcome?.(m.selfId, m.iceServers, identityChanged);
         break;
       }
@@ -115,6 +122,13 @@ export function createSession(opts: SessionOptions): Session {
         peer.info.cam = m.cam;
         peer.info.mic = m.mic;
         listener.peerMedia?.(m.id, m.cam, m.mic);
+        break;
+      }
+      case 'peer_held': {
+        const peer = peers.get(m.id);
+        if (peer) {
+          peer.info.held = m.item;
+        }
         break;
       }
       case 'signal':
@@ -183,6 +197,12 @@ export function createSession(opts: SessionOptions): Session {
       media = { cam, mic };
       if (status === 'open') {
         conn.send({ type: 'media', cam, mic });
+      }
+    },
+    setHeld(item) {
+      held = item;
+      if (status === 'open') {
+        conn.send({ type: 'held', item });
       }
     },
     selfId: () => selfId,

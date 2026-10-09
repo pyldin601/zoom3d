@@ -2,6 +2,8 @@ import { describe, expect, test } from 'vitest';
 import {
   AVATAR_MAX_CHARS,
   AVATAR_SIZE,
+  HELD_ITEMS,
+  isHeldItem,
   isValidAvatar,
   isValidRoomId,
   MAX_MESSAGE_BYTES,
@@ -160,18 +162,20 @@ describe('parseClientMessage', () => {
   });
 });
 
+const peer: PeerInfo = {
+  id: 'p1',
+  name: 'Ada',
+  color: '#e6194b',
+  x: 1,
+  y: 2,
+  angle: 0,
+  cam: true,
+  mic: false,
+  avatar: null,
+  held: null,
+};
+
 describe('parseServerMessage', () => {
-  const peer: PeerInfo = {
-    id: 'p1',
-    name: 'Ada',
-    color: '#e6194b',
-    x: 1,
-    y: 2,
-    angle: 0,
-    cam: true,
-    mic: false,
-    avatar: null,
-  };
   const samples: ServerMessage[] = [
     {
       type: 'welcome',
@@ -190,6 +194,9 @@ describe('parseServerMessage', () => {
     },
     { type: 'peer_joined', peer },
     { type: 'peer_joined', peer: { ...peer, avatar: AVATAR } },
+    { type: 'peer_joined', peer: { ...peer, held: 'wine' } },
+    { type: 'peer_held', id: 'p1', item: 'beer' },
+    { type: 'peer_held', id: 'p1', item: null },
     { type: 'peer_left', id: 'p1' },
     { type: 'peer_state', id: 'p1', x: 1, y: 2, angle: 3, seq: 4 },
     { type: 'correction', x: 1, y: 2, angle: 3, seq: 4 },
@@ -238,6 +245,50 @@ describe('parseServerMessage', () => {
 
   test('rejects unknown error codes', () => {
     expect(parseServerMessage(json({ type: 'error', code: 'boom', message: '' }))).toBeNull();
+  });
+});
+
+describe('held items', () => {
+  test('isHeldItem accepts only the listed items', () => {
+    expect(HELD_ITEMS).toEqual(['beer', 'coffee', 'wine']);
+    for (const item of HELD_ITEMS) {
+      expect(isHeldItem(item)).toBe(true);
+    }
+    for (const v of ['pizza', '', null, undefined, 1, 'Beer']) {
+      expect(isHeldItem(v)).toBe(false);
+    }
+  });
+
+  test('client held accepts null or an item and strips extra fields', () => {
+    expect(parseClientMessage(json({ type: 'held', item: 'coffee', x: 1 }))).toEqual({ type: 'held', item: 'coffee' });
+    expect(parseClientMessage(json({ type: 'held', item: null }))).toEqual({ type: 'held', item: null });
+  });
+
+  test('client held rejects unknown, non-string and missing items', () => {
+    expect(parseClientMessage(json({ type: 'held', item: 'pizza' }))).toBeNull();
+    expect(parseClientMessage(json({ type: 'held', item: 3 }))).toBeNull();
+    expect(parseClientMessage(json({ type: 'held' }))).toBeNull();
+  });
+
+  test('peer_held with an unknown item (newer server) parses as null', () => {
+    expect(parseServerMessage(json({ type: 'peer_held', id: 'p1', item: 'pizza' }))).toEqual({
+      type: 'peer_held',
+      id: 'p1',
+      item: null,
+    });
+    expect(parseServerMessage(json({ type: 'peer_held', item: 'beer' }))).toBeNull();
+  });
+
+  test('a peer without held (older server) or with an unknown held parses with held null', () => {
+    const { held: _omit, ...older } = peer;
+    expect(parseServerMessage(json({ type: 'peer_joined', peer: older }))).toEqual({
+      type: 'peer_joined',
+      peer: { ...peer, held: null },
+    });
+    expect(parseServerMessage(json({ type: 'peer_joined', peer: { ...peer, held: 'pizza' } }))).toEqual({
+      type: 'peer_joined',
+      peer: { ...peer, held: null },
+    });
   });
 });
 

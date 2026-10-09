@@ -136,3 +136,10 @@ test('signals are relayed over real sockets and the welcome has ICE servers', as
   a.send({ type: 'signal', to: b.welcome.selfId, payload });
   expect(await b.waitFor('signal')).toEqual({ type: 'signal', from: a.welcome.selfId, payload });
 });
+
+test('held is relayed over real sockets', async () => {
+  const a = await joined('Ada');
+  const b = await joined('Bob');
+  a.send({ type: 'held', item: 'coffee' });
+  expect(await b.waitFor('peer_held')).toEqual({ type: 'peer_held', id: a.welcome.selfId, item: 'coffee' });
+});

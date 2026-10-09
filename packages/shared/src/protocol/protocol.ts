@@ -36,6 +36,8 @@ export interface PeerInfo {
   mic: boolean;
   /** JPEG data URL (see isValidAvatar), shown while the camera is off. */
   avatar: string | null;
+  /** What the peer holds in its hand, if anything. */
+  held: HeldItem | null;
 }
 
 export interface IceServer {
@@ -68,8 +70,9 @@ export type JoinMessage = {
 };
 export type StateMessage = { type: 'state'; x: number; y: number; angle: number; seq: number };
 export type MediaMessage = { type: 'media'; cam: boolean; mic: boolean };
+export type HeldMessage = { type: 'held'; item: HeldItem | null };
 export type SignalMessage = { type: 'signal'; to: string; payload: SignalPayload };
-export type ClientMessage = JoinMessage | StateMessage | MediaMessage | SignalMessage;
+export type ClientMessage = JoinMessage | StateMessage | MediaMessage | HeldMessage | SignalMessage;
 
 export type ErrorCode = 'room_full' | 'invalid_room' | 'invalid_name' | 'not_joined';
 const ERROR_CODES: readonly ErrorCode[] = ['room_full', 'invalid_room', 'invalid_name', 'not_joined'];
@@ -86,6 +89,7 @@ export type ServerMessage =
     }
   | { type: 'peer_joined'; peer: PeerInfo }
   | { type: 'peer_media'; id: string; cam: boolean; mic: boolean }
+  | { type: 'peer_held'; id: string; item: HeldItem | null }
   | { type: 'signal'; from: string; payload: SignalPayload }
   | { type: 'peer_left'; id: string }
   | { type: 'peer_state'; id: string; x: number; y: number; angle: number; seq: number }
@@ -120,6 +124,14 @@ const AVATAR = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/;
 /** A JPEG data URL of at most AVATAR_MAX_CHARS. Receivers only ever draw it onto a canvas. */
 export function isValidAvatar(v: unknown): v is string {
   return typeof v === 'string' && v.length <= AVATAR_MAX_CHARS && AVATAR.test(v);
+}
+
+/** Drinks a peer can hold beside its avatar; "nothing" is null. */
+export const HELD_ITEMS = ['beer', 'coffee', 'wine'] as const;
+export type HeldItem = (typeof HELD_ITEMS)[number];
+
+export function isHeldItem(v: unknown): v is HeldItem {
+  return HELD_ITEMS.includes(v as HeldItem);
 }
 
 const isControl = (ch: string) => {
@@ -259,6 +271,9 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   if (m.type === 'media') {
     return isBool(m.cam) && isBool(m.mic) ? { type: 'media', cam: m.cam, mic: m.mic } : null;
   }
+  if (m.type === 'held') {
+    return m.item === null || isHeldItem(m.item) ? { type: 'held', item: m.item } : null;
+  }
   if (m.type === 'signal') {
     const payload = parseSignalPayload(m.payload);
     return payload && isStr(m.to) ? { type: 'signal', to: m.to, payload } : null;
@@ -279,7 +294,9 @@ function peerInfo(v: unknown): PeerInfo | null {
   }
   const p = pose(v);
   const avatar = isValidAvatar(v.avatar) ? v.avatar : null;
-  return p && { id: v.id, name: v.name, color: v.color, ...p, cam: v.cam, mic: v.mic, avatar };
+  // Missing (older server) or unknown (newer server's item) means empty-handed.
+  const held = isHeldItem(v.held) ? v.held : null;
+  return p && { id: v.id, name: v.name, color: v.color, ...p, cam: v.cam, mic: v.mic, avatar, held };
 }
 
 export function parseServerMessage(raw: string): ServerMessage | null {
@@ -319,6 +336,8 @@ export function parseServerMessage(raw: string): ServerMessage | null {
       return isStr(m.id) && isBool(m.cam) && isBool(m.mic)
         ? { type: 'peer_media', id: m.id, cam: m.cam, mic: m.mic }
         : null;
+    case 'peer_held':
+      return isStr(m.id) ? { type: 'peer_held', id: m.id, item: isHeldItem(m.item) ? m.item : null } : null;
     case 'signal': {
       const payload = parseSignalPayload(m.payload);
       return payload && isStr(m.from) ? { type: 'signal', from: m.from, payload } : null;

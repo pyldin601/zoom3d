@@ -297,3 +297,38 @@ describe('media and signalling', () => {
     expect(welcome('C').peers.find((p) => p.name === 'B')).toMatchObject({ cam: false, mic: false });
   });
 });
+
+describe('held items', () => {
+  test('a new peer holds nothing', () => {
+    join('A');
+    join('B');
+    expect(welcome('B').peers[0]?.held).toBeNull();
+  });
+
+  test('held is broadcast to the others, not the sender, and shown to later joiners', () => {
+    join('A');
+    join('B');
+    const aSent = to('A').length;
+    lobby.held('A', { type: 'held', item: 'beer' });
+    expect(last('B')).toEqual({ type: 'peer_held', id: welcome('A').selfId, item: 'beer' });
+    expect(to('A')).toHaveLength(aSent);
+    join('C');
+    expect(welcome('C').peers.find((p) => p.name === 'A')?.held).toBe('beer');
+    expect(to('A').at(-1)).toMatchObject({ type: 'peer_joined', peer: { held: null } });
+  });
+
+  test('resume keeps held', () => {
+    join('A');
+    join('B');
+    lobby.held('B', { type: 'held', item: 'wine' });
+    lobby.disconnect('B');
+    join('B2', 'B', { resumeToken: welcome('B').resumeToken });
+    join('C');
+    expect(welcome('C').peers.find((p) => p.name === 'B')?.held).toBe('wine');
+  });
+
+  test('held before join is ignored', () => {
+    lobby.held('ghost', { type: 'held', item: 'beer' });
+    expect(sent).toEqual([]);
+  });
+});

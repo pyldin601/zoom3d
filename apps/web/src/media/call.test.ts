@@ -19,6 +19,7 @@ const info = (id: string, cam = true): PeerInfo => ({
   cam,
   mic: true,
   avatar: null,
+  held: null,
 });
 
 let meshes: {
