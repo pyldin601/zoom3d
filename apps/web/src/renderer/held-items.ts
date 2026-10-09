@@ -1,5 +1,6 @@
 // Pixel-art drinks held in a floating hand beside an avatar disc (held items spec §2). Column 0 is
-// the side next to the disc: mugs are gripped by the handle, the wine glass by the stem.
+// the side next to the disc: the drink is there and the hand grips it from the outside, mugs by the
+// handle, the wine glass by the stem.
 import type { HeldItem } from '@zoom3d/shared';
 import { MOUTH_Y_IN_CROP } from '../media/framing';
 import { rgb } from './framebuffer';
@@ -20,9 +21,9 @@ const FACE_SPAN = 1.7;
 export const FACE_MOUTH_Y = (MOUTH_Y_IN_CROP - 0.5) * FACE_SPAN;
 /** The texel (u, v) of each drink that meets the lips at the top of a sip: its rim, or the foam. */
 export const HELD_LIPS: Readonly<Record<HeldItem, readonly [number, number]>> = {
-  beer: [9.5, 2.5],
-  coffee: [9.5, 2],
-  wine: [3, 0.5],
+  beer: [3.5, 2.5],
+  coffee: [3.5, 2],
+  wine: [4, 0.5],
 };
 /** At the top of a sip: the sprite's left edge and top (as HELD_LEFT/HELD_TOP) that put its lip point on the mouth. */
 export const sipLeft = (item: HeldItem) => -(HELD_LIPS[item][0] * HELD_TEXEL);
@@ -55,37 +56,37 @@ const PALETTE: Record<string, string> = {
 // biome-ignore format: one row per line keeps the pixel art readable
 export const HELD_MAPS: Readonly<Record<HeldItem, readonly string[]>> = {
   beer: [
-    '.......fffff.',
-    '......fffffff',
-    '...oooofFffFf',
-    '...osssobbbbg',
-    '.ossssgbbbbbg',
-    'oollllgbbbbBg',
-    'oossssgbbbbBg',
-    '.ooooogbbbbBg',
-    '......gbbbbbg',
-    '......ggggggg',
+    '.fffff.......',
+    'fffffff......',
+    'fFffFfoooo...',
+    'gbbbbossso...',
+    'gbbbbbgsssso.',
+    'gBbbbbglllloo',
+    'gBbbbbgssssoo',
+    'gBbbbbgooooo.',
+    'gbbbbbg......',
+    'ggggggg......',
   ],
   coffee: [
-    '.......t..t..',
-    '...oooo.t..t.',
-    '...osssoccccw',
-    '.osssswwwwwww',
-    'oollllwwwwwww',
-    'oosssswwwwwww',
-    '.ooooowwwwwww',
-    '......Wwwwwww',
-    '.......WWWWW.',
+    '..t..t.......',
+    '.t..t.oooo...',
+    'wccccossso...',
+    'wwwwwwwsssso.',
+    'wwwwwwwlllloo',
+    'wwwwwwwssssoo',
+    'wwwwwwwooooo.',
+    'wwwwwwW......',
+    '.WWWWW.......',
   ],
   wine: [
     'g.....g',
     'g.....g',
     'gRRRRRg',
-    'gRRRrRg',
-    '.oooRg.',
-    '.ossg..',
-    '.sssso.',
-    '.llllo.',
+    'gRrRRRg',
+    '.gRooo.',
+    '..gsso.',
+    '.ossss.',
+    '.ollll.',
     '.ooooo.',
     '.ggggg.',
   ],

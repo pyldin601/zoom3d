@@ -10,5 +10,14 @@ test('every item has a texture of its pixel map size', () => {
 test('transparent pixels are 0 and opaque ones carry full alpha', () => {
   const { w, texels } = HELD_SPRITES.beer;
   expect(texels[0]).toBe(0);
-  expect(texels[9 * w + 12]).toBe(hexToRgb('#cfe3ea'));
+  expect(texels[9 * w]).toBe(hexToRgb('#cfe3ea'));
+});
+
+test('drinks are held from the outside: the hand is on the far side from the disc, the drink next to it', () => {
+  const hand = ['#f2c29b', '#c98d6a', '#8a5236'].map(hexToRgb);
+  for (const item of ['beer', 'coffee', 'wine'] as const) {
+    const { w, texels } = HELD_SPRITES[item];
+    const us = [...texels.keys()].filter((i) => hand.includes(texels[i] as number)).map((i) => i % w);
+    expect(us.reduce((a, b) => a + b, 0) / us.length).toBeGreaterThan((w - 1) / 2);
+  }
 });

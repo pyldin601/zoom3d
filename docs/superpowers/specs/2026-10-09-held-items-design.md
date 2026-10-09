@@ -28,9 +28,10 @@ The sketch was agreed in chat on 2026-10-09: avatar style "A", grip "3".
 - A cartoon hand with no arm grips the item in front of the disc's lower right.
 - Placement is fixed in screen space on the **viewer's right** of the disc. The disc is a
   billboard, so the hand never moves around it.
-- Mugs (beer, coffee) are held **by the handle**. The handle and the fist face the disc, and the
-  mug body sits on the far side.
-- The wine glass is held by the stem, on the same side, with the fist toward the disc.
+- Mugs (beer, coffee) are held **by the handle, from the outside**. The mug body sits next to the
+  disc, and the handle and the fist are on the far side (flipped 2026-10-09; the first version had
+  the fist toward the disc).
+- The wine glass is held by the stem, with the fist on the far side too.
 - With no item, nothing is drawn: there is no empty hand.
 - The item casts its own floor shadow, in the same banded style as the disc's (added
   2026-10-09).
@@ -44,16 +45,16 @@ The reference art is the beer sprite below. The pixel maps are 13×10, read left
 starting from the side next to the disc:
 
 ```
-.......fffff.     f foam      F foam shade
-......fffffff     b beer      B beer shade
-...oooofFffFf     g glass / handle
-...osssobbbbg     s skin      l finger crease    o hand outline
-.ossssgbbbbbg
-oollllgbbbbBg
-oossssgbbbbBg
-.ooooogbbbbBg
-......gbbbbbg
-......ggggggg
+.fffff.......     f foam      F foam shade
+fffffff......     b beer      B beer shade
+fFffFfoooo...     g glass / handle
+gbbbbossso...     s skin      l finger crease    o hand outline
+gbbbbbgsssso.
+gBbbbbglllloo
+gBbbbbgssssoo
+gBbbbbgooooo.
+gbbbbbg......
+ggggggg......
 ```
 
 (The exact strings live in code. The coffee mug and the wine glass follow the same layout:
@@ -73,7 +74,7 @@ These were tuned by eye from sketches.
 
 Others see the drink on their right of your disc, which is your **left** hand. To match, you see
 it in your left hand: at the bottom-left of the screen, with the hand and handle toward the screen
-centre and the drink on the outside. It is the in-game sprite mirrored, built once at load
+edge and the drink toward the centre. It is the in-game sprite mirrored, built once at load
 (`apps/web/src/renderer/own-held.ts`).
 
 - One texel is 4.6% of the screen height; the left edge is at 8.3% of the width.
@@ -118,8 +119,8 @@ progress: 0 at rest, 1 while held.
 **Others' view (variant "A"):**
 - The hand and drink move from the disc's lower right to its mouth, then back.
 - At the top of the sip, each drink's **lip point** sits on the mouth: beer at the middle of the
-  mug under the foam (texel 9.5, 2.5), coffee at the mug rim (9.5, 2), wine at the glass rim
-  (3, 0.5). So the rim meets the lips and the fist ends up beside the face, not on it.
+  mug under the foam (texel 3.5, 2.5), coffee at the mug rim (3.5, 2), wine at the glass rim
+  (4, 0.5). So the rim meets the lips and the fist ends up beside the face, not on it.
 - The mouth is horizontally centred, `FACE_MOUTH_Y` = (`MOUTH_Y_IN_CROP` − 0.5) × 1.7 ≈ 0.374 r
   below the disc centre. Face framing anchors the crop on MediaPipe's mouth keypoint and puts it at
   `MOUTH_Y_IN_CROP` (0.72) of the framed video; the video fills the disc's inner circle, 1.7 r

@@ -27,18 +27,18 @@ function at(u: number, v: number, bob = 0, sway = 0, sip = 0) {
 const tex = (u: number, v: number) => OWN_HELD_SPRITES.beer.texels[v * OWN_HELD_SPRITES.beer.w + u];
 
 describe('renderOwnHeld', () => {
-  test('is the in-game beer mirrored: the hand on the right, toward the screen centre', () => {
-    expect(tex(7, 3)).toBe(hexToRgb('#f2c29b'));
-    expect(tex(2, 3)).toBe(hexToRgb('#e8a317'));
+  test('is the in-game beer mirrored: the hand on the left, toward the screen edge', () => {
+    expect(tex(4, 3)).toBe(hexToRgb('#f2c29b'));
+    expect(tex(9, 3)).toBe(hexToRgb('#e8a317'));
   });
 
   test('draws the drink peeking in at the bottom-left', () => {
     const fb = createFramebuffer();
     renderOwnHeld(fb, 'beer', 0, 0, 0);
     for (const [u, v] of [
-      [2, 1],
-      [2, 3],
-      [7, 3],
+      [10, 1],
+      [10, 3],
+      [5, 3],
     ] as const) {
       expect(fb.pixels[at(u, v)]).toBe(tex(u, v));
     }
@@ -56,9 +56,9 @@ describe('renderOwnHeld', () => {
     const moved = createFramebuffer();
     renderOwnHeld(moved, 'beer', 1, -1, 0);
     for (const [u, v] of [
-      [2, 1],
-      [5, 3],
+      [10, 1],
       [7, 3],
+      [5, 3],
     ] as const) {
       expect(moved.pixels[at(u, v, 1, -1)]).toBe(tex(u, v));
     }
@@ -70,12 +70,12 @@ describe('renderOwnHeld', () => {
     renderOwnHeld(fb, 'beer', 0, 0, 1);
     // Only the top 30% shows: rows 0–2 of the sprite.
     for (const [u, v] of [
-      [2, 1],
-      [7, 2],
+      [10, 1],
+      [5, 2],
     ] as const) {
       expect(fb.pixels[at(u, v, 0, 0, 1)]).toBe(tex(u, v));
     }
-    expect(fb.pixels[at(2, 1)]).not.toBe(tex(2, 1));
+    expect(fb.pixels[at(10, 1)]).not.toBe(tex(10, 1));
   });
 
   test.each([
