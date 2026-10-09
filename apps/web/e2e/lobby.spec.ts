@@ -75,6 +75,16 @@ test('camera off in the lobby stops it; turning it on in the room sends live vid
   await expect.poll(() => isLive(b, 'Ada'), { timeout: 15_000 }).toBe(true);
 });
 
+test('closed menus stay out of sight', async ({ page }) => {
+  await openRoom(page);
+  await page.getByRole('button', { name: 'Turn camera off' }).click();
+  await expect(page.getByRole('button', { name: 'Change picture' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Choose picture…' })).toBeHidden();
+  await expect(page.locator('.device-menu').first()).toBeHidden();
+  await page.getByRole('button', { name: 'Change picture' }).click();
+  await expect(page.getByRole('button', { name: 'Choose picture…' })).toBeVisible();
+});
+
 test('the camera choice is remembered', async ({ page }) => {
   await openRoom(page);
   await holdCamera(page);

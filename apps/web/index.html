@@ -28,7 +28,6 @@
       #ui .avatar img { width: 100%; height: 100%; object-fit: cover; }
       /* Lobby (lobby spec §2): 7.5em is the 176 px disc on a 720 px stage. */
       #ui .lobby { width: 11em; }
-      #ui .lobby [hidden] { display: none; }
       #ui .lobby-disc { position: relative; width: 7.5em; height: 7.5em; margin: 0 auto 0.6em; overflow: visible; border: 0.05em solid #555; }
       #ui .lobby-disc video, #ui .lobby-disc .face { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; overflow: hidden; display: grid; place-items: center; font-size: 1.6em; }
       #ui .lobby-disc video { object-fit: cover; transform: scaleX(-1); font-size: inherit; }
@@ -48,6 +47,8 @@
       #ui .lobby .split.off .toggle { color: #f88; }
       #ui .lobby form input { text-align: center; margin: 0 0 0.4em; }
       #ui .lobby form [type="submit"] { width: 100%; }
+      /* Last, so it beats the display: grid rules above at equal specificity. */
+      #ui .lobby [hidden] { display: none; }
       #ui .selfview { position: absolute; right: 0.6em; bottom: 0.6em; width: 4.5em; height: 4.5em; border-radius: 50%; overflow: hidden; border: 0.12em solid #ddd; }
       #ui .selfview[hidden] { display: none; }
       #ui .selfview video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
