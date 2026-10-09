@@ -12,6 +12,11 @@ export type ConnStatus = 'connecting' | 'open' | 'reconnecting' | 'failed';
 const FATAL: readonly ErrorCode[] = ['room_full', 'invalid_room', 'invalid_name'];
 const BACKOFF_BASE_MS = 500;
 const BACKOFF_MAX_MS = 5000;
+/**
+ * A socket without a welcome by then is given up. Browsers let only one WebSocket per host sit in CONNECTING,
+ * so a hung handshake (a proxy waiting on a restarting server) would otherwise block every retry behind it.
+ */
+const WELCOME_TIMEOUT_MS = 10_000;
 const OPEN = 1;
 
 export interface ConnectOptions {
@@ -31,7 +36,9 @@ export function connect(opts: ConnectOptions): { send(m: ClientMessage): void; c
 
   const open = () => {
     opts.onStatus(attempt === 0 ? 'connecting' : 'reconnecting');
-    ws = new Impl(opts.url);
+    const socket = new Impl(opts.url);
+    ws = socket;
+    const deadline = setTimeout(() => socket.close(), WELCOME_TIMEOUT_MS);
     ws.onopen = () => ws.send(JSON.stringify(opts.makeJoin()));
     ws.onmessage = (e) => {
       const msg = parseServerMessage(String(e.data));
@@ -39,6 +46,7 @@ export function connect(opts: ConnectOptions): { send(m: ClientMessage): void; c
         return;
       }
       if (msg.type === 'welcome') {
+        clearTimeout(deadline);
         attempt = 0;
         opts.onStatus('open');
       }
@@ -49,6 +57,7 @@ export function connect(opts: ConnectOptions): { send(m: ClientMessage): void; c
       opts.onMessage(msg);
     };
     ws.onclose = () => {
+      clearTimeout(deadline);
       if (stopped) {
         return;
       }
