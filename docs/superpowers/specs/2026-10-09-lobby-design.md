@@ -29,10 +29,11 @@ The sketch was agreed in chat on 2026-10-09 ("ours", minimal, pencil only with t
 ┌──────────────────────────┐
 │        ╭────────╮        │   disc: 176 px circle, the size of the
 │       ╱  face /  ╲       │   avatar disc others see in the room
-│      │  picture /  │     │   green ring around it = mic level
+│      │  picture /  │     │
 │       ╲ initials ╱ (✎)   │   ✎ only while the camera is off
 │        ╰────────╯        │
-│    [📷|▾]     [🎤|▾]     │   split buttons: icon toggles, ▾ opens the device menu
+│    [📷|▾]     [🎤|▾]     │   split buttons: icon toggles, ▾ opens the device menu;
+│                          │   the mic's capsule fills green with the mic level
 │  [       Roman        ]  │   name, centred, placeholder "Your name"
 │  [         Join        ] │
 │  Camera blocked: allow…  │   one error line, only when there is one
@@ -44,8 +45,9 @@ The sketch was agreed in chat on 2026-10-09 ("ours", minimal, pencil only with t
 - **Pencil** (bottom-right of the disc, camera off only) opens a small menu: "Choose picture…" and, when
   there is a picture, "Remove". Picking and encoding work as today (`makeAvatar`, §8.1 of the main spec);
   Join waits while a picture is encoding.
-- **Mic ring.** A ring around the disc whose width follows the mic level (0–6 px), drawn from an
-  `AnalyserNode`. Muted or no mic: no ring.
+- **Mic meter.** The capsule of the mic icon fills green from the bottom with the mic level (0–11 icon
+  units, the capsule's height), drawn from an `AnalyserNode`. Muted or no mic: no fill. (Was a ring
+  around the disc until 2026-10-09; it blinked around the face and read as part of the picture.)
 - **Split buttons.** The icon half toggles the device (`ti-video` / `ti-video-off`; red when off). The
   chevron opens a menu of devices from `enumerateDevices()`, the current one ticked. A device that is
   unavailable (blocked, none present, insecure context) shows as off with its menu empty and its
@@ -166,7 +168,7 @@ use fakes, like `capture.ts` today.
 - Mic meter: an `AnalyserNode` on the mic track in the shared `AudioContext`, sampled on
   `requestAnimationFrame` while the lobby is shown, stopped on Join.
 - The `AudioContext` is created when the lobby opens. If the browser keeps it `suspended`, the lobby
-  calls `resume()` on its first `pointerdown`/`keydown`; until then the ring stays still.
+  calls `resume()` on its first `pointerdown`/`keydown`; until then the meter stays empty.
 
 ### 4.5 `main.ts`
 - The route `/r/<id>` creates the `AudioContext` and the `LocalMediaController`, then calls `showLobby`.

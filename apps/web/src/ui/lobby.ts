@@ -5,8 +5,8 @@ import { makeAvatar } from '../media/avatar';
 import type { Device, DeviceProblem } from '../media/devices';
 import { initials } from '../media/faces';
 import type { LocalMediaController, MediaState } from '../media/local-media';
-import { deviceIcon } from './icons';
-import { ringWidth } from './mic-level';
+import { addMeter, deviceIcon, setMeter } from './icons';
+import { meterHeight } from './mic-level';
 import { el, setScreen } from './screens';
 
 export const PROBLEM_TEXT: { cam: Record<DeviceProblem, string>; mic: Record<DeviceProblem, string> } = {
@@ -72,6 +72,8 @@ const AVATAR_ERRORS: Record<string, string> = {
 interface Split {
   root: HTMLElement;
   render(state: MediaState): void;
+  /** The mic's level fill, in icon units; ignored for the camera and while muted. */
+  setLevel(height: number): void;
 }
 
 function splitButton(
@@ -90,6 +92,8 @@ function splitButton(
   const root = el('div', { className: 'split' }, toggle, chevron, menu);
   root.dataset.device = kind;
   let on = false;
+  let meter: SVGRectElement | null = null;
+  let level = 0;
 
   toggle.addEventListener('click', () => {
     if (kind === 'cam') {
@@ -136,10 +140,21 @@ function splitButton(
       const label =
         kind === 'cam' ? (on ? 'Turn camera off' : 'Turn camera on') : on ? 'Mute microphone' : 'Unmute microphone';
       toggle.setAttribute('aria-label', label);
-      toggle.replaceChildren(deviceIcon(kind, !on));
+      const icon = deviceIcon(kind, !on);
+      meter = kind === 'mic' && on ? addMeter(icon) : null;
+      if (meter) {
+        setMeter(meter, level);
+      }
+      toggle.replaceChildren(icon);
       toggle.disabled = !available;
       chevron.disabled = !available;
       root.classList.toggle('off', !on);
+    },
+    setLevel(height) {
+      level = height;
+      if (meter) {
+        setMeter(meter, height);
+      }
     },
   };
 }
@@ -317,14 +332,14 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
   );
   input.focus();
 
-  // The ring is redrawn only when its width changes.
-  let shownWidth = -1;
+  // The meter is redrawn only when its height changes.
+  let shownHeight = -1;
   let frame = 0;
   const tick = () => {
-    const width = media.state().mic && opts.level ? ringWidth(opts.level()) : 0;
-    if (width !== shownWidth) {
-      shownWidth = width;
-      disc.style.boxShadow = width ? `0 0 0 ${width}px #6c6` : 'none';
+    const height = media.state().mic && opts.level ? meterHeight(opts.level()) : 0;
+    if (height !== shownHeight) {
+      shownHeight = height;
+      mic.setLevel(height);
     }
     frame = requestAnimationFrame(tick);
   };

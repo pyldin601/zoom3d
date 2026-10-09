@@ -1,4 +1,5 @@
 // The lobby's mic meter (lobby spec §4.4): an AnalyserNode on the mic, read once a frame into one reused buffer.
+import { MIC_CAPSULE } from './icons';
 
 /** RMS of the samples, scaled ×4 so speech fills the range, clamped to 0..1. */
 export function rmsLevel(samples: Float32Array): number {
@@ -11,9 +12,9 @@ export function rmsLevel(samples: Float32Array): number {
   return Math.min(1, rms * 4);
 }
 
-/** Width in px of the level ring around the lobby disc. */
-export function ringWidth(level: number): number {
-  return Math.round(Math.min(1, Math.max(0, level)) * 6);
+/** Height of the level fill in the lobby's mic icon, in icon units: 0 up to the whole capsule. */
+export function meterHeight(level: number): number {
+  return Math.round(Math.min(1, Math.max(0, level)) * MIC_CAPSULE.height);
 }
 
 export interface MicLevel {

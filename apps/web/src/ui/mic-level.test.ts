@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { ringWidth, rmsLevel } from './mic-level';
+import { meterHeight, rmsLevel } from './mic-level';
 
 test('silence is level 0', () => {
   expect(rmsLevel(new Float32Array(512))).toBe(0);
@@ -15,10 +15,10 @@ test('quiet speech scales up by 4', () => {
   expect(rmsLevel(samples)).toBeCloseTo(0.4, 5);
 });
 
-test('the ring is 0–6 px wide', () => {
-  expect(ringWidth(0)).toBe(0);
-  expect(ringWidth(0.5)).toBe(3);
-  expect(ringWidth(1)).toBe(6);
-  expect(ringWidth(2)).toBe(6);
-  expect(ringWidth(-1)).toBe(0);
+test('the meter is 0–11 icon units tall, the height of the mic capsule', () => {
+  expect(meterHeight(0)).toBe(0);
+  expect(meterHeight(0.5)).toBe(6);
+  expect(meterHeight(1)).toBe(11);
+  expect(meterHeight(2)).toBe(11);
+  expect(meterHeight(-1)).toBe(0);
 });

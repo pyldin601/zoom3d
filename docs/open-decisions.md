@@ -113,7 +113,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   the framer gets a swappable camera source. Devices and on/off states are remembered in `zoom3d.media`.
   Rejected: a 16:9 Zoom-style preview (avatars are discs), a separate mic meter bar and labelled fields (too
   busy), a pencil shown with the camera on (it changes nothing visible). Out of scope: speaker choice,
-  switching devices in the room. Spec: [2026-10-09-lobby-design.md](superpowers/specs/2026-10-09-lobby-design.md). *Amended 2026-10-09:* saved and chosen devices are requested with `deviceId: { exact }` and retried with no `deviceId` only when the device is gone; Chrome ignored the `ideal` form and always gave the default device (spec §3.1).
+  switching devices in the room. Spec: [2026-10-09-lobby-design.md](superpowers/specs/2026-10-09-lobby-design.md). *Amended 2026-10-09:* saved and chosen devices are requested with `deviceId: { exact }` and retried with no `deviceId` only when the device is gone; Chrome ignored the `ideal` form and always gave the default device (spec §3.1). *Amended 2026-10-09:* the mic level is shown inside the lobby's mic icon (its capsule fills green) instead of as a ring around the disc, which blinked around the face. The room bar has no meter.
 
 ### D18 — Join sound
 - Whether and how the room tells you someone arrived.

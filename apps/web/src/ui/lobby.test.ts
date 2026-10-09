@@ -413,16 +413,29 @@ test('an unavailable device disables its toggle and menu', () => {
   expect(byLabel('Mute microphone')?.disabled).toBe(false);
 });
 
-test('the mic ring follows the level and is gone while muted', async () => {
+test('the mic meter fills the mic icon with the level; there is no ring', () => {
   vi.useFakeTimers({ toFake: ['requestAnimationFrame'] });
   const { controller, set } = fakeMedia();
   show({ media: controller, level: () => 0.5 });
   vi.advanceTimersToNextFrame();
-  expect(disc().style.boxShadow).toContain('3px');
+  const meter = () => byLabel('Mute microphone')?.querySelector('.meter');
+  expect(meter()?.getAttribute('height')).toBe('6');
+  expect(meter()?.getAttribute('y')).toBe('8');
+  expect(disc().style.boxShadow).toBe('');
+  // A re-render redraws the icon; the meter keeps its level without waiting for a frame.
+  nameInput().dispatchEvent(new Event('input'));
+  expect(meter()?.getAttribute('height')).toBe('6');
   set({ mic: false });
   vi.advanceTimersToNextFrame();
-  expect(disc().style.boxShadow).toBe('none');
+  expect(meter()?.getAttribute('height')).toBe('0');
   vi.useRealTimers();
+});
+
+test('a muted mic shows no meter', () => {
+  const { controller } = fakeMedia({ mic: false }, { mic: false });
+  show({ media: controller, level: () => 0.5 });
+  expect(byLabel('Unmute microphone')?.querySelector('.meter')).toBeNull();
+  expect(byLabel('Turn camera off')?.querySelector('.meter')).toBeNull();
 });
 
 test('dispose stops the preview and unsubscribes', () => {
