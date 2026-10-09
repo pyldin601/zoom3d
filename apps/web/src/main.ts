@@ -396,6 +396,7 @@ startLoop((dt) => {
         itemBob: bob.itemLift,
         sip: sipPose(now - peer.drinkAt),
         held: peer.info.held,
+        boombox: peer.info.boombox,
       });
       others.push({
         x: pos.x,

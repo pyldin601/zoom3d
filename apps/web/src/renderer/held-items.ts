@@ -36,7 +36,7 @@ export interface HeldSprite {
   texels: Uint32Array;
 }
 
-const PALETTE: Record<string, string> = {
+export const HELD_PALETTE: Readonly<Record<string, string>> = {
   s: '#f2c29b',
   l: '#c98d6a',
   o: '#8a5236',
@@ -93,13 +93,13 @@ export const HELD_MAPS: Readonly<Record<HeldItem, readonly string[]>> = {
 };
 
 /** Packs a pixel map (one string per row, `.` transparent) into a texture. */
-export function toHeldSprite(rows: readonly string[]): HeldSprite {
+export function toHeldSprite(rows: readonly string[], palette = HELD_PALETTE): HeldSprite {
   const w = rows[0]?.length ?? 0;
   const h = rows.length;
   const texels = new Uint32Array(w * h);
   rows.forEach((row, v) => {
     [...row].forEach((ch, u) => {
-      const hex = PALETTE[ch];
+      const hex = palette[ch];
       if (hex) {
         const n = Number.parseInt(hex.slice(1), 16);
         texels[v * w + u] = rgb((n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff);
