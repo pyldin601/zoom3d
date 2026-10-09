@@ -87,8 +87,9 @@ Validation:
 - The existing token bucket (60 msg/s) covers `held`. It gets no limit of its own.
 
 There's no `held` field in `join`, which follows the `media` pattern:
-- After every `welcome` (fresh or resumed), the client sends its current `held` if it isn't
-  `null`.
+- After every `welcome` (fresh or resumed), the client sends its current `held` once it has
+  one, **including `null`**. Otherwise a "Nothing" picked while disconnected would never reach a
+  resumed slot, which still holds the old item.
 - A fresh identity starts at `null` on the server.
 
 ## 5. Server (`apps/server`)
@@ -111,7 +112,8 @@ There's no `held` field in `join`, which follows the `media` pattern:
 
 ### 6.2 Session (`apps/web/src/net/session.ts`)
 
-- Remembers the local `held` and sends it after each `welcome` when it's non-null.
+- Remembers the local `held` and sends it after each `welcome` once `setHeld` has been called,
+  including `null`.
 - `setHeld(item)` sends immediately when connected.
 - Handles `peer_held` by updating `peer.info.held`.
 
@@ -156,7 +158,7 @@ There's no `held` field in `join`, which follows the `media` pattern:
 - **held store:** round trip, a junk value gives `null`, and storage that throws is tolerated.
 - **session:**
   - Resends `held` after `welcome` and after a resumed `welcome`.
-  - Sends nothing when `null`.
+  - Resends `null` too; sends nothing if `setHeld` was never called.
   - Applies `peer_held`.
 - **renderer:**
   - Item pixels land to the right of the disc at the expected rows.

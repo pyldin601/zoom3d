@@ -231,3 +231,41 @@ test('media state is sent once open and re-sent after every welcome', () => {
   ws2.receive(welcome());
   expect(media(ws2)).toEqual([{ type: 'media', cam: false, mic: false }]);
 });
+
+test('held is sent once open and re-sent after every welcome, including null', () => {
+  const session = createSession({
+    url: 'ws://t/ws',
+    roomId: ROOM,
+    name: 'Ada',
+    player,
+    now: Date.now,
+    WebSocketImpl: asWebSocket,
+  });
+  const ws = FakeWebSocket.latest();
+  const held = (sock: FakeWebSocket) => sock.sent.filter((m) => (m as { type: string }).type === 'held');
+  ws.open();
+  session.setHeld('beer');
+  expect(held(ws)).toEqual([]);
+  ws.receive(welcome());
+  expect(held(ws)).toEqual([{ type: 'held', item: 'beer' }]);
+  session.setHeld(null);
+  expect(held(ws).at(-1)).toEqual({ type: 'held', item: null });
+  ws.serverClose(1006);
+  vi.advanceTimersByTime(500);
+  const ws2 = FakeWebSocket.latest();
+  ws2.open();
+  ws2.receive(welcome());
+  expect(held(ws2)).toEqual([{ type: 'held', item: null }]);
+});
+
+test('nothing held is sent if setHeld was never called', () => {
+  const { ws } = joinedSession();
+  expect(ws.sent.filter((m) => (m as { type: string }).type === 'held')).toEqual([]);
+});
+
+test('peer_held updates the peer and ignores unknown ids', () => {
+  const { session, ws } = joinedSession([peer('a')]);
+  ws.receive({ type: 'peer_held', id: 'a', item: 'coffee' });
+  expect(session.peers.get('a')?.info.held).toBe('coffee');
+  expect(() => ws.receive({ type: 'peer_held', id: 'zzz', item: 'beer' })).not.toThrow();
+});
