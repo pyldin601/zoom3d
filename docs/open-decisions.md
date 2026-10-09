@@ -31,6 +31,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 - Web Audio `PannerNode` (HRTF) + custom distance curve + shared `ConvolverNode` reverb with distance-driven wet/dry.
 - vs. fully custom DSP in an AudioWorklet (more control, more work).
 - **Rec:** native nodes first. Headphones vs speakers matters (HRTF only good on headphones).
+- *Resolved 2026-10-09:* distance curve is physical. Dry follows 1/d (−6 dB per doubling) and the reverb send is 0.4/√d (−3 dB per doubling). Both fade to silence over the last quarter of `max`, and `max` goes from 12 to 24 tiles. Why: the old quadratic curve had almost no reverb up close (a near voice sounded "in my room"), and it dropped the reverb together with the voice, so silence came too soon. Spec §9.2. The storage key was bumped to `zoom3d.audio.v2` so the old saved `max: 12` doesn't hide the new default.
 
 ### D6 — Audio realism features
 - Wall occlusion (low-pass when line of sight blocked)? Hear-through-walls at all?
