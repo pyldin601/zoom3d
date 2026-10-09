@@ -38,13 +38,13 @@ export function logoColour(y: number): number {
   return rgb(mix(240, 110, t), mix(70, 12, t), mix(60, 12, t));
 }
 
-/** Draws the logo centred across `fb`, its letters `top` pixels down. */
-export function drawLogo(fb: Framebuffer, top: number): void {
+/** Draws the logo in the top-right corner of `fb`, its letters `margin` pixels from the top and from the right. */
+export function drawLogo(fb: Framebuffer, margin: number): void {
   const pad = LOGO_OUTLINE + LOGO_SHADOW;
   const w = LOGO_WIDTH * LOGO_CELL + 2 * pad;
   const h = LOGO_ROWS * LOGO_CELL + 2 * pad;
-  const left = Math.floor((fb.width - LOGO_WIDTH * LOGO_CELL) / 2) - pad;
-  const boxTop = top - pad;
+  const left = fb.width - margin - LOGO_WIDTH * LOGO_CELL - pad;
+  const top = margin - pad;
   // Which pixels of the padded box the letters cover.
   const ink = new Uint8Array(w * h);
   let cellX = 0;
@@ -81,7 +81,7 @@ export function drawLogo(fb: Framebuffer, top: number): void {
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const fx = left + x;
-      const fy = boxTop + y;
+      const fy = top + y;
       if (fx < 0 || fy < 0 || fx >= fb.width || fy >= fb.height) {
         continue;
       }

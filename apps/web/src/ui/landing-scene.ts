@@ -22,8 +22,11 @@ export const LANDING_MAP: GameMap = parseMap(`
 export const LANDING_CAMERA: PlayerState = { x: 1.2, y: 4.8, angle: -0.4 };
 
 export const FACE_GRID = 16;
-/** The title's distance from the top, in framebuffer pixels; it is centred across, in line with the panel. */
-const LOGO_TOP = 28;
+/**
+ * The title's distance from the top and from the right, in framebuffer pixels. The panel keeps the same inset from
+ * the bottom-right corner (index.html: 28 / 640 = 4.375% of the stage width).
+ */
+const LOGO_MARGIN = 28;
 
 /** Shared face colours; a person can override any of them (hair, beard). */
 export const FACE_PALETTE = {
@@ -169,5 +172,5 @@ export function renderLandingScene(fb: Framebuffer): void {
     boombox: false,
   }));
   renderSprites(fb, LANDING_CAMERA, sprites);
-  drawLogo(fb, LOGO_TOP);
+  drawLogo(fb, LOGO_MARGIN);
 }
