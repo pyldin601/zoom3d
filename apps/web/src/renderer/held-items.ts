@@ -10,9 +10,20 @@ import { rgb } from './framebuffer';
 export const HELD_TEXEL = 0.08;
 export const HELD_LEFT = 0.15;
 export const HELD_TOP = -0.3;
-/** At the top of a sip the drink is at the disc's mouth (held items spec §2.3). */
-export const SIP_LEFT = -0.55;
-export const SIP_TOP = -0.05;
+/**
+ * The mouth of a framed face, in disc radii below the disc centre (held items spec §2.3). It follows
+ * from the face framing (`FACE_SCALE` 2.2, `HEADROOM` 0.1 in media/framing.ts): re-check it if they change.
+ */
+export const FACE_MOUTH_Y = 0.38;
+/** The texel (u, v) of each drink that meets the lips at the top of a sip: its rim, or the foam. */
+export const HELD_LIPS: Readonly<Record<HeldItem, readonly [number, number]>> = {
+  beer: [9.5, 2.5],
+  coffee: [9.5, 2],
+  wine: [3, 0.5],
+};
+/** At the top of a sip: the sprite's left edge and top (as HELD_LEFT/HELD_TOP) that put its lip point on the mouth. */
+export const sipLeft = (item: HeldItem) => -(HELD_LIPS[item][0] * HELD_TEXEL);
+export const sipTop = (item: HeldItem) => HELD_LIPS[item][1] * HELD_TEXEL - FACE_MOUTH_Y;
 
 export interface HeldSprite {
   w: number;
