@@ -18,7 +18,7 @@ In scope:
 Out of scope:
 - Pause, seek, volume, loop, playlists, showing the track name.
 - Speakers that pulse with the music (sketch "C"; possible later, the engine already measures the level).
-- Stereo or higher-bitrate music (§5.3).
+- Stereo music (§5.3).
 - Anything stored or relayed by the server beyond an on/off flag.
 
 ## 2. Look
@@ -145,10 +145,24 @@ sends `null`, so nothing waits for the flag.
 
 ### 5.3 Quality
 
-Chrome's default Opus for this track is mono at about 32 kbps. That's acceptable for a point source
-in a retro room. Raising it (sender `maxBitrate`, or `stereo=1` in the SDP) is out of scope.
+The music must sound good (decided 2026-10-09). Chrome's default Opus for an audio track is
+about 32 kbps, tuned for speech, which audibly smears music. So the boombox sender asks for
+**mono Opus at 128 kbps** (`BOOMBOX_MAX_BITRATE = 128_000`):
+- Initiator: `sendEncodings: [{ maxBitrate: BOOMBOX_MAX_BITRATE }]` on the boombox transceiver.
+- Answerer: `setParameters` with `encodings[0].maxBitrate` in `attachTracks`, as for the video cap.
+- No SDP munging. With no `b=AS` line, Chrome takes the sender's `maxBitrate` as the Opus target,
+  within the negotiated envelope (`setParameters` never renegotiates).
+
+It stays **mono**: the boombox is one point in the room, and the HRTF panner places it as a single
+source, so a stereo mix would be folded down anyway. 128 kbps mono Opus is close to transparent for
+music. The voice path's open low-pass at `MUFFLE_OPEN_HZ` (16 kHz) is kept.
+
 The track bypasses the mic's echo cancellation, noise suppression and gain control: it comes from
 Web Audio, not `getUserMedia`.
+
+The bitrate is verified, not assumed: the e2e test measures the receiver's bitrate on the boombox
+m-line (§10). If Chrome ignores `maxBitrate` as the target, the fallback is
+`maxaveragebitrate=128000` in that m-line's Opus `fmtp`.
 
 ## 6. Protocol (extends design spec §7.2)
 
@@ -192,8 +206,9 @@ Same pattern as `held` (held items spec §4):
   (old `attachTracks`), so a new peer would hear that peer's voice twice, once as "boombox". Rooms
   are ephemeral and the web image ships as one unit, so this lasts until the stale tab reloads.
   Accepted.
-- **Upload.** One more audio stream per peer while playing, ~32 kbps × (N−1). Negligible next to
-  video.
+- **Upload.** One more audio stream per peer while playing, 128 kbps × (N−1): about 0.9 Mbps
+  with 8 people, against 350 kbps × 7 ≈ 2.5 Mbps of video already. Accepted. Only while playing;
+  a null track sends nothing.
 - **Copyright.** The music is streamed live peer to peer and never stored, like a voice.
 
 ## 10. Testing
@@ -217,7 +232,9 @@ Unit (TDD, Vitest):
 
 E2E (Playwright, fake media): two pages in a room; page A presses `B` and sets a generated WAV
 through the file chooser; page B's engine reports a non-zero `inputLevel('boombox:<A>')`, and
-`peer.info.boombox` is true on B. Then A presses `B` again and the flag clears.
+`peer.info.boombox` is true on B. B receives the boombox m-line at more than 80 kbps, against the
+~32 kbps default. The WAV is noise plus a tone, because Opus VBR undershoots on a pure sine. Then
+A presses `B` again and the flag clears.
 
 Manual: the look at several distances, the first-person view next to the self-view, and the echo
 check in §9.
