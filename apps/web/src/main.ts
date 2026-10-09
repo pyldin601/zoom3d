@@ -6,7 +6,6 @@ import {
   LEVEL1,
   newRoomId,
   parseMap,
-  SIP_MS,
   spawnPoint,
   stepPlayer,
 } from '@zoom3d/shared';
@@ -28,12 +27,12 @@ import { type Bob, createBob } from './renderer/bob';
 import { createFramebuffer } from './renderer/framebuffer';
 import { drawLabels } from './renderer/labels';
 import { renderOwnHeld } from './renderer/own-held';
-import { sipPose } from './renderer/sip';
+import { createSipClock, sipPose } from './renderer/sip';
 import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
 import { makeTextures } from './renderer/textures';
 import { renderWalls } from './renderer/walls';
 import { showAudioPanel } from './ui/audio-panel';
-import { heldForKey, loadHeld, saveHeld } from './ui/held-store';
+import { heldForKey, heldKeyAction, loadHeld, saveHeld } from './ui/held-store';
 import { parseRoute } from './ui/route';
 import {
   clearScreen,
@@ -66,8 +65,8 @@ const input = createInput(window, document);
 let session: Session | null = null;
 /** What the local player holds, drawn in first person. */
 let ownHeld: HeldItem | null = null;
-/** performance.now() when the local player's last sip started. */
-let ownSipAt = Number.NEGATIVE_INFINITY;
+/** The local player's sip, on the performance.now() clock (held items spec §2.3). */
+const ownSip = createSipClock();
 /** Shows a held item picked by key in the room-bar picker. */
 let showHeldInBar: ((item: HeldItem | null) => void) | null = null;
 
@@ -77,18 +76,12 @@ function chooseHeld(item: HeldItem | null): void {
     return;
   }
   ownHeld = item;
+  if (item === null) {
+    ownSip.cancel();
+  }
   saveHeld(storage(), item);
   session?.setHeld(item);
   showHeldInBar?.(item);
-}
-/** Takes a sip of the drink in hand, unless one is still playing (held items spec §2.3). */
-function startSip(): void {
-  const now = performance.now();
-  if (now - ownSipAt < SIP_MS) {
-    return;
-  }
-  ownSipAt = now;
-  session?.sendDrink();
 }
 let call: Call | null = null;
 let audio: AudioEngine | null = null;
@@ -156,11 +149,10 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   e.preventDefault();
-  // The key of the drink already in hand takes a sip instead.
-  if (item !== null && item === ownHeld) {
-    startSip();
-  } else {
+  if (heldKeyAction(item, ownHeld) === 'pick') {
     chooseHeld(item);
+  } else if (ownSip.start(performance.now())) {
+    session?.sendDrink();
   }
 });
 
@@ -426,7 +418,7 @@ startLoop((dt) => {
   renderWalls(fb, map, player, textures);
   renderSprites(fb, player, sprites);
   if (inRoom()) {
-    renderOwnHeld(fb, ownHeld, selfBob.itemLift, selfBob.sway, sipPose(performance.now() - ownSipAt));
+    renderOwnHeld(fb, ownHeld, selfBob.itemLift, selfBob.sway, ownSip.pose(performance.now()));
   }
   gameCtx.putImageData(image, 0, 0);
   hudCtx.clearRect(0, 0, hud.width, hud.height);

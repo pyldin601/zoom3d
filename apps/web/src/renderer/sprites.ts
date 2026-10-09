@@ -94,10 +94,19 @@ export function projectSprite(p: PlayerState, x: number, y: number, fbWidth: num
 }
 
 /**
- * Darkens the visible floor within `radius` of (sx, sy), seen `depth` tiles ahead. Each
- * floor pixel is cast back to the floor point it shows; pixels nearer than the column's wall only.
+ * Darkens the visible floor within `radius` of (sx, sy), seen `depth` tiles ahead, by `strength`
+ * (0..1) of a full shadow. Each floor pixel is cast back to the floor point it shows; pixels nearer
+ * than the column's wall only.
  */
-function renderShadow(fb: Framebuffer, p: PlayerState, sx: number, sy: number, depth: number, radius: number): void {
+function renderShadow(
+  fb: Framebuffer,
+  p: PlayerState,
+  sx: number,
+  sy: number,
+  depth: number,
+  radius: number,
+  strength: number
+): void {
   const { width: w, height: h, pixels, zbuffer } = fb;
   const planeLen = Math.tan(FOV / 2);
   const proj = w / 2 / planeLen;
@@ -134,7 +143,7 @@ function renderShadow(fb: Framebuffer, p: PlayerState, sx: number, sy: number, d
       }
       const band = Math.ceil((1 - d2 / r2) * SHADOW_LEVELS) / SHADOW_LEVELS;
       const i = row * w + col;
-      pixels[i] = darken(pixels[i] as number, 1 - SHADOW_DARKNESS * band);
+      pixels[i] = darken(pixels[i] as number, 1 - SHADOW_DARKNESS * strength * band);
     }
   }
 }
@@ -174,12 +183,13 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
   for (const i of visible) {
     const s = sprites[i] as Sprite;
     const depth = (projections[i] as Projection).depth;
-    renderShadow(fb, p, s.x, s.y, depth, SHADOW_RADIUS);
-    if (s.held) {
+    renderShadow(fb, p, s.x, s.y, depth, SHADOW_RADIUS, 1);
+    // At the mouth the item's shadow would sit on the disc's and double it, so it fades out.
+    if (s.held && s.sip < 1) {
       // Under the item, which sits beside the disc along the camera plane, so at the same depth.
       const radius = (HELD_TEXEL * HELD_SPRITES[s.held].w * AVATAR_RADIUS) / 2;
       const offset = heldLeft(s.sip) * AVATAR_RADIUS + radius;
-      renderShadow(fb, p, s.x - Math.sin(p.angle) * offset, s.y + Math.cos(p.angle) * offset, depth, radius);
+      renderShadow(fb, p, s.x - Math.sin(p.angle) * offset, s.y + Math.cos(p.angle) * offset, depth, radius, 1 - s.sip);
     }
   }
 
@@ -228,11 +238,11 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
   }
 }
 
-/** Draws the held item beside a disc of on-screen radius r, depth-tested like the disc. */
 /** The held item's left edge and top, in disc radii, partway (`sip` 0..1) to the mouth. */
 const heldLeft = (sip: number) => HELD_LEFT + (SIP_LEFT - HELD_LEFT) * sip;
 const heldTop = (sip: number) => HELD_TOP + (SIP_TOP - HELD_TOP) * sip;
 
+/** Draws the held item beside a disc of on-screen radius r, depth-tested like the disc. */
 function renderHeld(
   fb: Framebuffer,
   item: HeldItem,
