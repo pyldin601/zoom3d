@@ -86,6 +86,8 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         lobby.media(conn, msg);
       } else if (msg?.type === 'held') {
         lobby.held(conn, msg);
+      } else if (msg?.type === 'drink') {
+        lobby.drink(conn);
       } else if (msg?.type === 'signal') {
         lobby.signal(conn, msg);
       }

@@ -1,4 +1,5 @@
 import {
+  DRINK_GAP_MS,
   isWallAt,
   type JoinMessage,
   LEVEL1,
@@ -330,5 +331,49 @@ describe('held items', () => {
   test('held before join is ignored', () => {
     lobby.held('ghost', { type: 'held', item: 'beer' });
     expect(sent).toEqual([]);
+  });
+});
+
+describe('sips', () => {
+  const drinks = (conn: string) => to(conn).filter((m) => m.type === 'peer_drink');
+  beforeEach(() => {
+    join('A');
+    join('B');
+    lobby.held('A', { type: 'held', item: 'beer' });
+  });
+
+  test('a sip is relayed to the others, not the sender', () => {
+    const aSent = to('A').length;
+    lobby.drink('A');
+    expect(last('B')).toEqual({ type: 'peer_drink', id: welcome('A').selfId });
+    expect(to('A')).toHaveLength(aSent);
+  });
+
+  test('nothing in hand, no sip', () => {
+    lobby.held('A', { type: 'held', item: null });
+    lobby.drink('A');
+    expect(drinks('B')).toEqual([]);
+  });
+
+  test('a second sip within DRINK_GAP_MS is dropped, a later one is relayed', () => {
+    lobby.drink('A');
+    time = DRINK_GAP_MS - 1;
+    lobby.drink('A');
+    expect(drinks('B')).toHaveLength(1);
+    time = 1200;
+    lobby.drink('A');
+    expect(drinks('B')).toHaveLength(2);
+  });
+
+  test('sips are not stored: a later joiner gets no peer_drink', () => {
+    lobby.drink('A');
+    join('C');
+    expect(drinks('C')).toEqual([]);
+  });
+
+  test('a sip before join is ignored', () => {
+    const before = sent.length;
+    lobby.drink('ghost');
+    expect(sent).toHaveLength(before);
   });
 });

@@ -1,5 +1,6 @@
 // Room membership, colours, resume grace and move validation. Pure: no sockets or timers.
 import {
+  DRINK_GAP_MS,
   type GameMap,
   type HeldMessage,
   type IceServer,
@@ -43,6 +44,8 @@ interface Peer extends PeerInfo {
   resumeToken: string;
   conn: string | null;
   lastAcceptedAt: number;
+  /** When this peer's last sip was relayed (not shared: sips are never stored). */
+  lastDrinkAt: number;
   disconnectedAt: number | null;
 }
 
@@ -124,6 +127,7 @@ export class Lobby {
       mic: false,
       avatar: isValidAvatar(msg.avatar) ? msg.avatar : null,
       held: null,
+      lastDrinkAt: Number.NEGATIVE_INFINITY,
       resumeToken: this.opts.newToken(),
       conn,
       lastAcceptedAt: this.opts.now(),
@@ -183,6 +187,17 @@ export class Lobby {
     }
     found.peer.held = msg.item;
     this.broadcast(found.room, found.peer.id, { type: 'peer_held', id: found.peer.id, item: msg.item });
+  }
+
+  /** Relays a sip, only from a peer holding a drink and at most once per DRINK_GAP_MS. */
+  drink(conn: string): void {
+    const found = this.lookup(conn);
+    const now = this.opts.now();
+    if (!found || found.peer.held === null || now - found.peer.lastDrinkAt < DRINK_GAP_MS) {
+      return;
+    }
+    found.peer.lastDrinkAt = now;
+    this.broadcast(found.room, found.peer.id, { type: 'peer_drink', id: found.peer.id });
   }
 
   /** Relays WebRTC signalling only to another live peer of the sender's room. */
