@@ -36,6 +36,8 @@ describe('createAudioEngine', () => {
     expect(panner.rolloffFactor).toBe(0);
     expect(panner.distanceModel).toBe('linear');
     expect(panner.panningModel).toBe('HRTF');
+    // Our impulse is unit energy; the browser's normalization would cost ~13 dB.
+    expect(convolver.normalize).toBe(false);
   });
 
   test('update sets the listener, pans the voice and applies the distance curve', () => {
@@ -148,6 +150,13 @@ describe('makeImpulse', () => {
     expect(data.slice(0, 480).every((v) => v === 0)).toBe(true);
     const energy = (from: number, to: number) => data.slice(from, to).reduce((s, v) => s + v * v, 0);
     expect(energy(30000, 38000)).toBeLessThan(energy(480, 8480) / 100);
+  });
+
+  test('each channel has unit energy, so the reverb passes at 0 dB', () => {
+    const buffer = makeImpulse(asAudioContext(ctx)) as unknown as { getChannelData(c: number): Float32Array };
+    for (const ch of [0, 1]) {
+      expect(buffer.getChannelData(ch).reduce((s, v) => s + v * v, 0)).toBeCloseTo(1, 5);
+    }
   });
 });
 

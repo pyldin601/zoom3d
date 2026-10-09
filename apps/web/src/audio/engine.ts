@@ -34,16 +34,26 @@ export interface AudioEngine {
   dispose(): void;
 }
 
-/** Stereo decorrelated noise decaying to −60 dB at `seconds`, after a silent pre-delay. */
+/**
+ * Stereo decorrelated noise decaying to −60 dB at `seconds`, after a silent pre-delay.
+ * Each channel has unit energy, so with `normalize = false` the reverb passes at 0 dB.
+ */
 export function makeImpulse(ctx: BaseAudioContext, seconds = 0.8, preDelay = 0.01): AudioBuffer {
   const rate = ctx.sampleRate;
   const offset = Math.floor(preDelay * rate);
   const buffer = ctx.createBuffer(2, offset + Math.floor(seconds * rate), rate);
   for (let ch = 0; ch < 2; ch++) {
     const data = buffer.getChannelData(ch);
+    let energy = 0;
     for (let i = offset; i < data.length; i++) {
       const t = (i - offset) / rate;
-      data[i] = (Math.random() * 2 - 1) * Math.exp((-6.91 * t) / seconds);
+      const v = (Math.random() * 2 - 1) * Math.exp((-6.91 * t) / seconds);
+      data[i] = v;
+      energy += v * v;
+    }
+    const scale = 1 / Math.sqrt(energy);
+    for (let i = offset; i < data.length; i++) {
+      data[i] = (data[i] as number) * scale;
     }
   }
   return buffer;
@@ -85,6 +95,8 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
   let listenerPlaced = false;
 
   const reverb = ctx.createConvolver();
+  // The browser's own normalization takes ~13 dB off; makeImpulse is already unit energy.
+  reverb.normalize = false;
   reverb.buffer = makeImpulse(ctx);
   const reverbGain = ctx.createGain();
   reverbGain.gain.value = settings.reverb;

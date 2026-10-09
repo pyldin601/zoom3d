@@ -74,7 +74,7 @@ export class FakeAudioContext {
     );
   }
   createConvolver() {
-    return this.track(Object.assign(new FakeNode('convolver'), { buffer: null as unknown }));
+    return this.track(Object.assign(new FakeNode('convolver'), { buffer: null as unknown, normalize: true }));
   }
   createAnalyser() {
     const data = this.analyserData;
