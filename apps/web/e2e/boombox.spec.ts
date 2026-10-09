@@ -140,3 +140,17 @@ test('the audio panel shows boombox controls while playing, and its volume reach
   await expect(a.getByText('Silent beyond')).toBeVisible();
   await expect.poll(() => boomboxOf(b, 'Ada'), { timeout: 10_000 }).toBe(false);
 });
+
+test('the boombox volume is remembered across a reload', async ({ page }) => {
+  await createAndJoin(page, 'Ada');
+  await play(page, 20);
+  await page.keyboard.press('Backquote');
+  const volume = () => page.locator('.boombox-panel').getByLabel('Volume');
+  await volume().fill('40');
+
+  await page.reload();
+  await joinAs(page, 'Ada');
+  await play(page, 20);
+  await page.keyboard.press('Backquote');
+  await expect(volume()).toHaveValue('40');
+});

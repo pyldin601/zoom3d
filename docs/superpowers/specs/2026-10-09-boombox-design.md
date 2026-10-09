@@ -121,7 +121,9 @@ music. The column holds:
 - **Progress:** a slider over `currentTime / duration`, plus `m:ss / m:ss`, refreshed every 250 ms.
   Dragging previews the time and seeks on release (`change`). The room hears the jump, since the
   music is live.
-- **Volume:** 0–100%, starting at 100%, kept across tracks for the session and not stored.
+- **Volume:** 0–100%, kept across tracks and remembered per browser in `localStorage` under
+  `zoom3d.boombox.volume` (`ui/boombox-store.ts`, the same pattern as `held-store.ts`). Nothing saved,
+  junk or blocked storage means 100%. Added 2026-10-09.
 - **Stop:** the same as `B`.
 
 **Volume goes before the split** (the volume `GainNode` in the graph above). So one slider turns
