@@ -140,6 +140,7 @@ Client → server:
 - `state {x, y, angle, seq}`, sent at 15 Hz while moving and 1 Hz while idle
 - `media {cam: bool, mic: bool}`
 - `held {item}`, where `item` is `'beer' | 'coffee' | 'wine' | null` (see the [held items spec](2026-10-09-held-items-design.md))
+- `drink {}`: take a sip of the held drink (held items spec §2.3)
 - `signal {to, payload}`, where `payload` is an SDP description or an ICE candidate
 
 Server → client:
@@ -148,6 +149,7 @@ Server → client:
 - `peer_state {id, x, y, angle, seq}`, relayed immediately
 - `peer_media {id, cam, mic}`
 - `peer_held {id, item}`
+- `peer_drink {id}`: relayed only while that peer holds something, at most once per 1.4 s
 - `correction {x, y, angle, seq}`: sent only to the sender when its `state` is rejected
 - `signal {from, payload}`
 - `error {code, message}`
