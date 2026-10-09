@@ -334,6 +334,7 @@ startLoop((dt) => {
         color,
         face: call?.faceOf(peer.info.id) ?? null,
         speaking: audio?.speaking(peer.info.id) ?? 0,
+        held: peer.info.held,
       });
       others.push({
         x: pos.x,

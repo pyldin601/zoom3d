@@ -2,6 +2,7 @@ import { type PlayerState, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { FACE_SIZE } from '../media/faces';
 import { createFramebuffer, rgb } from './framebuffer';
+import { HELD_LEFT, HELD_SPRITES, HELD_TEXEL, HELD_TOP } from './held-items';
 import {
   AVATAR_RADIUS,
   hexToRgb,
@@ -44,7 +45,7 @@ const px = (fb: ReturnType<typeof frame>, x: number, y: number) => fb.pixels[y *
 describe('renderSprites', () => {
   test('a sprite straight ahead is drawn centred with diameter 2R·PROJ/depth', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face: null, speaking: 0 }]);
+    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face: null, speaking: 0, held: null }]);
     expect(px(fb, 320, 180)).toBe(RED);
     let width = 0;
     for (let x = 0; x < fb.width; x++) {
@@ -58,7 +59,7 @@ describe('renderSprites', () => {
 
   test('the outer ring is shaded', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face: null, speaking: 0 }]);
+    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face: null, speaking: 0, held: null }]);
     const r = (AVATAR_RADIUS * PROJ) / 2;
     expect(px(fb, Math.floor(320 + 0.92 * r), 180)).toBe(shade(RED));
   });
@@ -66,7 +67,7 @@ describe('renderSprites', () => {
   test('a sprite behind the camera draws nothing', () => {
     const fb = frame();
     const before = fb.pixels.slice();
-    renderSprites(fb, player, [{ x: 0.5, y: 4.5, color: RED, face: null, speaking: 0 }]);
+    renderSprites(fb, player, [{ x: 0.5, y: 4.5, color: RED, face: null, speaking: 0, held: null }]);
     expect(fb.pixels).toEqual(before);
   });
 
@@ -86,15 +87,15 @@ describe('renderSprites', () => {
     );
     const fb = frame(walled);
     const wallPixel = px(fb, 320, 180);
-    renderSprites(fb, player, [{ x: 5.5, y: 4.5, color: RED, face: null, speaking: 0 }]);
+    renderSprites(fb, player, [{ x: 5.5, y: 4.5, color: RED, face: null, speaking: 0, held: null }]);
     expect(px(fb, 320, 180)).toBe(wallPixel);
   });
 
   test('the nearer of two overlapping sprites wins regardless of input order', () => {
     const fb = frame();
     renderSprites(fb, player, [
-      { x: 3.5, y: 4.5, color: RED, face: null, speaking: 0 },
-      { x: 5.5, y: 4.5, color: BLUE, face: null, speaking: 0 },
+      { x: 3.5, y: 4.5, color: RED, face: null, speaking: 0, held: null },
+      { x: 5.5, y: 4.5, color: BLUE, face: null, speaking: 0, held: null },
     ]);
     expect(px(fb, 320, 180)).toBe(RED);
   });
@@ -131,7 +132,7 @@ describe('face sprites', () => {
 
   test('the disc centre shows the centre of the face texture', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0 }]);
+    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0, held: null }]);
     const c = px(fb, 320, 180) as number;
     expect(Math.abs(texelI(c) - FACE_SIZE / 2)).toBeLessThanOrEqual(tolerance);
     expect(Math.abs(texelJ(c) - FACE_SIZE / 2)).toBeLessThanOrEqual(tolerance);
@@ -139,14 +140,14 @@ describe('face sprites', () => {
 
   test('the outer ring is the peer colour, unshaded', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0 }]);
+    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0, held: null }]);
     const r = (AVATAR_RADIUS * PROJ) / 2;
     expect(px(fb, Math.floor(320 + 0.92 * r), 180)).toBe(RED);
   });
 
   test('the face is not mirrored: left of centre samples a smaller column', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0 }]);
+    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0, held: null }]);
     expect(texelI(px(fb, 290, 180) as number)).toBeLessThan(texelI(px(fb, 350, 180) as number));
   });
 });
@@ -162,10 +163,10 @@ describe('speaking ring', () => {
     const face = new Uint32Array(FACE_SIZE * FACE_SIZE).fill(rgb(1, 2, 3));
     const r = (AVATAR_RADIUS * PROJ) / 2;
     const quiet = frame();
-    renderSprites(quiet, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0 }]);
+    renderSprites(quiet, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0, held: null }]);
     expect(px(quiet, Math.floor(320 + 0.92 * r), 180)).toBe(RED);
     const loud = frame();
-    renderSprites(loud, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 1 }]);
+    renderSprites(loud, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 1, held: null }]);
     expect(px(loud, Math.floor(320 + 0.92 * r), 180)).toBe(mixWhite(RED, 0.8));
   });
 });
@@ -174,7 +175,7 @@ describe('floor shadows', () => {
   const red = (c: number | undefined) => (c ?? 0) & 0xff;
   /** Floor row under a point `depth` tiles straight ahead (camera at half wall height). */
   const floorRow = (depth: number) => Math.floor(180 + (0.5 * PROJ) / depth);
-  const sprite = (x: number, y = 4.5, color = RED) => ({ x, y, color, face: null, speaking: 0 });
+  const sprite = (x: number, y = 4.5, color = RED) => ({ x, y, color, face: null, speaking: 0, held: null });
 
   test('the floor right under an avatar is darkened, most at the centre', () => {
     const fb = frame();
@@ -257,5 +258,74 @@ describe('floor shadows', () => {
     const fb = frame();
     renderSprites(fb, player, [sprite(4.5, 4.5, BLUE), sprite(2.5)]);
     expect(px(fb, 320, floorRow(3))).toBe(RED);
+  });
+});
+
+describe('held items', () => {
+  const WALLED = parseMap(
+    [
+      '111111111',
+      '1.......1',
+      '1.......1',
+      '1.......1',
+      '1S.1....1',
+      '1.......1',
+      '1.......1',
+      '1.......1',
+      '111111111',
+    ].join('\n')
+  );
+  const beer = (x: number, y = 4.5) => ({ x, y, color: RED, face: null, speaking: 0, held: 'beer' as const });
+  // Screen pixel of item texel (u, v) for a sprite straight ahead at `depth`.
+  const itemPx = (u: number, v: number, depth: number) => {
+    const r = (AVATAR_RADIUS * PROJ) / depth;
+    const t = HELD_TEXEL * r;
+    return [Math.floor(320 + HELD_LEFT * r + (u + 0.5) * t), Math.floor(180 - HELD_TOP * r + (v + 0.5) * t)] as const;
+  };
+  const tex = (u: number, v: number) => HELD_SPRITES.beer.texels[v * HELD_SPRITES.beer.w + u];
+  const SAMPLES = [
+    [12, 9],
+    [8, 5],
+    [2, 5],
+  ] as const;
+
+  test("a held beer is drawn to the viewer's right of the disc", () => {
+    const fb = frame();
+    renderSprites(fb, player, [beer(3.5)]);
+    for (const [u, v] of SAMPLES) {
+      expect(px(fb, ...itemPx(u, v, 2))).toBe(tex(u, v));
+    }
+  });
+
+  test('the item scales with distance', () => {
+    const fb = frame();
+    renderSprites(fb, player, [beer(5.5)]);
+    for (const [u, v] of SAMPLES) {
+      expect(px(fb, ...itemPx(u, v, 4))).toBe(tex(u, v));
+    }
+  });
+
+  test('held null draws nothing beyond the disc', () => {
+    const empty = frame();
+    const fb = frame();
+    renderSprites(fb, player, [{ ...beer(3.5), held: null }]);
+    expect(px(fb, ...itemPx(8, 5, 2))).toBe(px(empty, ...itemPx(8, 5, 2)));
+  });
+
+  test('walls in front hide the item too', () => {
+    const fb = frame(WALLED);
+    const before = fb.pixels.slice();
+    renderSprites(fb, player, [beer(5.5)]);
+    expect(fb.pixels).toEqual(before);
+  });
+
+  test('a very near item crossing the right edge does not wrap into the next row', () => {
+    const plain = frame();
+    renderSprites(plain, player, [{ ...beer(2.0, 4.28), held: null }]);
+    const fb = frame();
+    renderSprites(fb, player, [beer(2.0, 4.28)]);
+    for (let y = 0; y < fb.height; y++) {
+      expect(px(fb, 0, y)).toBe(px(plain, 0, y));
+    }
   });
 });
