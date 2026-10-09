@@ -257,6 +257,22 @@ test('a busy camera stays available and can be retried', async () => {
   expect(local.state()).toMatchObject({ cam: true, camProblem: null });
 });
 
+test('a busy mic is retried when it is turned on', async () => {
+  const local = make();
+  videoRequests()[0]?.resolve(cam());
+  audioRequests()[0]?.reject(new DOMException('in use', 'NotReadableError'));
+  await local.ready;
+  expect(local.state()).toMatchObject({ mic: false, micAvailable: true, micProblem: 'busy' });
+  local.setMic(false);
+  local.setMic(true);
+  expect(audioRequests()).toHaveLength(2);
+  const m = mic();
+  lastRequest().resolve(m);
+  await flush();
+  expect(local.state()).toMatchObject({ mic: true, micProblem: null });
+  expect(local.stream.getAudioTracks()).toEqual([m]);
+});
+
 test('an ended camera track restarts on the default device', async () => {
   make({ camId: 'c1' });
   const { c } = await grantStart();

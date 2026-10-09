@@ -90,7 +90,16 @@ export function createCall(opts: CallOptions): Call {
   const publish = () => session?.setMedia(state.cam, state.mic);
 
   /** Picks up the controller's state, publishing only when it changed (a camera restart, an unplugged mic). */
+  let micTrack = local.micTrack();
   const sync = () => {
+    // A replaced mic (unplugged headset) must reach senders that already exist.
+    const track = local.micTrack();
+    if (track !== micTrack) {
+      micTrack = track;
+      if (track) {
+        mesh?.setAudioTrack(track);
+      }
+    }
     const { cam, mic } = local.state();
     if (cam !== state.cam || mic !== state.mic) {
       state.cam = cam;

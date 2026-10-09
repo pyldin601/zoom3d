@@ -30,6 +30,7 @@ let meshes: {
   handleSignal: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
   setVideoTrack: ReturnType<typeof vi.fn>;
+  setAudioTrack: ReturnType<typeof vi.fn>;
   setBoomboxTrack: ReturnType<typeof vi.fn>;
 }[];
 let faces: Map<string, FaceSource & { [k: string]: unknown }>;
@@ -56,8 +57,13 @@ function fakeLocal(init: { cam?: boolean; mic?: boolean; camWorks?: boolean } = 
       fn();
     }
   };
+  let micTrack: unknown = { id: 'mic1' };
   return {
     state,
+    setMicTrack(t: unknown) {
+      micTrack = t;
+      notify();
+    },
     framer: fakeFramer({ id: 'canvas' }),
     stream: { id: 'local' } as unknown as MediaStream,
     notify,
@@ -78,6 +84,7 @@ function fakeLocal(init: { cam?: boolean; mic?: boolean; camWorks?: boolean } = 
         state.mic = on;
         notify();
       }),
+      micTrack: () => micTrack,
       subscribe(fn: () => void) {
         subscribers.add(fn);
         return () => {
@@ -125,6 +132,7 @@ function makeCall(init: Parameters<typeof fakeLocal>[0] = {}) {
         close: vi.fn(),
         stats: vi.fn(async () => ({ bytesReceived: 5, boomboxBytesReceived: 2 })),
         setVideoTrack: vi.fn(),
+        setAudioTrack: vi.fn(),
         setBoomboxTrack: vi.fn(),
       };
       meshes.push(mesh);
@@ -304,6 +312,16 @@ test("a new mesh starts with the framer's send track", () => {
   call.listener.welcome?.('me', ICE, true);
   expect(meshes[0]?.setVideoTrack).toHaveBeenCalledWith({ id: 'canvas' });
   expect(meshes[0]?.opts.localStream).toBe(local.stream);
+});
+
+test('a replaced mic reaches the current mesh', () => {
+  const call = makeCall();
+  call.listener.welcome?.('me', ICE, true);
+  local.setMicTrack({ id: 'mic2' });
+  expect(meshes[0]?.setAudioTrack).toHaveBeenCalledWith({ id: 'mic2' });
+  meshes[0]?.setAudioTrack.mockClear();
+  local.notify();
+  expect(meshes[0]?.setAudioTrack).not.toHaveBeenCalled();
 });
 
 test('a send-track change reaches the current mesh', () => {

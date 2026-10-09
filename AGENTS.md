@@ -85,8 +85,8 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   playing video Chrome considers visible paces the whole page to 30 fps (guarded by `e2e/frame-rate.spec.ts`).
 - Audio: remote `<video>` elements must stay **muted but playing**. Chrome only feeds WebRTC
   audio into Web Audio while the stream plays in an element; the spatial engine (`apps/web/src/audio/engine.ts`)
-  is the only thing that should be audible. The `AudioContext` is created synchronously in the
-  Join click handler (before any `await`) to satisfy autoplay policy.
+  is the only thing that should be audible. The `AudioContext` is created when the lobby opens
+  (for the mic meter) and `resume()`d synchronously in the Join submit, before anything else, to satisfy autoplay policy.
 - Face framing: the sent video is a canvas track drawn on `requestVideoFrameCallback`, which stops in hidden
   tabs. `framer.sendTrack` flips to the raw camera track while hidden and the call pushes it to the mesh;
   don't remove that swap, or peers freeze on tab switch.

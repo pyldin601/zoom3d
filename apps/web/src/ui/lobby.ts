@@ -23,6 +23,8 @@ export const PROBLEM_TEXT: { cam: Record<DeviceProblem, string>; mic: Record<Dev
   },
 };
 
+const WAITING = 'Waiting for the camera and mic: check the browser’s permission prompt.';
+
 /** The one device line under Join: the camera's problem first, then the mic's; '' when there is none. */
 export function problemLine(state: MediaState): string {
   if (state.camProblem) {
@@ -142,8 +144,12 @@ function splitButton(
   return {
     root,
     render(state) {
-      on = kind === 'cam' ? state.cam : state.mic;
+      // What was asked, not the live track: a device still starting shows as on, so a second click cancels it.
+      // A device with a problem shows as off, so a click retries it.
+      const prefs = media.prefs();
       const available = kind === 'cam' ? state.camAvailable : state.micAvailable;
+      const problem = kind === 'cam' ? state.camProblem : state.micProblem;
+      on = (kind === 'cam' ? prefs.cam : prefs.mic) && available && problem === null;
       const label =
         kind === 'cam' ? (on ? 'Turn camera off' : 'Turn camera on') : on ? 'Mute microphone' : 'Unmute microphone';
       toggle.setAttribute('aria-label', label);
@@ -221,7 +227,7 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
     cam.render(state);
     mic.render(state);
     join.disabled = encoding || state.pending;
-    error.textContent = avatarError || problemLine(state);
+    error.textContent = avatarError || problemLine(state) || (state.pending ? WAITING : '');
   }
 
   input.addEventListener('input', render);

@@ -22,14 +22,25 @@ function fakeMedia(state: Partial<MediaState> = {}, prefs: Partial<MediaPrefs> =
   let st: MediaState = { ...STATE, ...state };
   const pr: MediaPrefs = { ...DEFAULT_MEDIA_PREFS, ...prefs };
   const subscribers = new Set<() => void>();
+  const notify = () => {
+    for (const fn of subscribers) {
+      fn();
+    }
+  };
   const media = {
     stream: {},
     framer: { track: { kind: 'video', id: 'canvas' } },
     ready: Promise.resolve(),
     state: () => st,
     prefs: () => pr,
-    setCam: vi.fn(async () => {}),
-    setMic: vi.fn(),
+    setCam: vi.fn(async (on: boolean) => {
+      pr.cam = on;
+      notify();
+    }),
+    setMic: vi.fn((on: boolean) => {
+      pr.mic = on;
+      notify();
+    }),
     useCamera: vi.fn(async () => {}),
     useMic: vi.fn(async () => {}),
     devices: vi.fn(async () => ({
@@ -49,9 +60,7 @@ function fakeMedia(state: Partial<MediaState> = {}, prefs: Partial<MediaPrefs> =
   };
   const set = (next: Partial<MediaState>) => {
     st = { ...st, ...next };
-    for (const fn of subscribers) {
-      fn();
-    }
+    notify();
   };
   return { media, controller: media as unknown as LocalMediaController, set };
 }
@@ -250,6 +259,37 @@ test('camera toggle calls setCam with the opposite state and is labelled for the
   expect(byLabel('Turn camera off')).toBeNull();
   byLabel('Turn camera on')?.click();
   expect(media.setCam).toHaveBeenLastCalledWith(true);
+});
+
+test('a second click while the camera is still starting turns it back off', () => {
+  const { media, controller } = fakeMedia({ cam: false, pending: true }, { cam: false });
+  show({ media: controller });
+  byLabel('Turn camera on')?.click();
+  // getUserMedia hasn't resolved: no live camera yet, but the toggle follows what was asked.
+  byLabel('Turn camera off')?.click();
+  expect(media.setCam.mock.calls).toEqual([[true], [false]]);
+});
+
+test('a busy camera shows as off and a click retries it', () => {
+  const { media, controller } = fakeMedia({ cam: false, camProblem: 'busy' }, { cam: true });
+  show({ media: controller });
+  byLabel('Turn camera on')?.click();
+  expect(media.setCam).toHaveBeenCalledWith(true);
+});
+
+test('a mic still starting shows as on, so it can be muted before it arrives', () => {
+  const { media, controller } = fakeMedia({ mic: false, pending: true }, { mic: true });
+  show({ media: controller });
+  byLabel('Mute microphone')?.click();
+  expect(media.setMic).toHaveBeenCalledWith(false);
+});
+
+test('while media is pending the error line says what Join waits for', () => {
+  const { controller, set } = fakeMedia({ pending: true });
+  show({ media: controller });
+  expect(errorLine()).toBe('Waiting for the camera and mic: check the browser’s permission prompt.');
+  set({ pending: false });
+  expect(errorLine()).toBe('');
 });
 
 test('mic toggle mutes and unmutes', () => {

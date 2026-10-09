@@ -66,6 +66,8 @@ export function createLocalMedia(env: LocalMediaEnv, initial: MediaPrefs): Local
   const problem: Record<Kind, DeviceProblem | null> = { cam: null, mic: null };
   // A request's result is used only if no newer request or stop came after it.
   const seq: Record<Kind, number> = { cam: 0, mic: 0 };
+  // The latest mic request that came back; equal to seq.mic when none is in flight.
+  let micSettled = 0;
   let camera: MediaStreamTrack | null = null;
   let mic: MediaStreamTrack | null = null;
   let inFlight = 0;
@@ -174,6 +176,9 @@ export function createLocalMedia(env: LocalMediaEnv, initial: MediaPrefs): Local
         fail('mic', err);
       }
     } finally {
+      if (mine === seq.mic) {
+        micSettled = mine;
+      }
       notify();
     }
   }
@@ -218,6 +223,9 @@ export function createLocalMedia(env: LocalMediaEnv, initial: MediaPrefs): Local
       prefs.mic = on;
       if (mic) {
         mic.enabled = on;
+      } else if (on && available.mic && env.isSecureContext && seq.mic === micSettled) {
+        // A busy mic gets another try; one already on its way is left alone.
+        void openMic(prefs.micId);
       }
       notify();
     },
