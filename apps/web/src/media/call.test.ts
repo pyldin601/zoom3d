@@ -84,6 +84,7 @@ function makeCall(local?: Partial<LocalMedia>) {
         handleSignal: vi.fn(async () => {}),
         close: vi.fn(),
         stats: vi.fn(async () => ({ bytesReceived: 5 })),
+        setVideoTrack: vi.fn(),
       };
       meshes.push(mesh);
       return mesh;

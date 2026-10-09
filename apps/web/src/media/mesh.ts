@@ -16,6 +16,8 @@ export interface MediaTransport {
   disconnect(peerId: string): void;
   close(): void;
   stats(peerId: string): Promise<{ bytesReceived: number } | null>;
+  /** Sends `track` instead of the stream's video track, on current and future connections. */
+  setVideoTrack(track: MediaStreamTrack): void;
 }
 
 export interface MeshOptions {
@@ -72,8 +74,10 @@ export function createMesh(opts: MeshOptions): MediaTransport {
     return { kind: 'description', description: { type: d.type, sdp: d.sdp } };
   };
 
+  let videoOverride: MediaStreamTrack | null = null;
+
   const localTrack = (kind: string) =>
-    (kind === 'video' ? local?.getVideoTracks()[0] : local?.getAudioTracks()[0]) ?? null;
+    (kind === 'video' ? (videoOverride ?? local?.getVideoTracks()[0]) : local?.getAudioTracks()[0]) ?? null;
 
   /** Answerer: send our tracks on the transceivers the remote offer created. */
   async function attachTracks(conn: Conn) {
@@ -281,6 +285,21 @@ export function createMesh(opts: MeshOptions): MediaTransport {
         }
       });
       return { bytesReceived };
+    },
+
+    setVideoTrack(track) {
+      videoOverride = track;
+      if (!local) {
+        return;
+      }
+      for (const { pc } of conns.values()) {
+        for (const t of pc.getTransceivers()) {
+          // Only senders already carrying video: a receive-only transceiver stays receive-only.
+          if (t.receiver.track.kind === 'video' && t.sender.track) {
+            t.sender.replaceTrack(track).catch((err) => console.warn('could not swap video track', err));
+          }
+        }
+      }
     },
   };
 }

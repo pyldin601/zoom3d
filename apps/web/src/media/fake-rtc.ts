@@ -12,6 +12,8 @@ export class FakeRTCPeerConnection {
   localDescription: Desc | null = null;
   remoteDescription: Desc | null = null;
   transceivers: { trackOrKind: unknown; init: RTCRtpTransceiverInit | undefined }[] = [];
+  /** Transceivers created by addTransceiver (initiator side). */
+  localTransceivers: FakeTransceiver[] = [];
   /** Transceivers created by applying a remote offer (answerer side). */
   remoteTransceivers: FakeTransceiver[] = [];
   tracks: unknown[] = [];
@@ -30,6 +32,11 @@ export class FakeRTCPeerConnection {
 
   addTransceiver(trackOrKind: unknown, init?: RTCRtpTransceiverInit) {
     this.transceivers.push({ trackOrKind, init });
+    const withTrack = typeof trackOrKind !== 'string';
+    const t = new FakeTransceiver(withTrack ? (trackOrKind as { kind: string }).kind : (trackOrKind as string));
+    t.sender.track = withTrack ? trackOrKind : null;
+    t.direction = init?.direction ?? 'sendrecv';
+    this.localTransceivers.push(t);
   }
   addTrack(track: unknown) {
     this.tracks.push(track);
@@ -61,7 +68,7 @@ export class FakeRTCPeerConnection {
     }
   }
   getTransceivers() {
-    return this.remoteTransceivers;
+    return [...this.localTransceivers, ...this.remoteTransceivers];
   }
   restartIce() {
     this.restarts++;
