@@ -74,17 +74,17 @@ test('sway swings to one side and back to the other over a stride', () => {
   expect(bob.sway).toBeLessThan(-0.9);
 });
 
-test('at full walking speed a step takes 0.8 s: top of the step at 0.4 s, down again at 0.8 s', () => {
+test('at full walking speed it takes 3 steps a second: up at 1/6 s, down again at 1/3 s', () => {
   const bob = createBob();
   bob.update(0, 0, 1 / 60);
   const perFrame = MOVE_SPEED / 60;
   let x = 0;
-  for (let i = 0; i < 24; i++) {
+  for (let i = 0; i < 10; i++) {
     x += perFrame;
     bob.update(x, 0, 1 / 60);
   }
   expect(bob.lift).toBeGreaterThan(0.95);
-  for (let i = 0; i < 24; i++) {
+  for (let i = 0; i < 10; i++) {
     x += perFrame;
     bob.update(x, 0, 1 / 60);
   }

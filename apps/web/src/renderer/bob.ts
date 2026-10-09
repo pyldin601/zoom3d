@@ -1,8 +1,11 @@
 // Walking bob, driven by distance walked so it follows real speed and stops when the walker stops.
 // One tracker per moving thing (the local player, each peer), updated every frame; no allocations.
+import { MOVE_SPEED } from '@zoom3d/shared';
 
-/** Tiles walked per step: the lift goes 0 → 1 → 0 over one stride (0.8 s at full walking speed). */
-export const BOB_STRIDE = 2.4;
+/** Steps per second at full walking speed. */
+const STEPS_PER_SECOND = 3;
+/** Tiles walked per step: the lift goes 0 → 1 → 0 over one stride (1 tile). */
+export const BOB_STRIDE = MOVE_SPEED / STEPS_PER_SECOND;
 /** The drink trails the avatar by this much phase (radians), so it swings behind the step. */
 const ITEM_LAG = 0.9;
 /** Seconds for the bob to settle after stopping. */
