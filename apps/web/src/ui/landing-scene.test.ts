@@ -91,3 +91,19 @@ test('the scene draws walls and the people over them', () => {
   expect(centre).not.toBe(rgb(0, 0, 0));
   expect(Object.values(FACE_PALETTE).map(hexToRgb).concat(hexToRgb(ada.color))).toContain(centre);
 });
+
+test('the lobby gets the same picture without the logo', () => {
+  const withLogo = createFramebuffer();
+  renderLandingScene(withLogo);
+  const without = createFramebuffer();
+  renderLandingScene(without, { logo: false });
+  const bare = createFramebuffer();
+  renderWalls(bare, LANDING_MAP, LANDING_CAMERA, makeTextures(1));
+  // The top-right corner holds only the logo: plain ceiling without it.
+  const corner = (fb: typeof bare) => fb.pixels[40 * fb.width + fb.width - 60];
+  expect(corner(without)).toBe(corner(bare));
+  expect(corner(withLogo)).not.toBe(corner(bare));
+  // Everything below the logo is the same picture.
+  const row = (fb: typeof bare) => fb.pixels.slice(200 * fb.width, 201 * fb.width).join();
+  expect(row(without)).toBe(row(withLogo));
+});
