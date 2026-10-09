@@ -15,7 +15,7 @@
     "bench": "vitest bench --run --reporter=verbose"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
+    "@biomejs/biome": "2.5.15",
     "@playwright/test": "1.63.0",
     "@types/node": "22",
     "typescript": "7.0.2",
