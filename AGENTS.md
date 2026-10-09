@@ -61,6 +61,8 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
 - The web image renders `apps/web/nginx/default.conf.template` at start. Only env vars are
   substituted, and `/ws` resolves `SERVER_URL` per request, so nginx starts without the server.
 - `.github/workflows/docker.yml`: PRs build + smoke-test only; `main`/`v*` also push to GHCR.
+- `.github/workflows/checks.yml`: `pnpm typecheck`, `pnpm lint`, `pnpm test` on every PR and push to `main`
+  (e2e is local only).
 
 ## Gotchas to remember
 
