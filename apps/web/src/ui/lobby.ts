@@ -225,9 +225,11 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
   function render() {
     const state = media.state();
     watchPending(state.pending);
-    video.hidden = !state.cam;
-    face.hidden = state.cam;
-    if (state.cam) {
+    // A camera still starting counts as on, so the picture doesn't flash before the first frame.
+    const camOn = state.cam || (media.prefs().cam && state.pending && state.camProblem === null);
+    video.hidden = !camOn;
+    face.hidden = camOn;
+    if (camOn) {
       face.replaceChildren();
     } else if (avatar) {
       if (face.querySelector('img')?.getAttribute('src') !== avatar) {
@@ -236,8 +238,8 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
     } else {
       face.textContent = initials(input.value);
     }
-    pencil.hidden = state.cam;
-    if (state.cam) {
+    pencil.hidden = camOn;
+    if (camOn) {
       pictureMenu.hidden = true;
     }
     remove.hidden = avatar === null;
