@@ -1,5 +1,6 @@
-// Mini player shown while our boombox plays (boombox spec §3.1): track name, a seekable progress
-// bar, volume and Stop. All text goes through textContent: the track name is a user's file name.
+// Boombox controls, the audio panel's right column while our boombox plays (boombox spec §3.1):
+// track name, a seekable progress bar, volume and Stop. All text goes through textContent: the
+// track name is a user's file name.
 
 export interface BoomboxPanelOptions {
   title: string;
@@ -40,7 +41,7 @@ export function showBoomboxPanel(root: HTMLElement, opts: BoomboxPanelOptions | 
   }
 
   const panel = make('div', { className: 'boombox-panel' });
-  panel.append(make('div', { className: 'title', textContent: opts.title }));
+  panel.append(make('h2', { textContent: 'Boombox' }), make('div', { className: 'title', textContent: opts.title }));
 
   const bar = make('input', { type: 'range', min: '0', max: '0', step: '0.1', value: '0' });
   const time = make('span', { className: 'value' });

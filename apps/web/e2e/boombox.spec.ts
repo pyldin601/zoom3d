@@ -115,7 +115,7 @@ test('the track ending turns the boombox off', async ({ browser }) => {
   await expect.poll(() => boomboxOf(b, 'Ada'), { timeout: 10_000 }).toBe(false);
 });
 
-test('the mini player shows while playing, and its volume reaches the room', async ({ browser }) => {
+test('the audio panel shows boombox controls while playing, and its volume reaches the room', async ({ browser }) => {
   const a = await (await browser.newContext()).newPage();
   const b = await (await browser.newContext()).newPage();
   const url = await createAndJoin(a, 'Ada');
@@ -125,7 +125,10 @@ test('the mini player shows while playing, and its volume reaches the room', asy
   const ada = (await peerId(b, 'Ada')) as string;
 
   await play(a, 20);
-  const panel = a.locator('.boombox-panel');
+  await expect(a.locator('.boombox-panel')).toHaveCount(0);
+  await a.keyboard.press('Backquote');
+  // Right of the tuning settings, in the audio panel.
+  const panel = a.locator('.audio-panel > .boombox-slot > .boombox-panel');
   await expect(panel).toContainText('tone.wav');
   await expect.poll(() => peakLevel(b, `boombox:${ada}`, 1500), { timeout: 20_000 }).toBeGreaterThan(0.005);
 
@@ -134,5 +137,6 @@ test('the mini player shows while playing, and its volume reaches the room', asy
 
   await panel.getByRole('button', { name: 'Stop' }).click();
   await expect(panel).toHaveCount(0);
+  await expect(a.getByText('Silent beyond')).toBeVisible();
   await expect.poll(() => boomboxOf(b, 'Ada'), { timeout: 10_000 }).toBe(false);
 });

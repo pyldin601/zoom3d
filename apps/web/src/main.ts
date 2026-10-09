@@ -34,8 +34,8 @@ import { createSipClock, sipPose } from './renderer/sip';
 import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
 import { makeTextures } from './renderer/textures';
 import { renderWalls } from './renderer/walls';
-import { showAudioPanel } from './ui/audio-panel';
-import { showBoomboxPanel } from './ui/boombox-panel';
+import { setAudioPanelBoombox, showAudioPanel } from './ui/audio-panel';
+import type { BoomboxPanelOptions } from './ui/boombox-panel';
 import { heldForKey, heldKeyAction, loadHeld, saveHeld } from './ui/held-store';
 import { parseRoute } from './ui/route';
 import {
@@ -115,6 +115,22 @@ for (const type of ['pointerdown', 'keydown'] as const) {
 }
 
 let audioPanelVisible = false;
+/** The boombox column of the audio panel, while our boombox plays (boombox spec §3.1). */
+function boomboxControls(): BoomboxPanelOptions | null {
+  const box = boombox;
+  if (!box?.playing()) {
+    return null;
+  }
+  return {
+    title: box.title() ?? '',
+    volume: box.volume(),
+    progress: () => box.progress(),
+    onVolume: (v) => box.setVolume(v),
+    onSeek: (seconds) => box.seek(seconds),
+    onStop: () => box.toggle(true),
+  };
+}
+
 function toggleAudioPanel(): void {
   const engine = audio;
   audioPanelVisible = !audioPanelVisible && engine !== null;
@@ -134,6 +150,7 @@ function toggleAudioPanel(): void {
         speaking: engine.speaking(p.info.id),
       })),
   });
+  setAudioPanelBoombox(ui, boomboxControls());
 }
 window.addEventListener('keydown', (e) => {
   if (e.code !== 'Backquote' || e.repeat || !inRoom() || e.target instanceof HTMLInputElement) {
@@ -245,29 +262,16 @@ async function joinRoom(roomId: string, name: string, avatar: string | null): Pr
     showBanner(ui, PROBLEM_TEXT[local.problem]);
   }
   const activeCall = call;
-  const box = createBoombox({
+  boombox = createBoombox({
     ctx: audioCtx,
     container: localMediaContainer,
     onTrack: (track) => activeCall.setBoomboxTrack(track),
     onChange(on) {
       ownBoombox = on;
       session?.setBoombox(on);
-      showBoomboxPanel(
-        ui,
-        on
-          ? {
-              title: box.title() ?? '',
-              volume: box.volume(),
-              progress: () => box.progress(),
-              onVolume: (v) => box.setVolume(v),
-              onSeek: (seconds) => box.seek(seconds),
-              onStop: () => box.toggle(true),
-            }
-          : null
-      );
+      setAudioPanelBoombox(ui, boomboxControls());
     },
   });
-  boombox = box;
   showRoomBar(ui, location.href, {
     cam: local.cam,
     mic: local.mic,

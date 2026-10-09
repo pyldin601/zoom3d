@@ -91,8 +91,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   the bottom-right, clear of the self-view. Rejected: uploading to the server with synced playback, and
   DataChannel file transfer (sync, late joiners, storage). Spec:
   [2026-10-09-boombox-design.md](superpowers/specs/2026-10-09-boombox-design.md). *Amended 2026-10-09:* while
-  playing, the carrier gets a mini player at the top-centre with the track name, a seekable progress bar, volume
-  and Stop. The volume is a gain before the split, so it turns down both the carrier's own monitor and what the
+  playing, the audio panel (`` ` ``) shows a Boombox column right of the tuning settings with the track name, a
+  seekable progress bar, volume and Stop; starting the music doesn't open the panel. The volume is a gain before the split, so it turns down both the carrier's own monitor and what the
   room hears, with no protocol message (spec §3.1).
 
 ### Risks (to verify, not assume)

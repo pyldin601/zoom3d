@@ -1,5 +1,6 @@
 // Live tuning panel for spatial audio (spec §9.3). All text goes through textContent.
 import { type AudioSettings, DEFAULT_AUDIO_SETTINGS, normalizeAudioSettings } from '@zoom3d/shared';
+import { type BoomboxPanelOptions, showBoomboxPanel } from './boombox-panel';
 
 export interface AudioPanelOptions {
   settings: AudioSettings;
@@ -33,6 +34,10 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
   const existing = root.querySelector<HTMLElement>(':scope > .audio-panel');
   if (existing) {
     clearInterval(timers.get(existing));
+    const slot = existing.querySelector<HTMLElement>(':scope > .boombox-slot');
+    if (slot) {
+      showBoomboxPanel(slot, null);
+    }
     existing.remove();
   }
   if (!opts) {
@@ -41,6 +46,9 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
 
   let current = opts.settings;
   const panel = make('div', { className: 'audio-panel' });
+  // Tuning on the left; the boombox's controls on the right while it plays (boombox spec §3.1).
+  const tuning = make('div', { className: 'tuning' });
+  const slot = make('div', { className: 'boombox-slot' });
   const inputs = new Map<NumericKey, { input: HTMLInputElement; value: HTMLSpanElement }>();
   const output = make('select');
   const commit = (next: unknown) => {
@@ -60,14 +68,14 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
     output.value = current.panning;
   };
 
-  panel.append(make('h2', { textContent: 'Audio tuning' }));
+  tuning.append(make('h2', { textContent: 'Audio tuning' }));
   for (const { key, label, min, max, step } of SLIDERS) {
     const input = make('input', { type: 'range', min: String(min), max: String(max), step: String(step) });
     const value = make('span', { className: 'value' });
     input.addEventListener('input', () => commit({ ...current, [key]: Number(input.value) }));
     const row = make('label');
     row.append(label, input, value);
-    panel.append(row);
+    tuning.append(row);
     inputs.set(key, { input, value });
   }
   for (const [value, text] of [
@@ -79,11 +87,11 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
   output.addEventListener('change', () => commit({ ...current, panning: output.value }));
   const outputRow = make('label');
   outputRow.append('Output', output);
-  panel.append(outputRow);
+  tuning.append(outputRow);
 
   const reset = make('button', { type: 'button', textContent: 'Reset' });
   reset.addEventListener('click', () => commit(DEFAULT_AUDIO_SETTINGS));
-  panel.append(reset);
+  tuning.append(reset);
 
   if (opts.levels) {
     const list = make('ul', { className: 'levels' });
@@ -101,9 +109,18 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
     };
     draw();
     timers.set(panel, setInterval(draw, LEVELS_MS));
-    panel.append(list);
+    tuning.append(list);
   }
 
+  panel.append(tuning, slot);
   render();
   root.append(panel);
+}
+
+/** Shows (or with null, clears) the boombox controls in the open audio panel; no-op when it's closed. */
+export function setAudioPanelBoombox(root: HTMLElement, opts: BoomboxPanelOptions | null): void {
+  const slot = root.querySelector<HTMLElement>(':scope > .audio-panel > .boombox-slot');
+  if (slot) {
+    showBoomboxPanel(slot, opts);
+  }
 }
