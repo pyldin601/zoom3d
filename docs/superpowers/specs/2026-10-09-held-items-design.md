@@ -122,9 +122,13 @@ There's no `held` field in `join`, which follows the `media` pattern:
 - A native `<select aria-label="In hand">` sits after the Mic and Cam toggles, with the options
   "Nothing in hand", "Beer", "Coffee" and "Wine". A native control is accessible and needs no
   custom menu code.
-- On `change`: call `onHeld(item)`, then `blur()` the select. Otherwise W/S would change the
-  option instead of moving the player. Arrow keys are not movement keys, so the select can still
-  be used from the keyboard while it has focus.
+- On `change`: call `onHeld(item)`, then `blur()` the select. Otherwise letter keys would pick an
+  option by typeahead (W → Wine) instead of moving the player.
+- A letter-key `keydown` on the focused select (left focused when the menu closed without a
+  change) is cancelled and blurs it, for the same reason.
+- Arrow keys still move through the options while the select has focus: the game ignores keys
+  aimed at a `SELECT`. Where a closed select commits each arrow step (Windows/Linux Chrome), it
+  blurs after one step.
 - `showRoomBar` takes a separate `HeldControl { held, onHeld }`, so held items stay out of `MediaControls`.
 
 ### 6.4 Renderer (`apps/web/src/renderer/`)

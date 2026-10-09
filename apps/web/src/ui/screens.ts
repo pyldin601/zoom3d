@@ -215,6 +215,13 @@ function heldPicker({ held, onHeld }: HeldControl): HTMLSelectElement {
     // Focus would keep letters for the select's typeahead (B, C) instead of the game.
     select.blur();
   });
+  // Closed without a change it keeps focus: a letter (W → Wine) must leave it, not pick an item.
+  select.addEventListener('keydown', (e) => {
+    if (/^Key[A-Z]$/.test(e.code)) {
+      e.preventDefault();
+      select.blur();
+    }
+  });
   return select;
 }
 

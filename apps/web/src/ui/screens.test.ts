@@ -235,6 +235,23 @@ test('the held picker gives up focus after a change', () => {
   expect(document.activeElement).not.toBe(select);
 });
 
+test('a letter key on the focused held picker leaves it instead of picking by typeahead', () => {
+  const onHeld = vi.fn();
+  showRoomBar(root, 'http://x', undefined, { held: null, onHeld });
+  const select = root.querySelector('select[data-control="held"]') as HTMLSelectElement;
+  select.focus();
+  const w = new KeyboardEvent('keydown', { code: 'KeyW', key: 'w', bubbles: true, cancelable: true });
+  select.dispatchEvent(w);
+  expect(w.defaultPrevented).toBe(true);
+  expect(document.activeElement).not.toBe(select);
+  expect(onHeld).not.toHaveBeenCalled();
+  select.focus();
+  const down = new KeyboardEvent('keydown', { code: 'ArrowDown', key: 'ArrowDown', bubbles: true, cancelable: true });
+  select.dispatchEvent(down);
+  expect(down.defaultPrevented).toBe(false);
+  expect(document.activeElement).toBe(select);
+});
+
 test('no held control renders no picker', () => {
   showRoomBar(root, 'http://x');
   expect(root.querySelector('select[data-control="held"]')).toBeNull();
