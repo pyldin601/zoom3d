@@ -42,13 +42,17 @@ failed to load" all mean the same thing: the centred square.
 Pure logic with no DOM, written test-first. All values are in source pixels and are named constants.
 
 ```ts
-interface Box { x: number; y: number; w: number; h: number }   // detector face box
+interface Box { x: number; y: number; w: number; h: number; mouth?: { x: number; y: number } }  // face box (+ mouth)
 interface Rect { x: number; y: number; size: number }          // square crop in the source frame
 createFraming(frameW: number, frameH: number): { update(face: Box | null, now: number): Rect }
 ```
 
 - **Target side:** `FACE_SCALE = 2.2` × face box width.
-- **Target centre:** the face box centre, moved up by `HEADROOM = 0.1` × side.
+- **Target position:** with a mouth keypoint, the square is placed so the mouth lands at
+  `(0.5, MOUTH_Y_IN_CROP = 0.72)` of it: horizontally centred, 72% of the way down. Receivers can then
+  rely on where the mouth is on the disc (the held-items sip aims at it), whoever is in the frame.
+  `MOUTH_Y_IN_CROP` is exported from `framing.ts` as the single source of truth for that point.
+- **Fallback position:** without a mouth keypoint, the face box centre, moved up by `HEADROOM = 0.1` × side.
 - **Zoom limits:** the side is clamped to `[MIN_SIDE = 160, min(frameW, frameH)]`. 160 px caps upscaling
   at 1.6× into the 256² output. A far-away face is framed as close as quality allows, no closer.
 - **Clamp:** the square is shifted to lie inside the frame. It is never padded.
@@ -64,14 +68,16 @@ createFraming(frameW: number, frameH: number): { update(face: Box | null, now: n
 - **Start:** the rect starts at the centred square, so there's no jump before the model loads.
 - **Allocation:** `update()` returns the same rect object every call. Callers must not keep it.
 
-The caller picks the largest box when the detector reports several faces (§4).
+The caller picks the largest box when the detector reports several faces (§4). BlazeFace reports six
+keypoints per face; index 3 is the mouth centre, normalized 0..1, which the detector converts to source
+pixels.
 
 ## 4. Face detector (`apps/web/src/media/face-detector.ts`)
 
 A thin wrapper around `@mediapipe/tasks-vision` (Apache-2.0), using the BlazeFace short-range model.
 
 ```ts
-interface Detector { detect(video: HTMLVideoElement, now: number): Box | null }  // largest face, or null
+interface Detector { detect(video: HTMLVideoElement, now: number): Box | null }  // largest face (+ mouth), or null
 loadFaceDetector(deps?: { load?: () => Promise<typeof import('@mediapipe/tasks-vision')> }): Promise<Detector | null>  // `load` injectable for tests
 ```
 
@@ -152,7 +158,7 @@ createFramer(opts: {
 ## 7. Testing (failing test first for logic)
 
 Unit tests:
-- **`framing.test.ts`:** a centred face gives the expected rect, the headroom shift, clamping at each
+- **`framing.test.ts`:** a centred face gives the expected rect, the headroom shift, the mouth anchor, clamping at each
   edge, the zoom floor and ceiling, dead-zone stability under noisy boxes, easing convergence after
   time passes, frame-rate independence (one 300 ms step ≈ ten 30 ms steps), the easing rate (1 − 1/e of
   the way in `EASE_MS`), lost-face return to centre after `LOST_MS`, and a reappearing face resuming tracking.

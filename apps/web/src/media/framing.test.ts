@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { type Box, createFraming, type Framing } from './framing';
+import { type Box, createFraming, type Framing, MOUTH_Y_IN_CROP } from './framing';
 
 const W = 640;
 const H = 480;
@@ -30,6 +30,18 @@ test('starts at the centred square', () => {
 
 test('settles on a square 2.2× the face width, raised by 10% headroom', () => {
   close(settle(createFraming(W, H), face, 0, SETTLE), framed);
+});
+
+test('with a mouth keypoint, the mouth lands at the centre column, 0.72 of the way down', () => {
+  expect(MOUTH_Y_IN_CROP).toBe(0.72);
+  // Size still comes from the box (2.2 × 80 = 176); position from the mouth (330, 270).
+  const withMouth = { ...face, mouth: { x: 330, y: 270 } };
+  close(settle(createFraming(W, H), withMouth, 0, SETTLE), { x: 330 - 88, y: 270 - 0.72 * 176, size: 176 });
+});
+
+test('a mouth near the bottom edge is clamped like any crop', () => {
+  const low = { x: 280, y: 380, w: 80, h: 90, mouth: { x: 320, y: 460 } };
+  close(settle(createFraming(W, H), low, 0, SETTLE), { x: 232, y: 304, size: 176 });
 });
 
 test('the square is clamped inside the frame, never padded', () => {

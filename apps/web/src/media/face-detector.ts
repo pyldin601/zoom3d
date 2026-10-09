@@ -12,15 +12,29 @@ export interface Detector {
 }
 
 type BoundingBox = { originX: number; originY: number; width: number; height: number };
+type Detection = { boundingBox?: BoundingBox; keypoints?: { x: number; y: number }[] };
+/** BlazeFace keypoints: right eye, left eye, nose tip, mouth centre, right ear, left ear. */
+const MOUTH = 3;
 
-export function largestBox(detections: { boundingBox?: BoundingBox }[]): Box | null {
-  let best: BoundingBox | null = null;
-  for (const { boundingBox: b } of detections) {
-    if (b && (!best || b.width * b.height > best.width * best.height)) {
-      best = b;
+/** The largest face, in source pixels, with its mouth when present (keypoints are normalized 0..1). */
+export function largestBox(detections: Detection[], frameW: number, frameH: number): Box | null {
+  let best: Detection | null = null;
+  for (const d of detections) {
+    const b = d.boundingBox;
+    if (b && (!best?.boundingBox || b.width * b.height > best.boundingBox.width * best.boundingBox.height)) {
+      best = d;
     }
   }
-  return best ? { x: best.originX, y: best.originY, w: best.width, h: best.height } : null;
+  const b = best?.boundingBox;
+  if (!b) {
+    return null;
+  }
+  const box: Box = { x: b.originX, y: b.originY, w: b.width, h: b.height };
+  const mouth = best?.keypoints?.[MOUTH];
+  if (mouth) {
+    box.mouth = { x: mouth.x * frameW, y: mouth.y * frameH };
+  }
+  return box;
 }
 
 export async function loadFaceDetector(deps: { load?: () => Promise<typeof Vision> } = {}): Promise<Detector | null> {
@@ -38,7 +52,10 @@ export async function loadFaceDetector(deps: { load?: () => Promise<typeof Visio
     } catch {
       detector = await create('CPU');
     }
-    return { detect: (video, now) => largestBox(detector.detectForVideo(video, now).detections) };
+    return {
+      detect: (video, now) =>
+        largestBox(detector.detectForVideo(video, now).detections, video.videoWidth, video.videoHeight),
+    };
   } catch (err) {
     console.warn('face detector unavailable', err);
     return null;

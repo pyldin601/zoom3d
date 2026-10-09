@@ -3,8 +3,13 @@
 
 /** Crop side as a multiple of the face box width. */
 export const FACE_SCALE = 2.2;
-/** The crop centre sits this fraction of its side above the face centre (headroom). */
+/** Without a mouth keypoint, the crop centre sits this fraction of its side above the face centre. */
 export const HEADROOM = 0.1;
+/**
+ * With a mouth keypoint, the mouth lands at (0.5, MOUTH_Y_IN_CROP) of the crop, so receivers know where the
+ * mouth is on the disc (the held-items sip aims there). Single source of truth for that point.
+ */
+export const MOUTH_Y_IN_CROP = 0.72;
 /** Smallest crop side: caps upscaling into the 256² output at 1.6×. */
 export const MIN_SIDE = 160;
 /** A new target closer than this fraction of the old side (centre) is ignored... */
@@ -21,6 +26,8 @@ export interface Box {
   y: number;
   w: number;
   h: number;
+  /** Mouth centre in source pixels, when the detector found it. */
+  mouth?: { x: number; y: number };
 }
 
 export interface Rect {
@@ -53,11 +60,11 @@ export function createFraming(frameW: number, frameH: number): Framing {
 
   const fromBox = (b: Box) => {
     const size = clamp(FACE_SCALE * b.w, MIN_SIDE, full);
-    const cx = b.x + b.w / 2;
-    const cy = b.y + b.h / 2 - HEADROOM * size;
+    const left = b.mouth ? b.mouth.x - size / 2 : b.x + b.w / 2 - size / 2;
+    const top = b.mouth ? b.mouth.y - MOUTH_Y_IN_CROP * size : b.y + b.h / 2 - HEADROOM * size - size / 2;
     candidate.size = size;
-    candidate.x = clamp(cx - size / 2, 0, frameW - size);
-    candidate.y = clamp(cy - size / 2, 0, frameH - size);
+    candidate.x = clamp(left, 0, frameW - size);
+    candidate.y = clamp(top, 0, frameH - size);
   };
 
   return {
