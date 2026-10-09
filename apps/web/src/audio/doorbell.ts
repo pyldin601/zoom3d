@@ -1,5 +1,6 @@
 // Two-tone chime rung when someone joins the room: E5 then C5, like a hallway doorbell.
 // Synthesised (no asset) and played straight to the speakers: it's the room's bell, not a sound from a place.
+import type { SessionListener } from '../net/session';
 
 /** Seconds after the ring each bar is struck, and its pitch. */
 export const DOORBELL_NOTES: readonly { at: number; hz: number }[] = [
@@ -51,6 +52,26 @@ export function createDoorbell(ctx: BaseAudioContext): Doorbell {
       for (const note of DOORBELL_NOTES) {
         strike(t + note.at, note.hz);
       }
+    },
+  };
+}
+
+/**
+ * Rings for whoever arrives: another peer (`peer_joined`), or us on a fresh slot. Not for people already in the room
+ * (they come in welcome), nor when a reconnect resumes a slot (same identity, and the server sends no peer_joined).
+ */
+export function withDoorbell(listener: SessionListener, bell: Doorbell): SessionListener {
+  return {
+    ...listener,
+    welcome(selfId, iceServers, identityChanged) {
+      listener.welcome?.(selfId, iceServers, identityChanged);
+      if (identityChanged) {
+        bell.ring();
+      }
+    },
+    peerJoined(peer) {
+      listener.peerJoined?.(peer);
+      bell.ring();
     },
   };
 }

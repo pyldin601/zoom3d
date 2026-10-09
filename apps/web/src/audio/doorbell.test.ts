@@ -1,5 +1,6 @@
-import { beforeEach, expect, test } from 'vitest';
-import { createDoorbell, DOORBELL_COOLDOWN_S, DOORBELL_NOTES } from './doorbell';
+import type { PeerInfo } from '@zoom3d/shared';
+import { beforeEach, expect, test, vi } from 'vitest';
+import { createDoorbell, DOORBELL_COOLDOWN_S, DOORBELL_NOTES, withDoorbell } from './doorbell';
 import { asAudioContext, FakeAudioContext, type FakeParam } from './fake-audio';
 
 let ctx: FakeAudioContext;
@@ -36,4 +37,27 @@ test('a burst of arrivals rings once per cooldown', () => {
   ctx.currentTime += DOORBELL_COOLDOWN_S;
   bell.ring();
   expect(oscillators()).toHaveLength(perRing * 2);
+});
+
+test('rings for whoever arrives: another peer, or us on a fresh slot, but not when we resume ours', () => {
+  const inner = { welcome: vi.fn(), peerJoined: vi.fn(), peerLeft: vi.fn() };
+  const bell = { ring: vi.fn() };
+  const listener = withDoorbell(inner, bell);
+  const peer = { id: 'b' } as PeerInfo;
+
+  listener.welcome?.('a', [], true);
+  expect(inner.welcome).toHaveBeenCalledWith('a', [], true);
+  expect(bell.ring).toHaveBeenCalledTimes(1);
+
+  listener.welcome?.('a', [], false);
+  expect(inner.welcome).toHaveBeenCalledTimes(2);
+  expect(bell.ring).toHaveBeenCalledTimes(1);
+
+  listener.peerJoined?.(peer);
+  expect(inner.peerJoined).toHaveBeenCalledWith(peer);
+  expect(bell.ring).toHaveBeenCalledTimes(2);
+
+  listener.peerLeft?.('b');
+  expect(inner.peerLeft).toHaveBeenCalledWith('b');
+  expect(bell.ring).toHaveBeenCalledTimes(2);
 });

@@ -105,8 +105,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 ### D18 — Join sound
 - Whether and how the room tells you someone arrived.
 - *Resolved 2026-10-09:* a doorbell: a synthesised two-tone chime (E5 then C5, each a struck bar with a
-  fast-dying ×2.76 overtone), rung on `peer_joined` only, so not for people already in the room when you join, not
-  for a peer resuming its slot after a dropped link, and not for yourself. It plays straight to `ctx.destination`
+  fast-dying ×2.76 overtone), rung for whoever arrives: on `peer_joined`, and for the newcomer on their own `welcome`
+  when it is a fresh slot. Not for people already in the room when you join, and not for a reconnect that resumes
+  its slot. It plays straight to `ctx.destination`
   at a fixed low volume, not through the spatial graph: it's the room's bell, not a sound from a place. Arrivals
   less than 2 s apart ring once. No asset file and no protocol change (`apps/web/src/audio/doorbell.ts`).
 
