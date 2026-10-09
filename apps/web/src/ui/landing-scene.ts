@@ -156,8 +156,11 @@ export function faceTexels(person: LandingPerson): Uint32Array {
   return texels;
 }
 
-/** Draws the picture, title included, into `fb` once; the landing page shows it instead of running the room. */
-export function renderLandingScene(fb: Framebuffer): void {
+/**
+ * Draws the picture into `fb` once. The landing page shows it with the title; the lobby shows it without, until Join
+ * starts the room.
+ */
+export function renderLandingScene(fb: Framebuffer, { logo = true }: { logo?: boolean } = {}): void {
   renderWalls(fb, LANDING_MAP, LANDING_CAMERA, makeTextures(1));
   const sprites: Sprite[] = LANDING_PEOPLE.map((p) => ({
     x: p.x,
@@ -172,5 +175,7 @@ export function renderLandingScene(fb: Framebuffer): void {
     boombox: false,
   }));
   renderSprites(fb, LANDING_CAMERA, sprites);
-  drawLogo(fb, LOGO_MARGIN);
+  if (logo) {
+    drawLogo(fb, LOGO_MARGIN);
+  }
 }

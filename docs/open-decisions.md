@@ -134,7 +134,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   corner (`landing-logo.ts`): blocky glyphs, chrome fading into red, black outline and drop shadow. The frame is
   drawn once; the room loop never starts on `/`. A lobby-style panel (tagline, blue "Start a party"; the heading is
   for screen readers only) sits in the bottom-right corner below it, undimmed; both are inset
-  28 of 640 px from their corner.
+  28 of 640 px from their corner. *Amended 2026-10-10:* the lobby shows the same picture without the logo, dimmed, behind its
+  centred panel; the room loop starts on Join instead of running behind the lobby.
 
 ### Risks (to verify, not assume)
 - **R1 — Echo cancellation vs Web Audio output.** Chrome's AEC historically did not cancel audio played via `AudioContext`. If still true, speakers echo. Verify in an early throwaway audio spike (speakers vs headphones).

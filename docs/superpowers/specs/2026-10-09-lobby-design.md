@@ -161,9 +161,9 @@ use fakes, like `capture.ts` today.
 ### 4.4 UI (`apps/web/src/ui/lobby.ts`, replaces `showJoin` in `screens.ts`)
 - `showLobby(root, opts)` renders §2 from a `LocalMediaController`, the saved name and avatar, and
   `onJoin(name, avatar)`.
-- The disc shows the framer's canvas through a `<video muted playsinline>` on `framer.track`. The render
-  loop keeps drawing the map behind the lobby, and a visible playing video may pace it to 30 fps; that is
-  acceptable for a backdrop. The preview element is removed on Join, so the room is unaffected
+- The disc shows the framer's canvas through a `<video muted playsinline>` on `framer.track`. Behind the
+  lobby is the landing page's still corridor picture without its logo (decision D19), dimmed; the room loop
+  starts only on Join. The preview element is removed on Join, so the room is unaffected
   (`e2e/frame-rate.spec.ts` guards that).
 - Mic meter: an `AnalyserNode` on the mic track in the shared `AudioContext`, sampled on
   `requestAnimationFrame` while the lobby is shown, stopped on Join.

@@ -355,6 +355,7 @@ function openLobby(roomId: string): void {
       closeLobby();
       stopMetering();
       meter.dispose();
+      startLoop(frame);
       joinRoom(roomId, name, avatar, local, audioCtx);
     },
   });
@@ -509,10 +510,11 @@ function frame(dt: number): void {
   }
 }
 
-if (route.kind === 'landing') {
-  // One still from the renderer as the title picture; the room only runs behind a room link.
-  renderLandingScene(fb);
-  gameCtx.putImageData(image, 0, 0);
-} else {
+if (route.kind === 'invalid') {
   startLoop(frame);
+} else {
+  // One still from the renderer: the title picture on the landing page, the same corridor without the title behind
+  // the lobby. The room loop starts on Join.
+  renderLandingScene(fb, { logo: route.kind === 'landing' });
+  gameCtx.putImageData(image, 0, 0);
 }
