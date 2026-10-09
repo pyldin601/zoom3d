@@ -25,7 +25,6 @@ class FakeTrack {
     }
   }
 }
-const asTrack = (t: FakeTrack) => t as unknown as MediaStreamTrack;
 
 interface Request {
   constraints: MediaStreamConstraints;
