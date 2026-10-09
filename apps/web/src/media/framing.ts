@@ -12,9 +12,9 @@ export const DEAD_MOVE = 0.06;
 /** ...unless its side differs by more than this fraction. */
 export const DEAD_SIZE = 0.1;
 /** Time constant of the exponential easing towards the target. */
-export const EASE_MS = 300;
+export const EASE_MS = 600;
 /** Without a face for this long, the target returns to the centred square. */
-export const LOST_MS = 1500;
+export const LOST_MS = 3000;
 
 export interface Box {
   x: number;

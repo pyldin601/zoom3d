@@ -7,7 +7,10 @@ const CENTRE = { x: 80, y: 0, size: 480 };
 const face: Box = { x: 280, y: 200, w: 80, h: 100 }; // centre (320, 250) → side 176, headroom 17.6
 const framed = { x: 232, y: 144.4, size: 176 };
 
-/** Feeds `box` every 100 ms (as detections would) from `from` for `ms`; returns a copy of the last rect. */
+// Ten easing time constants: settled to well under 0.05 px.
+const SETTLE = 6000;
+
+/** Feeds `box` every 100 ms from `from` for `ms`; returns a copy of the last rect. */
 function settle(f: Framing, box: Box | null, from: number, ms: number) {
   let r = f.update(box, from);
   for (let t = from + 100; t <= from + ms; t += 100) {
@@ -26,31 +29,31 @@ test('starts at the centred square', () => {
 });
 
 test('settles on a square 2.2× the face width, raised by 10% headroom', () => {
-  close(settle(createFraming(W, H), face, 0, 3000), framed);
+  close(settle(createFraming(W, H), face, 0, SETTLE), framed);
 });
 
 test('the square is clamped inside the frame, never padded', () => {
-  close(settle(createFraming(W, H), { x: 0, y: 200, w: 80, h: 100 }, 0, 3000), { x: 0, y: 144.4, size: 176 });
-  close(settle(createFraming(W, H), { x: 560, y: 200, w: 80, h: 100 }, 0, 3000), { x: 464, y: 144.4, size: 176 });
-  close(settle(createFraming(W, H), { x: 280, y: 0, w: 80, h: 60 }, 0, 3000), { x: 232, y: 0, size: 176 });
-  close(settle(createFraming(W, H), { x: 280, y: 420, w: 80, h: 60 }, 0, 3000), { x: 232, y: 304, size: 176 });
+  close(settle(createFraming(W, H), { x: 0, y: 200, w: 80, h: 100 }, 0, SETTLE), { x: 0, y: 144.4, size: 176 });
+  close(settle(createFraming(W, H), { x: 560, y: 200, w: 80, h: 100 }, 0, SETTLE), { x: 464, y: 144.4, size: 176 });
+  close(settle(createFraming(W, H), { x: 280, y: 0, w: 80, h: 60 }, 0, SETTLE), { x: 232, y: 0, size: 176 });
+  close(settle(createFraming(W, H), { x: 280, y: 420, w: 80, h: 60 }, 0, SETTLE), { x: 232, y: 304, size: 176 });
 });
 
 test('zoom is limited to [160, min(w, h)]', () => {
-  expect(settle(createFraming(W, H), { x: 300, y: 220, w: 40, h: 50 }, 0, 3000).size).toBeCloseTo(160, 1);
-  expect(settle(createFraming(W, H), { x: 170, y: 100, w: 300, h: 360 }, 0, 3000).size).toBeCloseTo(480, 1);
+  expect(settle(createFraming(W, H), { x: 300, y: 220, w: 40, h: 50 }, 0, SETTLE).size).toBeCloseTo(160, 1);
+  expect(settle(createFraming(W, H), { x: 170, y: 100, w: 300, h: 360 }, 0, SETTLE).size).toBeCloseTo(480, 1);
 });
 
 test('small detector jitter inside the dead zone does not move the crop', () => {
   const f = createFraming(W, H);
-  const before = settle(f, face, 0, 3000);
-  close(settle(f, { ...face, x: face.x + 5, w: face.w + 4 }, 3100, 1000), before);
+  const before = settle(f, face, 0, SETTLE);
+  close(settle(f, { ...face, x: face.x + 5, w: face.w + 4 }, SETTLE + 100, 2000), before);
 });
 
 test('a real move outside the dead zone is followed', () => {
   const f = createFraming(W, H);
-  settle(f, face, 0, 3000);
-  close(settle(f, { ...face, x: face.x + 40 }, 3100, 3000), { ...framed, x: framed.x + 40 });
+  settle(f, face, 0, SETTLE);
+  close(settle(f, { ...face, x: face.x + 40 }, SETTLE + 100, SETTLE), { ...framed, x: framed.x + 40 });
 });
 
 test('easing is time-based: one 300 ms step equals ten 30 ms steps', () => {
@@ -66,12 +69,19 @@ test('easing is time-based: one 300 ms step equals ten 30 ms steps', () => {
   close(ten, one);
 });
 
-test('a lost face eases back to centre after 1.5 s, and a returning face is tracked again', () => {
+test('easing covers 1 − 1/e of the way in 600 ms', () => {
   const f = createFraming(W, H);
-  settle(f, face, 0, 3000);
-  close(settle(f, null, 3100, 1300), framed); // still within LOST_MS of the last box at 3000
-  close(settle(f, null, 4600, 5000), CENTRE);
-  close(settle(f, face, 9700, 3000), framed);
+  f.update(face, 0);
+  const k = 1 - Math.exp(-1);
+  close(f.update(null, 600), { x: 80 + (232 - 80) * k, y: 144.4 * k, size: 480 + (176 - 480) * k });
+});
+
+test('a lost face eases back to centre after 3 s, and a returning face is tracked again', () => {
+  const f = createFraming(W, H);
+  settle(f, face, 0, SETTLE);
+  close(settle(f, null, 6100, 2800), framed); // still within LOST_MS of the last box at 6000
+  close(settle(f, null, 9100, 10_000), CENTRE);
+  close(settle(f, face, 19_200, SETTLE), framed);
 });
 
 test('update reuses one rect object', () => {

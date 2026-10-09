@@ -1,11 +1,11 @@
-// Face framing glue (face-framing spec §5): plays the raw camera in a hidden <video>, detects the face a few
-// times a second, and draws a smoothed square crop into a 256² canvas whose captureStream is what peers get.
+// Face framing glue (face-framing spec §5): plays the raw camera in a hidden <video>, detects the face once a
+// second, and draws a smoothed square crop into a 256² canvas whose captureStream is what peers get.
 import { type Detector, loadFaceDetector } from './face-detector';
 import { type Box, createFraming, type Framing, type Rect } from './framing';
 
 export const OUTPUT_SIZE = 256;
 export const OUTPUT_FPS = 24;
-export const DETECT_MS = 200;
+export const DETECT_MS = 1000;
 
 export interface FrameStep {
   setDetector(d: Detector | null): void;

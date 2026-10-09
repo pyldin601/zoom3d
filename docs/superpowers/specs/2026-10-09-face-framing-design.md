@@ -25,7 +25,7 @@ Out of scope:
 ```
 getUserMedia (640×480, 24 fps) ──raw track──► framer ──framed 256² track──┐
                                                 │                          ├─► LocalMedia.stream ─► mesh, self-preview
-                                     face detector (≈5 Hz)       audio ────┘
+                                     face detector (1 Hz)        audio ────┘
                                                 │
                                      framing: face box → smoothed crop rect
 ```
@@ -57,9 +57,9 @@ createFraming(frameW: number, frameH: number): { update(face: Box | null, now: n
   old target's side (both measured after clamping).
   This stops detector noise from wobbling the crop while the person sits still.
 - **Easing:** the current rect approaches the target with `k = 1 − exp(−dt / EASE_MS)`, where
-  `EASE_MS = 300`. The easing runs on every `update()`, and it's time-based, so it doesn't depend on
+  `EASE_MS = 600`. The easing runs on every `update()`, and it's time-based, so it doesn't depend on
   frame rate. The target only changes when a box is passed in.
-- **Lost face:** a `null` box doesn't move the target. After `LOST_MS = 1500` without a box, the target
+- **Lost face:** a `null` box doesn't move the target. After `LOST_MS = 3000` without a box, the target
   becomes the centred `min(frameW, frameH)` square, today's crop, reached with the same easing.
 - **Start:** the rect starts at the centred square, so there's no jump before the model loads.
 - **Allocation:** `update()` returns the same rect object every call. Callers must not keep it.
@@ -115,7 +115,7 @@ createFramer(opts: {
   `drawImage(video, rect → 256²)`. The framing is built from the video's real size, and rebuilt if that
   size changes. Frames with `videoWidth === 0` are skipped. Where rVFC is missing, it polls every 42 ms instead, as `faces.ts`
   does.
-- **Detection cadence:** at most once per `DETECT_MS = 200`, inside the draw callback, calling
+- **Detection cadence:** at most once per `DETECT_MS = 1000`, inside the draw callback, calling
   `detector.detect(video, now)`. If `detect` throws once, the detector is dropped for the session and
   the crop eases back to centre.
 - **`setEnabled(false)`:** stops drawing and detection, and sets `enabled = false` on both the raw track
@@ -154,8 +154,8 @@ createFramer(opts: {
 Unit tests:
 - **`framing.test.ts`:** a centred face gives the expected rect, the headroom shift, clamping at each
   edge, the zoom floor and ceiling, dead-zone stability under noisy boxes, easing convergence after
-  time passes, frame-rate independence (one 300 ms step ≈ ten 30 ms steps), lost-face return to centre
-  after `LOST_MS`, and a reappearing face resuming tracking.
+  time passes, frame-rate independence (one 300 ms step ≈ ten 30 ms steps), the easing rate (1 − 1/e of
+  the way in `EASE_MS`), lost-face return to centre after `LOST_MS`, and a reappearing face resuming tracking.
 - **`capture.test.ts`:** the new constraints, the stream wrapped with the framer track plus the original
   audio, and no framer when there's no camera.
 - **`mesh.test.ts`:** `setVideoTrack` replaces the video sender on existing connections, and a later
@@ -177,7 +177,7 @@ Manual:
 
 ## 8. Risks
 
-- **Main-thread cost:** about 24 small `drawImage` calls a second plus about 5 detections a second (a
+- **Main-thread cost:** about 24 small `drawImage` calls a second plus about 1 detection a second (a
   few ms each with the GPU delegate). If profiling shows renderer jank, move to the worker pipeline
   (insertable streams) that §1 leaves out of scope.
 - **Download size:** about 13 MB of wasm per first visit. It is lazy and cached, and it never blocks
