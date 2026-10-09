@@ -25,16 +25,18 @@ test('peers receive the framed 256² video; a hidden tab sends the raw frame unt
   await expect.poll(() => remoteSize(b), { timeout: 10_000 }).toEqual([256, 256]);
 });
 
-test('turning the camera off disables the raw camera track', async ({ page }) => {
+test('turning the camera off stops the camera', async ({ page }) => {
   await createAndJoin(page, 'Ada');
-  const rawEnabled = () =>
-    page.evaluate(
-      () =>
-        (
-          document.querySelector<HTMLVideoElement>('#local-media video')?.srcObject as MediaStream | null
-        )?.getVideoTracks()[0]?.enabled ?? null
-    );
-  await expect.poll(rawEnabled).toBe(true);
+  // Keep the track itself: the framer drops it from its <video> when the camera stops.
+  const held = () =>
+    page.evaluate(() => {
+      const w = window as unknown as { __cam?: MediaStreamTrack };
+      w.__cam ??= (
+        document.querySelector<HTMLVideoElement>('#local-media video')?.srcObject as MediaStream | null
+      )?.getVideoTracks()[0];
+      return w.__cam?.readyState ?? null;
+    });
+  await expect.poll(held).toBe('live');
   await page.getByRole('button', { name: 'Cam on' }).click();
-  await expect.poll(rawEnabled).toBe(false);
+  await expect.poll(held).toBe('ended');
 });

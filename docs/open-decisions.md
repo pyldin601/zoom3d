@@ -102,6 +102,19 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   (`zoom3d.boombox.volume`). The volume is a gain before the split, so it turns down both the carrier's own monitor and what the
   room hears, with no protocol message (spec §3.1).
 
+### D17 — Lobby (pre-join screen)
+- What the join screen offers for camera, mic, name and picture, and what "camera off" means.
+- *Resolved 2026-10-09:* a minimal lobby: a 176 px disc showing the live framed camera (or, with the camera
+  off, the picture or initials plus a pencil for Choose picture… / Remove), a mic-level ring around it,
+  camera and mic split buttons (icon toggles, chevron picks the device), the name, Join. Camera and mic start
+  when the invite link opens, each requested separately with the saved `deviceId`; a camera saved as off is
+  never opened. Camera off **stops** the camera (light out) in the lobby and in the room; mic off only mutes.
+  To turn the camera back on in the room without renegotiating, the framer's canvas track is always sent and
+  the framer gets a swappable camera source. Devices and on/off states are remembered in `zoom3d.media`.
+  Rejected: a 16:9 Zoom-style preview (avatars are discs), a separate mic meter bar and labelled fields (too
+  busy), a pencil shown with the camera on (it changes nothing visible). Out of scope: speaker choice,
+  switching devices in the room. Spec: [2026-10-09-lobby-design.md](superpowers/specs/2026-10-09-lobby-design.md). *Amended 2026-10-09:* saved and chosen devices are requested with `deviceId: { exact }` and retried with no `deviceId` only when the device is gone; Chrome ignored the `ideal` form and always gave the default device (spec §3.1).
+
 ### D18 — Join sound
 - Whether and how the room tells you someone arrived.
 - *Resolved 2026-10-09:* a doorbell: a synthesised two-tone chime (E5 then C5, each a struck bar with a

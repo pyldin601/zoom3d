@@ -21,18 +21,51 @@
       #ui a { color: #8cf; display: inline-block; margin-top: 0.6em; }
       #ui .error { color: #f88; min-height: 1.2em; margin: 0.5em 0 0; }
       #ui .status { position: absolute; top: 40%; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.75); padding: 0.4em 1em; }
-      #ui .roombar { position: absolute; top: 0.5em; right: 0.5em; display: flex; gap: 0.3em; font-size: 0.6em; pointer-events: auto; opacity: 0.8; }
+      #ui .roombar { position: absolute; top: 0.5em; right: 0.5em; display: flex; gap: 0.3em; font-size: 0.6em; pointer-events: auto; }
       #ui .roombar input { width: 18em; margin: 0; }
+      #ui .roombar .toggle { padding: 0.25em 0.45em; display: grid; place-items: center; }
       #ui .banner { position: absolute; bottom: 0.6em; left: 50%; transform: translateX(-50%); background: rgba(80, 40, 0, 0.85); padding: 0.4em 1em; font-size: 0.75em; }
-      #ui .avatar-row { display: flex; align-items: center; gap: 0.8em; margin-bottom: 0.8em; text-align: left; }
-      #ui .avatar-row button { display: block; width: 100%; margin: 0.15em 0; font-size: 0.8em; white-space: nowrap; }
-      #ui .avatar-row [hidden] { display: none; }
       #ui .avatar { flex: none; width: 3.5em; height: 3.5em; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: #444; font-weight: bold; font-size: 1.2em; }
       #ui .avatar img { width: 100%; height: 100%; object-fit: cover; }
-      #ui .hint { opacity: 0.7; font-size: 0.8em; margin: 0.6em 0 0; }
+      /* Lobby (lobby spec §2): 7.5em is the 176 px disc on a 720 px stage. Three shades: sunken dark fields,
+         mid-grey secondary buttons, one blue primary (Join). */
+      #ui .lobby { width: 11em; margin: 0 auto; }
+      /* Shared by the lobby and the room bar. */
+      #ui .lobby button, #ui .roombar button { color: #ddd; background: #2e2e2e; border: 0.06em solid #555; border-radius: 0.25em; }
+      #ui .lobby button:disabled, #ui .roombar button:disabled { opacity: 0.45; cursor: not-allowed; }
+      #ui .lobby input, #ui .roombar input { padding: 0.35em; color: #eee; background: #0f0f0f; border: 0.06em solid #555; border-radius: 0.25em; outline: none; }
+      #ui .lobby input::placeholder { color: #777; }
+      #ui .lobby input:focus, #ui .roombar input:focus { border-color: #6aa8ff; }
+      #ui .lobby svg, #ui .roombar svg { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+      #ui .roombar .toggle.off { color: #f99; background: #3a2020; border-color: #844; }
+      #ui .roombar .toggle svg { width: 1.4em; height: 1.4em; }
+      #ui .lobby-disc { position: relative; width: 7.5em; height: 7.5em; margin: 0 auto 0.6em; overflow: visible; border: 0.05em solid #555; }
+      #ui .lobby-disc video, #ui .lobby-disc .face { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; overflow: hidden; display: grid; place-items: center; font-size: 1.6em; }
+      #ui .lobby-disc video { object-fit: cover; transform: scaleX(-1); font-size: inherit; }
+      #ui .lobby-disc .face img { width: 100%; height: 100%; object-fit: cover; }
+      #ui .lobby .pencil { position: absolute; right: 0.2em; bottom: 0.2em; width: 1.5em; height: 1.5em; padding: 0; border-radius: 50%; font-size: 0.8em; }
+      #ui .lobby .picture-menu, #ui .lobby .device-menu { position: absolute; z-index: 1; display: flex; flex-direction: column; min-width: 10em; background: #161616; border: 0.1em solid #555; border-radius: 0.25em; padding: 0.2em 0; font-size: 0.6em; white-space: nowrap; }
+      #ui .lobby .picture-menu { left: 100%; bottom: 0; }
+      #ui .lobby .device-menu { top: calc(100% + 0.3em); left: 0; }
+      #ui .lobby .picture-menu button, #ui .lobby .device-menu button { display: block; width: 100%; background: none; border: 0; border-radius: 0; color: inherit; text-align: left; padding: 0.35em 0.8em; overflow: hidden; text-overflow: ellipsis; }
+      /* A fixed check column keeps every device name aligned, ticked or not. */
+      #ui .lobby .device-menu button::before { content: ''; display: inline-block; width: 1.3em; }
+      #ui .lobby .device-menu [aria-checked="true"]::before { content: '✓'; }
+      #ui .lobby .devices { display: flex; gap: 0.4em; justify-content: center; margin-bottom: 0.7em; }
+      #ui .lobby .split { position: relative; display: flex; }
+      #ui .lobby .split > button { padding: 0.25em 0.4em; display: grid; place-items: center; }
+      #ui .lobby .split > .toggle { border-radius: 0.25em 0 0 0.25em; }
+      #ui .lobby .split > .chevron { border-left: 0; border-radius: 0 0.25em 0.25em 0; font-size: 0.7em; }
+      #ui .lobby .split.off > button { color: #f99; background: #3a2020; border-color: #844; }
+      #ui .lobby form input { margin: 0 0 0.45em; text-align: center; }
+      #ui .lobby form [type="submit"] { width: 100%; padding: 0.35em; color: #fff; background: #2f6fd0; border-color: #2f6fd0; font-weight: 600; }
+      #ui .lobby [hidden] { display: none; }
       #ui .selfview { position: absolute; right: 0.6em; bottom: 0.6em; width: 4.5em; height: 4.5em; border-radius: 50%; overflow: hidden; border: 0.12em solid #ddd; }
       #ui .selfview[hidden] { display: none; }
       #ui .selfview video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+      #ui .selfview .face { width: 100%; height: 100%; display: grid; place-items: center; background: #444; font-weight: bold; font-size: 1.3em; }
+      #ui .selfview .face img { width: 100%; height: 100%; object-fit: cover; }
+      #ui .selfview .face[hidden] { display: none; }
       #ui .audio-panel { position: absolute; top: 2.2em; left: 0.6em; display: flex; gap: 1.2em; align-items: flex-start; pointer-events: auto; background: rgba(15, 15, 15, 0.92); border: 0.1em solid #555; padding: 0.6em 0.8em; font-size: 0.6em; }
       #ui .audio-panel h2 { margin: 0 0 0.5em; font-size: 1.1em; }
       #ui .audio-panel .tuning { width: 16em; }

@@ -19,9 +19,10 @@ import { createInput } from './input/keyboard';
 import { loadAvatar, saveAvatar } from './media/avatar';
 import { type Boombox, createBoombox } from './media/boombox';
 import { type Call, createCall } from './media/call';
-import { captureLocalMedia, type LocalMedia } from './media/capture';
 import { createFace } from './media/faces';
 import { createFramer } from './media/framer';
+import { createLocalMedia, type LocalMediaController } from './media/local-media';
+import { loadMediaPrefs, saveMediaPrefs } from './media/media-prefs';
 import { createMesh } from './media/mesh';
 import { createRemoteMedia } from './media/remote-media';
 import { createSession, type Session } from './net/session';
@@ -39,11 +40,12 @@ import { setAudioPanelBoombox, showAudioPanel } from './ui/audio-panel';
 import type { BoomboxPanelOptions } from './ui/boombox-panel';
 import { loadBoomboxVolume, saveBoomboxVolume } from './ui/boombox-store';
 import { heldForKey, heldKeyAction, loadHeld, saveHeld } from './ui/held-store';
+import { joinBanner, PROBLEM_TEXT, showLobby } from './ui/lobby';
+import { createMicLevel } from './ui/mic-level';
 import { parseRoute } from './ui/route';
 import {
   clearScreen,
   showBanner,
-  showJoin,
   showLanding,
   showNotice,
   showRoomBar,
@@ -210,13 +212,6 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-const PROBLEM_TEXT: Record<NonNullable<LocalMedia['problem']>, string> = {
-  insecure: 'Camera and mic need HTTPS — joined without them.',
-  'no-camera': 'Camera unavailable — others see your picture or initials.',
-  'no-mic': 'Microphone unavailable — you can listen only.',
-  'none-available': 'Camera and mic unavailable — others see your picture or initials, you can listen only.',
-};
-
 let shownStatus: string | null = null;
 function setStatus(text: string | null): void {
   if (text === shownStatus) {
@@ -226,21 +221,17 @@ function setStatus(text: string | null): void {
   shownStatus = text;
 }
 
-async function joinRoom(roomId: string, name: string, avatar: string | null): Promise<void> {
-  // Created and resumed synchronously inside the Join click (user gesture), before any await.
-  const audioCtx = new AudioContext({ latencyHint: 'interactive' });
-  void audioCtx.resume();
+function joinRoom(
+  roomId: string,
+  name: string,
+  avatar: string | null,
+  local: LocalMediaController,
+  audioCtx: AudioContext
+): void {
   audio = createAudioEngine({ ctx: audioCtx, map, settings: loadAudioSettings(storage()) });
   saveName(name);
   saveAvatar(storage(), avatar);
   clearScreen(ui);
-  setStatus('Starting camera…');
-  // Runs from the Join click, so the camera prompt and later autoplay have a user gesture.
-  const local = await captureLocalMedia({
-    isSecureContext: window.isSecureContext,
-    getUserMedia: (c) => navigator.mediaDevices.getUserMedia(c),
-    frame: (raw) => createFramer({ rawTrack: raw, container: localMediaContainer, document }),
-  });
   call = createCall({
     local,
     remote: createRemoteMedia(mediaContainer),
@@ -263,8 +254,9 @@ async function joinRoom(roomId: string, name: string, avatar: string | null): Pr
   session.setHeld(held);
   session.setBoombox(false);
   call.attach(session);
-  if (local.problem) {
-    showBanner(ui, PROBLEM_TEXT[local.problem]);
+  const banner = joinBanner(local.state());
+  if (banner) {
+    showBanner(ui, banner);
   }
   const activeCall = call;
   boombox = createBoombox({
@@ -278,18 +270,24 @@ async function joinRoom(roomId: string, name: string, avatar: string | null): Pr
     },
   });
   boombox.setVolume(loadBoomboxVolume(storage()));
+  const media = local.state();
   showRoomBar(ui, location.href, {
-    cam: local.cam,
-    mic: local.mic,
-    camAvailable: local.cam,
-    micAvailable: local.mic,
-    onCam(on) {
-      activeCall.setCam(on);
-      showSelfPreview(ui, local.stream, activeCall.localState().cam);
+    cam: media.cam,
+    mic: media.mic,
+    camAvailable: media.camAvailable,
+    micAvailable: media.micAvailable,
+    async onCam(on) {
+      const now = await activeCall.setCam(on);
+      showSelfPreview(ui, local.stream, { cam: now, name, avatar });
+      const problem = local.state().camProblem;
+      if (on && !now && problem) {
+        showBanner(ui, PROBLEM_TEXT.cam[problem]);
+      }
+      return now;
     },
     onMic: (on) => activeCall.setMic(on),
   });
-  showSelfPreview(ui, local.stream, local.cam);
+  showSelfPreview(ui, local.stream, { cam: media.cam, name, avatar });
   if (new URLSearchParams(location.search).has('debug')) {
     toggleAudioPanel();
   }
@@ -319,11 +317,43 @@ if (route.kind === 'landing') {
 } else if (route.kind === 'invalid') {
   showNotice(ui, 'Bad room link', 'Start a new room', '/');
 } else {
-  showJoin(ui, {
+  openLobby(route.roomId);
+}
+
+/** The lobby owns the camera, mic and AudioContext from here on; Join hands them to the room (lobby spec §4.5). */
+function openLobby(roomId: string): void {
+  // Created now for the mic meter; a browser that keeps it suspended lets it start on the first click or key.
+  const audioCtx = new AudioContext({ latencyHint: 'interactive' });
+  const resume = () => void audioCtx.resume();
+  window.addEventListener('pointerdown', resume, { once: true });
+  window.addEventListener('keydown', resume, { once: true });
+  const local = createLocalMedia(
+    {
+      isSecureContext: window.isSecureContext,
+      getUserMedia: (c) => navigator.mediaDevices.getUserMedia(c),
+      enumerateDevices: () => navigator.mediaDevices.enumerateDevices(),
+      onDeviceChange: (cb) => navigator.mediaDevices?.addEventListener('devicechange', cb),
+      framer: createFramer({ container: localMediaContainer, document }),
+    },
+    loadMediaPrefs(storage())
+  );
+  // Saved for the whole visit, so the room's Cam/Mic buttons are remembered too.
+  local.subscribe(() => saveMediaPrefs(storage(), local.prefs()));
+  const meter = createMicLevel(audioCtx);
+  meter.setTrack(local.micTrack());
+  const stopMetering = local.subscribe(() => meter.setTrack(local.micTrack()));
+  const closeLobby = showLobby(ui, {
+    media: local,
     defaultName: loadName(),
     defaultAvatar: loadAvatar(storage()),
+    level: meter.level,
     onJoin(name, avatar) {
-      void joinRoom(route.roomId, name, avatar);
+      // Resumed synchronously inside the Join click (user gesture), before anything else.
+      void audioCtx.resume();
+      closeLobby();
+      stopMetering();
+      meter.dispose();
+      joinRoom(roomId, name, avatar, local, audioCtx);
     },
   });
 }

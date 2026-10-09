@@ -24,6 +24,8 @@ export interface MediaTransport {
   stats(peerId: string): Promise<{ bytesReceived: number; boomboxBytesReceived: number } | null>;
   /** Sends `track` instead of the stream's video track, on current and future connections. */
   setVideoTrack(track: MediaStreamTrack): void;
+  /** Swaps the mic on current connections; later ones read it from the local stream. */
+  setAudioTrack(track: MediaStreamTrack): void;
   /** Sends `track` (or nothing) on the boombox transceiver, on current and future connections. */
   setBoomboxTrack(track: MediaStreamTrack | null): void;
 }
@@ -349,6 +351,17 @@ export function createMesh(opts: MeshOptions): MediaTransport {
           if (t.receiver.track.kind === 'video' && t.sender.track) {
             t.sender.replaceTrack(track).catch((err) => console.warn('could not swap video track', err));
           }
+        }
+      }
+    },
+
+    setAudioTrack(track) {
+      for (const { pc } of conns.values()) {
+        // The mic is the second m-line (video, mic, boombox); the boombox is audio too, so go by index.
+        const t = pc.getTransceivers()[1];
+        // Only a sender already carrying the mic: a receive-only transceiver stays receive-only.
+        if (t?.sender.track) {
+          t.sender.replaceTrack(track).catch((err) => console.warn('could not swap mic track', err));
         }
       }
     },

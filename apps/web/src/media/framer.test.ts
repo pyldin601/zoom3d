@@ -1,6 +1,7 @@
-import { expect, test, vi } from 'vitest';
+// @vitest-environment happy-dom
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { Detector } from './face-detector';
-import { createFrameStep } from './framer';
+import { createFramer, createFrameStep } from './framer';
 import type { Rect } from './framing';
 
 const video = (w = 640, h = 480) => ({ videoWidth: w, videoHeight: h }) as HTMLVideoElement;
@@ -73,4 +74,78 @@ test('step skips frames before the video has a size', () => {
   s.step(video(0, 0), 0);
   expect(rects).toEqual([]);
   expect(detect).not.toHaveBeenCalled();
+});
+
+describe('createFramer', () => {
+  const canvasTrack = () => ({ kind: 'video', id: 'canvas', enabled: true }) as unknown as MediaStreamTrack;
+  const raw = (id: string) => ({ kind: 'video', id, enabled: true }) as unknown as MediaStreamTrack;
+  let visibility: DocumentVisibilityState;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    document.body.replaceChildren();
+    // happy-dom's MediaStream keeps no tracks; srcObject only accepts its instances.
+    vi.stubGlobal(
+      'MediaStream',
+      class extends MediaStream {
+        constructor(readonly tracks: MediaStreamTrack[]) {
+          super();
+        }
+      }
+    );
+    visibility = 'visible';
+    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
+    const track = canvasTrack();
+    vi.spyOn(HTMLCanvasElement.prototype, 'captureStream').mockImplementation(
+      () => ({ getVideoTracks: () => [track] }) as unknown as MediaStream
+    );
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(async () => {});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  const make = () => createFramer({ container: document.body, document, loadDetector: async () => null });
+
+  test('the canvas track exists without a camera and is disabled until one is set', () => {
+    const f = make();
+    expect(f.track.id).toBe('canvas');
+    expect(f.camera).toBeNull();
+    expect(f.track.enabled).toBe(false);
+    expect(f.sendTrack).toBe(f.track);
+  });
+
+  test('setCamera swaps the video source and fires onSendTrackChange', () => {
+    const f = make();
+    const changed = vi.fn();
+    f.onSendTrackChange = changed;
+    const a = raw('a');
+    f.setCamera(a);
+    const video = document.body.querySelector('video') as HTMLVideoElement;
+    expect(f.camera).toBe(a);
+    expect(f.track.enabled).toBe(true);
+    expect((video.srcObject as unknown as { tracks: MediaStreamTrack[] }).tracks).toEqual([a]);
+    expect(changed).toHaveBeenCalledTimes(1);
+    f.setCamera(null);
+    expect(f.camera).toBeNull();
+    expect(f.track.enabled).toBe(false);
+    expect(video.srcObject).toBeNull();
+    expect(changed).toHaveBeenCalledTimes(2);
+  });
+
+  test('while hidden, sendTrack is the camera; with no camera it is the canvas', () => {
+    const f = make();
+    const changed = vi.fn();
+    f.onSendTrackChange = changed;
+    const a = raw('a');
+    f.setCamera(a);
+    visibility = 'hidden';
+    expect(f.sendTrack).toBe(a);
+    f.setCamera(null);
+    expect(f.sendTrack).toBe(f.track);
+    expect(changed).toHaveBeenCalledTimes(2);
+  });
 });
