@@ -268,7 +268,7 @@ spike (§12) must verify this first.** Possible outcomes:
 
 ## 10. UI flow and errors
 
-1. **Landing `/`:** "Create room" generates a `roomId` and navigates to `/r/<id>`.
+1. **Landing `/`:** a still title picture from the renderer (decision D19) with "Start a party", which generates a `roomId` and navigates to `/r/<id>`. The room loop doesn't run here.
 2. **Lobby `/r/<id>`:** camera/mic preview, toggles and device pickers, name, avatar picture (§8.1), Join button. See the [lobby spec](2026-10-09-lobby-design.md).
 3. **Join click:** resume the `AudioContext`, open the WebSocket, receive `welcome`, spawn, connect to peers.
 4. **In room:** game view, HUD, automap toggle, mic/cam toggles, copy-invite-link button.

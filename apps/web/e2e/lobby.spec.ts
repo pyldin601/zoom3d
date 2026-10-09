@@ -21,7 +21,7 @@ const isLive = (page: Page, name: string) =>
 
 async function openRoom(page: Page): Promise<string> {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Create room' }).click();
+  await page.getByRole('button', { name: 'Start a party' }).click();
   await expect(page).toHaveURL(/\/r\//);
   return page.url();
 }

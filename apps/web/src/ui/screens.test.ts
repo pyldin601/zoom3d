@@ -8,10 +8,15 @@ beforeEach(() => {
   root = document.getElementById('ui') as HTMLElement;
 });
 
-test('landing calls onCreate', () => {
+test('landing is a lobby-styled panel whose primary button calls onCreate', () => {
   const onCreate = vi.fn();
   showLanding(root, onCreate);
-  (root.querySelector('button') as HTMLButtonElement).click();
+  const panel = root.querySelector('.screen .lobby.landing') as HTMLElement;
+  expect(panel.querySelector('h1')?.textContent).toBe('zoom3d');
+  expect(panel.querySelector('p')?.textContent).toBe('Beer with your buddies in a raycaster.');
+  const create = panel.querySelector('button.primary') as HTMLButtonElement;
+  expect(create.textContent).toBe('Start a party');
+  create.click();
   expect(onCreate).toHaveBeenCalledOnce();
 });
 

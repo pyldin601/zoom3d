@@ -26,7 +26,7 @@ pnpm test       # unit tests
 pnpm e2e        # Playwright (uses the installed Google Chrome)
 ```
 
-To try it: open http://localhost:5173, click **Create room**, enter a name, then open the same
+To try it: open http://localhost:5173, click **Start a party**, enter a name, then open the same
 room link in a second window (or a second browser) with another name. Controls: WASD/arrows
 to move, Q/E or arrows to turn, click the view for mouse look, M or Tab for the automap,
 `` ` `` for the audio tuning panel (or add `?debug` to the room URL).
