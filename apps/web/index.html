@@ -30,6 +30,28 @@
       #ui .avatar { flex: none; width: 3.5em; height: 3.5em; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: #444; font-weight: bold; font-size: 1.2em; }
       #ui .avatar img { width: 100%; height: 100%; object-fit: cover; }
       #ui .hint { opacity: 0.7; font-size: 0.8em; margin: 0.6em 0 0; }
+      /* Lobby (lobby spec §2): 7.5em is the 176 px disc on a 720 px stage. */
+      #ui .lobby { width: 11em; }
+      #ui .lobby [hidden] { display: none; }
+      #ui .lobby-disc { position: relative; width: 7.5em; height: 7.5em; margin: 0 auto 0.6em; overflow: visible; border: 0.05em solid #555; }
+      #ui .lobby-disc video, #ui .lobby-disc .face { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; overflow: hidden; display: grid; place-items: center; font-size: 1.6em; }
+      #ui .lobby-disc video { object-fit: cover; transform: scaleX(-1); font-size: inherit; }
+      #ui .lobby-disc .face img { width: 100%; height: 100%; object-fit: cover; }
+      #ui .lobby .pencil { position: absolute; right: 0.2em; bottom: 0.2em; width: 1.5em; height: 1.5em; padding: 0; border-radius: 50%; font-size: 0.8em; }
+      #ui .lobby .picture-menu, #ui .lobby .device-menu { position: absolute; z-index: 1; display: grid; background: #1b1b1b; border: 0.1em solid #555; padding: 0.2em; font-size: 0.7em; text-align: left; white-space: nowrap; }
+      #ui .lobby .picture-menu { left: 100%; bottom: 0; }
+      #ui .lobby .device-menu { top: 100%; left: 0; }
+      #ui .lobby .picture-menu button, #ui .lobby .device-menu button { background: none; border: 0; color: inherit; text-align: left; padding: 0.3em 0.6em; }
+      #ui .lobby .device-menu [aria-checked="true"]::before { content: '✓ '; }
+      #ui .lobby .devices { display: flex; gap: 0.4em; justify-content: center; margin-bottom: 0.6em; }
+      #ui .lobby .split { position: relative; display: flex; border: 0.08em solid #777; }
+      #ui .lobby .split.off { border-color: #c55; }
+      #ui .lobby .split button { padding: 0.2em 0.35em; border: 0; display: grid; place-items: center; }
+      #ui .lobby .split .chevron { border-left: 0.05em solid #777; font-size: 0.7em; }
+      #ui .lobby .split svg { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+      #ui .lobby .split.off .toggle { color: #f88; }
+      #ui .lobby form input { text-align: center; margin: 0 0 0.4em; }
+      #ui .lobby form [type="submit"] { width: 100%; }
       #ui .selfview { position: absolute; right: 0.6em; bottom: 0.6em; width: 4.5em; height: 4.5em; border-radius: 50%; overflow: hidden; border: 0.12em solid #ddd; }
       #ui .selfview[hidden] { display: none; }
       #ui .selfview video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }

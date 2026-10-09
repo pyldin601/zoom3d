@@ -3,7 +3,7 @@ import { NAME_MAX, sanitizeName } from '@zoom3d/shared';
 import { makeAvatar } from '../media/avatar';
 import { initials } from '../media/faces';
 
-function el<K extends keyof HTMLElementTagNameMap>(
+export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   props: Partial<HTMLElementTagNameMap[K]> = {},
   ...children: (Node | string)[]
@@ -24,7 +24,7 @@ function slot(root: HTMLElement, cls: string): HTMLElement {
   return node;
 }
 
-function setScreen(root: HTMLElement, ...children: Node[]): void {
+export function setScreen(root: HTMLElement, ...children: Node[]): void {
   slot(root, 'screen').replaceChildren(el('div', { className: 'panel' }, ...children));
 }
 
