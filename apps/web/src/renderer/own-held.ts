@@ -33,13 +33,21 @@ export function renderOwnHeld(fb: Framebuffer, item: HeldItem | null, bob: numbe
   if (!item) {
     return;
   }
-  const { width: w, height: h, pixels } = fb;
-  const { w: tw, h: th, texels } = OWN_HELD_SPRITES[item];
+  const { width: w, height: h } = fb;
+  const sprite = OWN_HELD_SPRITES[item];
+  const { w: tw, h: th } = sprite;
   const t = OWN_TEXEL * h;
   const rest = OWN_LEFT * w;
   const left = rest + ((w - tw * t) / 2 - rest) * sip + sway * OWN_SWAY * w;
   const visible = 1 - OWN_CROP + (OWN_SIP_VISIBLE - (1 - OWN_CROP)) * sip;
   const top = h - visible * th * t + bob * OWN_BOB * h;
+  drawOverlay(fb, sprite, left, top, t);
+}
+
+/** Draws a sprite with texel size t over the scene at (left, top), clipped to the screen. */
+export function drawOverlay(fb: Framebuffer, sprite: HeldSprite, left: number, top: number, t: number): void {
+  const { width: w, height: h, pixels } = fb;
+  const { w: tw, h: th, texels } = sprite;
   const x0 = Math.max(0, Math.floor(left));
   const x1 = Math.min(w - 1, Math.ceil(left + tw * t) - 1);
   const y0 = Math.max(0, Math.floor(top));
