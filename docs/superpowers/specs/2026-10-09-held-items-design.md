@@ -23,7 +23,7 @@ Out of scope:
 
 The sketch was agreed in chat on 2026-10-09: avatar style "A", grip "3".
 
-- A cartoon hand with no arm floats beside the face disc and grips the item.
+- A cartoon hand with no arm grips the item in front of the disc's lower right.
 - Placement is fixed in screen space on the **viewer's right** of the disc. The disc is a
   billboard, so the hand never moves around it.
 - Mugs (beer, coffee) are held **by the handle**. The handle and the fist face the disc, and the
@@ -60,10 +60,12 @@ coffee is a white mug with dark coffee and two steam pixels, wine is a red bowl 
 Size and position are given in units of the disc's on-screen radius `r`, so the item scales with
 distance just like the disc:
 - One item texel is 0.08 r, so a 10-texel-tall item is 0.8 r tall.
-- The sprite's left edge is at `screenX + 1.05 r`.
-- The sprite's top is at `horizon − 0.3 r`.
+- The sprite's left edge is at `screenX + 0.15 r`.
+- The sprite's top is at `horizon + 0.3 r` (below the horizon).
+- So the hand and drink cover the disc's lower right, in front of the body (variant "H", chosen
+  2026-10-09 over the first placement, which floated clear of the disc).
 
-These are starting values, to be tuned by eye in the running game.
+These were tuned by eye from sketches.
 
 ## 3. Data
 

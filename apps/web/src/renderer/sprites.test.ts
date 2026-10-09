@@ -319,11 +319,23 @@ describe('held items', () => {
     expect(fb.pixels).toEqual(before);
   });
 
+  test("the held item covers the disc's lower right, in front of the body", () => {
+    const fb = frame();
+    renderSprites(fb, player, [beer(3.5)]);
+    const r = (AVATAR_RADIUS * PROJ) / 2;
+    // Inside the disc (0.71 r from its centre), so without the item this pixel is the disc.
+    const [x, y] = [Math.floor(320 + 0.5 * r), Math.floor(180 + 0.5 * r)];
+    const u = Math.floor((0.5 * r - HELD_LEFT * r) / (HELD_TEXEL * r));
+    const v = Math.floor((0.5 * r + HELD_TOP * r) / (HELD_TEXEL * r));
+    expect(px(fb, x, y)).toBe(tex(u, v));
+    expect(tex(u, v)).not.toBe(0);
+  });
+
   test('a very near item crossing the right edge does not wrap into the next row', () => {
     const plain = frame();
-    renderSprites(plain, player, [{ ...beer(2.0, 4.28), held: null }]);
+    renderSprites(plain, player, [{ ...beer(2.0, 4.48), held: null }]);
     const fb = frame();
-    renderSprites(fb, player, [beer(2.0, 4.28)]);
+    renderSprites(fb, player, [beer(2.0, 4.48)]);
     for (let y = 0; y < fb.height; y++) {
       expect(px(fb, 0, y)).toBe(px(plain, 0, y));
     }
@@ -338,11 +350,16 @@ describe('held item shadows', () => {
     const offset = (HELD_LEFT + (HELD_TEXEL * HELD_SPRITES[item].w) / 2) * AVATAR_RADIUS;
     return Math.floor(320 + (PROJ * offset) / 2);
   };
-  /** Darkened floor pixels in row `row` between columns [from, to). */
-  const darkened = (fb: ReturnType<typeof frame>, row: number, from: number, to: number) => {
+  const render = (held: 'beer' | 'wine' | null) => {
+    const fb = frame();
+    renderSprites(fb, player, [holding(held)]);
+    return fb;
+  };
+  /** Pixels of row `row` that differ between two frames (the item's shadow may overlap the avatar's). */
+  const changed = (a: ReturnType<typeof frame>, b: ReturnType<typeof frame>, row: number) => {
     let n = 0;
-    for (let x = from; x < to; x++) {
-      if (px(fb, x, row) !== FLOOR) {
+    for (let x = 0; x < a.width; x++) {
+      if (px(a, x, row) !== px(b, x, row)) {
         n++;
       }
     }
@@ -350,28 +367,32 @@ describe('held item shadows', () => {
   };
 
   test('the floor under a held item is darkened', () => {
-    const fb = frame();
-    renderSprites(fb, player, [holding('beer')]);
-    const c = px(fb, itemCol('beer'), floorRow(2)) as number;
-    expect(c).not.toBe(FLOOR);
-    expect(c & 0xff).toBeLessThan(FLOOR & 0xff);
+    const at = (fb: ReturnType<typeof frame>) => (px(fb, itemCol('beer'), floorRow(2)) as number) & 0xff;
+    expect(at(render('beer'))).toBeLessThan(at(render(null)));
   });
 
-  test('no item, no extra shadow', () => {
-    const fb = frame();
-    renderSprites(fb, player, [holding(null)]);
-    expect(px(fb, itemCol('beer'), floorRow(2))).toBe(FLOOR);
+  test('no item, no extra shadow: the shadow is symmetric under the avatar', () => {
+    const shaded = (fb: ReturnType<typeof frame>, from: number, to: number) => {
+      let n = 0;
+      for (let x = from; x < to; x++) {
+        if (px(fb, x, floorRow(2)) !== FLOOR) {
+          n++;
+        }
+      }
+      return n;
+    };
+    const none = render(null);
+    expect(Math.abs(shaded(none, 320, 640) - shaded(none, 0, 320))).toBeLessThanOrEqual(1);
+    const beer = render('beer');
+    expect(shaded(beer, 320, 640) - shaded(beer, 0, 320)).toBeGreaterThan(5);
   });
 
   test("an item's shadow is smaller than the avatar's, and follows the item's width", () => {
     const row = floorRow(2);
-    const beer = frame();
-    renderSprites(beer, player, [holding('beer')]);
-    const avatar = darkened(beer, row, 200, 400);
-    const beerShadow = darkened(beer, row, 400, 640);
-    const wine = frame();
-    renderSprites(wine, player, [holding('wine')]);
-    const wineShadow = darkened(wine, row, 400, 640);
+    const none = render(null);
+    const avatar = changed(none, frame(), row);
+    const beerShadow = changed(render('beer'), none, row);
+    const wineShadow = changed(render('wine'), none, row);
     expect(beerShadow).toBeGreaterThan(0);
     expect(beerShadow).toBeLessThan(avatar);
     expect(wineShadow).toBeGreaterThan(0);

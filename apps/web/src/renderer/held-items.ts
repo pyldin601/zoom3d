@@ -3,10 +3,13 @@
 import type { HeldItem } from '@zoom3d/shared';
 import { rgb } from './framebuffer';
 
-/** Item geometry in disc radii: texel size, left edge right of the disc centre, top above the horizon. */
+/**
+ * Item geometry in disc radii: texel size, left edge right of the disc centre, top above the horizon
+ * (negative: below). The hand covers the disc's lower right, in front of the body.
+ */
 export const HELD_TEXEL = 0.08;
-export const HELD_LEFT = 1.05;
-export const HELD_TOP = 0.3;
+export const HELD_LEFT = 0.15;
+export const HELD_TOP = -0.3;
 
 export interface HeldSprite {
   w: number;
