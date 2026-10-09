@@ -80,16 +80,22 @@ export function createSession(opts: SessionOptions): Session {
       case 'welcome': {
         // A new identity means a fresh slot (first join, expired grace, server restart): take its spawn.
         const identityChanged = m.selfId !== selfId;
-        if (identityChanged) Object.assign(player, m.spawn);
+        if (identityChanged) {
+          Object.assign(player, m.spawn);
+        }
         selfId = m.selfId;
         color = m.color;
         resumeToken = m.resumeToken;
         iceServers = m.iceServers;
         peers.clear();
-        for (const p of m.peers) addPeer(p);
+        for (const p of m.peers) {
+          addPeer(p);
+        }
         Object.assign(lastSent, { x: player.x, y: player.y, angle: player.angle, at: now() });
         // The server forgets media state on a fresh identity; resending on resume is harmless.
-        if (media) conn.send({ type: 'media', ...media });
+        if (media) {
+          conn.send({ type: 'media', ...media });
+        }
         listener.welcome?.(m.selfId, m.iceServers, identityChanged);
         break;
       }
@@ -103,7 +109,9 @@ export function createSession(opts: SessionOptions): Session {
         break;
       case 'peer_media': {
         const peer = peers.get(m.id);
-        if (!peer) return;
+        if (!peer) {
+          return;
+        }
         peer.info.cam = m.cam;
         peer.info.mic = m.mic;
         listener.peerMedia?.(m.id, m.cam, m.mic);
@@ -114,7 +122,9 @@ export function createSession(opts: SessionOptions): Session {
         break;
       case 'peer_state': {
         const peer = peers.get(m.id);
-        if (!peer || m.seq <= peer.lastSeq) return;
+        if (!peer || m.seq <= peer.lastSeq) {
+          return;
+        }
         peer.lastSeq = m.seq;
         Object.assign(peer.info, { x: m.x, y: m.y, angle: m.angle });
         peer.buffer.push({ t: now(), x: m.x, y: m.y, angle: m.angle });
@@ -147,13 +157,17 @@ export function createSession(opts: SessionOptions): Session {
 
   // A timer (not rAF) so position heartbeats continue while the tab is hidden.
   const sender = setInterval(() => {
-    if (status !== 'open') return;
+    if (status !== 'open') {
+      return;
+    }
     const t = now();
     const moved =
       Math.abs(player.x - lastSent.x) > MOVE_EPSILON ||
       Math.abs(player.y - lastSent.y) > MOVE_EPSILON ||
       Math.abs(player.angle - lastSent.angle) > TURN_EPSILON;
-    if (!moved && t - lastSent.at < IDLE_INTERVAL_MS) return;
+    if (!moved && t - lastSent.at < IDLE_INTERVAL_MS) {
+      return;
+    }
     seq++;
     conn.send({ type: 'state', x: player.x, y: player.y, angle: player.angle, seq });
     Object.assign(lastSent, { x: player.x, y: player.y, angle: player.angle, at: t });
@@ -167,7 +181,9 @@ export function createSession(opts: SessionOptions): Session {
     },
     setMedia(cam, mic) {
       media = { cam, mic };
-      if (status === 'open') conn.send({ type: 'media', cam, mic });
+      if (status === 'open') {
+        conn.send({ type: 'media', cam, mic });
+      }
     },
     selfId: () => selfId,
     selfColor: () => color,

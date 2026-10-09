@@ -77,7 +77,9 @@ export class Lobby {
   }
 
   join(conn: string, msg: JoinMessage): void {
-    if (this.conns.has(conn)) return;
+    if (this.conns.has(conn)) {
+      return;
+    }
     const name = sanitizeName(msg.name);
     if (!isValidRoomId(msg.roomId)) {
       this.reject(conn, 'invalid_room', 'Invalid room link', CLOSE_INVALID);
@@ -133,7 +135,9 @@ export class Lobby {
 
   state(conn: string, msg: StateMessage): void {
     const found = this.lookup(conn);
-    if (!found) return;
+    if (!found) {
+      return;
+    }
     const { room, peer } = found;
     const now = this.opts.now();
     if (!isPlausibleMove(this.opts.map, peer, msg, now - peer.lastAcceptedAt)) {
@@ -156,7 +160,9 @@ export class Lobby {
 
   media(conn: string, msg: MediaMessage): void {
     const found = this.lookup(conn);
-    if (!found) return;
+    if (!found) {
+      return;
+    }
     found.peer.cam = msg.cam;
     found.peer.mic = msg.mic;
     this.broadcast(found.room, found.peer.id, {
@@ -171,14 +177,18 @@ export class Lobby {
   signal(conn: string, msg: SignalMessage): void {
     const found = this.lookup(conn);
     const target = found?.room.get(msg.to);
-    if (!found || !target || target.id === found.peer.id || target.conn === null) return;
+    if (!found || !target || target.id === found.peer.id || target.conn === null) {
+      return;
+    }
     this.opts.out.send(target.conn, { type: 'signal', from: found.peer.id, payload: msg.payload });
   }
 
   disconnect(conn: string): void {
     const found = this.lookup(conn);
     this.conns.delete(conn);
-    if (!found) return;
+    if (!found) {
+      return;
+    }
     found.peer.conn = null;
     found.peer.disconnectedAt = this.opts.now();
   }
@@ -193,7 +203,9 @@ export class Lobby {
           this.broadcast(room, peer.id, { type: 'peer_left', id: peer.id });
         }
       }
-      if (room.size === 0) this.rooms.delete(roomId);
+      if (room.size === 0) {
+        this.rooms.delete(roomId);
+      }
     }
   }
 
@@ -218,16 +230,13 @@ export class Lobby {
 
   private broadcast(room: Room, exceptId: string, msg: ServerMessage): void {
     for (const p of room.values()) {
-      if (p.id !== exceptId && p.conn !== null) this.opts.out.send(p.conn, msg);
+      if (p.id !== exceptId && p.conn !== null) {
+        this.opts.out.send(p.conn, msg);
+      }
     }
   }
 
-  private reject(
-    conn: string,
-    code: 'room_full' | 'invalid_room' | 'invalid_name',
-    message: string,
-    close: number,
-  ) {
+  private reject(conn: string, code: 'room_full' | 'invalid_room' | 'invalid_name', message: string, close: number) {
     this.opts.out.send(conn, { type: 'error', code, message });
     this.opts.out.close(conn, close, code);
   }

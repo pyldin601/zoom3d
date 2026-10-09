@@ -61,13 +61,7 @@ export function hexToRgb(hex: string): number {
 }
 
 /** Camera-space projection matching renderWalls. Returns false when behind the camera. */
-export function projectSprite(
-  p: PlayerState,
-  x: number,
-  y: number,
-  fbWidth: number,
-  out: Projection,
-): boolean {
+export function projectSprite(p: PlayerState, x: number, y: number, fbWidth: number, out: Projection): boolean {
   const planeLen = Math.tan(FOV / 2);
   const dirX = Math.cos(p.angle);
   const dirY = Math.sin(p.angle);
@@ -78,7 +72,9 @@ export function projectSprite(
   const invDet = 1 / (planeX * dirY - dirX * planeY);
   const lateral = invDet * (dirY * sx - dirX * sy);
   const depth = invDet * (-planeY * sx + planeX * sy);
-  if (depth < MIN_DEPTH) return false;
+  if (depth < MIN_DEPTH) {
+    return false;
+  }
   const proj = fbWidth / 2 / planeLen;
   out.screenX = (fbWidth / 2) * (1 + lateral / depth);
   out.depth = depth;
@@ -115,12 +111,16 @@ function renderShadow(fb: Framebuffer, p: PlayerState, sx: number, sy: number, d
     const wall = zbuffer[col] as number;
     for (let row = row0; row <= row1; row++) {
       const dist = floorK / (row + 0.5 - half);
-      if (dist >= wall) continue;
+      if (dist >= wall) {
+        continue;
+      }
       // Snap the floor point to its texel centre (grid centred on the avatar, so it stays symmetric).
       const dx = (Math.floor((p.x + rayX * dist - sx) / SHADOW_TEXEL) + 0.5) * SHADOW_TEXEL;
       const dy = (Math.floor((p.y + rayY * dist - sy) / SHADOW_TEXEL) + 0.5) * SHADOW_TEXEL;
       const d2 = dx * dx + dy * dy;
-      if (d2 >= r2) continue;
+      if (d2 >= r2) {
+        continue;
+      }
       const band = Math.ceil((1 - d2 / r2) * SHADOW_LEVELS) / SHADOW_LEVELS;
       const i = row * w + col;
       pixels[i] = darken(pixels[i] as number, 1 - SHADOW_DARKNESS * band);
@@ -135,7 +135,7 @@ function lateralOf(
   dirX: number,
   dirY: number,
   planeX: number,
-  planeY: number,
+  planeY: number
 ): number {
   const invDet = 1 / (planeX * dirY - dirX * planeY);
   return invDet * (dirY * (x - p.x) - dirX * (y - p.y));
@@ -149,9 +149,13 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
   visible.length = 0;
   for (let i = 0; i < sprites.length; i++) {
     const s = sprites[i] as Sprite;
-    if (!projections[i]) projections[i] = { screenX: 0, depth: 0, size: 0 };
+    if (!projections[i]) {
+      projections[i] = { screenX: 0, depth: 0, size: 0 };
+    }
     const proj = projections[i] as Projection;
-    if (projectSprite(p, s.x, s.y, w, proj)) visible.push(i);
+    if (projectSprite(p, s.x, s.y, w, proj)) {
+      visible.push(i);
+    }
   }
   visible.sort((a, b) => (projections[b] as Projection).depth - (projections[a] as Projection).depth);
 
@@ -177,12 +181,16 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
     const y0 = Math.max(0, Math.floor(half - r));
     const y1 = Math.min(h - 1, Math.ceil(half + r));
     for (let col = x0; col <= x1; col++) {
-      if (depth >= (zbuffer[col] as number)) continue;
+      if (depth >= (zbuffer[col] as number)) {
+        continue;
+      }
       const dx = col + 0.5 - screenX;
       for (let row = y0; row <= y1; row++) {
         const dy = row + 0.5 - half;
         const d2 = dx * dx + dy * dy;
-        if (d2 > r2) continue;
+        if (d2 > r2) {
+          continue;
+        }
         if (d2 > ring2) {
           pixels[row * w + col] = edge;
         } else if (face) {

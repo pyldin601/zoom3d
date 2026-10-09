@@ -42,7 +42,9 @@ let audioTrack: { enabled: boolean };
 
 function setPeers(...peers: PeerInfo[]) {
   session.peers.clear();
-  for (const p of peers) session.peers.set(p.id, { info: p } as RemotePeer);
+  for (const p of peers) {
+    session.peers.set(p.id, { info: p } as RemotePeer);
+  }
 }
 
 function makeCall(local?: Partial<LocalMedia>) {

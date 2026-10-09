@@ -12,7 +12,9 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  for (const c of clients.splice(0)) c.terminate();
+  for (const c of clients.splice(0)) {
+    c.terminate();
+  }
   await server.close();
 });
 
@@ -22,10 +24,7 @@ interface TestClient {
   closed: Promise<number>;
   send(v: unknown): void;
   sendRaw(raw: string): void;
-  waitFor<T extends ServerMessage['type']>(
-    type: T,
-    after?: number,
-  ): Promise<Extract<ServerMessage, { type: T }>>;
+  waitFor<T extends ServerMessage['type']>(type: T, after?: number): Promise<Extract<ServerMessage, { type: T }>>;
 }
 
 async function client(): Promise<TestClient> {
@@ -34,7 +33,9 @@ async function client(): Promise<TestClient> {
   const messages: ServerMessage[] = [];
   ws.on('message', (data) => {
     const msg = parseServerMessage(String(data));
-    if (msg) messages.push(msg);
+    if (msg) {
+      messages.push(msg);
+    }
   });
   const closed = new Promise<number>((resolve) => ws.on('close', (code) => resolve(code)));
   await new Promise((resolve, reject) => {
@@ -50,7 +51,9 @@ async function client(): Promise<TestClient> {
     async waitFor(type, after = 0) {
       for (let i = 0; i < 200; i++) {
         const found = messages.slice(after).find((m) => m.type === type);
-        if (found) return found as never;
+        if (found) {
+          return found as never;
+        }
         await new Promise((r) => setTimeout(r, 10));
       }
       throw new Error(`timed out waiting for ${type}`);
@@ -108,7 +111,9 @@ test('a flood is rate limited and finally closed with 4008', async () => {
   const a = await joined('Ada');
   const b = await joined('Bob');
   const { x, y } = a.welcome.spawn;
-  for (let i = 0; i < 400; i++) a.send({ type: 'state', x, y, angle: 0, seq: 10 + i });
+  for (let i = 0; i < 400; i++) {
+    a.send({ type: 'state', x, y, angle: 0, seq: 10 + i });
+  }
   expect(await a.closed).toBe(4008);
   await b.waitFor('peer_state');
   const relayed = b.messages.filter((m) => m.type === 'peer_state').length;

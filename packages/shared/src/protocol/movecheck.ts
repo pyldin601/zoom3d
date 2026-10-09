@@ -9,9 +9,11 @@ export function isPlausibleMove(
   map: GameMap,
   from: { x: number; y: number },
   to: { x: number; y: number },
-  elapsedMs: number,
+  elapsedMs: number
 ): boolean {
-  if (isWallAt(map, to.x, to.y)) return false;
+  if (isWallAt(map, to.x, to.y)) {
+    return false;
+  }
   const limit = MOVE_SPEED * (Math.max(elapsedMs, 0) / 1000) * SPEED_TOLERANCE + SLACK_TILES;
   return Math.hypot(to.x - from.x, to.y - from.y) <= limit;
 }

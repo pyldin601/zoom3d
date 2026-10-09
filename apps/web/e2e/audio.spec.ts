@@ -26,7 +26,7 @@ const peakAudio = (page: Page, name: string, ms: number) =>
       }
       return { input, speaking };
     },
-    [name, ms] as const,
+    [name, ms] as const
   );
 
 test('voices flow into the spatial engine and remote elements stay muted', async ({ browser }) => {
@@ -37,12 +37,8 @@ test('voices flow into the spatial engine and remote elements stay muted', async
   await joinAs(b, 'Bob');
 
   // Chrome's fake microphone beeps; within a few seconds Bob's voice must reach A's engine.
-  await expect
-    .poll(async () => (await peakAudio(a, 'Bob', 1500)).input, { timeout: 20_000 })
-    .toBeGreaterThan(0.005);
-  await expect
-    .poll(async () => (await peakAudio(a, 'Bob', 1500)).speaking, { timeout: 10_000 })
-    .toBeGreaterThan(0);
+  await expect.poll(async () => (await peakAudio(a, 'Bob', 1500)).input, { timeout: 20_000 }).toBeGreaterThan(0.005);
+  await expect.poll(async () => (await peakAudio(a, 'Bob', 1500)).speaking, { timeout: 10_000 }).toBeGreaterThan(0);
 
   const videos = a.locator('#media video');
   await expect(videos).toHaveCount(1);

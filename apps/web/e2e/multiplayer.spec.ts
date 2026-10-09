@@ -13,7 +13,7 @@ type GameWindow = {
 
 const peerNames = (page: Page) =>
   page.evaluate(() =>
-    [...((window as unknown as GameWindow).__game.session?.peers.values() ?? [])].map((p) => p.info.name),
+    [...((window as unknown as GameWindow).__game.session?.peers.values() ?? [])].map((p) => p.info.name)
   );
 
 test('two people see each other, movement syncs, and leaving is noticed', async ({ browser }) => {
@@ -56,7 +56,7 @@ test('two people see each other, movement syncs, and leaving is noticed', async 
           const [bob] = (window as unknown as GameWindow).__game.session?.peers.values() ?? [];
           return bob?.buffer.latest() ?? null;
         }),
-      { timeout: 2000 },
+      { timeout: 2000 }
     )
     .toEqual(expect.objectContaining({ x: expect.closeTo(target.x, 1), y: expect.closeTo(target.y, 1) }));
 

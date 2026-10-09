@@ -22,13 +22,13 @@ export function loadAvatar(storage: Pick<Storage, 'getItem'> | null): string | n
   }
 }
 
-export function saveAvatar(
-  storage: Pick<Storage, 'setItem' | 'removeItem'> | null,
-  avatar: string | null,
-): void {
+export function saveAvatar(storage: Pick<Storage, 'setItem' | 'removeItem'> | null, avatar: string | null): void {
   try {
-    if (avatar === null) storage?.removeItem(AVATAR_KEY);
-    else storage?.setItem(AVATAR_KEY, avatar);
+    if (avatar === null) {
+      storage?.removeItem(AVATAR_KEY);
+    } else {
+      storage?.setItem(AVATAR_KEY, avatar);
+    }
   } catch {
     // Not remembered; it is still used for this join.
   }
@@ -55,7 +55,9 @@ export async function makeAvatar(blob: Blob, deps: AvatarDeps = {}): Promise<str
   img.close?.();
   for (const q of QUALITIES) {
     const url = canvas.toDataURL('image/jpeg', q);
-    if (isValidAvatar(url)) return url;
+    if (isValidAvatar(url)) {
+      return url;
+    }
   }
   throw new Error('too_big');
 }

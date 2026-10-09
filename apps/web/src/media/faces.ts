@@ -76,7 +76,9 @@ export function createFace(opts: FaceOptions): FaceSource {
   if (opts.avatar) {
     const img = opts.createImage?.() ?? new Image();
     img.onload = () => {
-      if (disposed || img.naturalWidth > AVATAR_MAX_DIM || img.naturalHeight > AVATAR_MAX_DIM) return;
+      if (disposed || img.naturalWidth > AVATAR_MAX_DIM || img.naturalHeight > AVATAR_MAX_DIM) {
+        return;
+      }
       const { sx, sy, size } = squareCrop(img.naturalWidth, img.naturalHeight);
       ctx.drawImage(img, sx, sy, size, size, 0, 0, FACE_SIZE, FACE_SIZE);
       fallbackTexels = read();
@@ -86,7 +88,9 @@ export function createFace(opts: FaceOptions): FaceSource {
 
   const grab = (at: number) => {
     // A disabled camera still delivers black frames; they are never shown, so skip the work.
-    if (!camOn || !video || video.videoWidth === 0) return;
+    if (!camOn || !video || video.videoWidth === 0) {
+      return;
+    }
     const { sx, sy, size } = squareCrop(video.videoWidth, video.videoHeight);
     ctx.drawImage(video, sx, sy, size, size, 0, 0, FACE_SIZE, FACE_SIZE);
     const { data } = ctx.getImageData(0, 0, FACE_SIZE, FACE_SIZE);
@@ -96,11 +100,15 @@ export function createFace(opts: FaceOptions): FaceSource {
 
   const onFrame = (at: number) => {
     grab(at);
-    if (video?.requestVideoFrameCallback) frameHandle = video.requestVideoFrameCallback(onFrame);
+    if (video?.requestVideoFrameCallback) {
+      frameHandle = video.requestVideoFrameCallback(onFrame);
+    }
   };
 
   const stopFrames = () => {
-    if (video && frameHandle !== null) video.cancelVideoFrameCallback?.(frameHandle);
+    if (video && frameHandle !== null) {
+      video.cancelVideoFrameCallback?.(frameHandle);
+    }
     frameHandle = null;
   };
 
@@ -128,7 +136,9 @@ export function createFace(opts: FaceOptions): FaceSource {
       lastFrameAt = null;
       lastVideoTime = -1;
       lastPollAt = Number.NEGATIVE_INFINITY;
-      if (video?.requestVideoFrameCallback) frameHandle = video.requestVideoFrameCallback(onFrame);
+      if (video?.requestVideoFrameCallback) {
+        frameHandle = video.requestVideoFrameCallback(onFrame);
+      }
     },
     setCam(on) {
       camOn = on;

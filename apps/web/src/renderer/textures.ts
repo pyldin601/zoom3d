@@ -37,18 +37,24 @@ function isMortar(x: number, y: number): boolean {
 export function makeTextures(seed = 1): Uint32Array[] {
   const rand = mulberry32(seed);
   const stone = texture(rand, (x, y, n) => {
-    if (isMortar(x, y)) return [70, 72, 70];
+    if (isMortar(x, y)) {
+      return [70, 72, 70];
+    }
     const v = 140 + n * 18;
     return [v, v + 2, v];
   });
   const wood = texture(rand, (x, y, n) => {
     const seam = x % 16 === 0;
     const grain = Math.sin((y + (x % 16) * 3) * 0.6) * 8;
-    if (seam) return [60, 38, 18];
+    if (seam) {
+      return [60, 38, 18];
+    }
     return [122 + grain + n * 10, 80 + grain * 0.6 + n * 6, 40 + n * 4];
   });
   const blue = texture(rand, (x, y, n) => {
-    if (isMortar(x, y)) return [10, 10, 70];
+    if (isMortar(x, y)) {
+      return [10, 10, 70];
+    }
     return [12 + n * 6, 18 + n * 8, 150 + n * 25];
   });
   return [new Uint32Array(0), stone, wood, blue];

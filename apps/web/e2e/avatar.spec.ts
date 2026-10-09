@@ -14,7 +14,9 @@ const faceCentre = (page: Page, name: string) =>
     const g = (window as unknown as GameWindow).__game;
     const entry = [...(g.session?.peers.entries() ?? [])].find(([, p]) => p.info.name === peerName);
     const texels = entry && g.call?.faceOf(entry[0]);
-    if (!entry || !texels || !g.call) return null;
+    if (!entry || !texels || !g.call) {
+      return null;
+    }
     const size = Math.sqrt(texels.length);
     // ImageData texels viewed as Uint32 on little-endian: 0xAABBGGRR.
     const v = texels[(size / 2) * size + size / 2] ?? 0;
@@ -33,7 +35,7 @@ const bluePng = async (page: Page) =>
       ctx.fillRect(0, 0, 300, 200);
       return c.toDataURL('image/png').split(',')[1] as string;
     }),
-    'base64',
+    'base64'
   );
 
 const isBlue = (rgb: number[] | undefined) =>

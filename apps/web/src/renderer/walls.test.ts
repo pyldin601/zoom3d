@@ -10,7 +10,9 @@ const textures = makeTextures(1);
 
 function column(fb: ReturnType<typeof createFramebuffer>, x: number): number[] {
   const out: number[] = [];
-  for (let y = 0; y < fb.height; y++) out.push(fb.pixels[y * fb.width + x] as number);
+  for (let y = 0; y < fb.height; y++) {
+    out.push(fb.pixels[y * fb.width + x] as number);
+  }
   return out;
 }
 

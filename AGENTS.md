@@ -21,6 +21,10 @@ decisions are recorded there with date and rationale; update it when a decision 
 - Keep changes surgical; no speculative features (YAGNI). The map has no interactive elements yet.
 - Write a failing test first for logic (raycaster math, audio gain curves, protocol, collision).
   Rendering/WebRTC glue is verified manually or with Playwright (fake media devices).
+- Code style is Biome's formatter (`biome.json`): 120 columns, single quotes, semicolons, `es5` trailing
+  commas, matching the Prettier style of github.com/pyldin601/maisumtuga. Run `pnpm exec biome check --write .`.
+- Every `if`/`else`/`for`/`while` body is a braced block, even one-liners (`style/useBlockStatements`):
+  write `if (x) {\n  y();\n}`, never `if (x) y();`.
 - Commit small, imperative-mood messages. Don't commit secrets or `.env`.
 - Never block the render loop: no allocations in the per-frame/per-column hot path.
 

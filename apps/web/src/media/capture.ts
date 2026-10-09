@@ -33,7 +33,9 @@ const ATTEMPTS: { constraints: MediaStreamConstraints; problem: LocalMedia['prob
 ];
 
 export async function captureLocalMedia(env: CaptureEnv): Promise<LocalMedia> {
-  if (!env.isSecureContext) return { stream: null, cam: false, mic: false, problem: 'insecure' };
+  if (!env.isSecureContext) {
+    return { stream: null, cam: false, mic: false, problem: 'insecure' };
+  }
   for (const { constraints, problem } of ATTEMPTS) {
     try {
       const stream = await env.getUserMedia(constraints);

@@ -52,7 +52,9 @@ export function makeImpulse(ctx: BaseAudioContext, seconds = 0.8, preDelay = 0.0
 /** Instant attack, exponential release; RMS below the floor reads as silence. */
 export function speakingLevel(prev: number, rms: number, dtSeconds: number): number {
   const target = Math.min(Math.max((rms - SPEAKING_FLOOR) / SPEAKING_RANGE, 0), 1);
-  if (target >= prev) return target;
+  if (target >= prev) {
+    return target;
+  }
   return Math.max(target, prev * Math.exp(-Math.max(dtSeconds, 0) / SPEAKING_RELEASE_S));
 }
 
@@ -75,11 +77,7 @@ interface Voice {
   speaking: number;
 }
 
-export function createAudioEngine(opts: {
-  ctx: AudioContext;
-  map: GameMap;
-  settings?: AudioSettings;
-}): AudioEngine {
+export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; settings?: AudioSettings }): AudioEngine {
   const { ctx, map } = opts;
   let settings = opts.settings ?? DEFAULT_AUDIO_SETTINGS;
   const voices = new Map<string, Voice>();
@@ -94,8 +92,11 @@ export function createAudioEngine(opts: {
 
   /** Glides a param, or jumps on the first placement so nothing sweeps in from the origin. */
   const move = (param: AudioParam, value: number, t: number, jump: boolean) => {
-    if (jump) param.setValueAtTime(value, t);
-    else param.setTargetAtTime(value, t, TAU_POSITION);
+    if (jump) {
+      param.setValueAtTime(value, t);
+    } else {
+      param.setTargetAtTime(value, t, TAU_POSITION);
+    }
   };
 
   const setListener = (p: PlayerState, t: number) => {
@@ -122,18 +123,28 @@ export function createAudioEngine(opts: {
 
   const detach = (peerId: string) => {
     const v = voices.get(peerId);
-    if (!v) return;
-    for (const node of [v.source, v.analyser, v.filter, v.dry, v.send, v.panner]) node.disconnect();
+    if (!v) {
+      return;
+    }
+    for (const node of [v.source, v.analyser, v.filter, v.dry, v.send, v.panner]) {
+      node.disconnect();
+    }
     voices.delete(peerId);
   };
 
   return {
     attach(peerId, stream) {
       const existing = voices.get(peerId);
-      if (existing?.stream === stream) return;
-      if (existing) detach(peerId);
+      if (existing?.stream === stream) {
+        return;
+      }
+      if (existing) {
+        detach(peerId);
+      }
       // createMediaStreamSource throws on a stream with no audio (a peer without a mic).
-      if (stream.getAudioTracks().length === 0) return;
+      if (stream.getAudioTracks().length === 0) {
+        return;
+      }
 
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
@@ -187,7 +198,9 @@ export function createAudioEngine(opts: {
       for (const [peerId, v] of voices) {
         v.analyser.getFloatTimeDomainData(v.samples);
         let sum = 0;
-        for (let i = 0; i < v.samples.length; i++) sum += (v.samples[i] as number) ** 2;
+        for (let i = 0; i < v.samples.length; i++) {
+          sum += (v.samples[i] as number) ** 2;
+        }
         v.rms = Math.sqrt(sum / v.samples.length);
         v.speaking = speakingLevel(v.speaking, v.rms, dt);
 
@@ -204,11 +217,7 @@ export function createAudioEngine(opts: {
           if (occluded !== v.occluded) {
             v.occluded = occluded;
             v.occlusionChangedAt = now;
-            v.filter.frequency.setTargetAtTime(
-              occluded ? settings.muffleHz : MUFFLE_OPEN_HZ,
-              t,
-              TAU_OCCLUSION,
-            );
+            v.filter.frequency.setTargetAtTime(occluded ? settings.muffleHz : MUFFLE_OPEN_HZ, t, TAU_OCCLUSION);
           }
         }
 
@@ -235,16 +244,22 @@ export function createAudioEngine(opts: {
       reverbGain.gain.setTargetAtTime(s.reverb, t, TAU_POSITION);
       for (const v of voices.values()) {
         v.panner.panningModel = s.panning;
-        if (v.occluded) v.filter.frequency.setTargetAtTime(s.muffleHz, t, TAU_OCCLUSION);
+        if (v.occluded) {
+          v.filter.frequency.setTargetAtTime(s.muffleHz, t, TAU_OCCLUSION);
+        }
       }
     },
 
     async resume() {
-      if (ctx.state === 'suspended') await ctx.resume();
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
     },
 
     dispose() {
-      for (const id of [...voices.keys()]) detach(id);
+      for (const id of [...voices.keys()]) {
+        detach(id);
+      }
       reverb.disconnect();
       reverbGain.disconnect();
     },

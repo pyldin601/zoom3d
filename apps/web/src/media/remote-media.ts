@@ -11,7 +11,9 @@ export function createRemoteMedia(container: HTMLElement): RemoteMedia {
   const elements = new Map<string, HTMLVideoElement>();
   const detach = (peerId: string) => {
     const el = elements.get(peerId);
-    if (!el) return;
+    if (!el) {
+      return;
+    }
     el.srcObject = null;
     el.remove();
     elements.delete(peerId);
@@ -28,13 +30,17 @@ export function createRemoteMedia(container: HTMLElement): RemoteMedia {
         container.append(el);
         elements.set(peerId, el);
       }
-      if (el.srcObject !== stream) el.srcObject = stream;
+      if (el.srcObject !== stream) {
+        el.srcObject = stream;
+      }
       el.play().catch((err) => console.warn('remote media play failed', peerId, err));
       return el;
     },
     detach,
     detachAll() {
-      for (const id of [...elements.keys()]) detach(id);
+      for (const id of [...elements.keys()]) {
+        detach(id);
+      }
     },
   };
 }

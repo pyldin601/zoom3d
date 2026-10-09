@@ -16,7 +16,9 @@ function el<K extends keyof HTMLElementTagNameMap>(
 /** The single child of `root` with class `cls`, created on demand. */
 function slot(root: HTMLElement, cls: string): HTMLElement {
   const existing = root.querySelector<HTMLElement>(`:scope > .${cls}`);
-  if (existing) return existing;
+  if (existing) {
+    return existing;
+  }
   const node = el('div', { className: cls });
   root.append(node);
   return node;
@@ -37,7 +39,7 @@ export function showLanding(root: HTMLElement, onCreate: () => void): void {
     root,
     el('h1', { textContent: 'zoom3d' }),
     el('p', { textContent: 'A meeting room you can walk around in.' }),
-    create,
+    create
   );
 }
 
@@ -81,7 +83,9 @@ export function showJoin(root: HTMLElement, opts: JoinOptions): void {
     remove.hidden = avatar === null;
   };
   input.addEventListener('input', () => {
-    if (!avatar) renderAvatar();
+    if (!avatar) {
+      renderAvatar();
+    }
   });
   choose.addEventListener('click', () => file.click());
   remove.addEventListener('click', () => {
@@ -91,23 +95,29 @@ export function showJoin(root: HTMLElement, opts: JoinOptions): void {
   file.addEventListener('change', () => {
     const picked = file.files?.[0];
     file.value = '';
-    if (!picked) return;
+    if (!picked) {
+      return;
+    }
     const pick = ++latestPick;
     setEncoding(true);
     pickAvatar(picked).then(
       (url) => {
-        if (pick !== latestPick) return;
+        if (pick !== latestPick) {
+          return;
+        }
         setEncoding(false);
         avatar = url;
         error.textContent = '';
         renderAvatar();
       },
       (err: unknown) => {
-        if (pick !== latestPick) return;
+        if (pick !== latestPick) {
+          return;
+        }
         setEncoding(false);
         const code = err instanceof Error ? err.message : '';
         error.textContent = AVATAR_ERRORS[code] ?? "Couldn't read that picture";
-      },
+      }
     );
   });
   renderAvatar();
@@ -123,11 +133,13 @@ export function showJoin(root: HTMLElement, opts: JoinOptions): void {
     el('div', { className: 'avatar-row' }, preview, el('div', {}, choose, remove), file),
     el('label', {}, 'Your name', input),
     join,
-    error,
+    error
   );
   form.addEventListener('submit', (e) => {
     e.preventDefault();
-    if (encoding) return;
+    if (encoding) {
+      return;
+    }
     const name = sanitizeName(input.value);
     if (name === null) {
       error.textContent = `Enter a name (1–${NAME_MAX} characters)`;
@@ -139,7 +151,7 @@ export function showJoin(root: HTMLElement, opts: JoinOptions): void {
     root,
     el('h1', { textContent: 'Join the room' }),
     form,
-    el('p', { className: 'hint', textContent: 'Headphones recommended.' }),
+    el('p', { className: 'hint', textContent: 'Headphones recommended.' })
   );
   input.focus();
 }
@@ -165,13 +177,7 @@ export interface MediaControls {
   onMic(on: boolean): void;
 }
 
-function toggle(
-  label: string,
-  control: string,
-  on: boolean,
-  available: boolean,
-  onChange: (on: boolean) => void,
-) {
+function toggle(label: string, control: string, on: boolean, available: boolean, onChange: (on: boolean) => void) {
   const button = el('button', { type: 'button', disabled: !available });
   button.dataset.control = control;
   const render = () => {
@@ -195,7 +201,7 @@ export function showRoomBar(root: HTMLElement, inviteUrl: string, controls?: Med
       () => {
         copy.textContent = 'Copied!';
       },
-      () => link.select(),
+      () => link.select()
     ) ?? link.select();
   });
   const toggles = controls
@@ -212,7 +218,9 @@ const bannerTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>();
 
 export function showBanner(root: HTMLElement, text: string | null): void {
   const existing = root.querySelector<HTMLElement>(':scope > .banner');
-  if (existing) clearTimeout(bannerTimers.get(existing));
+  if (existing) {
+    clearTimeout(bannerTimers.get(existing));
+  }
   if (text === null) {
     existing?.remove();
     return;
@@ -221,7 +229,7 @@ export function showBanner(root: HTMLElement, text: string | null): void {
   banner.textContent = text;
   bannerTimers.set(
     banner,
-    setTimeout(() => banner.remove(), BANNER_MS),
+    setTimeout(() => banner.remove(), BANNER_MS)
   );
 }
 
@@ -232,6 +240,8 @@ export function showSelfPreview(root: HTMLElement, stream: MediaStream | null, v
     video = el('video', { muted: true, autoplay: true, playsInline: true });
     box.append(video);
   }
-  if (video.srcObject !== stream) video.srcObject = stream;
+  if (video.srcObject !== stream) {
+    video.srcObject = stream;
+  }
   box.hidden = !visible || stream === null;
 }

@@ -24,7 +24,7 @@ export function castRay(
   dirX: number,
   dirY: number,
   out: RayHit,
-  maxSteps = 256,
+  maxSteps = 256
 ): RayHit {
   let mapX = Math.floor(px);
   let mapY = Math.floor(py);

@@ -80,9 +80,9 @@ describe('makeAvatar', () => {
 
   test('rejects too_big when even the lowest quality does not fit', async () => {
     const { toDataURL, document } = fakeCanvas(() => AVATAR_MAX_CHARS + 1);
-    await expect(
-      makeAvatar(new Blob(), { decode: async () => image(10, 10) as never, document }),
-    ).rejects.toThrow('too_big');
+    await expect(makeAvatar(new Blob(), { decode: async () => image(10, 10) as never, document })).rejects.toThrow(
+      'too_big'
+    );
     expect(toDataURL.mock.calls.at(-1)?.[1]).toBeCloseTo(0.35);
   });
 

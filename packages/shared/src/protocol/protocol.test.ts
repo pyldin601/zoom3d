@@ -77,7 +77,9 @@ describe('sanitizeName', () => {
   });
 
   test('rejects empty, too long and non-strings', () => {
-    for (const bad of ['', '   ', 'x'.repeat(25), 42, undefined]) expect(sanitizeName(bad)).toBeNull();
+    for (const bad of ['', '   ', 'x'.repeat(25), 42, undefined]) {
+      expect(sanitizeName(bad)).toBeNull();
+    }
   });
 
   test('counts code points, not UTF-16 units', () => {
@@ -97,14 +99,12 @@ describe('parseClientMessage', () => {
       roomId: ROOM,
       name: 'Ada',
     });
-    expect(parseClientMessage(json({ type: 'join', roomId: ROOM, name: 'Ada', resumeToken: 'tok' }))).toEqual(
-      {
-        type: 'join',
-        roomId: ROOM,
-        name: 'Ada',
-        resumeToken: 'tok',
-      },
-    );
+    expect(parseClientMessage(json({ type: 'join', roomId: ROOM, name: 'Ada', resumeToken: 'tok' }))).toEqual({
+      type: 'join',
+      roomId: ROOM,
+      name: 'Ada',
+      resumeToken: 'tok',
+    });
   });
 
   test('keeps a valid join avatar and drops an invalid one', () => {
@@ -115,7 +115,7 @@ describe('parseClientMessage', () => {
       avatar: AVATAR,
     });
     expect(
-      parseClientMessage(json({ type: 'join', roomId: ROOM, name: 'Ada', resumeToken: 't', avatar: 'nope' })),
+      parseClientMessage(json({ type: 'join', roomId: ROOM, name: 'Ada', resumeToken: 't', avatar: 'nope' }))
     ).toEqual({ type: 'join', roomId: ROOM, name: 'Ada', resumeToken: 't' });
   });
 
@@ -218,9 +218,7 @@ describe('parseServerMessage', () => {
   });
 
   test('a peer with an invalid avatar parses with avatar null', () => {
-    expect(
-      parseServerMessage(json({ type: 'peer_joined', peer: { ...peer, avatar: 'javascript:x' } })),
-    ).toEqual({
+    expect(parseServerMessage(json({ type: 'peer_joined', peer: { ...peer, avatar: 'javascript:x' } }))).toEqual({
       type: 'peer_joined',
       peer: { ...peer, avatar: null },
     });

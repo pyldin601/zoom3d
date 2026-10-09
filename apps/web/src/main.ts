@@ -75,7 +75,9 @@ watchLayout(relayout);
 
 const inRoom = () => session?.status() === 'open';
 game.addEventListener('click', () => {
-  if (inRoom()) game.requestPointerLock();
+  if (inRoom()) {
+    game.requestPointerLock();
+  }
 });
 
 // Browsers may suspend audio until a gesture (autoplay policy, backgrounded tab): resume on the next one.
@@ -105,18 +107,26 @@ function toggleAudioPanel(): void {
   });
 }
 window.addEventListener('keydown', (e) => {
-  if (e.code !== 'Backquote' || e.repeat || !inRoom() || e.target instanceof HTMLInputElement) return;
+  if (e.code !== 'Backquote' || e.repeat || !inRoom() || e.target instanceof HTMLInputElement) {
+    return;
+  }
   e.preventDefault();
   toggleAudioPanel();
 });
 
 let automapVisible = false;
 window.addEventListener('keydown', (e) => {
-  if (e.code !== 'Tab' && e.code !== 'KeyM') return;
+  if (e.code !== 'Tab' && e.code !== 'KeyM') {
+    return;
+  }
   // Outside the room Tab keeps its keyboard-navigation meaning.
-  if (!inRoom() || e.target instanceof HTMLInputElement) return;
+  if (!inRoom() || e.target instanceof HTMLInputElement) {
+    return;
+  }
   e.preventDefault();
-  if (!e.repeat) automapVisible = !automapVisible;
+  if (!e.repeat) {
+    automapVisible = !automapVisible;
+  }
 });
 
 const PROBLEM_TEXT: Record<NonNullable<LocalMedia['problem']>, string> = {
@@ -128,7 +138,9 @@ const PROBLEM_TEXT: Record<NonNullable<LocalMedia['problem']>, string> = {
 
 let shownStatus: string | null = null;
 function setStatus(text: string | null): void {
-  if (text === shownStatus) return;
+  if (text === shownStatus) {
+    return;
+  }
   showStatus(ui, text);
   shownStatus = text;
 }
@@ -165,7 +177,9 @@ async function joinRoom(roomId: string, name: string, avatar: string | null): Pr
     listener: call.listener,
   });
   call.attach(session);
-  if (local.problem) showBanner(ui, PROBLEM_TEXT[local.problem]);
+  if (local.problem) {
+    showBanner(ui, PROBLEM_TEXT[local.problem]);
+  }
   const activeCall = call;
   showRoomBar(ui, location.href, {
     cam: local.cam,
@@ -179,7 +193,9 @@ async function joinRoom(roomId: string, name: string, avatar: string | null): Pr
     onMic: (on) => activeCall.setMic(on),
   });
   showSelfPreview(ui, local.stream, local.cam);
-  if (new URLSearchParams(location.search).has('debug')) toggleAudioPanel();
+  if (new URLSearchParams(location.search).has('debug')) {
+    toggleAudioPanel();
+  }
 }
 
 function loadName(): string {
@@ -257,9 +273,15 @@ const positions = new Map<string, { x: number; y: number }>();
 /** Samples every peer's interpolated position into `positions` (reused objects). */
 function refreshPositions(s: Session, now: number): void {
   const renderTime = now - INTERP_DELAY_MS;
-  for (const id of positions.keys()) if (!s.peers.has(id)) positions.delete(id);
+  for (const id of positions.keys()) {
+    if (!s.peers.has(id)) {
+      positions.delete(id);
+    }
+  }
   for (const peer of s.peers.values()) {
-    if (!peer.buffer.sample(renderTime, sample)) continue;
+    if (!peer.buffer.sample(renderTime, sample)) {
+      continue;
+    }
     const pos = positions.get(peer.info.id);
     if (pos) {
       pos.x = sample.x;
@@ -273,12 +295,14 @@ function refreshPositions(s: Session, now: number): void {
 // rAF stops while the tab is hidden: keep voices (and newcomers) audible from a timer meanwhile.
 startHiddenTicker(
   () => {
-    if (!session || !audio) return;
+    if (!session || !audio) {
+      return;
+    }
     const now = performance.now();
     refreshPositions(session, now);
     audio.update(now, player, positions);
   },
-  () => document.hidden,
+  () => document.hidden
 );
 
 startLoop((dt) => {
@@ -296,7 +320,9 @@ startLoop((dt) => {
     refreshPositions(session, now);
     for (const peer of session.peers.values()) {
       const pos = positions.get(peer.info.id);
-      if (!pos) continue;
+      if (!pos) {
+        continue;
+      }
       let color = colors.get(peer.info.color);
       if (color === undefined) {
         color = hexToRgb(peer.info.color);
@@ -326,5 +352,7 @@ startLoop((dt) => {
   gameCtx.putImageData(image, 0, 0);
   hudCtx.clearRect(0, 0, hud.width, hud.height);
   drawLabels(hudCtx, fb, player, others, hud.width, hud.height);
-  if (automapVisible) drawAutomap(hudCtx, map, player, hud.width, hud.height, others);
+  if (automapVisible) {
+    drawAutomap(hudCtx, map, player, hud.width, hud.height, others);
+  }
 });

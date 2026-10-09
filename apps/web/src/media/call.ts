@@ -64,15 +64,21 @@ export function createCall(opts: CallOptions): Call {
     mesh?.close();
     mesh = null;
     remote.detachAll();
-    for (const id of faces.keys()) opts.audio?.detach(id);
-    for (const face of faces.values()) face.dispose();
+    for (const id of faces.keys()) {
+      opts.audio?.detach(id);
+    }
+    for (const face of faces.values()) {
+      face.dispose();
+    }
     faces.clear();
   };
 
   const publish = () => session?.setMedia(state.cam, state.mic);
 
   const setEnabled = (tracks: MediaStreamTrack[] | undefined, on: boolean) => {
-    for (const t of tracks ?? []) t.enabled = on;
+    for (const t of tracks ?? []) {
+      t.enabled = on;
+    }
   };
 
   const listener: SessionListener = {
@@ -86,14 +92,20 @@ export function createCall(opts: CallOptions): Call {
           sendSignal: (to, payload) => session?.sendSignal(to, payload),
           onRemoteStream: (peerId, stream) => {
             const face = faces.get(peerId);
-            if (!face) return;
+            if (!face) {
+              return;
+            }
             face.setVideo(remote.attach(peerId, stream));
             opts.audio?.attach(peerId, stream);
           },
         });
       }
       const present = session?.peers ?? new Map();
-      for (const id of [...faces.keys()]) if (!present.has(id)) drop(id);
+      for (const id of [...faces.keys()]) {
+        if (!present.has(id)) {
+          drop(id);
+        }
+      }
       for (const peer of present.values()) {
         ensureFace(peer.info);
         mesh.connect(peer.info.id);
@@ -133,7 +145,9 @@ export function createCall(opts: CallOptions): Call {
     },
     localState: () => ({ ...state }),
     update(now) {
-      for (const face of faces.values()) face.update(now);
+      for (const face of faces.values()) {
+        face.update(now);
+      }
     },
     dispose: teardown,
   };

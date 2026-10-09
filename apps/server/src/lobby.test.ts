@@ -45,7 +45,9 @@ const to = (conn: string) => sent.filter((s) => s.conn === conn).map((s) => s.ms
 const last = (conn: string) => to(conn).at(-1);
 function welcome(conn: string) {
   const msg = to(conn).find((m) => m.type === 'welcome');
-  if (msg?.type !== 'welcome') throw new Error(`no welcome for ${conn}`);
+  if (msg?.type !== 'welcome') {
+    throw new Error(`no welcome for ${conn}`);
+  }
   return msg;
 }
 
@@ -56,9 +58,7 @@ describe('join', () => {
     expect(w.peers).toEqual([]);
     expect(w.color).toBe(PEER_COLORS[0]);
     expect(isWallAt(map, w.spawn.x, w.spawn.y)).toBe(false);
-    expect(Math.hypot(w.spawn.x - (map.spawn.x + 0.5), w.spawn.y - (map.spawn.y + 0.5))).toBeLessThanOrEqual(
-      2,
-    );
+    expect(Math.hypot(w.spawn.x - (map.spawn.x + 0.5), w.spawn.y - (map.spawn.y + 0.5))).toBeLessThanOrEqual(2);
   });
 
   test('second joiner is announced to the first and sees the first in its welcome', () => {
@@ -87,7 +87,9 @@ describe('join', () => {
   });
 
   test('the ninth joiner gets room_full and close 4001, also while a slot is in grace', () => {
-    for (let i = 0; i < MAX_PEERS; i++) join(`c${i}`);
+    for (let i = 0; i < MAX_PEERS; i++) {
+      join(`c${i}`);
+    }
     join('late');
     expect(last('late')).toMatchObject({ type: 'error', code: 'room_full' });
     expect(closed).toContainEqual({ conn: 'late', code: 4001 });
