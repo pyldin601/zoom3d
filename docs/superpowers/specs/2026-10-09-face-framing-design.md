@@ -65,7 +65,11 @@ createFraming(frameW: number, frameH: number): { update(face: Box | null, now: n
   frame rate. The target only changes when a box is passed in.
 - **Lost face:** a `null` box doesn't move the target. After `LOST_MS = 3000` without a box, the target
   becomes the centred `min(frameW, frameH)` square, today's crop, reached with the same easing.
-- **Start:** the rect starts at the centred square, so there's no jump before the model loads.
+- **Start:** the rect starts at the framing remembered for this camera at this frame size
+  (`framing-memory.ts`, localStorage `zoom3d.framing`, keyed by `deviceId`, saved on each detection with a face).
+  That rect is held until the detector has loaded or failed to, and only then does the lost-face clock start, so a
+  page reload or camera switch keeps the face framed instead of jumping to the centre. With nothing remembered, the
+  rect starts at the centred square.
 - **Allocation:** `update()` returns the same rect object every call. Callers must not keep it.
 
 The caller picks the largest box when the detector reports several faces (§4). BlazeFace reports six

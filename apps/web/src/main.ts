@@ -21,6 +21,7 @@ import { type Boombox, createBoombox } from './media/boombox';
 import { type Call, createCall } from './media/call';
 import { createFace } from './media/faces';
 import { createFramer } from './media/framer';
+import { createFramingMemory } from './media/framing-memory';
 import { createLocalMedia, type LocalMediaController } from './media/local-media';
 import { loadMediaPrefs, saveMediaPrefs } from './media/media-prefs';
 import { createMesh } from './media/mesh';
@@ -333,7 +334,7 @@ function openLobby(roomId: string): void {
       getUserMedia: (c) => navigator.mediaDevices.getUserMedia(c),
       enumerateDevices: () => navigator.mediaDevices.enumerateDevices(),
       onDeviceChange: (cb) => navigator.mediaDevices?.addEventListener('devicechange', cb),
-      framer: createFramer({ container: localMediaContainer, document }),
+      framer: createFramer({ container: localMediaContainer, document, memory: createFramingMemory(storage()) }),
     },
     loadMediaPrefs(storage())
   );
