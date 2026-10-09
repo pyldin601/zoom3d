@@ -79,6 +79,18 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 - How an avatar shows a drink in hand, and how the choice syncs.
 - *Resolved 2026-10-09:* a floating hand with no arm on the viewer's right of the disc. Mugs are held by the handle, which faces the disc; wine by the stem. It shows on the avatar only, with no first-person view. Items for v1: nothing, beer, coffee, wine, picked from a `<select>` in the room bar and remembered in `localStorage`. It syncs through its own `held` / `peer_held` messages plus `Peer.held`, not inside `media`, so a cosmetic item is never tied to mic/cam state. Server → client parsing reads unknown items as `null`, so items can be added later without breaking older clients. Spec: [2026-10-09-held-items-design.md](superpowers/specs/2026-10-09-held-items-design.md). *Amended 2026-10-09:* the item casts its own small floor shadow under it, the same style as the disc's, so it reads as being in the room rather than pasted on (spec §2). *Amended 2026-10-09:* the hand and drink moved in front of the disc's lower right (left edge at +0.15 r, top 0.3 r below the horizon), so the drink is held against the body instead of floating beside it. *Amended 2026-10-09:* first person is now in scope. You see your own drink peeking in at the bottom-left, in your left hand to match what others see. Avatars bob while walking, with their drink swinging half a step behind; the bob comes from distance walked, so it needs no protocol change (spec §2.1–2.2). *Amended 2026-10-09:* pressing the key of the drink you already hold takes a sip. You see the drink sink towards your mouth at the bottom-centre, and others see it go up to your disc's mouth. A sip is a one-off `drink` → `peer_drink` event, never stored, relayed at most once per second per player (spec §2.3). *Amended 2026-10-09:* the room-bar `<select>` picker is gone; drinks are picked only with the number keys (`1`–`3`, `0` for nothing), which made it redundant (spec §6.3).
 
+### D16 — Boombox
+- How a player plays music to the room, and how it shows.
+- *Resolved 2026-10-09 (spec under review):* `B` opens a file picker and the track plays once; `B` again or
+  the track ending stops it. The music is a third, pre-allocated `sendrecv` audio transceiver on each mesh
+  connection, switched with `replaceTrack`, so it never renegotiates. Listeners spatialise it from the
+  carrier's position through the voice engine. Only an on/off flag goes through the server
+  (`boombox` / `peer_boombox` / `Peer.boombox`), for the sprite. The look is a boombox carried by the handle
+  in the avatar's right hand (viewer's left, opposite the drink, sketch "D"), plus a first-person view at
+  the bottom-right, clear of the self-view. Rejected: uploading to the server with synced playback, and
+  DataChannel file transfer (sync, late joiners, storage). Spec:
+  [2026-10-09-boombox-design.md](superpowers/specs/2026-10-09-boombox-design.md).
+
 ### Risks (to verify, not assume)
 - **R1 — Echo cancellation vs Web Audio output.** Chrome's AEC historically did not cancel audio played via `AudioContext`. If still true, speakers echo. Verify in an early throwaway audio spike (speakers vs headphones).
   - *Verdict 2026-10-08 (provisional):* user tested Chrome on both devices with the spike and reported it "sounds good", i.e. no echo problem heard. Interpreted as outcome (a): M4 uses the `webaudio` path (graph → `AudioContext.destination`). The per-mode table was not filled in and **Firefox is untested**, so re-check Firefox (and speakers at higher volume) in M5 before relying on (a) there.
