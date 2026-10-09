@@ -15,6 +15,7 @@ const peer = (id: string, x = 2): PeerInfo => ({
   mic: true,
   avatar: null,
   held: null,
+  boombox: false,
 });
 const welcome = (peers: PeerInfo[] = [], spawn = { x: 5.5, y: 6.5, angle: 1 }) => ({
   type: 'welcome',

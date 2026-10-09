@@ -1,5 +1,6 @@
 // Room membership, colours, resume grace and move validation. Pure: no sockets or timers.
 import {
+  type BoomboxMessage,
   DRINK_GAP_MS,
   type GameMap,
   type HeldMessage,
@@ -51,7 +52,7 @@ interface Peer extends PeerInfo {
 
 type Room = Map<string, Peer>;
 
-const info = ({ id, name, color, x, y, angle, cam, mic, avatar, held }: Peer): PeerInfo => ({
+const info = ({ id, name, color, x, y, angle, cam, mic, avatar, held, boombox }: Peer): PeerInfo => ({
   id,
   name,
   color,
@@ -62,6 +63,7 @@ const info = ({ id, name, color, x, y, angle, cam, mic, avatar, held }: Peer): P
   mic,
   avatar,
   held,
+  boombox,
 });
 
 export class Lobby {
@@ -127,6 +129,7 @@ export class Lobby {
       mic: false,
       avatar: isValidAvatar(msg.avatar) ? msg.avatar : null,
       held: null,
+      boombox: false,
       lastDrinkAt: Number.NEGATIVE_INFINITY,
       resumeToken: this.opts.newToken(),
       conn,
@@ -187,6 +190,15 @@ export class Lobby {
     }
     found.peer.held = msg.item;
     this.broadcast(found.room, found.peer.id, { type: 'peer_held', id: found.peer.id, item: msg.item });
+  }
+
+  boombox(conn: string, msg: BoomboxMessage): void {
+    const found = this.lookup(conn);
+    if (!found) {
+      return;
+    }
+    found.peer.boombox = msg.on;
+    this.broadcast(found.room, found.peer.id, { type: 'peer_boombox', id: found.peer.id, on: msg.on });
   }
 
   /** Relays a sip, only from a peer holding a drink and at most once per DRINK_GAP_MS. */
