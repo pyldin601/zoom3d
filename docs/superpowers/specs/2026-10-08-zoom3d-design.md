@@ -225,9 +225,13 @@ MediaStreamSource → BiquadFilter(lowpass, "muffle") ─┬─ dryGain → Pann
   noise with exponential decay, RT ~0.8 s and a short pre-delay. It is generated at startup.
 
 ### 9.2 Curves (pure, in `shared/audio`, unit-tested)
-With `d` the distance in tiles, `REF = 1.5`, `MAX = 12`, and `n = clamp((d - REF) / (MAX - REF), 0, 1)`:
-- `dry(d) = (1 - n)^2`, which is 1 inside `REF` and 0 at `MAX` and beyond
-- `send(d) = (0.15 + 0.35·n) · (1 - n^4)`, so it grows with distance and fades out near `MAX`
+With `d` the distance in tiles, `REF = 1.5`, `MAX = 24`, `a = REF / max(d, REF)`, and
+`fade = 1 - smoothstep(0.75·MAX, MAX, d)`:
+- `dry(d) = a · fade`, which is 1 inside `REF` and then falls −6 dB per doubling (inverse-distance law)
+- `send(d) = 0.4 · √a · fade`, which falls only −3 dB per doubling. Reverb is audible even up
+  close, and the voice turns more reverberant with distance. Dry and reverb are equal at about
+  9 tiles (`REF / 0.4²`).
+- Both fade to 0 over the last quarter of the range, from 18 to 24 tiles
 - Occluded (line of sight blocked): the low-pass cutoff goes from 16 kHz to 700 Hz, and
   `dry` and `send` are multiplied by 0.5 (−6 dB)
 - Peers with `d > MAX` are silent (gains 0), but their nodes stay alive

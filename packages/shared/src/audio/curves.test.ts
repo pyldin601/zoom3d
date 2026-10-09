@@ -1,19 +1,32 @@
 import { describe, expect, test } from 'vitest';
-import { DEFAULT_AUDIO_SETTINGS as D, normalizeAudioSettings, voiceGains } from './curves';
+import { DEFAULT_AUDIO_SETTINGS as D, normalizeAudioSettings, voiceGains, WET_NEAR } from './curves';
 
 describe('voiceGains', () => {
-  test('dry is 1 within ref and 0 from max; send is 0.15 near and 0 at max', () => {
-    expect(voiceGains(0, false, D)).toEqual({ dry: 1, send: 0.15 });
-    expect(voiceGains(D.ref, false, D).dry).toBe(1);
+  test('full dry and near reverb within ref; silent from max', () => {
+    expect(voiceGains(0, false, D)).toEqual({ dry: 1, send: WET_NEAR });
+    expect(voiceGains(D.ref, false, D)).toEqual({ dry: 1, send: WET_NEAR });
     expect(voiceGains(D.max, false, D)).toEqual({ dry: 0, send: 0 });
     expect(voiceGains(50, false, D)).toEqual({ dry: 0, send: 0 });
   });
 
-  test('dry falls and the wet/dry ratio rises with distance', () => {
+  test('silence is twice as far as it used to be', () => {
+    expect(D.max).toBe(24);
+  });
+
+  test('before the fade, dry follows 1/d and send 1/√d', () => {
+    const near = voiceGains(6, false, D);
+    const far = voiceGains(12, false, D);
+    expect(far.dry / near.dry).toBeCloseTo(0.5);
+    expect(far.send / near.send).toBeCloseTo(Math.SQRT1_2);
+  });
+
+  test('both gains fall and the wet/dry ratio rises with distance', () => {
     let prev = voiceGains(D.ref, false, D);
     for (let d = D.ref + 0.5; d < D.max; d += 0.5) {
       const g = voiceGains(d, false, D);
       expect(g.dry).toBeLessThan(prev.dry);
+      expect(g.send).toBeLessThan(prev.send);
+      expect(g.send).toBeGreaterThan(0);
       expect(g.send / g.dry).toBeGreaterThan(prev.send / prev.dry);
       prev = g;
     }
@@ -27,7 +40,7 @@ describe('voiceGains', () => {
   });
 
   test('degenerate distances stay finite', () => {
-    expect(voiceGains(0, true, D)).toEqual({ dry: 0.5, send: 0.075 });
+    expect(voiceGains(0, true, D)).toEqual({ dry: 0.5, send: 0.2 });
     expect(voiceGains(Number.NaN, false, D)).toEqual({ dry: 0, send: 0 });
     expect(voiceGains(-1, false, D).dry).toBe(1);
   });

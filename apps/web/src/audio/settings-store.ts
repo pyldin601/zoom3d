@@ -1,7 +1,7 @@
 // Audio tuning persisted per browser; storage may be missing or throw (private mode, blocked).
 import { type AudioSettings, normalizeAudioSettings } from '@zoom3d/shared';
 
-export const AUDIO_SETTINGS_KEY = 'zoom3d.audio';
+export const AUDIO_SETTINGS_KEY = 'zoom3d.audio.v2';
 
 export function loadAudioSettings(storage: Pick<Storage, 'getItem'> | null): AudioSettings {
   try {
