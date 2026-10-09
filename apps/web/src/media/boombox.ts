@@ -5,8 +5,8 @@
 export const BOOMBOX_SELF_GAIN = 0.5;
 
 export interface Boombox {
-  /** The B key: opens the file picker when off, stops when playing. */
-  toggle(): void;
+  /** The B key: opens the file picker when off (only if `canOpen`: in a room), and always stops. */
+  toggle(canOpen: boolean): void;
   playing(): boolean;
 }
 
@@ -111,8 +111,11 @@ export function createBoombox(opts: BoomboxOptions): Boombox {
   audio.addEventListener('error', stop);
 
   return {
-    toggle() {
+    toggle(canOpen) {
       if (state === 'off') {
+        if (!canOpen) {
+          return;
+        }
         // Picking a file needs a cursor, and Chrome may not open a file chooser under pointer lock.
         doc.exitPointerLock?.();
         input.click();

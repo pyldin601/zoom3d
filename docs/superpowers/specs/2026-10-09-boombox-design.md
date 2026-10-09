@@ -79,17 +79,24 @@ These numbers come from the sketch and get tuned by eye at implementation.
 
 ## 3. Behaviour (carrier)
 
-`apps/web/src/media/boombox.ts`, `createBoombox({ ctx, document, onTrack, onChange })`.
+`apps/web/src/media/boombox.ts`, `createBoombox({ ctx, container, onTrack, onChange, urls? })`;
+`container` hosts the hidden input and `<audio>`, and `urls` stands in for `URL.createObjectURL` in tests.
 
-**Trigger:** in a room, `KeyB` without repeat and not while typing in an input (as the held-item
-keys in `main.ts`). States are `off` and `playing`:
-- `off` → `B` releases pointer lock (you need a cursor to pick a file) and clicks a hidden `<input type="file" accept="audio/*">`. The keydown is the user
-  activation the picker needs. Cancelling the picker does nothing.
-- File chosen → `playing`: the file becomes an object URL on a single reused `<audio>` element
-  (`loop = false`), and `play()` is called. Then `onTrack(track)` and `onChange(true)`. The input
-  is reset (`value = ''`) so the same file can be picked again.
-- `playing` → `B`, the element's `ended` or `error` event, a rejected `play()`, or leaving the room
-  stops it: pause, drop the `src`, revoke the URL, `onTrack(null)`, `onChange(false)`.
+**Trigger:** `KeyB` without repeat or modifiers, and not while typing in an input (as the held-item
+keys in `main.ts`), calls `toggle(inRoom)`. States are `off`, `starting` and `playing`:
+- `off` → `B`, only in a room: release pointer lock (you need a cursor to pick a file) and click a
+  hidden `<input type="file" accept="audio/*">`. The keydown is the user activation the picker
+  needs. Cancelling the picker does nothing.
+- File chosen → `starting`: the file becomes an object URL on a single reused `<audio>` element
+  (`loop = false`), and `play()` is called. The input is reset (`value = ''`) so the same file can
+  be picked again.
+- `starting` → `playing` once `play()` resolves: `onTrack(track)` and `onChange(true)`. Nothing is
+  sent before, so an unplayable file is never announced.
+- `starting` or `playing` → `off`: `B` (**also outside a room**, e.g. while reconnecting: the music
+  is local and peers on open connections still hear it), the element's `ended` or `error` event, or
+  a rejected `play()`. It pauses, drops the `src` and revokes the URL; only from `playing` does it
+  call `onTrack(null)` and `onChange(false)`. A late `play()` result from a stopped attempt is
+  ignored. There is no in-app way to leave a room: closing the tab ends playback.
 
 **Graph:** created once on first use, from the `AudioContext` made in the Join click:
 
@@ -194,7 +201,7 @@ Same pattern as `held` (held items spec §4):
   - `onRemoteBoombox` → `remote.attachAudio(key, stream)` and `audio.attach(key, stream, peerId)`.
   - `drop`/`teardown` detach the `boombox:` key too.
 - `main.ts`: the `B` key handler, the boombox created with the engine's context, `onTrack` → call,
-  `onChange` → session and the own-view flag, and stopping it when leaving the room.
+  `onChange` → session and the own-view flag.
 - Renderer: `Sprite` gains `boombox: boolean` from `peer.info.boombox`; `renderSprites` draws the
   boombox and its shadow (§2.1); `renderOwnBoombox(fb, on, bob, sway)` draws your own (§2.2).
 - Dev only: `window.__game` exposes the engine's `inputLevel` for the e2e test.

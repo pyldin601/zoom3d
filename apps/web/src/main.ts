@@ -164,11 +164,12 @@ window.addEventListener('keydown', (e) => {
   if (e.code !== 'KeyB' || e.repeat || e.metaKey || e.ctrlKey || e.altKey) {
     return;
   }
-  if (!inRoom() || e.target instanceof HTMLInputElement) {
+  // Stopping works even while reconnecting: the music is local and peers may still hear it.
+  if (!boombox || e.target instanceof HTMLInputElement) {
     return;
   }
   e.preventDefault();
-  boombox?.toggle();
+  boombox.toggle(inRoom());
 });
 
 let automapVisible = false;

@@ -20,10 +20,9 @@ export function createRemoteMedia(container: HTMLElement): RemoteMedia {
     el.remove();
     elements.delete(key);
   };
-  const play = <T extends HTMLMediaElement>(key: string, tag: 'video' | 'audio', stream: MediaStream): T => {
-    let el = elements.get(key) as T | undefined;
-    if (!el) {
-      el = container.ownerDocument.createElement(tag) as unknown as T;
+  /** Creates (once) and plays the element for `key`; `el` is ready before play() runs. */
+  const play = (key: string, el: HTMLMediaElement, stream: MediaStream) => {
+    if (!elements.has(key)) {
       el.autoplay = true;
       el.muted = true;
       el.dataset.peer = key;
@@ -34,16 +33,18 @@ export function createRemoteMedia(container: HTMLElement): RemoteMedia {
       el.srcObject = stream;
     }
     el.play().catch((err) => console.warn('remote media play failed', key, err));
-    return el;
   };
+  const doc = container.ownerDocument;
   return {
     attach(peerId, stream) {
-      const el = play<HTMLVideoElement>(peerId, 'video', stream);
+      const el = (elements.get(peerId) as HTMLVideoElement | undefined) ?? doc.createElement('video');
+      // iOS reads playsinline when play() runs.
       el.playsInline = true;
+      play(peerId, el, stream);
       return el;
     },
     attachAudio(key, stream) {
-      play(key, 'audio', stream);
+      play(key, elements.get(key) ?? doc.createElement('audio'), stream);
     },
     detach,
     detachAll() {

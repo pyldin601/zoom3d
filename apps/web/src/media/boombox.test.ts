@@ -97,7 +97,7 @@ async function pickAndPlay() {
 
 test('B when off opens an audio file picker and changes nothing else', () => {
   expect([input.type, input.accept, input.hidden]).toEqual(['file', 'audio/*', true]);
-  box.toggle();
+  box.toggle(true);
   expect(input.click).toHaveBeenCalledTimes(1);
   expect(onTrack).not.toHaveBeenCalled();
   expect(onChange).not.toHaveBeenCalled();
@@ -106,7 +106,7 @@ test('B when off opens an audio file picker and changes nothing else', () => {
 
 test('B releases pointer lock before opening the picker', () => {
   // Chrome may not show a file chooser while the pointer is locked, and picking a file needs a cursor.
-  box.toggle();
+  box.toggle(true);
   expect(order).toEqual(['exitPointerLock', 'click']);
 });
 
@@ -124,7 +124,7 @@ test('picking a file plays it once and sends the track', async () => {
 test('the graph splits to the stream and to the speakers at BOOMBOX_SELF_GAIN, built once', async () => {
   expect(BOOMBOX_SELF_GAIN).toBe(0.5);
   await pickAndPlay();
-  box.toggle();
+  box.toggle(true);
   await pickAndPlay();
   const sources = ctx.byKind('element-source');
   expect(sources).toHaveLength(1);
@@ -136,7 +136,7 @@ test('the graph splits to the stream and to the speakers at BOOMBOX_SELF_GAIN, b
 });
 
 for (const [name, end] of [
-  ['B while playing stops it', () => box.toggle()],
+  ['B while playing stops it', () => box.toggle(true)],
   ['the track ending stops it', () => audio.dispatch('ended')],
   ['an error stops it', () => audio.dispatch('error')],
 ] as const) {
@@ -149,7 +149,7 @@ for (const [name, end] of [
     expect(onTrack).toHaveBeenLastCalledWith(null);
     expect(onChange).toHaveBeenLastCalledWith(false);
     expect(box.playing()).toBe(false);
-    box.toggle();
+    box.toggle(true);
     expect(input.click).toHaveBeenCalledTimes(1);
   });
 }
@@ -168,7 +168,7 @@ test('an unplayable file leaves it off', async () => {
 test('B while the file is still starting cancels it for good', async () => {
   input.files = [file];
   input.dispatch('change');
-  box.toggle();
+  box.toggle(true);
   audio.pending?.resolve();
   await flush();
   expect(onChange).not.toHaveBeenCalled();
@@ -182,4 +182,13 @@ test('a cancelled pick changes nothing', () => {
   expect(audio.play).not.toHaveBeenCalled();
   expect(onChange).not.toHaveBeenCalled();
   expect(created).toEqual([]);
+});
+
+test('outside a room B never opens the picker, but still stops the music', async () => {
+  box.toggle(false);
+  expect(input.click).not.toHaveBeenCalled();
+  await pickAndPlay();
+  box.toggle(false);
+  expect(onChange).toHaveBeenLastCalledWith(false);
+  expect(box.playing()).toBe(false);
 });
