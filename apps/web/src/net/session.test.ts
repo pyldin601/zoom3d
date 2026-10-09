@@ -322,3 +322,41 @@ test('a late joiner sees a drink already in hand', () => {
   const { session } = joinedSession([{ ...peer('a'), held: 'beer' }]);
   expect(session.peers.get('a')?.info.held).toBe('beer');
 });
+
+test('boombox is sent once open and re-sent after every welcome, including false', () => {
+  const session = createSession({
+    url: 'ws://t/ws',
+    roomId: ROOM,
+    name: 'Ada',
+    player,
+    now: Date.now,
+    WebSocketImpl: asWebSocket,
+  });
+  const ws = FakeWebSocket.latest();
+  const boombox = (sock: FakeWebSocket) => sock.sent.filter((m) => (m as { type: string }).type === 'boombox');
+  ws.open();
+  session.setBoombox(true);
+  expect(boombox(ws)).toEqual([]);
+  ws.receive(welcome());
+  expect(boombox(ws)).toEqual([{ type: 'boombox', on: true }]);
+  session.setBoombox(false);
+  expect(boombox(ws).at(-1)).toEqual({ type: 'boombox', on: false });
+  ws.serverClose(1006);
+  vi.advanceTimersByTime(500);
+  const ws2 = FakeWebSocket.latest();
+  ws2.open();
+  ws2.receive(welcome());
+  expect(boombox(ws2)).toEqual([{ type: 'boombox', on: false }]);
+});
+
+test('nothing boombox is sent if setBoombox was never called', () => {
+  const { ws } = joinedSession();
+  expect(ws.sent.filter((m) => (m as { type: string }).type === 'boombox')).toEqual([]);
+});
+
+test('peer_boombox updates the peer and ignores unknown ids', () => {
+  const { session, ws } = joinedSession([peer('a')]);
+  ws.receive({ type: 'peer_boombox', id: 'a', on: true });
+  expect(session.peers.get('a')?.info.boombox).toBe(true);
+  expect(() => ws.receive({ type: 'peer_boombox', id: 'zzz', on: true })).not.toThrow();
+});
