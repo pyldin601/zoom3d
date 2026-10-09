@@ -152,7 +152,10 @@ Validation:
 - Client → server: `drink {}`. Extra fields are dropped.
 - Server → client: `peer_drink {id}`, sent to the rest of the room.
 - The server relays a sip only if the sender holds something, and drops another `drink` from the
-  same peer within 1.4 s (`SIP_MS`), so mashing the key can't flood the room.
+  same peer within 1 s (`DRINK_GAP_MS`), so mashing the key can't flood the room.
+  - The gap is shorter than a sip (`SIP_MS`, 1.4 s) on purpose: two honest sips sent 1.4 s apart
+    can arrive a little closer together, and must not be dropped. The client itself never starts
+    a sip while one is playing.
 - Nothing is stored, so a late joiner never replays an old sip.
 - An older server ignores `drink`, and an older client ignores `peer_drink`.
 
@@ -165,7 +168,7 @@ There's no `held` field in `join`, which follows the `media` pattern:
 ## 5. Server (`apps/server`)
 
 - `Lobby.drink(conn)` relays `peer_drink` per §4 and keeps the peer's last relayed sip time
-  (`lastDrinkAt`) for the 1.4 s gap.
+  (`lastDrinkAt`) for the 1 s gap.
 
 
 - `Peer.held` starts as `null` and is included in `info()`, which feeds `welcome.peers` and

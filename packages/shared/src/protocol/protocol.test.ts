@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   AVATAR_MAX_CHARS,
   AVATAR_SIZE,
+  DRINK_GAP_MS,
   HELD_ITEMS,
   isHeldItem,
   isValidAvatar,
@@ -13,6 +14,7 @@ import {
   parseClientMessage,
   parseServerMessage,
   type ServerMessage,
+  SIP_MS,
   sanitizeName,
 } from './protocol';
 
@@ -197,6 +199,7 @@ describe('parseServerMessage', () => {
     { type: 'peer_joined', peer: { ...peer, held: 'wine' } },
     { type: 'peer_held', id: 'p1', item: 'beer' },
     { type: 'peer_held', id: 'p1', item: null },
+    { type: 'peer_drink', id: 'p1' },
     { type: 'peer_left', id: 'p1' },
     { type: 'peer_state', id: 'p1', x: 1, y: 2, angle: 3, seq: 4 },
     { type: 'correction', x: 1, y: 2, angle: 3, seq: 4 },
@@ -249,6 +252,19 @@ describe('parseServerMessage', () => {
 });
 
 describe('held items', () => {
+  test('sip constants', () => {
+    expect(SIP_MS).toBe(1400);
+    expect(DRINK_GAP_MS).toBe(1000);
+  });
+
+  test('client drink parses with extra fields dropped', () => {
+    expect(parseClientMessage(json({ type: 'drink', x: 1 }))).toEqual({ type: 'drink' });
+  });
+
+  test('peer_drink without an id is rejected', () => {
+    expect(parseServerMessage(json({ type: 'peer_drink' }))).toBeNull();
+  });
+
   test('isHeldItem accepts only the listed items', () => {
     expect(HELD_ITEMS).toEqual(['beer', 'coffee', 'wine']);
     for (const item of HELD_ITEMS) {

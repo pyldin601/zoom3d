@@ -149,7 +149,7 @@ Server → client:
 - `peer_state {id, x, y, angle, seq}`, relayed immediately
 - `peer_media {id, cam, mic}`
 - `peer_held {id, item}`
-- `peer_drink {id}`: relayed only while that peer holds something, at most once per 1.4 s
+- `peer_drink {id}`: relayed only while that peer holds something, at most once per second
 - `correction {x, y, angle, seq}`: sent only to the sender when its `state` is rejected
 - `signal {from, payload}`
 - `error {code, message}`
