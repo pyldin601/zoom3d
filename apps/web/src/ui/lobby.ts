@@ -5,6 +5,7 @@ import { makeAvatar } from '../media/avatar';
 import type { Device, DeviceProblem } from '../media/devices';
 import { initials } from '../media/faces';
 import type { LocalMediaController, MediaState } from '../media/local-media';
+import { deviceIcon } from './icons';
 import { ringWidth } from './mic-level';
 import { el, setScreen } from './screens';
 
@@ -67,26 +68,6 @@ export interface LobbyOptions {
 const AVATAR_ERRORS: Record<string, string> = {
   too_big: 'That picture is too detailed — try another',
 };
-
-const SVG = 'http://www.w3.org/2000/svg';
-
-/** A 20 px line icon; `off` adds a slash. */
-function icon(kind: 'cam' | 'mic', off: boolean): SVGSVGElement {
-  const svg = document.createElementNS(SVG, 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('aria-hidden', 'true');
-  const paths =
-    kind === 'cam' ? ['M3 7h12v10H3z', 'M15 10l6-3v10l-6-3'] : ['M9 3h6v11H9z', 'M5 11a7 7 0 0 0 14 0', 'M12 18v3'];
-  if (off) {
-    paths.push('M3 3l18 18');
-  }
-  for (const d of paths) {
-    const path = document.createElementNS(SVG, 'path');
-    path.setAttribute('d', d);
-    svg.append(path);
-  }
-  return svg;
-}
 
 interface Split {
   root: HTMLElement;
@@ -155,7 +136,7 @@ function splitButton(
       const label =
         kind === 'cam' ? (on ? 'Turn camera off' : 'Turn camera on') : on ? 'Mute microphone' : 'Unmute microphone';
       toggle.setAttribute('aria-label', label);
-      toggle.replaceChildren(icon(kind, !on));
+      toggle.replaceChildren(deviceIcon(kind, !on));
       toggle.disabled = !available;
       chevron.disabled = !available;
       root.classList.toggle('off', !on);

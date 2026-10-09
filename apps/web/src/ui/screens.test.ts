@@ -56,7 +56,10 @@ test('room bar mic/cam toggles flip aria-pressed and call handlers', () => {
   mic.click();
   expect(onMic).toHaveBeenCalledWith(false);
   expect(mic.getAttribute('aria-pressed')).toBe('false');
-  expect(mic.textContent).toBe('Mic off');
+  expect(mic.getAttribute('aria-label')).toBe('Mic off');
+  expect(mic.textContent).toBe('');
+  expect(mic.classList.contains('off')).toBe(true);
+  expect(mic.querySelectorAll('svg path')).toHaveLength(4); // the lobby's mic icon plus its slash
   mic.click();
   expect(onMic).toHaveBeenLastCalledWith(true);
 });
@@ -70,7 +73,9 @@ test('unavailable devices disable their toggle', () => {
     onCam: async () => false,
     onMic: () => true,
   });
-  expect((root.querySelector('button[data-control="cam"]') as HTMLButtonElement).disabled).toBe(true);
+  const cam = root.querySelector('button[data-control="cam"]') as HTMLButtonElement;
+  expect(cam.disabled).toBe(true);
+  expect(cam.getAttribute('aria-label')).toBe('No cam');
 });
 
 test('a cam toggle whose handler resolves false goes back to Cam off', async () => {
@@ -85,10 +90,10 @@ test('a cam toggle whose handler resolves false goes back to Cam off', async () 
   });
   const cam = root.querySelector('button[data-control="cam"]') as HTMLButtonElement;
   cam.click();
-  expect(cam.textContent).toBe('Cam on');
+  expect(cam.getAttribute('aria-label')).toBe('Cam on');
   resolve(false);
   await new Promise((r) => setTimeout(r, 0));
-  expect(cam.textContent).toBe('Cam off');
+  expect(cam.getAttribute('aria-label')).toBe('Cam off');
   expect(cam.getAttribute('aria-pressed')).toBe('false');
 });
 

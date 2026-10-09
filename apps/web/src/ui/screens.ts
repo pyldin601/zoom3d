@@ -1,4 +1,5 @@
 // DOM screens and overlays inside the 16:9 stage. User-provided text only ever goes through textContent.
+import { deviceIcon } from './icons';
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -63,17 +64,20 @@ export interface MediaControls {
 }
 
 function toggle(
+  kind: 'cam' | 'mic',
   label: string,
-  control: string,
   on: boolean,
   available: boolean,
   onChange: (on: boolean) => boolean | Promise<boolean>
 ) {
-  const button = el('button', { type: 'button', disabled: !available });
-  button.dataset.control = control;
+  const button = el('button', { type: 'button', disabled: !available, className: 'toggle' });
+  button.dataset.control = kind;
   const render = () => {
-    button.textContent = available ? `${label} ${on ? 'on' : 'off'}` : `No ${label.toLowerCase()}`;
+    // The same icons as the lobby; the state is in the accessible name.
+    button.setAttribute('aria-label', available ? `${label} ${on ? 'on' : 'off'}` : `No ${label.toLowerCase()}`);
     button.setAttribute('aria-pressed', String(on));
+    button.classList.toggle('off', !on);
+    button.replaceChildren(deviceIcon(kind, !on));
   };
   button.addEventListener('click', async () => {
     on = !on;
@@ -99,8 +103,8 @@ export function showRoomBar(root: HTMLElement, inviteUrl: string, controls?: Med
   });
   const toggles = controls
     ? [
-        toggle('Mic', 'mic', controls.mic, controls.micAvailable, controls.onMic),
-        toggle('Cam', 'cam', controls.cam, controls.camAvailable, controls.onCam),
+        toggle('mic', 'Mic', controls.mic, controls.micAvailable, controls.onMic),
+        toggle('cam', 'Cam', controls.cam, controls.camAvailable, controls.onCam),
       ]
     : [];
   slot(root, 'roombar').replaceChildren(...toggles, link, copy);
