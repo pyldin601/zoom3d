@@ -305,7 +305,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   return null;
 }
 
-function peerInfo(v: unknown): PeerInfo | null {
+/** Validates a PeerInfo from the wire or a snapshot; missing newer fields read as their defaults. */
+export function parsePeerInfo(v: unknown): PeerInfo | null {
   if (!isObj(v) || !isStr(v.id) || !isStr(v.name) || !isStr(v.color)) {
     return null;
   }
@@ -339,7 +340,7 @@ export function parseServerMessage(raw: string): ServerMessage | null {
       if (!Array.isArray(m.iceServers)) {
         return null;
       }
-      const peers = m.peers.map(peerInfo);
+      const peers = m.peers.map(parsePeerInfo);
       const iceServers = m.iceServers.map(iceServer);
       if (peers.some((p) => p === null) || iceServers.some((i) => i === null)) {
         return null;
@@ -355,7 +356,7 @@ export function parseServerMessage(raw: string): ServerMessage | null {
       };
     }
     case 'peer_joined': {
-      const peer = peerInfo(m.peer);
+      const peer = parsePeerInfo(m.peer);
       return peer && { type: 'peer_joined', peer };
     }
     case 'peer_media':
