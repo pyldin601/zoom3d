@@ -79,6 +79,8 @@ gesture.
 - **Choosing a device** while on: open the new one, swap it into the framer, then stop the old one. While
   off: only remember the choice.
 - Failure to open shows the error line and leaves the camera off.
+- In the room, your own circle at the bottom right (the self-view) follows the same rule as the lobby disc:
+  the camera while it is on, else your picture, else your initials (added 2026-10-09).
 
 ### 3.3 Microphone
 - **Off:** `track.enabled = false` (muted, track kept, so unmuting is instant and the transceiver keeps

@@ -277,7 +277,7 @@ function joinRoom(
     micAvailable: media.micAvailable,
     async onCam(on) {
       const now = await activeCall.setCam(on);
-      showSelfPreview(ui, local.stream, now);
+      showSelfPreview(ui, local.stream, { cam: now, name, avatar });
       const problem = local.state().camProblem;
       if (on && !now && problem) {
         showBanner(ui, PROBLEM_TEXT.cam[problem]);
@@ -286,7 +286,7 @@ function joinRoom(
     },
     onMic: (on) => activeCall.setMic(on),
   });
-  showSelfPreview(ui, local.stream, media.cam);
+  showSelfPreview(ui, local.stream, { cam: media.cam, name, avatar });
   if (new URLSearchParams(location.search).has('debug')) {
     toggleAudioPanel();
   }

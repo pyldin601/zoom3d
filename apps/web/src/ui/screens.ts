@@ -1,4 +1,5 @@
 // DOM screens and overlays inside the 16:9 stage. User-provided text only ever goes through textContent.
+import { initials } from '../media/faces';
 import { deviceIcon } from './icons';
 
 export function el<K extends keyof HTMLElementTagNameMap>(
@@ -130,15 +131,29 @@ export function showBanner(root: HTMLElement, text: string | null): void {
   );
 }
 
-export function showSelfPreview(root: HTMLElement, stream: MediaStream | null, visible: boolean): void {
+export interface SelfView {
+  cam: boolean;
+  name: string;
+  /** Validated picture data: URL, or null for initials. */
+  avatar: string | null;
+}
+
+/** Your own circle: the camera while it is on, else your picture or initials, as others see you. */
+export function showSelfPreview(root: HTMLElement, stream: MediaStream | null, self: SelfView): void {
   const box = slot(root, 'selfview');
   let video = box.querySelector('video');
-  if (!video) {
+  let face = box.querySelector<HTMLElement>('.face');
+  if (!video || !face) {
     video = el('video', { muted: true, autoplay: true, playsInline: true });
-    box.append(video);
+    face = el('div', { className: 'face' });
+    box.replaceChildren(video, face);
   }
   if (video.srcObject !== stream) {
     video.srcObject = stream;
   }
-  box.hidden = !visible || stream === null;
+  video.hidden = !self.cam;
+  face.hidden = self.cam;
+  // The picture is set as an attribute only; the name only ever as text.
+  face.replaceChildren(self.avatar ? el('img', { src: self.avatar, alt: '' }) : initials(self.name));
+  box.hidden = false;
 }

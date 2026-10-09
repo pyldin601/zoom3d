@@ -8,9 +8,7 @@ export function deviceIcon(kind: 'cam' | 'mic', off: boolean): SVGSVGElement {
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('aria-hidden', 'true');
   const paths =
-    kind === 'cam'
-      ? ['M3 7h12v10H3z', 'M15 10l6-3v10l-6-3']
-      : ['M9 3h6v11H9z', 'M5 11a7 7 0 0 0 14 0', 'M12 18v3'];
+    kind === 'cam' ? ['M3 7h12v10H3z', 'M15 10l6-3v10l-6-3'] : ['M9 3h6v11H9z', 'M5 11a7 7 0 0 0 14 0', 'M12 18v3'];
   if (off) {
     paths.push('M3 3l18 18');
   }

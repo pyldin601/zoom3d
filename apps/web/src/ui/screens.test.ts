@@ -108,12 +108,31 @@ test('banners show text literally and hide after 8 s', () => {
   expect(root.querySelector('.banner')).toBeNull();
 });
 
-test('self preview shows a muted mirrored video and hides when off', () => {
+test('self preview shows a muted mirrored video while the camera is on', () => {
   const stream = new MediaStream();
-  showSelfPreview(root, stream, true);
-  const video = root.querySelector('.selfview video') as HTMLVideoElement;
+  showSelfPreview(root, stream, { cam: true, name: 'Ada Lovelace', avatar: null });
+  const box = root.querySelector('.selfview') as HTMLElement;
+  const video = box.querySelector('video') as HTMLVideoElement;
+  expect(box.hidden).toBe(false);
   expect(video.muted).toBe(true);
   expect(video.srcObject).toBe(stream);
-  showSelfPreview(root, stream, false);
-  expect((root.querySelector('.selfview') as HTMLElement).hidden).toBe(true);
+  expect(video.hidden).toBe(false);
+  expect((box.querySelector('.face') as HTMLElement).hidden).toBe(true);
+});
+
+test('with the camera off the self preview shows your picture, else your initials', () => {
+  const stream = new MediaStream();
+  const PIC = 'data:image/jpeg;base64,/9j/4AAQ';
+  showSelfPreview(root, stream, { cam: false, name: 'Ada Lovelace', avatar: PIC });
+  const box = root.querySelector('.selfview') as HTMLElement;
+  const face = box.querySelector('.face') as HTMLElement;
+  expect(box.hidden).toBe(false);
+  expect((box.querySelector('video') as HTMLVideoElement).hidden).toBe(true);
+  expect(face.hidden).toBe(false);
+  expect(face.querySelector('img')?.getAttribute('src')).toBe(PIC);
+
+  showSelfPreview(root, stream, { cam: false, name: '<b>Ada</b> Lovelace', avatar: null });
+  expect(face.querySelector('img')).toBeNull();
+  expect(face.querySelector('b')).toBeNull();
+  expect(face.textContent).toBe('<L');
 });

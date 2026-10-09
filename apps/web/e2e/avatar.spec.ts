@@ -66,6 +66,8 @@ test('a picked picture replaces initials while the camera is off, and is remembe
   await expect.poll(async () => (await faceCentre(b, 'Ada'))?.live, { timeout: 15_000 }).toBe(true);
 
   await a.getByRole('button', { name: 'Cam on' }).click();
+  // Ada's own circle shows her picture too.
+  await expect(a.locator('.selfview .face img')).toHaveAttribute('src', /^data:image\/jpeg;base64,/);
   await expect.poll(async () => (await faceCentre(b, 'Ada'))?.live, { timeout: 3000 }).toBe(false);
   await expect.poll(async () => isBlue((await faceCentre(b, 'Ada'))?.rgb), { timeout: 3000 }).toBe(true);
 
