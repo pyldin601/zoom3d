@@ -3,7 +3,7 @@
 import type { HeldItem, PlayerState } from '@zoom3d/shared';
 import { FACE_SIZE } from '../media/faces';
 import { type Framebuffer, rgb } from './framebuffer';
-import { HELD_LEFT, HELD_SPRITES, HELD_TEXEL, HELD_TOP, SIP_LEFT, SIP_TOP } from './held-items';
+import { HELD_LEFT, HELD_SPRITES, HELD_TEXEL, HELD_TOP, sipLeft, sipTop } from './held-items';
 import { FOV, shade } from './walls';
 
 export const AVATAR_RADIUS = 0.35; // tiles
@@ -188,7 +188,7 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
     if (s.held && s.sip < 1) {
       // Under the item, which sits beside the disc along the camera plane, so at the same depth.
       const radius = (HELD_TEXEL * HELD_SPRITES[s.held].w * AVATAR_RADIUS) / 2;
-      const offset = heldLeft(s.sip) * AVATAR_RADIUS + radius;
+      const offset = heldLeft(s.held, s.sip) * AVATAR_RADIUS + radius;
       renderShadow(fb, p, s.x - Math.sin(p.angle) * offset, s.y + Math.cos(p.angle) * offset, depth, radius, 1 - s.sip);
     }
   }
@@ -239,8 +239,8 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
 }
 
 /** The held item's left edge and top, in disc radii, partway (`sip` 0..1) to the mouth. */
-const heldLeft = (sip: number) => HELD_LEFT + (SIP_LEFT - HELD_LEFT) * sip;
-const heldTop = (sip: number) => HELD_TOP + (SIP_TOP - HELD_TOP) * sip;
+const heldLeft = (item: HeldItem, sip: number) => HELD_LEFT + (sipLeft(item) - HELD_LEFT) * sip;
+const heldTop = (item: HeldItem, sip: number) => HELD_TOP + (sipTop(item) - HELD_TOP) * sip;
 
 /** Draws the held item beside a disc of on-screen radius r, depth-tested like the disc. */
 function renderHeld(
@@ -255,8 +255,8 @@ function renderHeld(
   const { width: w, height: h, pixels, zbuffer } = fb;
   const { w: tw, h: th, texels } = HELD_SPRITES[item];
   const t = HELD_TEXEL * r;
-  const left = screenX + heldLeft(sip) * r;
-  const top = h / 2 - (heldTop(sip) + lift * BOB_HEIGHT) * r;
+  const left = screenX + heldLeft(item, sip) * r;
+  const top = h / 2 - (heldTop(item, sip) + lift * BOB_HEIGHT) * r;
   const x0 = Math.max(0, Math.floor(left));
   const x1 = Math.min(w - 1, Math.ceil(left + tw * t) - 1);
   const y0 = Math.max(0, Math.floor(top));

@@ -1,8 +1,9 @@
 import { type PlayerState, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { FACE_SIZE } from '../media/faces';
+import { MOUTH_Y_IN_CROP } from '../media/framing';
 import { createFramebuffer, rgb } from './framebuffer';
-import { HELD_LEFT, HELD_SPRITES, HELD_TEXEL, HELD_TOP, SIP_LEFT, SIP_TOP } from './held-items';
+import { FACE_MOUTH_Y, HELD_LEFT, HELD_LIPS, HELD_SPRITES, HELD_TEXEL, HELD_TOP, sipLeft, sipTop } from './held-items';
 import {
   AVATAR_RADIUS,
   BOB_HEIGHT,
@@ -406,13 +407,29 @@ describe('held items', () => {
     expect(px(fb, ...lifted(8, 5))).toBe(tex(8, 5));
   });
 
-  test('at full sip the drink is at the mouth', () => {
-    const fb = frame();
-    renderSprites(fb, player, [{ ...beer(3.5), sip: 1 }]);
+  test("at full sip each drink's lip point is on the framed face's mouth", () => {
+    // The framed 256² face spans the disc's inner circle (1.7 r across); framing puts the mouth at MOUTH_Y_IN_CROP.
+    expect(FACE_MOUTH_Y).toBeCloseTo((MOUTH_Y_IN_CROP - 0.5) * 1.7, 9);
+    expect(HELD_LIPS).toEqual({ beer: [9.5, 2.5], coffee: [9.5, 2], wine: [3, 0.5] });
+    for (const item of ['beer', 'coffee', 'wine'] as const) {
+      const [u, v] = HELD_LIPS[item];
+      expect(sipLeft(item) + u * HELD_TEXEL).toBeCloseTo(0, 9);
+      expect(-sipTop(item) + v * HELD_TEXEL).toBeCloseTo(FACE_MOUTH_Y, 9);
+    }
+  });
+
+  test("at full sip the beer's foam is on the mouth, and no drink puts the fist there", () => {
     const r = (AVATAR_RADIUS * PROJ) / 2;
-    const t = HELD_TEXEL * r;
-    const [x, y] = [Math.floor(320 + SIP_LEFT * r + 8.5 * t), Math.floor(180 - SIP_TOP * r + 5.5 * t)];
-    expect(px(fb, x, y)).toBe(tex(8, 5));
+    const mouth = [320, Math.floor(180 + FACE_MOUTH_Y * r)] as const;
+    const hand = ['#f2c29b', '#c98d6a', '#8a5236'].map(hexToRgb);
+    for (const item of ['beer', 'coffee', 'wine'] as const) {
+      const fb = frame();
+      renderSprites(fb, player, [{ ...beer(3.5), held: item, sip: 1 }]);
+      expect(hand).not.toContain(px(fb, ...mouth));
+      if (item === 'beer') {
+        expect(px(fb, ...mouth)).toBe(tex(9, 2));
+      }
+    }
   });
 
   test('half a sip is halfway', () => {
@@ -420,8 +437,8 @@ describe('held items', () => {
     renderSprites(fb, player, [{ ...beer(3.5), sip: 0.5 }]);
     const r = (AVATAR_RADIUS * PROJ) / 2;
     const t = HELD_TEXEL * r;
-    const left = (HELD_LEFT + SIP_LEFT) / 2;
-    const top = (HELD_TOP + SIP_TOP) / 2;
+    const left = (HELD_LEFT + sipLeft('beer')) / 2;
+    const top = (HELD_TOP + sipTop('beer')) / 2;
     expect(px(fb, Math.floor(320 + left * r + 8.5 * t), Math.floor(180 - top * r + 5.5 * t))).toBe(tex(8, 5));
   });
 

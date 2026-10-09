@@ -117,8 +117,16 @@ progress: 0 at rest, 1 while held.
 
 **Others' view (variant "A"):**
 - The hand and drink move from the disc's lower right to its mouth, then back.
-- The sprite's left edge goes from +0.15 r to −0.55 r, and its top from 0.3 r to 0.05 r below
-  the horizon.
+- At the top of the sip, each drink's **lip point** sits on the mouth: beer at the middle of the
+  mug under the foam (texel 9.5, 2.5), coffee at the mug rim (9.5, 2), wine at the glass rim
+  (3, 0.5). So the rim meets the lips and the fist ends up beside the face, not on it.
+- The mouth is horizontally centred, `FACE_MOUTH_Y` = (`MOUTH_Y_IN_CROP` − 0.5) × 1.7 ≈ 0.374 r
+  below the disc centre. Face framing anchors the crop on MediaPipe's mouth keypoint and puts it at
+  `MOUTH_Y_IN_CROP` (0.72) of the framed video; the video fills the disc's inner circle, 1.7 r
+  across. The renderer derives its value from the framing constant, so the two can't drift apart. Revised 2026-10-09: the first version moved the sprite's corner to −0.55
+  r, 0.05 r, which put the fist over the mouth and the foam at the nose once faces were framed.
+- Without framing (camera off, picture, initials, framer unavailable) the mouth is only roughly
+  there; that is accepted.
 - Its floor shadow follows it sideways and fades out towards the mouth, where it would otherwise
   sit on the disc's shadow and double it.
 - A `peer_drink` that arrives while that peer's sip is still playing (bunched by the network) is
