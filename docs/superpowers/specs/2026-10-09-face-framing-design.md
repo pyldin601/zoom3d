@@ -53,7 +53,8 @@ createFraming(frameW: number, frameH: number): { update(face: Box | null, now: n
   at 1.6× into the 256² output. A far-away face is framed as close as quality allows, no closer.
 - **Clamp:** the square is shifted to lie inside the frame. It is never padded.
 - **Dead zone:** the target is not replaced while the new target's centre is within `DEAD_MOVE = 0.06`
-  × current side of the old target and its side within `DEAD_SIZE = 0.1` of the old target's side.
+  × the old target's side of the old target's centre, and its side is within `DEAD_SIZE = 0.1` of the
+  old target's side (both measured after clamping).
   This stops detector noise from wobbling the crop while the person sits still.
 - **Easing:** the current rect approaches the target with `k = 1 − exp(−dt / EASE_MS)`, where
   `EASE_MS = 300`. The easing runs on every `update()`, and it's time-based, so it doesn't depend on
@@ -79,7 +80,7 @@ loadFaceDetector(base?: string): Promise<Detector | null>
     `apps/web/public/mediapipe/`.
   - The wasm loader and binary files are copied from `node_modules/@mediapipe/tasks-vision/wasm` by a
     small Vite plugin in dev and build, so they always match the installed version. Only the SIMD
-    binary (about 10 MB) is fetched, once, and cached.
+    binary (about 13 MB) is fetched, once, and cached.
 - **Loading:** loaded lazily after Join and never awaited by the join flow. The crop stays centred until
   it resolves.
 - **Settings:** `runningMode: 'VIDEO'`, `delegate: 'GPU'`, then one retry with `'CPU'` if GPU init
@@ -92,24 +93,27 @@ DOM and WebRTC glue. It is verified manually and with Playwright (§7).
 
 ```ts
 interface Framer {
-  readonly track: MediaStreamTrack;     // canvas.captureStream(24), 256²
-  readonly rawTrack: MediaStreamTrack;  // the camera track
+  readonly track: MediaStreamTrack;          // canvas.captureStream(24), 256²
+  readonly rawTrack: MediaStreamTrack;       // the camera track
+  readonly sendTrack: MediaStreamTrack;      // what senders should carry now: track, or rawTrack while hidden
+  onSendTrackChange: (() => void) | null;    // set by the call; fired when sendTrack flips
   setEnabled(on: boolean): void;
-  dispose(): void;
 }
 createFramer(opts: {
   rawTrack: MediaStreamTrack;
-  container: HTMLElement;               // the existing #media box (visibility: hidden)
+  container: HTMLElement;                    // #local-media, a hidden box of its own
   document: Document;
   loadDetector?: () => Promise<Detector | null>;
-  onSendTrack: (track: MediaStreamTrack) => void;  // which track the senders should carry
 }): Framer
 ```
 
-- **Hidden video:** a muted, `playsInline`, playing `<video>` of the raw track sits in `#media`. It must
-  stay `visibility: hidden`, which is the frame-rate gotcha.
-- **Draw loop:** each `requestVideoFrameCallback` runs `framing.update(latestBox, now)` and then
-  `drawImage(video, rect → 256²)`. Where rVFC is missing, it polls every 42 ms instead, as `faces.ts`
+- **Hidden video:** a muted, `playsInline`, playing `<video>` of the raw track sits in `#local-media`, a
+  new box styled like `#media`. It must stay `visibility: hidden`, which is the frame-rate gotcha. It
+  doesn't go in `#media`, because remote media owns that box and e2e counts its videos.
+- **Draw loop:** each `requestVideoFrameCallback` runs one frame step: on detection frames it calls
+  `framing.update(box, now)` with the fresh result, on other frames `framing.update(null, now)`, and then
+  `drawImage(video, rect → 256²)`. The framing is built from the video's real size, and rebuilt if that
+  size changes. Frames with `videoWidth === 0` are skipped. Where rVFC is missing, it polls every 42 ms instead, as `faces.ts`
   does.
 - **Detection cadence:** at most once per `DETECT_MS = 200`, inside the draw callback, calling
   `detector.detect(video, now)`. If `detect` throws once, the detector is dropped for the session and
@@ -118,20 +122,18 @@ createFramer(opts: {
   (so the camera light goes off) and the canvas track. `setEnabled(true)` reverses it.
 - **Hidden tab:** Chrome stops rVFC in background tabs, so the canvas would freeze and peers would fall
   back to the avatar after `FACE_STALL_MS`.
-  - On `visibilitychange` to hidden, the framer calls `onSendTrack(rawTrack)`.
-  - On visible, it calls `onSendTrack(track)`.
+  - `sendTrack` is `rawTrack` while `document.visibilityState === 'hidden'`, else `track`.
+  - Each `visibilitychange` fires `onSendTrackChange`.
   - While the tab is hidden, receivers' existing `squareCrop` shows the raw 4:3 frame as today's centre
     crop.
-- **`dispose()`:** stops the raw track, the canvas track and the loop, and removes the video and the
-  listener.
 
 ## 6. Wiring
 
 - **`capture.ts`:**
   - `VIDEO_CONSTRAINTS` becomes `{ width: 640, height: 480, frameRate: 24 }`, with no aspect ratio and
     no `crop-and-scale`.
-  - `captureLocalMedia` takes an optional `frame(rawTrack) => Framer`. When a camera track exists,
-    `LocalMedia.stream` becomes `new MediaStream([framer.track, ...audioTracks])`.
+  - `CaptureEnv` takes an optional `frame(rawTrack) => Framer`. When it's given and a camera track
+    exists, `LocalMedia.stream` becomes `new MediaStream([framer.track, ...audioTracks])`.
   - `LocalMedia` gains `framer: Framer | null`.
   - With no camera, there's no framer, as today.
 - **`mesh.ts`:** `MediaTransport.setVideoTrack(track)` runs `replaceTrack(track)` on every connection's
@@ -140,9 +142,12 @@ createFramer(opts: {
   value and uses it in `attachTracks` and in the initiator transceiver.
 - **`call.ts`:**
   - `setCam(on)` also calls `local.framer?.setEnabled(on)`.
-  - The framer's `onSendTrack` goes to `mesh.setVideoTrack`. The call holds the latest choice and
-    passes it to every mesh it creates in `welcome`, right after creating it.
-- **`main.ts`:** passes `frame` into `captureLocalMedia` with `#media` as the container.
+  - Right after creating a mesh in `welcome`, the call runs `mesh.setVideoTrack(framer.sendTrack)`.
+  - It sets `framer.onSendTrackChange` to `() => mesh?.setVideoTrack(framer.sendTrack)`.
+- **`main.ts`:** passes `frame` into `captureLocalMedia` with `#local-media` as the container.
+- **`index.html`:** adds `<div id="local-media" aria-hidden="true">`, styled like `#media`.
+- **nginx:** adds `location /mediapipe/ { try_files $uri =404; }` with a one-day cache. Without it, a
+  missing file would be answered with `index.html` instead of a 404.
 
 ## 7. Testing (failing test first for logic)
 
@@ -155,7 +160,8 @@ Unit tests:
   audio, and no framer when there's no camera.
 - **`mesh.test.ts`:** `setVideoTrack` replaces the video sender on existing connections, and a later
   connection uses the chosen track (with `fake-rtc.ts`).
-- **`call.test.ts`:** `setCam` toggles the framer, and `onSendTrack` reaches the mesh.
+- **`call.test.ts`:** `setCam` toggles the framer, a new mesh starts with `framer.sendTrack`, and
+  `onSendTrackChange` reaches the mesh.
 
 Playwright:
 - The existing specs keep passing. Chrome's fake camera has no face, so this exercises the "no face"
@@ -174,5 +180,5 @@ Manual:
 - **Main-thread cost:** about 24 small `drawImage` calls a second plus about 5 detections a second (a
   few ms each with the GPU delegate). If profiling shows renderer jank, move to the worker pipeline
   (insertable streams) that §1 leaves out of scope.
-- **Download size:** about 10 MB of wasm per first visit. It is lazy and cached, and it never blocks
+- **Download size:** about 13 MB of wasm per first visit. It is lazy and cached, and it never blocks
   joining.
