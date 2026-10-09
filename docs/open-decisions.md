@@ -115,6 +115,15 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   busy), a pencil shown with the camera on (it changes nothing visible). Out of scope: speaker choice,
   switching devices in the room. Spec: [2026-10-09-lobby-design.md](superpowers/specs/2026-10-09-lobby-design.md). *Amended 2026-10-09:* saved and chosen devices are requested with `deviceId: { exact }` and retried with no `deviceId` only when the device is gone; Chrome ignored the `ideal` form and always gave the default device (spec §3.1).
 
+### D18 — Join sound
+- Whether and how the room tells you someone arrived.
+- *Resolved 2026-10-09:* a doorbell: a synthesised two-tone chime (E5 then C5, each a struck bar with a
+  fast-dying ×2.76 overtone), rung for whoever arrives: on `peer_joined`, and for the newcomer on their own `welcome`
+  when it is a fresh slot. Not for people already in the room when you join, and not for a reconnect that resumes
+  its slot. It plays straight to `ctx.destination`
+  at a fixed low volume, not through the spatial graph: it's the room's bell, not a sound from a place. Arrivals
+  less than 2 s apart ring once. No asset file and no protocol change (`apps/web/src/audio/doorbell.ts`).
+
 ### Risks (to verify, not assume)
 - **R1 — Echo cancellation vs Web Audio output.** Chrome's AEC historically did not cancel audio played via `AudioContext`. If still true, speakers echo. Verify in an early throwaway audio spike (speakers vs headphones).
   - *Verdict 2026-10-08 (provisional):* user tested Chrome on both devices with the spike and reported it "sounds good", i.e. no echo problem heard. Interpreted as outcome (a): M4 uses the `webaudio` path (graph → `AudioContext.destination`). The per-mode table was not filled in and **Firefox is untested**, so re-check Firefox (and speakers at higher volume) in M5 before relying on (a) there.

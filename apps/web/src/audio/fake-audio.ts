@@ -11,6 +11,10 @@ export class FakeParam {
     this.value = value;
     return this;
   }
+  linearRampToValueAtTime(value: number) {
+    this.value = value;
+    return this;
+  }
   get last() {
     return this.targets.at(-1);
   }
@@ -70,6 +74,23 @@ export class FakeAudioContext {
         positionX: new FakeParam(),
         positionY: new FakeParam(),
         positionZ: new FakeParam(),
+      })
+    );
+  }
+  createOscillator() {
+    return this.track(
+      Object.assign(new FakeNode('oscillator'), {
+        type: 'sine' as OscillatorType,
+        frequency: new FakeParam(440),
+        startedAt: null as number | null,
+        stoppedAt: null as number | null,
+        onended: null as (() => void) | null,
+        start(t = 0) {
+          this.startedAt = t;
+        },
+        stop(t = 0) {
+          this.stoppedAt = t;
+        },
       })
     );
   }

@@ -9,6 +9,7 @@ import {
   spawnPoint,
   stepPlayer,
 } from '@zoom3d/shared';
+import { createDoorbell, withDoorbell } from './audio/doorbell';
 import { type AudioEngine, createAudioEngine } from './audio/engine';
 import { loadAudioSettings, saveAudioSettings } from './audio/settings-store';
 import { startHiddenTicker } from './audio/ticker';
@@ -246,7 +247,7 @@ function joinRoom(
     avatar,
     player,
     now: () => performance.now(),
-    listener: call.listener,
+    listener: withDoorbell(call.listener, createDoorbell(audioCtx)),
   });
   const held = loadHeld(storage());
   ownHeld = held;
