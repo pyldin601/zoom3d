@@ -165,6 +165,13 @@ There's no `held` field in `join`, which follows the `media` pattern:
   aimed at a `SELECT`. Where a closed select commits each arrow step (Windows/Linux Chrome), it
   blurs after one step.
 - `showRoomBar` takes a separate `HeldControl { held, onHeld }`, so held items stay out of `MediaControls`.
+- **Number keys** (added 2026-10-09): in a room, `1` Beer, `2` Coffee, `3` Wine, `0` Nothing.
+  - Top-row digits and the numpad both work. Keys are matched by `e.code`, so any keyboard
+    layout behaves the same.
+  - Ignored with Cmd/Ctrl/Alt (browser shortcuts), on key repeat, and while typing in a text
+    field.
+  - They go through the same path as the picker: draw, save, send. The picker then shows the new
+    choice via the setter `showRoomBar` returns. Re-picking the current drink sends nothing.
 
 ### 6.4 Renderer (`apps/web/src/renderer/`)
 

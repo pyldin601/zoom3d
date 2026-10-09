@@ -23,3 +23,19 @@ export function saveHeld(storage: Pick<Storage, 'setItem' | 'removeItem'> | null
     // Not remembered; it is still shown for this session.
   }
 }
+
+const KEY_ITEMS: Record<string, HeldItem | null> = {
+  Digit0: null,
+  Digit1: 'beer',
+  Digit2: 'coffee',
+  Digit3: 'wine',
+  Numpad0: null,
+  Numpad1: 'beer',
+  Numpad2: 'coffee',
+  Numpad3: 'wine',
+};
+
+/** The drink a number key picks (by key position, so any layout): 1–3 a drink, 0 nothing; undefined otherwise. */
+export function heldForKey(code: string): HeldItem | null | undefined {
+  return Object.hasOwn(KEY_ITEMS, code) ? KEY_ITEMS[code] : undefined;
+}

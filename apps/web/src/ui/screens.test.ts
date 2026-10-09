@@ -252,6 +252,17 @@ test('a letter key on the focused held picker leaves it instead of picking by ty
   expect(document.activeElement).toBe(select);
 });
 
+test('the room bar returns a setter that moves the held picker without reporting a change', () => {
+  const onHeld = vi.fn();
+  const setHeld = showRoomBar(root, 'http://x', undefined, { held: null, onHeld });
+  const select = root.querySelector('select[data-control="held"]') as HTMLSelectElement;
+  setHeld('wine');
+  expect(select.value).toBe('wine');
+  setHeld(null);
+  expect(select.value).toBe('');
+  expect(onHeld).not.toHaveBeenCalled();
+});
+
 test('no held control renders no picker', () => {
   showRoomBar(root, 'http://x');
   expect(root.querySelector('select[data-control="held"]')).toBeNull();

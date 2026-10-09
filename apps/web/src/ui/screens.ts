@@ -225,7 +225,13 @@ function heldPicker({ held, onHeld }: HeldControl): HTMLSelectElement {
   return select;
 }
 
-export function showRoomBar(root: HTMLElement, inviteUrl: string, controls?: MediaControls, held?: HeldControl): void {
+/** Returns a setter that shows another held item in the picker (e.g. picked by key) without reporting it. */
+export function showRoomBar(
+  root: HTMLElement,
+  inviteUrl: string,
+  controls?: MediaControls,
+  held?: HeldControl
+): (item: HeldItem | null) => void {
   const link = el('input', { readOnly: true, value: inviteUrl, ariaLabel: 'Invite link' });
   const copy = el('button', { type: 'button', textContent: 'Copy invite link' });
   copy.addEventListener('click', () => {
@@ -242,8 +248,13 @@ export function showRoomBar(root: HTMLElement, inviteUrl: string, controls?: Med
         toggle('Cam', 'cam', controls.cam, controls.camAvailable, controls.onCam),
       ]
     : [];
-  const picker = held ? [heldPicker(held)] : [];
-  slot(root, 'roombar').replaceChildren(...toggles, ...picker, link, copy);
+  const picker = held ? heldPicker(held) : null;
+  slot(root, 'roombar').replaceChildren(...toggles, ...(picker ? [picker] : []), link, copy);
+  return (item) => {
+    if (picker) {
+      picker.value = item ?? '';
+    }
+  };
 }
 
 const BANNER_MS = 8000;
