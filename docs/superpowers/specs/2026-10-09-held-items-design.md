@@ -30,7 +30,13 @@ The sketch was agreed in chat on 2026-10-09: avatar style "A", grip "3".
   mug body sits on the far side.
 - The wine glass is held by the stem, on the same side, with the fist toward the disc.
 - With no item, nothing is drawn: there is no empty hand.
-- There's no extra floor shadow. The disc's shadow is enough.
+- The item casts its own floor shadow, in the same banded style as the disc's (added
+  2026-10-09).
+  - It sits under the item's centre: the avatar's position moved along the viewer's right by
+    `(HELD_LEFT + HELD_TEXEL·w/2) × AVATAR_RADIUS` (w = the item's texel width).
+  - Its radius is half the item's world width, `HELD_TEXEL·w·AVATAR_RADIUS / 2`: about 0.18
+    tiles for a mug and 0.1 for wine.
+  - It is drawn in the same pass as the disc shadows, so discs and items cover it.
 
 The reference art is the beer sprite below. The pixel maps are 13×10, read left to right
 starting from the side next to the disc:

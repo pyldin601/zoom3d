@@ -86,10 +86,10 @@ export function projectSprite(p: PlayerState, x: number, y: number, fbWidth: num
 }
 
 /**
- * Darkens the visible floor within SHADOW_RADIUS of (sx, sy), seen `depth` tiles ahead. Each
+ * Darkens the visible floor within `radius` of (sx, sy), seen `depth` tiles ahead. Each
  * floor pixel is cast back to the floor point it shows; pixels nearer than the column's wall only.
  */
-function renderShadow(fb: Framebuffer, p: PlayerState, sx: number, sy: number, depth: number): void {
+function renderShadow(fb: Framebuffer, p: PlayerState, sx: number, sy: number, depth: number, radius: number): void {
   const { width: w, height: h, pixels, zbuffer } = fb;
   const planeLen = Math.tan(FOV / 2);
   const proj = w / 2 / planeLen;
@@ -98,15 +98,15 @@ function renderShadow(fb: Framebuffer, p: PlayerState, sx: number, sy: number, d
   const dirY = Math.sin(p.angle);
   const planeX = -dirY * planeLen;
   const planeY = dirX * planeLen;
-  const near = Math.max(depth - SHADOW_RADIUS, MIN_DEPTH);
+  const near = Math.max(depth - radius, MIN_DEPTH);
   const floorK = EYE_HEIGHT * proj;
-  const row0 = Math.max(Math.ceil(half), Math.floor(half + floorK / (depth + SHADOW_RADIUS)));
+  const row0 = Math.max(Math.ceil(half), Math.floor(half + floorK / (depth + radius)));
   const row1 = Math.min(h - 1, Math.ceil(half + floorK / near));
   const centreX = (w / 2) * (1 + lateralOf(p, sx, sy, dirX, dirY, planeX, planeY) / depth);
-  const halfW = (SHADOW_RADIUS * proj) / near;
+  const halfW = (radius * proj) / near;
   const col0 = Math.max(0, Math.floor(centreX - halfW));
   const col1 = Math.min(w - 1, Math.ceil(centreX + halfW));
-  const r2 = SHADOW_RADIUS * SHADOW_RADIUS;
+  const r2 = radius * radius;
   for (let col = col0; col <= col1; col++) {
     const cameraX = (2 * col) / w - 1;
     const rayX = dirX + planeX * cameraX;
@@ -165,7 +165,14 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
   // Shadows lie on the floor, so every disc (drawn next) covers every shadow.
   for (const i of visible) {
     const s = sprites[i] as Sprite;
-    renderShadow(fb, p, s.x, s.y, (projections[i] as Projection).depth);
+    const depth = (projections[i] as Projection).depth;
+    renderShadow(fb, p, s.x, s.y, depth, SHADOW_RADIUS);
+    if (s.held) {
+      // Under the item, which sits beside the disc along the camera plane, so at the same depth.
+      const radius = (HELD_TEXEL * HELD_SPRITES[s.held].w * AVATAR_RADIUS) / 2;
+      const offset = HELD_LEFT * AVATAR_RADIUS + radius;
+      renderShadow(fb, p, s.x - Math.sin(p.angle) * offset, s.y + Math.cos(p.angle) * offset, depth, radius);
+    }
   }
 
   const half = h / 2;
