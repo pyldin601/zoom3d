@@ -41,7 +41,7 @@ starting from the side next to the disc:
 ...oooofFffFf     g glass / handle
 ...osssobbbbg     s skin      l finger crease    o hand outline
 .ossssgbbbbbg
-oolllsgbbbbBg
+oollllgbbbbBg
 oossssgbbbbBg
 .ooooogbbbbBg
 ......gbbbbbg
