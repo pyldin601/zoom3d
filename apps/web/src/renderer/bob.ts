@@ -1,8 +1,8 @@
 // Walking bob, driven by distance walked so it follows real speed and stops when the walker stops.
 // One tracker per moving thing (the local player, each peer), updated every frame; no allocations.
 
-/** Tiles walked per step: the lift goes 0 → 1 → 0 over one stride. */
-export const BOB_STRIDE = 0.6;
+/** Tiles walked per step: the lift goes 0 → 1 → 0 over one stride (0.8 s at full walking speed). */
+export const BOB_STRIDE = 2.4;
 /** The drink trails the avatar by this much phase (radians), so it swings behind the step. */
 const ITEM_LAG = 0.9;
 /** Seconds for the bob to settle after stopping. */

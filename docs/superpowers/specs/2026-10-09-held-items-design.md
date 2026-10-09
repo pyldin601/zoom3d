@@ -84,7 +84,8 @@ centre and the drink on the outside. It is the in-game sprite mirrored, built on
 ### 2.2 Walking bob
 
 A small tracker per walker (`apps/web/src/renderer/bob.ts`) turns distance walked into a step
-phase: one step per 0.6 tiles, so the bob follows real speed and needs no protocol change. Remote
+phase: one step per 2.4 tiles (0.8 s at full walking speed; was 0.6 tiles, slowed to a quarter
+on 2026-10-09 because it felt hectic), so the bob follows real speed and needs no protocol change. Remote
 walkers use their interpolated positions.
 
 - **Avatars:** the disc rises up to 0.1 r at the top of each step. Its floor shadow stays put.

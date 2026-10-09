@@ -1,3 +1,4 @@
+import { MOVE_SPEED } from '@zoom3d/shared';
 import { expect, test } from 'vitest';
 import { BOB_STRIDE, createBob } from './bob';
 
@@ -71,4 +72,21 @@ test('sway swings to one side and back to the other over a stride', () => {
   expect(bob.sway).toBeGreaterThan(0.9);
   walk(bob, x, BOB_STRIDE);
   expect(bob.sway).toBeLessThan(-0.9);
+});
+
+test('at full walking speed a step takes 0.8 s: top of the step at 0.4 s, down again at 0.8 s', () => {
+  const bob = createBob();
+  bob.update(0, 0, 1 / 60);
+  const perFrame = MOVE_SPEED / 60;
+  let x = 0;
+  for (let i = 0; i < 24; i++) {
+    x += perFrame;
+    bob.update(x, 0, 1 / 60);
+  }
+  expect(bob.lift).toBeGreaterThan(0.95);
+  for (let i = 0; i < 24; i++) {
+    x += perFrame;
+    bob.update(x, 0, 1 / 60);
+  }
+  expect(bob.lift).toBeLessThan(0.1);
 });
