@@ -2,8 +2,8 @@
 import type { PeerInfo } from '@zoom3d/shared';
 import type { AudioEngine } from '../audio/engine';
 import type { Session, SessionListener } from '../net/session';
-import type { LocalMedia } from './capture';
 import type { createFace as CreateFace, FaceSource } from './faces';
+import type { LocalMediaController } from './local-media';
 import type { createMesh as CreateMesh, MediaTransport } from './mesh';
 import type { RemoteMedia } from './remote-media';
 
@@ -16,15 +16,17 @@ export interface Call {
   stats(peerId: string): Promise<{ bytesReceived: number; boomboxBytesReceived: number } | null>;
   /** Our boombox music, or null when it is off; kept across a recreated mesh. */
   setBoomboxTrack(track: MediaStreamTrack | null): void;
-  setCam(on: boolean): void;
-  setMic(on: boolean): void;
+  /** Stops or restarts the camera; resolves to whether it is on now. */
+  setCam(on: boolean): Promise<boolean>;
+  /** Mutes or unmutes; returns whether the mic is on now. */
+  setMic(on: boolean): boolean;
   localState(): { cam: boolean; mic: boolean };
   update(now: number): void;
   dispose(): void;
 }
 
 export interface CallOptions {
-  local: LocalMedia;
+  local: LocalMediaController;
   remote: RemoteMedia;
   /** Spatial voice engine; remote audio plays only through it. */
   audio: Pick<AudioEngine, 'attach' | 'detach'> | null;
@@ -39,14 +41,13 @@ export const boomboxKey = (peerId: string) => `boombox:${peerId}`;
 export function createCall(opts: CallOptions): Call {
   const { local, remote } = opts;
   const faces = new Map<string, FaceSource>();
-  const state = { cam: local.cam, mic: local.mic };
+  const state = { cam: local.state().cam, mic: local.state().mic };
   let session: Session | null = null;
   let mesh: MediaTransport | null = null;
   let boomboxTrack: MediaStreamTrack | null = null;
   const { framer } = local;
-  if (framer) {
-    framer.onSendTrackChange = () => mesh?.setVideoTrack(framer.sendTrack);
-  }
+  // The canvas track is always sent, so camera on/off never renegotiates (lobby spec §4.3).
+  framer.onSendTrackChange = () => mesh?.setVideoTrack(framer.sendTrack);
 
   const ensureFace = (peer: PeerInfo) => {
     let face = faces.get(peer.id);
@@ -88,11 +89,16 @@ export function createCall(opts: CallOptions): Call {
 
   const publish = () => session?.setMedia(state.cam, state.mic);
 
-  const setEnabled = (tracks: MediaStreamTrack[] | undefined, on: boolean) => {
-    for (const t of tracks ?? []) {
-      t.enabled = on;
+  /** Picks up the controller's state, publishing only when it changed (a camera restart, an unplugged mic). */
+  const sync = () => {
+    const { cam, mic } = local.state();
+    if (cam !== state.cam || mic !== state.mic) {
+      state.cam = cam;
+      state.mic = mic;
+      publish();
     }
   };
+  const unsubscribe = local.subscribe(sync);
 
   const listener: SessionListener = {
     welcome(selfId, iceServers, identityChanged) {
@@ -122,9 +128,7 @@ export function createCall(opts: CallOptions): Call {
         });
         mesh.setBoomboxTrack(boomboxTrack);
         // The tab may already be hidden, in which case peers get the raw camera track.
-        if (local.framer) {
-          mesh.setVideoTrack(local.framer.sendTrack);
-        }
+        mesh.setVideoTrack(framer.sendTrack);
       }
       const present = session?.peers ?? new Map();
       for (const id of [...faces.keys()]) {
@@ -163,16 +167,15 @@ export function createCall(opts: CallOptions): Call {
       boomboxTrack = track;
       mesh?.setBoomboxTrack(track);
     },
-    setCam(on) {
-      state.cam = on && local.cam;
-      setEnabled(local.stream?.getVideoTracks(), state.cam);
-      local.framer?.setEnabled(state.cam);
-      publish();
+    async setCam(on) {
+      await local.setCam(on);
+      sync();
+      return state.cam;
     },
     setMic(on) {
-      state.mic = on && local.mic;
-      setEnabled(local.stream?.getAudioTracks(), state.mic);
-      publish();
+      local.setMic(on);
+      sync();
+      return state.mic;
     },
     localState: () => ({ ...state }),
     update(now) {
@@ -180,6 +183,9 @@ export function createCall(opts: CallOptions): Call {
         face.update(now);
       }
     },
-    dispose: teardown,
+    dispose() {
+      unsubscribe();
+      teardown();
+    },
   };
 }

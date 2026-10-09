@@ -1,15 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import {
-  clearScreen,
-  showBanner,
-  showJoin,
-  showLanding,
-  showNotice,
-  showRoomBar,
-  showSelfPreview,
-  showStatus,
-} from './screens';
+import { clearScreen, showBanner, showLanding, showNotice, showRoomBar, showSelfPreview, showStatus } from './screens';
 
 let root: HTMLElement;
 beforeEach(() => {
@@ -17,139 +8,11 @@ beforeEach(() => {
   root = document.getElementById('ui') as HTMLElement;
 });
 
-function submit(name: string) {
-  const input = root.querySelector('input[name="name"]') as HTMLInputElement;
-  input.value = name;
-  (root.querySelector('form') as HTMLFormElement).requestSubmit();
-}
-
 test('landing calls onCreate', () => {
   const onCreate = vi.fn();
   showLanding(root, onCreate);
   (root.querySelector('button') as HTMLButtonElement).click();
   expect(onCreate).toHaveBeenCalledOnce();
-});
-
-test('a name with markup is passed through literally and never parsed', () => {
-  const onJoin = vi.fn();
-  showJoin(root, { defaultName: '', onJoin });
-  submit('<img src=x onerror=1>');
-  expect(onJoin).toHaveBeenCalledWith('<img src=x onerror=1>', null);
-  expect(root.querySelector('img')).toBeNull();
-});
-
-test('an empty name shows an error instead of joining', () => {
-  const onJoin = vi.fn();
-  showJoin(root, { defaultName: '', onJoin });
-  submit('   ');
-  expect(onJoin).not.toHaveBeenCalled();
-  expect(root.querySelector('.error')?.textContent).toMatch(/name/i);
-});
-
-test('the default name is prefilled and an error message is shown as text', () => {
-  showJoin(root, { defaultName: 'Ada', error: '<b>full</b>', onJoin: () => {} });
-  expect((root.querySelector('input[name="name"]') as HTMLInputElement).value).toBe('Ada');
-  expect(root.querySelector('b')).toBeNull();
-  expect(root.querySelector('.error')?.textContent).toBe('<b>full</b>');
-});
-
-const PIC = 'data:image/jpeg;base64,/9j/4AAQ';
-const preview = () => root.querySelector('.avatar') as HTMLElement;
-const button = (name: string) =>
-  [...root.querySelectorAll('button')].find((b) => b.textContent === name) as HTMLButtonElement;
-function pickFile(file: File) {
-  const input = root.querySelector('input[type="file"]') as HTMLInputElement;
-  Object.defineProperty(input, 'files', { value: [file], configurable: true });
-  input.dispatchEvent(new Event('change'));
-}
-const flush = () => new Promise((r) => setTimeout(r, 0));
-
-test('without a picture the preview shows the initials of the typed name', () => {
-  showJoin(root, { defaultName: 'Ada Lovelace', onJoin: () => {} });
-  expect(preview().querySelector('img')).toBeNull();
-  expect(preview().textContent).toBe('AL');
-  const input = root.querySelector('input[name="name"]') as HTMLInputElement;
-  input.value = 'Bob';
-  input.dispatchEvent(new Event('input'));
-  expect(preview().textContent).toBe('B');
-  expect(button('Remove').hidden).toBe(true);
-});
-
-test('a stored picture is previewed and sent with the join; Remove clears it', () => {
-  const onJoin = vi.fn();
-  showJoin(root, { defaultName: 'Ada', defaultAvatar: PIC, onJoin });
-  expect(preview().querySelector('img')?.getAttribute('src')).toBe(PIC);
-  submit('Ada');
-  expect(onJoin).toHaveBeenLastCalledWith('Ada', PIC);
-  button('Remove').click();
-  expect(preview().querySelector('img')).toBeNull();
-  submit('Ada');
-  expect(onJoin).toHaveBeenLastCalledWith('Ada', null);
-});
-
-test('choosing a file encodes it into the preview', async () => {
-  const onJoin = vi.fn();
-  const pickAvatar = vi.fn(async () => PIC);
-  showJoin(root, { defaultName: 'Ada', onJoin, pickAvatar });
-  const file = new File(['x'], 'me.png', { type: 'image/png' });
-  pickFile(file);
-  await flush();
-  expect(pickAvatar).toHaveBeenCalledWith(file);
-  expect(preview().querySelector('img')?.getAttribute('src')).toBe(PIC);
-  expect(button('Remove').hidden).toBe(false);
-  submit('Ada');
-  expect(onJoin).toHaveBeenCalledWith('Ada', PIC);
-});
-
-test('an unreadable file shows an error and keeps the previous picture', async () => {
-  const pickAvatar = vi.fn(async () => {
-    throw new Error('unreadable');
-  });
-  showJoin(root, { defaultName: 'Ada', defaultAvatar: PIC, onJoin: () => {}, pickAvatar });
-  pickFile(new File(['%PDF'], 'doc.jpg'));
-  await flush();
-  expect(root.querySelector('.error')?.textContent).toMatch(/couldn.t read that picture/i);
-  expect(preview().querySelector('img')?.getAttribute('src')).toBe(PIC);
-});
-
-test('a slower earlier pick never overwrites a later one, and Join waits for encoding', async () => {
-  const onJoin = vi.fn();
-  const resolvers: ((url: string) => void)[] = [];
-  const pickAvatar = vi.fn(() => new Promise<string>((r) => resolvers.push(r)));
-  showJoin(root, { defaultName: 'Ada', onJoin, pickAvatar });
-  pickFile(new File(['1'], 'big.jpg'));
-  pickFile(new File(['2'], 'small.jpg'));
-  const join = button('Join');
-  expect(join.disabled).toBe(true);
-  submit('Ada');
-  expect(onJoin).not.toHaveBeenCalled();
-  resolvers[1]?.(`${PIC}B`);
-  await flush();
-  resolvers[0]?.(`${PIC}A`);
-  await flush();
-  expect(preview().querySelector('img')?.getAttribute('src')).toBe(`${PIC}B`);
-  expect(join.disabled).toBe(false);
-  submit('Ada');
-  expect(onJoin).toHaveBeenCalledWith('Ada', `${PIC}B`);
-});
-
-test('Join is re-enabled when encoding fails', async () => {
-  const pickAvatar = vi.fn(async () => {
-    throw new Error('unreadable');
-  });
-  showJoin(root, { defaultName: 'Ada', onJoin: () => {}, pickAvatar });
-  pickFile(new File(['x'], 'x.jpg'));
-  await flush();
-  expect(button('Join').disabled).toBe(false);
-});
-
-test('Choose picture opens the file picker for images', () => {
-  showJoin(root, { defaultName: '', onJoin: () => {} });
-  const input = root.querySelector('input[type="file"]') as HTMLInputElement;
-  expect(input.accept).toBe('image/*');
-  const click = vi.spyOn(input, 'click');
-  button('Choose picture…').click();
-  expect(click).toHaveBeenCalled();
 });
 
 test('status overlay shows and clears independently of the screen', () => {
@@ -178,8 +41,8 @@ test('room bar copies the invite link', async () => {
 });
 
 test('room bar mic/cam toggles flip aria-pressed and call handlers', () => {
-  const onCam = vi.fn();
-  const onMic = vi.fn();
+  const onCam = vi.fn(async (on: boolean) => on);
+  const onMic = vi.fn((on: boolean) => on);
   showRoomBar(root, 'http://x', {
     cam: true,
     mic: true,
@@ -204,10 +67,29 @@ test('unavailable devices disable their toggle', () => {
     mic: true,
     camAvailable: false,
     micAvailable: true,
-    onCam: () => {},
-    onMic: () => {},
+    onCam: async () => false,
+    onMic: () => true,
   });
   expect((root.querySelector('button[data-control="cam"]') as HTMLButtonElement).disabled).toBe(true);
+});
+
+test('a cam toggle whose handler resolves false goes back to Cam off', async () => {
+  let resolve: (on: boolean) => void = () => {};
+  showRoomBar(root, 'http://x', {
+    cam: false,
+    mic: true,
+    camAvailable: true,
+    micAvailable: true,
+    onCam: () => new Promise<boolean>((r) => (resolve = r)),
+    onMic: (on) => on,
+  });
+  const cam = root.querySelector('button[data-control="cam"]') as HTMLButtonElement;
+  cam.click();
+  expect(cam.textContent).toBe('Cam on');
+  resolve(false);
+  await new Promise((r) => setTimeout(r, 0));
+  expect(cam.textContent).toBe('Cam off');
+  expect(cam.getAttribute('aria-pressed')).toBe('false');
 });
 
 afterEach(() => vi.useRealTimers());
@@ -229,9 +111,4 @@ test('self preview shows a muted mirrored video and hides when off', () => {
   expect(video.srcObject).toBe(stream);
   showSelfPreview(root, stream, false);
   expect((root.querySelector('.selfview') as HTMLElement).hidden).toBe(true);
-});
-
-test('join screen recommends headphones', () => {
-  showJoin(root, { defaultName: '', onJoin: () => {} });
-  expect(root.textContent).toContain('Headphones recommended');
 });

@@ -62,7 +62,6 @@ export interface Framer {
   onSendTrackChange: (() => void) | null;
   /** Swaps the camera behind the canvas (lobby spec §4.2); null stops drawing. */
   setCamera(raw: MediaStreamTrack | null): void;
-  setEnabled(on: boolean): void;
 }
 
 export interface FramerOptions {
@@ -97,22 +96,15 @@ export function createFramer(opts: FramerOptions): Framer {
   const frameStep = createFrameStep((v, r) => {
     ctx.drawImage(v, r.x, r.y, r.size, r.size, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
   });
-  let enabled = true;
 
   if (video.requestVideoFrameCallback) {
     const onFrame = (now: number) => {
-      if (enabled) {
-        frameStep.step(video, now);
-      }
+      frameStep.step(video, now);
       video.requestVideoFrameCallback?.(onFrame);
     };
     video.requestVideoFrameCallback(onFrame);
   } else {
-    setInterval(() => {
-      if (enabled) {
-        frameStep.step(video, performance.now());
-      }
-    }, POLL_MS);
+    setInterval(() => frameStep.step(video, performance.now()), POLL_MS);
   }
 
   void (opts.loadDetector ?? loadFaceDetector)().then((d) => frameStep.setDetector(d));
@@ -132,15 +124,8 @@ export function createFramer(opts: FramerOptions): Framer {
       if (raw) {
         void video.play().catch(() => {});
       }
-      track.enabled = raw !== null && enabled;
+      track.enabled = raw !== null;
       framer.onSendTrackChange?.();
-    },
-    setEnabled(on) {
-      enabled = on;
-      if (camera) {
-        camera.enabled = on;
-      }
-      track.enabled = on && camera !== null;
     },
   };
   doc.addEventListener('visibilitychange', () => framer.onSendTrackChange?.());

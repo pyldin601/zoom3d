@@ -3,8 +3,8 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import type { AudioEngine } from '../audio/engine';
 import type { RemotePeer, Session } from '../net/session';
 import { createCall } from './call';
-import type { LocalMedia } from './capture';
 import type { FaceSource } from './faces';
+import type { LocalMediaController } from './local-media';
 import type { MeshOptions } from './mesh';
 import type { RemoteMedia } from './remote-media';
 
@@ -41,9 +41,53 @@ let remote: {
   detach: ReturnType<typeof vi.fn>;
   detachAll: ReturnType<typeof vi.fn>;
 };
-let videoTrack: { enabled: boolean };
 let audio: { attach: ReturnType<typeof vi.fn>; detach: ReturnType<typeof vi.fn> };
-let audioTrack: { enabled: boolean };
+
+function fakeFramer(sendTrack: unknown) {
+  return { track: { id: 'canvas' }, sendTrack, onSendTrackChange: null as (() => void) | null };
+}
+
+/** A controller whose camera comes up only if `camWorks`. */
+function fakeLocal(init: { cam?: boolean; mic?: boolean; camWorks?: boolean } = {}) {
+  const state = { cam: init.cam ?? true, mic: init.mic ?? true };
+  const subscribers = new Set<() => void>();
+  const notify = () => {
+    for (const fn of subscribers) {
+      fn();
+    }
+  };
+  return {
+    state,
+    framer: fakeFramer({ id: 'canvas' }),
+    stream: { id: 'local' } as unknown as MediaStream,
+    notify,
+    controller: {
+      state: () => ({
+        ...state,
+        camAvailable: true,
+        micAvailable: true,
+        camProblem: null,
+        micProblem: null,
+        pending: false,
+      }),
+      setCam: vi.fn(async (on: boolean) => {
+        state.cam = on && (init.camWorks ?? true);
+        notify();
+      }),
+      setMic: vi.fn((on: boolean) => {
+        state.mic = on;
+        notify();
+      }),
+      subscribe(fn: () => void) {
+        subscribers.add(fn);
+        return () => {
+          subscribers.delete(fn);
+        };
+      },
+    },
+  };
+}
+let local: ReturnType<typeof fakeLocal>;
 
 function setPeers(...peers: PeerInfo[]) {
   session.peers.clear();
@@ -52,19 +96,10 @@ function setPeers(...peers: PeerInfo[]) {
   }
 }
 
-function makeCall(local?: Partial<LocalMedia>) {
+function makeCall(init: Parameters<typeof fakeLocal>[0] = {}) {
+  local = fakeLocal(init);
   const call = createCall({
-    local: {
-      stream: {
-        getVideoTracks: () => [videoTrack],
-        getAudioTracks: () => [audioTrack],
-      } as unknown as MediaStream,
-      cam: true,
-      mic: true,
-      problem: null,
-      framer: null,
-      ...local,
-    },
+    local: { ...local.controller, framer: local.framer, stream: local.stream } as unknown as LocalMediaController,
     remote: remote as unknown as RemoteMedia,
     audio: audio as unknown as Pick<AudioEngine, 'attach' | 'detach'>,
     document: {} as Document,
@@ -104,8 +139,6 @@ beforeEach(() => {
   meshes = [];
   faces = new Map();
   faceAvatars = new Map();
-  videoTrack = { enabled: true };
-  audioTrack = { enabled: true };
   remote = {
     attach: vi.fn(() => ({ id: 'video-el' })),
     attachAudio: vi.fn(),
@@ -208,20 +241,33 @@ test('remote media state toggles the face', () => {
   expect(faces.get('b')?.setCam).toHaveBeenLastCalledWith(false);
 });
 
-test('local toggles flip tracks and publish media state', () => {
+test('local toggles go through the controller and publish media state', async () => {
   const call = makeCall();
-  call.setMic(false);
-  expect(audioTrack.enabled).toBe(false);
+  expect(call.setMic(false)).toBe(false);
+  expect(local.controller.setMic).toHaveBeenCalledWith(false);
   expect(session.setMedia).toHaveBeenLastCalledWith(true, false);
-  call.setCam(false);
-  expect(videoTrack.enabled).toBe(false);
+  await expect(call.setCam(false)).resolves.toBe(false);
+  expect(local.controller.setCam).toHaveBeenCalledWith(false);
   expect(call.localState()).toEqual({ cam: false, mic: false });
+  expect(session.setMedia).toHaveBeenLastCalledWith(false, false);
 });
 
-test('toggles cannot turn on media that was never captured', () => {
-  const call = makeCall({ cam: false });
-  call.setCam(true);
+test("setCam resolves to the controller's state and publishes it", async () => {
+  const call = makeCall({ cam: false, camWorks: false });
+  await expect(call.setCam(true)).resolves.toBe(false);
   expect(call.localState().cam).toBe(false);
+  expect(session.setMedia).toHaveBeenLastCalledWith(false, true);
+});
+
+test("media is republished when the controller's camera comes up after joining", () => {
+  makeCall({ cam: false });
+  expect(session.setMedia).toHaveBeenLastCalledWith(false, true);
+  local.state.cam = true;
+  local.notify();
+  expect(session.setMedia).toHaveBeenLastCalledWith(true, true);
+  const calls = (session.setMedia as ReturnType<typeof vi.fn>).mock.calls.length;
+  local.notify();
+  expect((session.setMedia as ReturnType<typeof vi.fn>).mock.calls.length).toBe(calls);
 });
 
 test('dispose closes the mesh and removes elements and faces', () => {
@@ -253,39 +299,19 @@ test('a new identity detaches every voice', () => {
   expect(audio.detach).toHaveBeenCalledWith('a');
 });
 
-function fakeFramer(sendTrack: unknown) {
-  return { sendTrack, setEnabled: vi.fn(), onSendTrackChange: null as (() => void) | null };
-}
-
 test("a new mesh starts with the framer's send track", () => {
-  const framer = fakeFramer({ id: 'raw' });
-  const call = makeCall({ framer: framer as never });
+  const call = makeCall();
   call.listener.welcome?.('me', ICE, true);
-  expect(meshes[0]?.setVideoTrack).toHaveBeenCalledWith({ id: 'raw' });
+  expect(meshes[0]?.setVideoTrack).toHaveBeenCalledWith({ id: 'canvas' });
+  expect(meshes[0]?.opts.localStream).toBe(local.stream);
 });
 
 test('a send-track change reaches the current mesh', () => {
-  const framer = fakeFramer({ id: 'framed' });
-  const call = makeCall({ framer: framer as never });
-  call.listener.welcome?.('me', ICE, true);
-  framer.sendTrack = { id: 'raw' };
-  framer.onSendTrackChange?.();
-  expect(meshes[0]?.setVideoTrack).toHaveBeenLastCalledWith({ id: 'raw' });
-});
-
-test('turning the camera off disables the framer', () => {
-  const framer = fakeFramer({ id: 'framed' });
-  const call = makeCall({ framer: framer as never });
-  call.setCam(false);
-  expect(framer.setEnabled).toHaveBeenLastCalledWith(false);
-  call.setCam(true);
-  expect(framer.setEnabled).toHaveBeenLastCalledWith(true);
-});
-
-test('without a framer the mesh keeps the stream track', () => {
   const call = makeCall();
   call.listener.welcome?.('me', ICE, true);
-  expect(meshes[0]?.setVideoTrack).not.toHaveBeenCalled();
+  local.framer.sendTrack = { id: 'raw' };
+  local.framer.onSendTrackChange?.();
+  expect(meshes[0]?.setVideoTrack).toHaveBeenLastCalledWith({ id: 'raw' });
 });
 
 test('a boombox stream plays through the engine at its owner', () => {

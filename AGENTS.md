@@ -90,6 +90,10 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
 - Face framing: the sent video is a canvas track drawn on `requestVideoFrameCallback`, which stops in hidden
   tabs. `framer.sendTrack` flips to the raw camera track while hidden and the call pushes it to the mesh;
   don't remove that swap, or peers freeze on tab switch.
+- Camera off stops the camera, but the framer's canvas track is always sent (lobby spec §4.3). Don't send the raw
+  camera directly or drop the canvas track when the camera is off: the video m-line would go recvonly, and turning
+  the camera on would need a renegotiation. `LocalMediaController` (`media/local-media.ts`) owns every local track
+  from the lobby onward; the room never calls `getUserMedia` itself.
 - Mesh m-line order is fixed: video, mic, boombox (`BOOMBOX_INDEX = 2`). The boombox transceiver is added after
   the mic's `addTrack` (which would otherwise take it) and is only ever swapped with `replaceTrack`; don't add
   transceivers before it or renegotiate to toggle it. Its 128 kbps cap must be set again after the answer:
