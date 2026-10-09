@@ -6,7 +6,7 @@ const det = (originX: number, originY: number, width: number, height: number) =>
 });
 
 test('largestBox picks the biggest face and maps it to a Box', () => {
-  expect(largestBox([det(0, 0, 20, 20), det(100, 50, 80, 90), det(300, 0, 40, 40)])).toEqual({
+  expect(largestBox([det(0, 0, 20, 20), det(100, 50, 80, 90), det(300, 0, 40, 40)], 640, 480)).toEqual({
     x: 100,
     y: 50,
     w: 80,
@@ -14,9 +14,18 @@ test('largestBox picks the biggest face and maps it to a Box', () => {
   });
 });
 
+test('largestBox keeps the mouth keypoint (index 3), converted to source pixels', () => {
+  const kp = (x: number, y: number) => ({ x, y });
+  const withKeypoints = {
+    ...det(100, 50, 80, 90),
+    keypoints: [kp(0.1, 0.1), kp(0.2, 0.1), kp(0.15, 0.2), kp(0.5, 0.25), kp(0, 0.1), kp(0.3, 0.1)],
+  };
+  expect(largestBox([withKeypoints], 640, 480)).toEqual({ x: 100, y: 50, w: 80, h: 90, mouth: { x: 320, y: 120 } });
+});
+
 test('largestBox is null with no usable detections', () => {
-  expect(largestBox([])).toBeNull();
-  expect(largestBox([{}])).toBeNull();
+  expect(largestBox([], 640, 480)).toBeNull();
+  expect(largestBox([{}], 640, 480)).toBeNull();
 });
 
 test('a failed load resolves null with one warning', async () => {
@@ -44,5 +53,5 @@ test('GPU init failure retries once on CPU', async () => {
     }) as never;
   const d = await loadFaceDetector({ load });
   expect(delegates).toEqual(['GPU', 'CPU']);
-  expect(d?.detect({} as HTMLVideoElement, 0)).toEqual({ x: 1, y: 2, w: 3, h: 4 });
+  expect(d?.detect({ videoWidth: 640, videoHeight: 480 } as HTMLVideoElement, 0)).toEqual({ x: 1, y: 2, w: 3, h: 4 });
 });
