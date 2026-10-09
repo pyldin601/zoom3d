@@ -329,3 +329,52 @@ describe('held items', () => {
     }
   });
 });
+
+describe('held item shadows', () => {
+  const floorRow = (depth: number) => Math.floor(180 + (0.5 * PROJ) / depth);
+  const holding = (held: 'beer' | 'wine' | null) => ({ x: 3.5, y: 4.5, color: RED, face: null, speaking: 0, held });
+  /** Screen column under the held item's centre for a sprite 2 tiles straight ahead. */
+  const itemCol = (item: 'beer' | 'wine') => {
+    const offset = (HELD_LEFT + (HELD_TEXEL * HELD_SPRITES[item].w) / 2) * AVATAR_RADIUS;
+    return Math.floor(320 + (PROJ * offset) / 2);
+  };
+  /** Darkened floor pixels in row `row` between columns [from, to). */
+  const darkened = (fb: ReturnType<typeof frame>, row: number, from: number, to: number) => {
+    let n = 0;
+    for (let x = from; x < to; x++) {
+      if (px(fb, x, row) !== FLOOR) {
+        n++;
+      }
+    }
+    return n;
+  };
+
+  test('the floor under a held item is darkened', () => {
+    const fb = frame();
+    renderSprites(fb, player, [holding('beer')]);
+    const c = px(fb, itemCol('beer'), floorRow(2)) as number;
+    expect(c).not.toBe(FLOOR);
+    expect(c & 0xff).toBeLessThan(FLOOR & 0xff);
+  });
+
+  test('no item, no extra shadow', () => {
+    const fb = frame();
+    renderSprites(fb, player, [holding(null)]);
+    expect(px(fb, itemCol('beer'), floorRow(2))).toBe(FLOOR);
+  });
+
+  test("an item's shadow is smaller than the avatar's, and follows the item's width", () => {
+    const row = floorRow(2);
+    const beer = frame();
+    renderSprites(beer, player, [holding('beer')]);
+    const avatar = darkened(beer, row, 200, 400);
+    const beerShadow = darkened(beer, row, 400, 640);
+    const wine = frame();
+    renderSprites(wine, player, [holding('wine')]);
+    const wineShadow = darkened(wine, row, 400, 640);
+    expect(beerShadow).toBeGreaterThan(0);
+    expect(beerShadow).toBeLessThan(avatar);
+    expect(wineShadow).toBeGreaterThan(0);
+    expect(wineShadow).toBeLessThan(beerShadow);
+  });
+});
