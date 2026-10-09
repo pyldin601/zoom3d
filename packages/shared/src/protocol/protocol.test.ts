@@ -175,6 +175,7 @@ const peer: PeerInfo = {
   mic: false,
   avatar: null,
   held: null,
+  boombox: false,
 };
 
 describe('parseServerMessage', () => {
@@ -374,5 +375,38 @@ describe('media and signal messages', () => {
     expect(parseServerMessage(json({ ...base, iceServers: [{ urls: 'stun:x' }] }))).toBeNull();
     const noCam = { id: 'a', name: 'A', color: '#fff', x: 1, y: 1, angle: 0, mic: true };
     expect(parseServerMessage(json({ ...base, peers: [noCam] }))).toBeNull();
+  });
+});
+
+describe('boombox', () => {
+  test('client boombox parses strictly', () => {
+    expect(parseClientMessage(json({ type: 'boombox', on: true }))).toEqual({ type: 'boombox', on: true });
+    expect(parseClientMessage(json({ type: 'boombox', on: false, x: 1 }))).toEqual({ type: 'boombox', on: false });
+    for (const bad of [{ type: 'boombox' }, { type: 'boombox', on: 1 }, { type: 'boombox', on: 'yes' }]) {
+      expect(parseClientMessage(json(bad))).toBeNull();
+    }
+  });
+
+  test('peer_boombox parses leniently and needs an id', () => {
+    expect(parseServerMessage(json({ type: 'peer_boombox', id: 'p1', on: true }))).toEqual({
+      type: 'peer_boombox',
+      id: 'p1',
+      on: true,
+    });
+    expect(parseServerMessage(json({ type: 'peer_boombox', id: 'p1', on: 'loud' }))).toEqual({
+      type: 'peer_boombox',
+      id: 'p1',
+      on: false,
+    });
+    expect(parseServerMessage(json({ type: 'peer_boombox', on: true }))).toBeNull();
+  });
+
+  test('PeerInfo.boombox is true only when the server says true', () => {
+    const { boombox: _omit, ...older } = peer;
+    const parsed = (p: unknown) =>
+      (parseServerMessage(json({ type: 'peer_joined', peer: p })) as { peer: PeerInfo }).peer;
+    expect(parsed(older).boombox).toBe(false);
+    expect(parsed({ ...peer, boombox: 'yes' }).boombox).toBe(false);
+    expect(parsed({ ...peer, boombox: true }).boombox).toBe(true);
   });
 });

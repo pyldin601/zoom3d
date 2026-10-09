@@ -21,7 +21,8 @@ const SPEAKING_RELEASE_S = 0.3;
 const OCCLUSION_SETTLE_MS = TAU_OCCLUSION * 3000;
 
 export interface AudioEngine {
-  attach(peerId: string, stream: MediaStream): void;
+  /** `owner` is whose position the voice plays from (default: `key`), e.g. a peer's boombox. */
+  attach(key: string, stream: MediaStream, owner?: string): void;
   detach(peerId: string): void;
   update(now: number, listener: PlayerState, sources: ReadonlyMap<string, { x: number; y: number }>): void;
   /** 0..1 speaking indicator. */
@@ -70,6 +71,8 @@ export function speakingLevel(prev: number, rms: number, dtSeconds: number): num
 
 interface Voice {
   stream: MediaStream;
+  /** Key of the position in update's `sources`. */
+  owner: string;
   source: AudioNode;
   analyser: AnalyserNode;
   filter: BiquadFilterNode;
@@ -145,7 +148,7 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
   };
 
   return {
-    attach(peerId, stream) {
+    attach(peerId, stream, owner = peerId) {
       const existing = voices.get(peerId);
       if (existing?.stream === stream) {
         return;
@@ -183,6 +186,7 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
 
       voices.set(peerId, {
         stream,
+        owner,
         source,
         analyser,
         filter,
@@ -207,7 +211,7 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
       lastUpdate = now;
       setListener(listener, t);
 
-      for (const [peerId, v] of voices) {
+      for (const v of voices.values()) {
         v.analyser.getFloatTimeDomainData(v.samples);
         let sum = 0;
         for (let i = 0; i < v.samples.length; i++) {
@@ -216,7 +220,7 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
         v.rms = Math.sqrt(sum / v.samples.length);
         v.speaking = speakingLevel(v.speaking, v.rms, dt);
 
-        const pos = sources.get(peerId);
+        const pos = sources.get(v.owner);
         if (!pos) {
           v.dry.gain.setTargetAtTime(0, t, TAU_POSITION);
           v.send.gain.setTargetAtTime(0, t, TAU_POSITION);

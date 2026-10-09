@@ -2,6 +2,7 @@ import { type PlayerState, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { FACE_SIZE } from '../media/faces';
 import { MOUTH_Y_IN_CROP } from '../media/framing';
+import { BOOMBOX_LEFT, BOOMBOX_SPRITE, BOOMBOX_TOP } from './boombox';
 import { createFramebuffer, rgb } from './framebuffer';
 import { FACE_MOUTH_Y, HELD_LEFT, HELD_LIPS, HELD_SPRITES, HELD_TEXEL, HELD_TOP, sipLeft, sipTop } from './held-items';
 import {
@@ -48,7 +49,7 @@ describe('renderSprites', () => {
   test('a sprite straight ahead is drawn centred with diameter 2R·PROJ/depth', () => {
     const fb = frame();
     renderSprites(fb, player, [
-      { x: 3.5, y: 4.5, color: RED, face: null, speaking: 0, bob: 0, itemBob: 0, sip: 0, held: null },
+      { x: 3.5, y: 4.5, color: RED, face: null, speaking: 0, bob: 0, itemBob: 0, sip: 0, held: null, boombox: false },
     ]);
     expect(px(fb, 320, 180)).toBe(RED);
     let width = 0;
@@ -64,7 +65,7 @@ describe('renderSprites', () => {
   test('the outer ring is shaded', () => {
     const fb = frame();
     renderSprites(fb, player, [
-      { x: 3.5, y: 4.5, color: RED, face: null, speaking: 0, bob: 0, itemBob: 0, sip: 0, held: null },
+      { x: 3.5, y: 4.5, color: RED, face: null, speaking: 0, bob: 0, itemBob: 0, sip: 0, held: null, boombox: false },
     ]);
     const r = (AVATAR_RADIUS * PROJ) / 2;
     expect(px(fb, Math.floor(320 + 0.92 * r), 180)).toBe(shade(RED));
@@ -74,7 +75,7 @@ describe('renderSprites', () => {
     const fb = frame();
     const before = fb.pixels.slice();
     renderSprites(fb, player, [
-      { x: 0.5, y: 4.5, color: RED, face: null, speaking: 0, bob: 0, itemBob: 0, sip: 0, held: null },
+      { x: 0.5, y: 4.5, color: RED, face: null, speaking: 0, bob: 0, itemBob: 0, sip: 0, held: null, boombox: false },
     ]);
     expect(fb.pixels).toEqual(before);
   });
@@ -96,7 +97,7 @@ describe('renderSprites', () => {
     const fb = frame(walled);
     const wallPixel = px(fb, 320, 180);
     renderSprites(fb, player, [
-      { x: 5.5, y: 4.5, color: RED, face: null, speaking: 0, bob: 0, itemBob: 0, sip: 0, held: null },
+      { x: 5.5, y: 4.5, color: RED, face: null, speaking: 0, bob: 0, itemBob: 0, sip: 0, held: null, boombox: false },
     ]);
     expect(px(fb, 320, 180)).toBe(wallPixel);
   });
@@ -104,8 +105,8 @@ describe('renderSprites', () => {
   test('the nearer of two overlapping sprites wins regardless of input order', () => {
     const fb = frame();
     renderSprites(fb, player, [
-      { x: 3.5, y: 4.5, color: RED, face: null, speaking: 0, bob: 0, itemBob: 0, sip: 0, held: null },
-      { x: 5.5, y: 4.5, color: BLUE, face: null, speaking: 0, bob: 0, itemBob: 0, sip: 0, held: null },
+      { x: 3.5, y: 4.5, color: RED, face: null, speaking: 0, bob: 0, itemBob: 0, sip: 0, held: null, boombox: false },
+      { x: 5.5, y: 4.5, color: BLUE, face: null, speaking: 0, bob: 0, itemBob: 0, sip: 0, held: null, boombox: false },
     ]);
     expect(px(fb, 320, 180)).toBe(RED);
   });
@@ -143,7 +144,7 @@ describe('face sprites', () => {
   test('the disc centre shows the centre of the face texture', () => {
     const fb = frame();
     renderSprites(fb, player, [
-      { x: 3.5, y: 4.5, color: RED, face, speaking: 0, bob: 0, itemBob: 0, sip: 0, held: null },
+      { x: 3.5, y: 4.5, color: RED, face, speaking: 0, bob: 0, itemBob: 0, sip: 0, held: null, boombox: false },
     ]);
     const c = px(fb, 320, 180) as number;
     expect(Math.abs(texelI(c) - FACE_SIZE / 2)).toBeLessThanOrEqual(tolerance);
@@ -153,7 +154,7 @@ describe('face sprites', () => {
   test('the outer ring is the peer colour, unshaded', () => {
     const fb = frame();
     renderSprites(fb, player, [
-      { x: 3.5, y: 4.5, color: RED, face, speaking: 0, bob: 0, itemBob: 0, sip: 0, held: null },
+      { x: 3.5, y: 4.5, color: RED, face, speaking: 0, bob: 0, itemBob: 0, sip: 0, held: null, boombox: false },
     ]);
     const r = (AVATAR_RADIUS * PROJ) / 2;
     expect(px(fb, Math.floor(320 + 0.92 * r), 180)).toBe(RED);
@@ -162,7 +163,7 @@ describe('face sprites', () => {
   test('the face is not mirrored: left of centre samples a smaller column', () => {
     const fb = frame();
     renderSprites(fb, player, [
-      { x: 3.5, y: 4.5, color: RED, face, speaking: 0, bob: 0, itemBob: 0, sip: 0, held: null },
+      { x: 3.5, y: 4.5, color: RED, face, speaking: 0, bob: 0, itemBob: 0, sip: 0, held: null, boombox: false },
     ]);
     expect(texelI(px(fb, 290, 180) as number)).toBeLessThan(texelI(px(fb, 350, 180) as number));
   });
@@ -180,12 +181,12 @@ describe('speaking ring', () => {
     const r = (AVATAR_RADIUS * PROJ) / 2;
     const quiet = frame();
     renderSprites(quiet, player, [
-      { x: 3.5, y: 4.5, color: RED, face, speaking: 0, bob: 0, itemBob: 0, sip: 0, held: null },
+      { x: 3.5, y: 4.5, color: RED, face, speaking: 0, bob: 0, itemBob: 0, sip: 0, held: null, boombox: false },
     ]);
     expect(px(quiet, Math.floor(320 + 0.92 * r), 180)).toBe(RED);
     const loud = frame();
     renderSprites(loud, player, [
-      { x: 3.5, y: 4.5, color: RED, face, speaking: 1, bob: 0, itemBob: 0, sip: 0, held: null },
+      { x: 3.5, y: 4.5, color: RED, face, speaking: 1, bob: 0, itemBob: 0, sip: 0, held: null, boombox: false },
     ]);
     expect(px(loud, Math.floor(320 + 0.92 * r), 180)).toBe(mixWhite(RED, 0.8));
   });
@@ -205,6 +206,7 @@ describe('floor shadows', () => {
     itemBob: 0,
     sip: 0,
     held: null,
+    boombox: false,
   });
 
   test('the floor right under an avatar is darkened, most at the centre', () => {
@@ -315,6 +317,7 @@ describe('held items', () => {
     itemBob: 0,
     sip: 0,
     held: 'beer' as const,
+    boombox: false,
   });
   // Screen pixel of item texel (u, v) for a sprite straight ahead at `depth`.
   const itemPx = (u: number, v: number, depth: number) => {
@@ -348,7 +351,7 @@ describe('held items', () => {
   test('held null draws nothing beyond the disc', () => {
     const empty = frame();
     const fb = frame();
-    renderSprites(fb, player, [{ ...beer(3.5), held: null }]);
+    renderSprites(fb, player, [{ ...beer(3.5), held: null, boombox: false }]);
     expect(px(fb, ...itemPx(10, 5, 2))).toBe(px(empty, ...itemPx(10, 5, 2)));
   });
 
@@ -382,7 +385,7 @@ describe('held items', () => {
       return -1;
     };
     const still = frame();
-    renderSprites(still, player, [{ ...beer(3.5), held: null }]);
+    renderSprites(still, player, [{ ...beer(3.5), held: null, boombox: false }]);
     const up = frame();
     renderSprites(up, player, [{ ...beer(3.5), held: null, bob: 1 }]);
     const r = (AVATAR_RADIUS * PROJ) / 2;
@@ -444,7 +447,7 @@ describe('held items', () => {
 
   test('a very near item crossing the right edge does not wrap into the next row', () => {
     const plain = frame();
-    renderSprites(plain, player, [{ ...beer(2.0, 4.48), held: null }]);
+    renderSprites(plain, player, [{ ...beer(2.0, 4.48), held: null, boombox: false }]);
     const fb = frame();
     renderSprites(fb, player, [beer(2.0, 4.48)]);
     for (let y = 0; y < fb.height; y++) {
@@ -465,6 +468,7 @@ describe('held item shadows', () => {
     itemBob: 0,
     sip: 0,
     held,
+    boombox: false,
   });
   /** Screen column under the held item's centre for a sprite 2 tiles straight ahead. */
   const itemCol = (item: 'beer' | 'wine') => {
@@ -543,5 +547,106 @@ describe('held item shadows', () => {
     expect(beerShadow).toBeLessThan(avatar);
     expect(wineShadow).toBeGreaterThan(0);
     expect(wineShadow).toBeLessThan(beerShadow);
+  });
+});
+
+describe('boombox', () => {
+  const WALLED = parseMap(
+    [
+      '111111111',
+      '1.......1',
+      '1.......1',
+      '1.......1',
+      '1S.1....1',
+      '1.......1',
+      '1.......1',
+      '1.......1',
+      '111111111',
+    ].join('\n')
+  );
+  const carrier = (x: number) => ({
+    x,
+    y: 4.5,
+    color: RED,
+    face: null,
+    speaking: 0,
+    bob: 0,
+    itemBob: 0,
+    sip: 0,
+    held: null,
+    boombox: true,
+  });
+  /** Screen pixel of boombox texel (u, v) for a sprite straight ahead at `depth`. */
+  const boxPx = (u: number, v: number, depth: number, lift = 0) => {
+    const r = (AVATAR_RADIUS * PROJ) / depth;
+    const t = HELD_TEXEL * r;
+    return [
+      Math.floor(320 + BOOMBOX_LEFT * r + (u + 0.5) * t),
+      Math.floor(180 - (BOOMBOX_TOP + lift * BOB_HEIGHT) * r + (v + 0.5) * t),
+    ] as const;
+  };
+  const tex = (u: number, v: number) => BOOMBOX_SPRITE.texels[v * BOOMBOX_SPRITE.w + u];
+  const SAMPLES = [
+    [7, 1],
+    [2, 8],
+    [7, 8],
+  ] as const;
+
+  test("a boombox is drawn to the viewer's left of the disc, scaled with distance", () => {
+    for (const depth of [2, 4]) {
+      const fb = frame();
+      renderSprites(fb, player, [carrier(1.5 + depth)]);
+      for (const [u, v] of SAMPLES) {
+        expect(px(fb, ...boxPx(u, v, depth))).toBe(tex(u, v));
+      }
+    }
+  });
+
+  test('boombox false draws none of it', () => {
+    const fb = frame();
+    renderSprites(fb, player, [{ ...carrier(3.5), boombox: false }]);
+    // Skin and the cassette label: colours neither the disc nor the room has.
+    for (const [u, v] of [
+      [7, 1],
+      [7, 7],
+      [8, 8],
+    ] as const) {
+      expect(px(fb, ...boxPx(u, v, 2))).not.toBe(tex(u, v));
+    }
+  });
+
+  test('walls in front hide it', () => {
+    const fb = frame(WALLED);
+    const before = fb.pixels.slice();
+    renderSprites(fb, player, [carrier(5.5)]);
+    expect(fb.pixels).toEqual(before);
+  });
+
+  test('it casts a floor shadow on the left, clear of the disc shadow', () => {
+    const red = (c: number | undefined) => (c ?? 0) & 0xff;
+    // 0.45 tiles left of the avatar: inside the boombox shadow, outside the disc's (0.3).
+    const x = Math.floor(320 - (0.45 * PROJ) / 2);
+    const row = Math.floor(180 + (0.5 * PROJ) / 2);
+    const without = frame();
+    renderSprites(without, player, [{ ...carrier(3.5), boombox: false }]);
+    const fb = frame();
+    renderSprites(fb, player, [carrier(3.5)]);
+    expect(red(px(fb, x, row))).toBeLessThan(red(px(without, x, row)));
+  });
+
+  test('it lifts by itemBob', () => {
+    const fb = frame();
+    renderSprites(fb, player, [{ ...carrier(3.5), itemBob: 1 }]);
+    expect(px(fb, ...boxPx(7, 8, 2, 1))).toBe(tex(7, 8));
+  });
+
+  test('a sip moves only the drink', () => {
+    const still = frame();
+    renderSprites(still, player, [{ ...carrier(3.5), held: 'beer' as const }]);
+    const sipping = frame();
+    renderSprites(sipping, player, [{ ...carrier(3.5), held: 'beer' as const, sip: 1 }]);
+    for (const [u, v] of SAMPLES) {
+      expect(px(sipping, ...boxPx(u, v, 2))).toBe(px(still, ...boxPx(u, v, 2)));
+    }
   });
 });

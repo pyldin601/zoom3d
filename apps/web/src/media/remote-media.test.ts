@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { createRemoteMedia } from './remote-media';
 
 test('remote elements play muted: their audio is owned by the spatial engine', () => {
@@ -12,4 +12,34 @@ test('remote elements play muted: their audio is owned by the spatial engine', (
   expect(el.playsInline).toBe(true);
   expect(el.srcObject).toBe(stream);
   expect(container.contains(el)).toBe(true);
+});
+
+test('boombox audio plays in a muted <audio>, not a <video>, and detaches by key', () => {
+  const container = document.createElement('div');
+  document.body.append(container);
+  const stream = new MediaStream();
+  const remote = createRemoteMedia(container);
+  remote.attachAudio('boombox:b', stream);
+  const el = container.querySelector('audio') as HTMLAudioElement;
+  expect(el.muted).toBe(true);
+  expect(el.srcObject).toBe(stream);
+  expect(container.querySelectorAll('video')).toHaveLength(0);
+  remote.detach('boombox:b');
+  expect(container.querySelector('audio')).toBeNull();
+});
+
+test('playsInline is set before play() runs (iOS needs it then)', () => {
+  const container = document.createElement('div');
+  document.body.append(container);
+  const seen: boolean[] = [];
+  const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(function (this: HTMLMediaElement) {
+    seen.push((this as HTMLVideoElement).playsInline);
+    return Promise.resolve();
+  });
+  try {
+    createRemoteMedia(container).attach('b', new MediaStream());
+  } finally {
+    play.mockRestore();
+  }
+  expect(seen).toEqual([true]);
 });

@@ -2,8 +2,9 @@
 // shadow on the floor right under it.
 import type { HeldItem, PlayerState } from '@zoom3d/shared';
 import { FACE_SIZE } from '../media/faces';
+import { BOOMBOX_LEFT, BOOMBOX_SPRITE, BOOMBOX_TOP } from './boombox';
 import { type Framebuffer, rgb } from './framebuffer';
-import { HELD_LEFT, HELD_SPRITES, HELD_TEXEL, HELD_TOP, sipLeft, sipTop } from './held-items';
+import { HELD_LEFT, HELD_SPRITES, HELD_TEXEL, HELD_TOP, type HeldSprite, sipLeft, sipTop } from './held-items';
 import { FOV, shade } from './walls';
 
 export const AVATAR_RADIUS = 0.35; // tiles
@@ -37,7 +38,13 @@ export interface Sprite {
   sip: number;
   /** Drawn in a hand on the viewer's right of the disc. */
   held: HeldItem | null;
+  /** A boombox carried in a hand on the viewer's left of the disc (boombox spec §2.1). */
+  boombox: boolean;
 }
+
+/** Floor shadow of the boombox: half its world width, centred under it (boombox spec §2.1). */
+const BOOMBOX_SHADOW_RADIUS = (HELD_TEXEL * BOOMBOX_SPRITE.w * AVATAR_RADIUS) / 2;
+const BOOMBOX_SHADOW_OFFSET = BOOMBOX_LEFT * AVATAR_RADIUS + BOOMBOX_SHADOW_RADIUS;
 
 const SPEAKING_GLOW = 0.8;
 
@@ -191,13 +198,25 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
       const offset = heldLeft(s.held, s.sip) * AVATAR_RADIUS + radius;
       renderShadow(fb, p, s.x - Math.sin(p.angle) * offset, s.y + Math.cos(p.angle) * offset, depth, radius, 1 - s.sip);
     }
+    if (s.boombox) {
+      const offset = BOOMBOX_SHADOW_OFFSET;
+      renderShadow(
+        fb,
+        p,
+        s.x - Math.sin(p.angle) * offset,
+        s.y + Math.cos(p.angle) * offset,
+        depth,
+        BOOMBOX_SHADOW_RADIUS,
+        1
+      );
+    }
   }
 
   const half = h / 2;
   const faceSize = FACE_SIZE;
   for (const i of visible) {
     const { screenX, depth, size } = projections[i] as Projection;
-    const { color, face, speaking, held, bob, itemBob, sip } = sprites[i] as Sprite;
+    const { color, face, speaking, held, bob, itemBob, sip, boombox } = sprites[i] as Sprite;
     const ring = speaking > 0 ? mixWhite(color, Math.min(speaking, 1) * SPEAKING_GLOW) : color;
     const edge = face ? ring : shade(ring);
     const r = size / 2;
@@ -235,6 +254,10 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
     if (held) {
       renderHeld(fb, held, screenX, depth, r, itemBob, sip);
     }
+    if (boombox) {
+      const top = h / 2 - (BOOMBOX_TOP + itemBob * BOB_HEIGHT) * r;
+      blitItem(fb, BOOMBOX_SPRITE, screenX + BOOMBOX_LEFT * r, top, HELD_TEXEL * r, depth);
+    }
   }
 }
 
@@ -252,11 +275,15 @@ function renderHeld(
   lift: number,
   sip: number
 ): void {
-  const { width: w, height: h, pixels, zbuffer } = fb;
-  const { w: tw, h: th, texels } = HELD_SPRITES[item];
-  const t = HELD_TEXEL * r;
   const left = screenX + heldLeft(item, sip) * r;
-  const top = h / 2 - (heldTop(item, sip) + lift * BOB_HEIGHT) * r;
+  const top = fb.height / 2 - (heldTop(item, sip) + lift * BOB_HEIGHT) * r;
+  blitItem(fb, HELD_SPRITES[item], left, top, HELD_TEXEL * r, depth);
+}
+
+/** Draws an item sprite with texel size t at (left, top), depth-tested per column like the disc. */
+function blitItem(fb: Framebuffer, sprite: HeldSprite, left: number, top: number, t: number, depth: number): void {
+  const { width: w, height: h, pixels, zbuffer } = fb;
+  const { w: tw, h: th, texels } = sprite;
   const x0 = Math.max(0, Math.floor(left));
   const x1 = Math.min(w - 1, Math.ceil(left + tw * t) - 1);
   const y0 = Math.max(0, Math.floor(top));

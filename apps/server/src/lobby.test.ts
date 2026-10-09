@@ -377,3 +377,37 @@ describe('sips', () => {
     expect(sent).toHaveLength(before);
   });
 });
+
+describe('boombox', () => {
+  test('a new peer has no boombox', () => {
+    join('A');
+    join('B');
+    expect(welcome('B').peers[0]?.boombox).toBe(false);
+  });
+
+  test('boombox is broadcast to the others, not the sender, and shown to later joiners', () => {
+    join('A');
+    join('B');
+    const aSent = to('A').length;
+    lobby.boombox('A', { type: 'boombox', on: true });
+    expect(last('B')).toEqual({ type: 'peer_boombox', id: welcome('A').selfId, on: true });
+    expect(to('A')).toHaveLength(aSent);
+    join('C');
+    expect(welcome('C').peers.find((p) => p.name === 'A')?.boombox).toBe(true);
+  });
+
+  test('resume keeps the boombox', () => {
+    join('A');
+    join('B');
+    lobby.boombox('B', { type: 'boombox', on: true });
+    lobby.disconnect('B');
+    join('B2', 'B', { resumeToken: welcome('B').resumeToken });
+    join('C');
+    expect(welcome('C').peers.find((p) => p.name === 'B')?.boombox).toBe(true);
+  });
+
+  test('boombox before join is ignored', () => {
+    lobby.boombox('ghost', { type: 'boombox', on: true });
+    expect(sent).toEqual([]);
+  });
+});

@@ -38,6 +38,8 @@ export interface PeerInfo {
   avatar: string | null;
   /** What the peer holds in its hand, if anything. */
   held: HeldItem | null;
+  /** Whether the peer is playing its boombox (boombox spec §6). */
+  boombox: boolean;
 }
 
 export interface IceServer {
@@ -72,8 +74,16 @@ export type StateMessage = { type: 'state'; x: number; y: number; angle: number;
 export type MediaMessage = { type: 'media'; cam: boolean; mic: boolean };
 export type HeldMessage = { type: 'held'; item: HeldItem | null };
 export type DrinkMessage = { type: 'drink' };
+export type BoomboxMessage = { type: 'boombox'; on: boolean };
 export type SignalMessage = { type: 'signal'; to: string; payload: SignalPayload };
-export type ClientMessage = JoinMessage | StateMessage | MediaMessage | HeldMessage | DrinkMessage | SignalMessage;
+export type ClientMessage =
+  | JoinMessage
+  | StateMessage
+  | MediaMessage
+  | HeldMessage
+  | DrinkMessage
+  | BoomboxMessage
+  | SignalMessage;
 
 export type ErrorCode = 'room_full' | 'invalid_room' | 'invalid_name' | 'not_joined';
 const ERROR_CODES: readonly ErrorCode[] = ['room_full', 'invalid_room', 'invalid_name', 'not_joined'];
@@ -92,6 +102,7 @@ export type ServerMessage =
   | { type: 'peer_media'; id: string; cam: boolean; mic: boolean }
   | { type: 'peer_held'; id: string; item: HeldItem | null }
   | { type: 'peer_drink'; id: string }
+  | { type: 'peer_boombox'; id: string; on: boolean }
   | { type: 'signal'; from: string; payload: SignalPayload }
   | { type: 'peer_left'; id: string }
   | { type: 'peer_state'; id: string; x: number; y: number; angle: number; seq: number }
@@ -284,6 +295,9 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   if (m.type === 'drink') {
     return { type: 'drink' };
   }
+  if (m.type === 'boombox') {
+    return isBool(m.on) ? { type: 'boombox', on: m.on } : null;
+  }
   if (m.type === 'signal') {
     const payload = parseSignalPayload(m.payload);
     return payload && isStr(m.to) ? { type: 'signal', to: m.to, payload } : null;
@@ -306,7 +320,9 @@ function peerInfo(v: unknown): PeerInfo | null {
   const avatar = isValidAvatar(v.avatar) ? v.avatar : null;
   // Missing (older server) or unknown (newer server's item) means empty-handed.
   const held = isHeldItem(v.held) ? v.held : null;
-  return p && { id: v.id, name: v.name, color: v.color, ...p, cam: v.cam, mic: v.mic, avatar, held };
+  // Missing (older server) or malformed reads as off: it only decides whether a sprite is drawn.
+  const boombox = v.boombox === true;
+  return p && { id: v.id, name: v.name, color: v.color, ...p, cam: v.cam, mic: v.mic, avatar, held, boombox };
 }
 
 export function parseServerMessage(raw: string): ServerMessage | null {
@@ -350,6 +366,8 @@ export function parseServerMessage(raw: string): ServerMessage | null {
       return isStr(m.id) ? { type: 'peer_held', id: m.id, item: isHeldItem(m.item) ? m.item : null } : null;
     case 'peer_drink':
       return isStr(m.id) ? { type: 'peer_drink', id: m.id } : null;
+    case 'peer_boombox':
+      return isStr(m.id) ? { type: 'peer_boombox', id: m.id, on: m.on === true } : null;
     case 'signal': {
       const payload = parseSignalPayload(m.payload);
       return payload && isStr(m.from) ? { type: 'signal', from: m.from, payload } : null;

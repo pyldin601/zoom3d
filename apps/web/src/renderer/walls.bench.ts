@@ -30,6 +30,7 @@ test('renderWalls + 7 face avatars around the player', async ({ bench }) => {
     itemBob: 0.5,
     sip: 0,
     held: 'beer' as const,
+    boombox: true,
   }));
   await bench('walls+7 sprites', () => {
     angle += 0.05;

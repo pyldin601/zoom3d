@@ -40,6 +40,8 @@ export interface Session {
   sendSignal(to: string, payload: SignalPayload): void;
   setMedia(cam: boolean, mic: boolean): void;
   setHeld(item: HeldItem | null): void;
+  /** Shows or hides our boombox to the others; resent after every welcome. */
+  setBoombox(on: boolean): void;
   /** Takes a sip of the held drink; not resent after a reconnect. */
   sendDrink(): void;
   selfId(): string | null;
@@ -75,6 +77,8 @@ export function createSession(opts: SessionOptions): Session {
   let media: { cam: boolean; mic: boolean } | null = null;
   /** undefined until setHeld: null is a real choice that must reach a resumed slot. */
   let held: HeldItem | null | undefined;
+  /** undefined until setBoombox: false must reach a resumed slot that may still say true. */
+  let boombox: boolean | undefined;
   const listener = opts.listener ?? {};
   const lastSent = { x: Number.NaN, y: Number.NaN, angle: Number.NaN, at: 0 };
 
@@ -108,6 +112,9 @@ export function createSession(opts: SessionOptions): Session {
         if (held !== undefined) {
           conn.send({ type: 'held', item: held });
         }
+        if (boombox !== undefined) {
+          conn.send({ type: 'boombox', on: boombox });
+        }
         listener.welcome?.(m.selfId, m.iceServers, identityChanged);
         break;
       }
@@ -134,6 +141,13 @@ export function createSession(opts: SessionOptions): Session {
         // A sip arriving while one still plays (bunched by the network) would snap it back to the start.
         if (peer && now() - peer.drinkAt >= SIP_MS) {
           peer.drinkAt = now();
+        }
+        break;
+      }
+      case 'peer_boombox': {
+        const peer = peers.get(m.id);
+        if (peer) {
+          peer.info.boombox = m.on;
         }
         break;
       }
@@ -219,6 +233,12 @@ export function createSession(opts: SessionOptions): Session {
       held = item;
       if (status === 'open') {
         conn.send({ type: 'held', item });
+      }
+    },
+    setBoombox(on) {
+      boombox = on;
+      if (status === 'open') {
+        conn.send({ type: 'boombox', on });
       }
     },
     sendDrink() {

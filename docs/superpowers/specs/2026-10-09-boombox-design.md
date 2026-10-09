@@ -1,6 +1,6 @@
 # Boombox — design spec
 
-Status: draft for review, 2026-10-09. Decision record: [open-decisions.md](../../open-decisions.md) D16.
+Status: approved design, implemented 2026-10-09. Decision record: [open-decisions.md](../../open-decisions.md) D16.
 
 ## 1. Intent
 
@@ -18,7 +18,7 @@ In scope:
 Out of scope:
 - Pause, seek, volume, loop, playlists, showing the track name.
 - Speakers that pulse with the music (sketch "C"; possible later, the engine already measures the level).
-- Stereo or higher-bitrate music (§5.3).
+- Stereo music (§5.3).
 - Anything stored or relayed by the server beyond an on/off flag.
 
 ## 2. Look
@@ -79,17 +79,24 @@ These numbers come from the sketch and get tuned by eye at implementation.
 
 ## 3. Behaviour (carrier)
 
-`apps/web/src/media/boombox.ts`, `createBoombox({ ctx, document, onTrack, onChange })`.
+`apps/web/src/media/boombox.ts`, `createBoombox({ ctx, container, onTrack, onChange, urls? })`;
+`container` hosts the hidden input and `<audio>`, and `urls` stands in for `URL.createObjectURL` in tests.
 
-**Trigger:** in a room, `KeyB` without repeat and not while typing in an input (as the held-item
-keys in `main.ts`). States are `off` and `playing`:
-- `off` → `B` clicks a hidden `<input type="file" accept="audio/*">`. The keydown is the user
-  activation the picker needs. Cancelling the picker does nothing.
-- File chosen → `playing`: the file becomes an object URL on a single reused `<audio>` element
-  (`loop = false`), and `play()` is called. Then `onTrack(track)` and `onChange(true)`. The input
-  is reset (`value = ''`) so the same file can be picked again.
-- `playing` → `B`, the element's `ended` or `error` event, a rejected `play()`, or leaving the room
-  stops it: pause, drop the `src`, revoke the URL, `onTrack(null)`, `onChange(false)`.
+**Trigger:** `KeyB` without repeat or modifiers, and not while typing in an input (as the held-item
+keys in `main.ts`), calls `toggle(inRoom)`. States are `off`, `starting` and `playing`:
+- `off` → `B`, only in a room: release pointer lock (you need a cursor to pick a file) and click a
+  hidden `<input type="file" accept="audio/*">`. The keydown is the user activation the picker
+  needs. Cancelling the picker does nothing.
+- File chosen → `starting`: the file becomes an object URL on a single reused `<audio>` element
+  (`loop = false`), and `play()` is called. The input is reset (`value = ''`) so the same file can
+  be picked again.
+- `starting` → `playing` once `play()` resolves: `onTrack(track)` and `onChange(true)`. Nothing is
+  sent before, so an unplayable file is never announced.
+- `starting` or `playing` → `off`: `B` (**also outside a room**, e.g. while reconnecting: the music
+  is local and peers on open connections still hear it), the element's `ended` or `error` event, or
+  a rejected `play()`. It pauses, drops the `src` and revokes the URL; only from `playing` does it
+  call `onTrack(null)` and `onChange(false)`. A late `play()` result from a stopped attempt is
+  ignored. There is no in-app way to leave a room: closing the tab ends playback.
 
 **Graph:** created once on first use, from the `AudioContext` made in the Join click:
 
@@ -113,8 +120,9 @@ keys in `main.ts`). States are `off` and `playing`:
   carrier's position (the hand's offset of about 0.3 tiles is ignored).
 - It has its own key, so it never lights the carrier's speaking ring.
 - Chrome only feeds remote WebRTC audio into Web Audio while the stream plays in an element, so
-  the boombox stream also goes through `remote.attach('boombox:<peerId>', stream)` (muted, hidden,
-  as the voice's).
+  the boombox stream also plays in a muted, hidden `<audio>` element
+  (`remote.attachAudio('boombox:<peerId>', stream)`, in the same container as the voices' videos).
+  It is an `<audio>`, not a `<video>`, so the e2e specs that count `#media video` are unaffected.
 
 ## 5. Transport (`apps/web/src/media/mesh.ts`)
 
@@ -144,10 +152,27 @@ sends `null`, so nothing waits for the flag.
 
 ### 5.3 Quality
 
-Chrome's default Opus for this track is mono at about 32 kbps. That's acceptable for a point source
-in a retro room. Raising it (sender `maxBitrate`, or `stereo=1` in the SDP) is out of scope.
+The music must sound good (decided 2026-10-09). Chrome's default Opus for an audio track is
+about 32 kbps, tuned for speech, which audibly smears music. So the boombox sender asks for
+**mono Opus at 128 kbps** (`BOOMBOX_MAX_BITRATE = 128_000`):
+- Initiator: `sendEncodings: [{ maxBitrate: BOOMBOX_MAX_BITRATE }]` on the boombox transceiver.
+- Answerer: `setParameters` with `encodings[0].maxBitrate` in `attachTracks`, as for the video cap,
+  and **again after its answer is set**. Chrome drops parameters set on a trackless sender before the
+  answer, and the boombox sender has no track until music plays. Without the second cap, music from
+  a carrier who answered went out at 32 kbps (found by the e2e bitrate check).
+- No SDP munging. With no `b=AS` line, Chrome takes the sender's `maxBitrate` as the Opus target,
+  within the negotiated envelope (`setParameters` never renegotiates).
+
+It stays **mono**: the boombox is one point in the room, and the HRTF panner places it as a single
+source, so a stereo mix would be folded down anyway. 128 kbps mono Opus is close to transparent for
+music. The voice path's open low-pass at `MUFFLE_OPEN_HZ` (16 kHz) is kept.
+
 The track bypasses the mic's echo cancellation, noise suppression and gain control: it comes from
 Web Audio, not `getUserMedia`.
+
+The bitrate is verified, not assumed: the e2e test measures the receiver's bitrate on the boombox
+m-line (§10). If Chrome ignores `maxBitrate` as the target, the fallback is
+`maxaveragebitrate=128000` in that m-line's Opus `fmtp`.
 
 ## 6. Protocol (extends design spec §7.2)
 
@@ -173,10 +198,10 @@ Same pattern as `held` (held items spec §4):
 - `media/call.ts`:
   - `setBoomboxTrack(track | null)` forwards to the mesh and is reapplied to a mesh recreated
     after an identity change.
-  - `onRemoteBoombox` → `remote.attach(key, stream)` and `audio.attach(key, stream, peerId)`.
+  - `onRemoteBoombox` → `remote.attachAudio(key, stream)` and `audio.attach(key, stream, peerId)`.
   - `drop`/`teardown` detach the `boombox:` key too.
 - `main.ts`: the `B` key handler, the boombox created with the engine's context, `onTrack` → call,
-  `onChange` → session and the own-view flag, and stopping it when leaving the room.
+  `onChange` → session and the own-view flag.
 - Renderer: `Sprite` gains `boombox: boolean` from `peer.info.boombox`; `renderSprites` draws the
   boombox and its shadow (§2.1); `renderOwnBoombox(fb, on, bob, sway)` draws your own (§2.2).
 - Dev only: `window.__game` exposes the engine's `inputLevel` for the e2e test.
@@ -191,8 +216,9 @@ Same pattern as `held` (held items spec §4):
   (old `attachTracks`), so a new peer would hear that peer's voice twice, once as "boombox". Rooms
   are ephemeral and the web image ships as one unit, so this lasts until the stale tab reloads.
   Accepted.
-- **Upload.** One more audio stream per peer while playing, ~32 kbps × (N−1). Negligible next to
-  video.
+- **Upload.** One more audio stream per peer while playing, 128 kbps × (N−1): about 0.9 Mbps
+  with 8 people, against 350 kbps × 7 ≈ 2.5 Mbps of video already. Accepted. Only while playing;
+  a null track sends nothing.
 - **Copyright.** The music is streamed live peer to peer and never stored, like a voice.
 
 ## 10. Testing
@@ -216,7 +242,9 @@ Unit (TDD, Vitest):
 
 E2E (Playwright, fake media): two pages in a room; page A presses `B` and sets a generated WAV
 through the file chooser; page B's engine reports a non-zero `inputLevel('boombox:<A>')`, and
-`peer.info.boombox` is true on B. Then A presses `B` again and the flag clears.
+`peer.info.boombox` is true on B. B receives the boombox m-line at more than 80 kbps, against the
+~32 kbps default. The WAV is noise plus a tone, because Opus VBR undershoots on a pure sine. Then
+A presses `B` again and the flag clears.
 
 Manual: the look at several distances, the first-person view next to the self-view, and the echo
 check in §9.
