@@ -134,7 +134,10 @@ export class FakeTransceiver {
     },
     async setParameters(p: { encodings: RTCRtpEncodingParameters[] }) {
       this.parameters = p;
+      this.parameterSets++;
     },
+    /** How many times setParameters ran, to check it ran again after the answer. */
+    parameterSets: 0,
   };
   constructor(kind: string) {
     this.receiver = { track: { kind } };

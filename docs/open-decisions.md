@@ -81,7 +81,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 
 ### D16 — Boombox
 - How a player plays music to the room, and how it shows.
-- *Resolved 2026-10-09 (spec under review):* `B` opens a file picker and the track plays once; `B` again or
+- *Resolved 2026-10-09:* `B` opens a file picker and the track plays once; `B` again or
   the track ending stops it. The music is a third, pre-allocated `sendrecv` audio transceiver on each mesh
   connection, switched with `replaceTrack`, so it never renegotiates. Listeners spatialise it from the
   carrier's position through the voice engine, as mono Opus at 128 kbps (sender `maxBitrate`; the 32 kbps

@@ -323,6 +323,29 @@ describe('boombox transceiver', () => {
     expect(mic?.sender.track).toBe(audioTrack);
   });
 
+  test('the answerer caps the boombox again once its answer is set', async () => {
+    // Chrome drops parameters set on a trackless sender before the answer is applied.
+    const m = mesh('a');
+    let setsAtAnswer = -1;
+    const real = FakeRTCPeerConnection.prototype.setLocalDescription;
+    FakeRTCPeerConnection.prototype.setLocalDescription = async function (this: FakeRTCPeerConnection, d) {
+      await real.call(this, d);
+      setsAtAnswer = this.remoteTransceivers[2]?.sender.parameterSets ?? -1;
+      const slot = this.remoteTransceivers[2];
+      if (slot) {
+        slot.sender.parameters = { encodings: [{}] };
+      }
+    };
+    try {
+      await m.handleSignal('b', offer);
+    } finally {
+      FakeRTCPeerConnection.prototype.setLocalDescription = real;
+    }
+    const slot = pc().remoteTransceivers[2];
+    expect(slot?.sender.parameterSets).toBeGreaterThan(setsAtAnswer);
+    expect(slot?.sender.parameters.encodings[0]?.maxBitrate).toBe(128_000);
+  });
+
   test('a connection made while playing sends the music from the start (answerer)', async () => {
     const m = mesh('a');
     m.setBoomboxTrack(music as unknown as MediaStreamTrack);

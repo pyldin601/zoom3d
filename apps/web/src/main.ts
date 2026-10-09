@@ -16,6 +16,7 @@ import { startLoop } from './game/loop';
 import { layoutStage, watchLayout } from './game/stage';
 import { createInput } from './input/keyboard';
 import { loadAvatar, saveAvatar } from './media/avatar';
+import { type Boombox, createBoombox } from './media/boombox';
 import { type Call, createCall } from './media/call';
 import { captureLocalMedia, type LocalMedia } from './media/capture';
 import { createFace } from './media/faces';
@@ -27,6 +28,7 @@ import { type AutomapPeer, drawAutomap } from './renderer/automap';
 import { type Bob, createBob } from './renderer/bob';
 import { createFramebuffer } from './renderer/framebuffer';
 import { drawLabels } from './renderer/labels';
+import { renderOwnBoombox } from './renderer/own-boombox';
 import { renderOwnHeld } from './renderer/own-held';
 import { createSipClock, sipPose } from './renderer/sip';
 import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
@@ -83,6 +85,9 @@ function chooseHeld(item: HeldItem | null): void {
 }
 let call: Call | null = null;
 let audio: AudioEngine | null = null;
+let boombox: Boombox | null = null;
+/** Whether our boombox is playing, drawn in first person. */
+let ownBoombox = false;
 
 const storage = (): Storage | null => {
   try {
@@ -154,6 +159,18 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
+// B opens the boombox's file picker, or stops the music (boombox spec §3).
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'KeyB' || e.repeat || e.metaKey || e.ctrlKey || e.altKey) {
+    return;
+  }
+  if (!inRoom() || e.target instanceof HTMLInputElement) {
+    return;
+  }
+  e.preventDefault();
+  boombox?.toggle();
+});
+
 let automapVisible = false;
 window.addEventListener('keydown', (e) => {
   if (e.code !== 'Tab' && e.code !== 'KeyM') {
@@ -220,11 +237,21 @@ async function joinRoom(roomId: string, name: string, avatar: string | null): Pr
   const held = loadHeld(storage());
   ownHeld = held;
   session.setHeld(held);
+  session.setBoombox(false);
   call.attach(session);
   if (local.problem) {
     showBanner(ui, PROBLEM_TEXT[local.problem]);
   }
   const activeCall = call;
+  boombox = createBoombox({
+    ctx: audioCtx,
+    container: localMediaContainer,
+    onTrack: (track) => activeCall.setBoomboxTrack(track),
+    onChange(on) {
+      ownBoombox = on;
+      session?.setBoombox(on);
+    },
+  });
   showRoomBar(ui, location.href, {
     cam: local.cam,
     mic: local.mic,
@@ -414,6 +441,7 @@ startLoop((dt) => {
   renderSprites(fb, player, sprites);
   if (inRoom()) {
     renderOwnHeld(fb, ownHeld, selfBob.itemLift, selfBob.sway, ownSip.pose(performance.now()));
+    renderOwnBoombox(fb, ownBoombox, selfBob.itemLift, selfBob.sway);
   }
   gameCtx.putImageData(image, 0, 0);
   hudCtx.clearRect(0, 0, hud.width, hud.height);

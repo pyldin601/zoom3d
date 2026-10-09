@@ -50,6 +50,7 @@ let revoked: string[];
 let onTrack: ReturnType<typeof vi.fn<(track: MediaStreamTrack | null) => void>>;
 let onChange: ReturnType<typeof vi.fn<(on: boolean) => void>>;
 let box: Boombox;
+let order: string[];
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 const file = { name: 'song.mp3' };
@@ -62,8 +63,13 @@ beforeEach(() => {
   revoked = [];
   onTrack = vi.fn<(track: MediaStreamTrack | null) => void>();
   onChange = vi.fn<(on: boolean) => void>();
+  order = [];
+  input.click.mockImplementation(() => order.push('click'));
   const container = {
-    ownerDocument: { createElement: (tag: string) => (tag === 'input' ? input : audio) },
+    ownerDocument: {
+      createElement: (tag: string) => (tag === 'input' ? input : audio),
+      exitPointerLock: () => order.push('exitPointerLock'),
+    },
     append: vi.fn(),
   };
   box = createBoombox({
@@ -96,6 +102,12 @@ test('B when off opens an audio file picker and changes nothing else', () => {
   expect(onTrack).not.toHaveBeenCalled();
   expect(onChange).not.toHaveBeenCalled();
   expect(box.playing()).toBe(false);
+});
+
+test('B releases pointer lock before opening the picker', () => {
+  // Chrome may not show a file chooser while the pointer is locked, and picking a file needs a cursor.
+  box.toggle();
+  expect(order).toEqual(['exitPointerLock', 'click']);
 });
 
 test('picking a file plays it once and sends the track', async () => {

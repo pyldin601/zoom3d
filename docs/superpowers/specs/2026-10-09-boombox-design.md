@@ -1,6 +1,6 @@
 # Boombox — design spec
 
-Status: draft for review, 2026-10-09. Decision record: [open-decisions.md](../../open-decisions.md) D16.
+Status: approved design, implemented 2026-10-09. Decision record: [open-decisions.md](../../open-decisions.md) D16.
 
 ## 1. Intent
 
@@ -83,7 +83,7 @@ These numbers come from the sketch and get tuned by eye at implementation.
 
 **Trigger:** in a room, `KeyB` without repeat and not while typing in an input (as the held-item
 keys in `main.ts`). States are `off` and `playing`:
-- `off` → `B` clicks a hidden `<input type="file" accept="audio/*">`. The keydown is the user
+- `off` → `B` releases pointer lock (you need a cursor to pick a file) and clicks a hidden `<input type="file" accept="audio/*">`. The keydown is the user
   activation the picker needs. Cancelling the picker does nothing.
 - File chosen → `playing`: the file becomes an object URL on a single reused `<audio>` element
   (`loop = false`), and `play()` is called. Then `onTrack(track)` and `onChange(true)`. The input
@@ -149,7 +149,10 @@ The music must sound good (decided 2026-10-09). Chrome's default Opus for an aud
 about 32 kbps, tuned for speech, which audibly smears music. So the boombox sender asks for
 **mono Opus at 128 kbps** (`BOOMBOX_MAX_BITRATE = 128_000`):
 - Initiator: `sendEncodings: [{ maxBitrate: BOOMBOX_MAX_BITRATE }]` on the boombox transceiver.
-- Answerer: `setParameters` with `encodings[0].maxBitrate` in `attachTracks`, as for the video cap.
+- Answerer: `setParameters` with `encodings[0].maxBitrate` in `attachTracks`, as for the video cap,
+  and **again after its answer is set**. Chrome drops parameters set on a trackless sender before the
+  answer, and the boombox sender has no track until music plays. Without the second cap, music from
+  a carrier who answered went out at 32 kbps (found by the e2e bitrate check).
 - No SDP munging. With no `b=AS` line, Chrome takes the sender's `maxBitrate` as the Opus target,
   within the negotiated envelope (`setParameters` never renegotiates).
 

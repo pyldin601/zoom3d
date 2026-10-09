@@ -81,3 +81,9 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
 - Face framing: the sent video is a canvas track drawn on `requestVideoFrameCallback`, which stops in hidden
   tabs. `framer.sendTrack` flips to the raw camera track while hidden and the call pushes it to the mesh;
   don't remove that swap, or peers freeze on tab switch.
+- Mesh m-line order is fixed: video, mic, boombox (`BOOMBOX_INDEX = 2`). The boombox transceiver is added after
+  the mic's `addTrack` (which would otherwise take it) and is only ever swapped with `replaceTrack`; don't add
+  transceivers before it or renegotiate to toggle it. Its 128 kbps cap must be set again after the answer:
+  Chrome drops parameters set on a trackless sender before then.
+- Playwright file choosers: start `page.waitForEvent('filechooser')` before the action that opens one, with a
+  step in between. Interception turns on asynchronously, and a dialog opened right away can go unseen.

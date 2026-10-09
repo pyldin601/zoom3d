@@ -113,6 +113,8 @@ export function createBoombox(opts: BoomboxOptions): Boombox {
   return {
     toggle() {
       if (state === 'off') {
+        // Picking a file needs a cursor, and Chrome may not open a file chooser under pointer lock.
+        doc.exitPointerLock?.();
         input.click();
       } else {
         stop();

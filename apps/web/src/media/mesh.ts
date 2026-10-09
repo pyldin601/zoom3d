@@ -152,6 +152,11 @@ export function createMesh(opts: MeshOptions): MediaTransport {
       }
       await pc.setLocalDescription();
       opts.sendSignal(peerId, describe(pc));
+      // Chrome drops parameters set on a trackless sender before the answer, so cap it again.
+      const slot = pc.getTransceivers()[BOOMBOX_INDEX];
+      if (slot) {
+        await capBitrate(slot.sender, BOOMBOX_MAX_BITRATE);
+      }
     }
   }
 
