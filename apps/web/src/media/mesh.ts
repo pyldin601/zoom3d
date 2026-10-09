@@ -54,7 +54,9 @@ export function createMesh(opts: MeshOptions): MediaTransport {
   const checkConnections = () => {
     const now = Date.now();
     for (const [peerId, conn] of [...conns]) {
-      if (!conn.initiator) continue;
+      if (!conn.initiator) {
+        continue;
+      }
       if (conn.pc.connectionState === 'connected') {
         conn.since = now;
       } else if (now - conn.since >= WATCHDOG_MS) {
@@ -79,14 +81,18 @@ export function createMesh(opts: MeshOptions): MediaTransport {
     for (const t of conn.pc.getTransceivers()) {
       const kind = t.receiver.track.kind;
       const track = localTrack(kind);
-      if (!track || !local) continue;
+      if (!track || !local) {
+        continue;
+      }
       t.direction = 'sendrecv';
       await t.sender.replaceTrack(track);
       t.sender.setStreams?.(local);
       if (kind === 'video') {
         try {
           const params = t.sender.getParameters();
-          if (params.encodings[0]) params.encodings[0].maxBitrate = VIDEO_MAX_BITRATE;
+          if (params.encodings[0]) {
+            params.encodings[0].maxBitrate = VIDEO_MAX_BITRATE;
+          }
           await t.sender.setParameters(params);
         } catch (err) {
           console.warn('could not cap video bitrate', err);
@@ -103,11 +109,15 @@ export function createMesh(opts: MeshOptions): MediaTransport {
     const { pc } = conn;
     const collision = d.type === 'offer' && (conn.makingOffer || pc.signalingState !== 'stable');
     conn.ignoreOffer = !conn.polite && collision;
-    if (conn.ignoreOffer) return;
+    if (conn.ignoreOffer) {
+      return;
+    }
     await pc.setRemoteDescription(d);
     if (d.type === 'offer') {
       conn.remoteFingerprint = fingerprintOf(d.sdp);
-      if (!conn.tracksAttached) await attachTracks(conn);
+      if (!conn.tracksAttached) {
+        await attachTracks(conn);
+      }
       await pc.setLocalDescription();
       opts.sendSignal(peerId, describe(pc));
     }
@@ -141,8 +151,11 @@ export function createMesh(opts: MeshOptions): MediaTransport {
       } else {
         pc.addTransceiver('video', { direction: 'recvonly' });
       }
-      if (audio && local) pc.addTrack(audio, local);
-      else pc.addTransceiver('audio', { direction: 'recvonly' });
+      if (audio && local) {
+        pc.addTrack(audio, local);
+      } else {
+        pc.addTransceiver('audio', { direction: 'recvonly' });
+      }
     }
 
     pc.onnegotiationneeded = async () => {
@@ -171,11 +184,15 @@ export function createMesh(opts: MeshOptions): MediaTransport {
     };
     pc.ontrack = ({ streams }) => {
       const stream = streams[0];
-      if (stream) opts.onRemoteStream(peerId, stream);
+      if (stream) {
+        opts.onRemoteStream(peerId, stream);
+      }
     };
     // Only the initiator restarts ICE, so restarts never collide (see the module comment).
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed' && conn.initiator) pc.restartIce();
+      if (pc.connectionState === 'failed' && conn.initiator) {
+        pc.restartIce();
+      }
     };
     return conn;
   }
@@ -183,7 +200,9 @@ export function createMesh(opts: MeshOptions): MediaTransport {
   return {
     connect(peerId) {
       // The smaller id waits for the other side's offer.
-      if (!conns.has(peerId) && opts.selfId > peerId) create(peerId, true);
+      if (!conns.has(peerId) && opts.selfId > peerId) {
+        create(peerId, true);
+      }
     },
 
     async handleSignal(from, payload) {
@@ -201,7 +220,9 @@ export function createMesh(opts: MeshOptions): MediaTransport {
       }
       if (!conn) {
         // Only a fresh offer may open a connection; stray candidates/answers are stale.
-        if (!isOffer) return;
+        if (!isOffer) {
+          return;
+        }
         conn = create(from, false);
       }
       try {
@@ -211,7 +232,9 @@ export function createMesh(opts: MeshOptions): MediaTransport {
           } catch (err) {
             // A recreated initiator connection (new DTLS fingerprint) cannot be applied to our old
             // one: replace ours and answer afresh.
-            if (payload.description.type !== 'offer' || conn.initiator) throw err;
+            if (payload.description.type !== 'offer' || conn.initiator) {
+              throw err;
+            }
             conn.pc.close();
             conns.delete(from);
             await applyDescription(from, create(from, false), payload.description);
@@ -220,7 +243,9 @@ export function createMesh(opts: MeshOptions): MediaTransport {
           try {
             await conn.pc.addIceCandidate(payload.candidate ?? undefined);
           } catch (err) {
-            if (!conn.ignoreOffer) throw err;
+            if (!conn.ignoreOffer) {
+              throw err;
+            }
           }
         }
       } catch (err) {
@@ -234,18 +259,26 @@ export function createMesh(opts: MeshOptions): MediaTransport {
     },
 
     close() {
-      if (watchdog) clearInterval(watchdog);
+      if (watchdog) {
+        clearInterval(watchdog);
+      }
       watchdog = null;
-      for (const { pc } of conns.values()) pc.close();
+      for (const { pc } of conns.values()) {
+        pc.close();
+      }
       conns.clear();
     },
 
     async stats(peerId) {
       const conn = conns.get(peerId);
-      if (!conn) return null;
+      if (!conn) {
+        return null;
+      }
       let bytesReceived = 0;
       (await conn.pc.getStats()).forEach((r: { type: string; bytesReceived?: number }) => {
-        if (r.type === 'inbound-rtp') bytesReceived += r.bytesReceived ?? 0;
+        if (r.type === 'inbound-rtp') {
+          bytesReceived += r.bytesReceived ?? 0;
+        }
       });
       return { bytesReceived };
     },

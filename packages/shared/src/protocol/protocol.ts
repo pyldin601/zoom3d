@@ -101,12 +101,16 @@ export function isValidRoomId(v: unknown): v is string {
 
 /** Base64url (no padding) of 16 random bytes: 22 characters. */
 export function newRoomId(bytes: Uint8Array): string {
-  if (bytes.length !== 16) throw new Error('newRoomId needs exactly 16 bytes');
+  if (bytes.length !== 16) {
+    throw new Error('newRoomId needs exactly 16 bytes');
+  }
   let out = '';
   for (let i = 0; i < bytes.length; i += 3) {
     const n = ((bytes[i] ?? 0) << 16) | ((bytes[i + 1] ?? 0) << 8) | (bytes[i + 2] ?? 0);
     const chars = Math.min(4, Math.ceil(((bytes.length - i) * 8) / 6));
-    for (let c = 0; c < chars; c++) out += B64URL[(n >> (18 - 6 * c)) & 63];
+    for (let c = 0; c < chars; c++) {
+      out += B64URL[(n >> (18 - 6 * c)) & 63];
+    }
   }
   return out;
 }
@@ -124,7 +128,9 @@ const isControl = (ch: string) => {
 };
 
 export function sanitizeName(v: unknown): string | null {
-  if (typeof v !== 'string') return null;
+  if (typeof v !== 'string') {
+    return null;
+  }
   const name = [...v]
     .filter((ch) => !isControl(ch))
     .join('')
@@ -144,11 +150,17 @@ const isStrOrNull = (v: unknown): v is string | null => v === null || isStr(v);
 const DESCRIPTION_TYPES = ['offer', 'answer', 'pranswer', 'rollback'] as const;
 
 export function parseSignalPayload(v: unknown): SignalPayload | null {
-  if (!isObj(v)) return null;
+  if (!isObj(v)) {
+    return null;
+  }
   if (v.kind === 'description') {
     const d = v.description;
-    if (!isObj(d) || !DESCRIPTION_TYPES.includes(d.type as never) || !isStr(d.sdp)) return null;
-    if (d.sdp.length > MAX_SDP_CHARS) return null;
+    if (!isObj(d) || !DESCRIPTION_TYPES.includes(d.type as never) || !isStr(d.sdp)) {
+      return null;
+    }
+    if (d.sdp.length > MAX_SDP_CHARS) {
+      return null;
+    }
     return {
       kind: 'description',
       description: { type: d.type as (typeof DESCRIPTION_TYPES)[number], sdp: d.sdp },
@@ -156,10 +168,18 @@ export function parseSignalPayload(v: unknown): SignalPayload | null {
   }
   if (v.kind === 'candidate') {
     const c = v.candidate;
-    if (c === null) return { kind: 'candidate', candidate: null };
-    if (!isObj(c) || !isStr(c.candidate) || c.candidate.length > MAX_CANDIDATE_CHARS) return null;
-    if (!isStrOrNull(c.sdpMid) || !isStrOrNull(c.usernameFragment)) return null;
-    if (c.sdpMLineIndex !== null && !isSeq(c.sdpMLineIndex)) return null;
+    if (c === null) {
+      return { kind: 'candidate', candidate: null };
+    }
+    if (!isObj(c) || !isStr(c.candidate) || c.candidate.length > MAX_CANDIDATE_CHARS) {
+      return null;
+    }
+    if (!isStrOrNull(c.sdpMid) || !isStrOrNull(c.usernameFragment)) {
+      return null;
+    }
+    if (c.sdpMLineIndex !== null && !isSeq(c.sdpMLineIndex)) {
+      return null;
+    }
     return {
       kind: 'candidate',
       candidate: {
@@ -174,21 +194,29 @@ export function parseSignalPayload(v: unknown): SignalPayload | null {
 }
 
 function iceServer(v: unknown): IceServer | null {
-  if (!isObj(v) || !Array.isArray(v.urls) || !v.urls.every(isStr)) return null;
+  if (!isObj(v) || !Array.isArray(v.urls) || !v.urls.every(isStr)) {
+    return null;
+  }
   const out: IceServer = { urls: [...v.urls] };
   if (v.username !== undefined) {
-    if (!isStr(v.username)) return null;
+    if (!isStr(v.username)) {
+      return null;
+    }
     out.username = v.username;
   }
   if (v.credential !== undefined) {
-    if (!isStr(v.credential)) return null;
+    if (!isStr(v.credential)) {
+      return null;
+    }
     out.credential = v.credential;
   }
   return out;
 }
 
 function parseJson(raw: string, limit: number): Obj | null {
-  if (raw.length > limit) return null;
+  if (raw.length > limit) {
+    return null;
+  }
   try {
     const v: unknown = JSON.parse(raw);
     return isObj(v) && isStr(v.type) ? v : null;
@@ -203,17 +231,25 @@ function pose(m: Obj): { x: number; y: number; angle: number } | null {
 
 export function parseClientMessage(raw: string): ClientMessage | null {
   const m = parseJson(raw, MAX_MESSAGE_BYTES);
-  if (!m) return null;
+  if (!m) {
+    return null;
+  }
   if (m.type === 'join') {
     const name = sanitizeName(m.name);
-    if (!isValidRoomId(m.roomId) || name === null) return null;
+    if (!isValidRoomId(m.roomId) || name === null) {
+      return null;
+    }
     const join: JoinMessage = { type: 'join', roomId: m.roomId, name };
     if (m.resumeToken !== undefined) {
-      if (!isStr(m.resumeToken) || m.resumeToken.length > 64) return null;
+      if (!isStr(m.resumeToken) || m.resumeToken.length > 64) {
+        return null;
+      }
       join.resumeToken = m.resumeToken;
     }
     // A bad picture is not worth refusing the join over: the peer just shows initials.
-    if (isValidAvatar(m.avatar)) join.avatar = m.avatar;
+    if (isValidAvatar(m.avatar)) {
+      join.avatar = m.avatar;
+    }
     return join;
   }
   if (m.type === 'state') {
@@ -231,10 +267,16 @@ export function parseClientMessage(raw: string): ClientMessage | null {
 }
 
 function peerInfo(v: unknown): PeerInfo | null {
-  if (!isObj(v) || !isStr(v.id) || !isStr(v.name) || !isStr(v.color)) return null;
-  if (!isBool(v.cam) || !isBool(v.mic)) return null;
+  if (!isObj(v) || !isStr(v.id) || !isStr(v.name) || !isStr(v.color)) {
+    return null;
+  }
+  if (!isBool(v.cam) || !isBool(v.mic)) {
+    return null;
+  }
   // A missing avatar (a server from before avatars) is no avatar, so mixed versions still connect.
-  if (v.avatar !== undefined && !isStrOrNull(v.avatar)) return null;
+  if (v.avatar !== undefined && !isStrOrNull(v.avatar)) {
+    return null;
+  }
   const p = pose(v);
   const avatar = isValidAvatar(v.avatar) ? v.avatar : null;
   return p && { id: v.id, name: v.name, color: v.color, ...p, cam: v.cam, mic: v.mic, avatar };
@@ -242,17 +284,23 @@ function peerInfo(v: unknown): PeerInfo | null {
 
 export function parseServerMessage(raw: string): ServerMessage | null {
   const m = parseJson(raw, MAX_SERVER_MESSAGE_BYTES);
-  if (!m) return null;
+  if (!m) {
+    return null;
+  }
   switch (m.type) {
     case 'welcome': {
       const spawn = isObj(m.spawn) ? pose(m.spawn) : null;
       if (!isStr(m.selfId) || !isStr(m.resumeToken) || !isStr(m.color) || !spawn || !Array.isArray(m.peers)) {
         return null;
       }
-      if (!Array.isArray(m.iceServers)) return null;
+      if (!Array.isArray(m.iceServers)) {
+        return null;
+      }
       const peers = m.peers.map(peerInfo);
       const iceServers = m.iceServers.map(iceServer);
-      if (peers.some((p) => p === null) || iceServers.some((i) => i === null)) return null;
+      if (peers.some((p) => p === null) || iceServers.some((i) => i === null)) {
+        return null;
+      }
       return {
         type: 'welcome',
         selfId: m.selfId,

@@ -41,7 +41,9 @@ export function normalizeAudioSettings(v: unknown): AudioSettings {
   const d = DEFAULT_AUDIO_SETTINGS;
   const ref = inRange(o.ref, 0.1, 10) ? o.ref : d.ref;
   let max = inRange(o.max, 0, 64) ? o.max : d.max;
-  if (max < ref + MIN_RANGE) max = ref + MIN_RANGE;
+  if (max < ref + MIN_RANGE) {
+    max = ref + MIN_RANGE;
+  }
   return {
     ref,
     max,
@@ -53,7 +55,9 @@ export function normalizeAudioSettings(v: unknown): AudioSettings {
 }
 
 export function voiceGains(distance: number, occluded: boolean, s: AudioSettings): { dry: number; send: number } {
-  if (!Number.isFinite(distance)) return { dry: 0, send: 0 };
+  if (!Number.isFinite(distance)) {
+    return { dry: 0, send: 0 };
+  }
   const n = Math.min(Math.max((distance - s.ref) / (s.max - s.ref), 0), 1);
   const k = occluded ? s.occludedGain : 1;
   return { dry: (1 - n) ** 2 * k, send: (0.15 + 0.35 * n) * (1 - n ** 4) * k };

@@ -52,25 +52,37 @@ export function createInput(win: Listenable, doc: InputDocument): Input {
   win.addEventListener('keydown', (event) => {
     const e = event as KeyboardEvent;
     // Leave browser/OS shortcuts alone (Cmd+S, Ctrl+D, ...).
-    if (e.metaKey || e.ctrlKey || e.altKey || isTextEntry(e.target)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || isTextEntry(e.target)) {
+      return;
+    }
     const action = BINDINGS[e.code];
-    if (!action) return;
+    if (!action) {
+      return;
+    }
     e.preventDefault();
     held.add(action);
   });
   win.addEventListener('keyup', (event) => {
     const code = (event as KeyboardEvent).code;
     // macOS drops keyup for keys released while Cmd is held; drop everything when Cmd goes up.
-    if (code === 'MetaLeft' || code === 'MetaRight') held.clear();
+    if (code === 'MetaLeft' || code === 'MetaRight') {
+      held.clear();
+    }
     const action = BINDINGS[code];
-    if (action) held.delete(action);
+    if (action) {
+      held.delete(action);
+    }
   });
   win.addEventListener('blur', reset);
   doc.addEventListener('visibilitychange', () => {
-    if (doc.visibilityState === 'hidden') reset();
+    if (doc.visibilityState === 'hidden') {
+      reset();
+    }
   });
   doc.addEventListener('mousemove', (event) => {
-    if (doc.pointerLockElement) mouseTurn += (event as MouseEvent).movementX * MOUSE_TURN_PER_PX;
+    if (doc.pointerLockElement) {
+      mouseTurn += (event as MouseEvent).movementX * MOUSE_TURN_PER_PX;
+    }
   });
 
   return {

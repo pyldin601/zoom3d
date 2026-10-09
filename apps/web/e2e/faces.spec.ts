@@ -17,7 +17,9 @@ const faceOf = (page: Page, name: string) =>
   page.evaluate(async (peerName) => {
     const g = (window as unknown as GameWindow).__game;
     const entry = [...(g.session?.peers.entries() ?? [])].find(([, p]) => p.info.name === peerName);
-    if (!entry || !g.call) return null;
+    if (!entry || !g.call) {
+      return null;
+    }
     const [id] = entry;
     const stats = await g.call.stats(id);
     return { live: g.call.isLive(id), hasFace: g.call.faceOf(id) !== null, bytes: stats?.bytesReceived ?? 0 };

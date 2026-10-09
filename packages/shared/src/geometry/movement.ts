@@ -47,7 +47,9 @@ export function moveWithCollision(
 export function stepPlayer(map: GameMap, s: PlayerState, input: MoveInput, dt: number, out: PlayerState): PlayerState {
   const t = Math.min(Math.max(dt, 0), MAX_DT);
   let angle = (s.angle + input.turn * TURN_SPEED * t) % TWO_PI;
-  if (angle < 0) angle += TWO_PI;
+  if (angle < 0) {
+    angle += TWO_PI;
+  }
 
   let forward = input.forward;
   let strafe = input.strafe;

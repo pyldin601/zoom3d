@@ -77,7 +77,9 @@ describe('sanitizeName', () => {
   });
 
   test('rejects empty, too long and non-strings', () => {
-    for (const bad of ['', '   ', 'x'.repeat(25), 42, undefined]) expect(sanitizeName(bad)).toBeNull();
+    for (const bad of ['', '   ', 'x'.repeat(25), 42, undefined]) {
+      expect(sanitizeName(bad)).toBeNull();
+    }
   });
 
   test('counts code points, not UTF-16 units', () => {

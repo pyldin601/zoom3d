@@ -18,10 +18,15 @@ test('the game keeps ~60 fps while a peer is connected', async ({ browser }) => 
         const deltas: number[] = [];
         let last = 0;
         const step = (t: number) => {
-          if (last) deltas.push(t - last);
+          if (last) {
+            deltas.push(t - last);
+          }
           last = t;
-          if (deltas.length < 120) requestAnimationFrame(step);
-          else resolve([...deltas].sort((x, y) => x - y)[60] as number);
+          if (deltas.length < 120) {
+            requestAnimationFrame(step);
+          } else {
+            resolve([...deltas].sort((x, y) => x - y)[60] as number);
+          }
         };
         requestAnimationFrame(step);
       })

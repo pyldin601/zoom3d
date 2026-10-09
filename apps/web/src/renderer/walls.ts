@@ -40,11 +40,15 @@ export function renderWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textu
     const start = Math.max(0, Math.floor(half - lineH / 2));
     const end = Math.min(h, Math.floor(half + lineH / 2));
 
-    for (let y = 0; y < start; y++) pixels[y * w + col] = CEILING;
+    for (let y = 0; y < start; y++) {
+      pixels[y * w + col] = CEILING;
+    }
     if (end > start) {
       const tex = textures[hit.tile] as Uint32Array;
       let texX = Math.floor(hit.wallX * size);
-      if ((hit.side === 0 && rayX > 0) || (hit.side === 1 && rayY < 0)) texX = size - texX - 1;
+      if ((hit.side === 0 && rayX > 0) || (hit.side === 1 && rayY < 0)) {
+        texX = size - texX - 1;
+      }
       const step = size / lineH;
       let texPos = (start - half + lineH / 2) * step;
       for (let y = start; y < end; y++) {
@@ -54,6 +58,8 @@ export function renderWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textu
         pixels[y * w + col] = hit.side === 1 ? shade(c) : c;
       }
     }
-    for (let y = Math.max(end, start); y < h; y++) pixels[y * w + col] = FLOOR;
+    for (let y = Math.max(end, start); y < h; y++) {
+      pixels[y * w + col] = FLOOR;
+    }
   }
 }

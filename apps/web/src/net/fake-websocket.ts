@@ -6,7 +6,9 @@ export class FakeWebSocket {
   }
   static latest(): FakeWebSocket {
     const ws = FakeWebSocket.instances.at(-1);
-    if (!ws) throw new Error('no socket');
+    if (!ws) {
+      throw new Error('no socket');
+    }
     return ws;
   }
 
@@ -34,7 +36,9 @@ export class FakeWebSocket {
     this.onmessage?.({ data: JSON.stringify(msg) });
   }
   serverClose(code: number) {
-    if (this.readyState === 3) return;
+    if (this.readyState === 3) {
+      return;
+    }
     this.readyState = 3;
     this.onclose?.({ code });
   }

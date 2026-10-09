@@ -25,7 +25,9 @@ export class SnapshotBuffer {
 
   push(s: Snapshot): void {
     const last = this.latest();
-    if (last && s.t < last.t) return;
+    if (last && s.t < last.t) {
+      return;
+    }
     if (last && s.t === last.t) {
       Object.assign(last, s);
       return;
@@ -40,7 +42,9 @@ export class SnapshotBuffer {
 
   sample(t: number, out: { x: number; y: number; angle: number }): boolean {
     const n = this.items.length;
-    if (n === 0) return false;
+    if (n === 0) {
+      return false;
+    }
     let a = this.at(0);
     let b = a;
     if (t >= this.at(n - 1).t) {
@@ -48,16 +52,24 @@ export class SnapshotBuffer {
     } else if (t > a.t) {
       for (let i = 1; i < n; i++) {
         b = this.at(i);
-        if (b.t >= t) break;
+        if (b.t >= t) {
+          break;
+        }
         a = b;
       }
     }
     const k = b.t === a.t ? 0 : (t - a.t) / (b.t - a.t);
     let turn = (b.angle - a.angle) % TWO_PI;
-    if (turn > Math.PI) turn -= TWO_PI;
-    if (turn < -Math.PI) turn += TWO_PI;
+    if (turn > Math.PI) {
+      turn -= TWO_PI;
+    }
+    if (turn < -Math.PI) {
+      turn += TWO_PI;
+    }
     let angle = (a.angle + turn * k) % TWO_PI;
-    if (angle < 0) angle += TWO_PI;
+    if (angle < 0) {
+      angle += TWO_PI;
+    }
     out.x = a.x + (b.x - a.x) * k;
     out.y = a.y + (b.y - a.y) * k;
     out.angle = angle;

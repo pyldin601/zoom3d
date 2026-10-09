@@ -3,7 +3,9 @@ export const HIDDEN_TICK_MS = 100;
 
 export function startHiddenTicker(tick: () => void, isHidden: () => boolean, intervalMs = HIDDEN_TICK_MS): () => void {
   const id = setInterval(() => {
-    if (isHidden()) tick();
+    if (isHidden()) {
+      tick();
+    }
   }, intervalMs);
   return () => clearInterval(id);
 }

@@ -12,7 +12,9 @@ for (const [width, height] of [
     const stage = page.locator('#stage');
     await expect(stage).toHaveCSS('width', /px$/);
     const box = await stage.boundingBox();
-    if (!box) throw new Error('#stage has no box');
+    if (!box) {
+      throw new Error('#stage has no box');
+    }
     expect(Math.abs(box.width / box.height - 16 / 9)).toBeLessThan(0.01);
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.y).toBeGreaterThanOrEqual(0);

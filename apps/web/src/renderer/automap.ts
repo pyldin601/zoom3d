@@ -26,19 +26,25 @@ const visibleWalls = new WeakMap<GameMap, { x: number; y: number; tile: number }
 /** Walls that touch floor (8-neighbourhood); the rest of the solid mass is never seen. */
 function wallsToDraw(map: GameMap) {
   let walls = visibleWalls.get(map);
-  if (walls) return walls;
+  if (walls) {
+    return walls;
+  }
   walls = [];
   for (let y = 0; y < map.height; y++) {
     for (let x = 0; x < map.width; x++) {
       const tile = tileAt(map, x, y);
-      if (tile === 0) continue;
+      if (tile === 0) {
+        continue;
+      }
       let touchesFloor = false;
       for (let dy = -1; dy <= 1 && !touchesFloor; dy++) {
         for (let dx = -1; dx <= 1 && !touchesFloor; dx++) {
           touchesFloor = tileAt(map, x + dx, y + dy) === 0;
         }
       }
-      if (touchesFloor) walls.push({ x, y, tile });
+      if (touchesFloor) {
+        walls.push({ x, y, tile });
+      }
     }
   }
   visibleWalls.set(map, walls);

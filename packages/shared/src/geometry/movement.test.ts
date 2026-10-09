@@ -25,7 +25,9 @@ describe('stepPlayer', () => {
 
   test('stops at the wall', () => {
     let p = player(2.5, 2.5);
-    for (let i = 0; i < 50; i++) p = stepPlayer(ROOM, p, input(1), 0.1, player(0, 0));
+    for (let i = 0; i < 50; i++) {
+      p = stepPlayer(ROOM, p, input(1), 0.1, player(0, 0));
+    }
     expect(p.x).toBeLessThanOrEqual(4 - PLAYER_RADIUS);
     expect(boxInWall(p)).toBe(false);
   });

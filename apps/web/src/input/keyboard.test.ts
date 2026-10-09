@@ -9,7 +9,9 @@ class FakeTarget {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), fn]);
   }
   dispatch(type: string, event: unknown = {}) {
-    for (const fn of this.listeners.get(type) ?? []) fn(event as Event);
+    for (const fn of this.listeners.get(type) ?? []) {
+      fn(event as Event);
+    }
   }
 }
 

@@ -35,7 +35,9 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
     clearInterval(timers.get(existing));
     existing.remove();
   }
-  if (!opts) return;
+  if (!opts) {
+    return;
+  }
 
   let current = opts.settings;
   const panel = make('div', { className: 'audio-panel' });
@@ -49,7 +51,9 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
   const render = () => {
     for (const { key, unit } of SLIDERS) {
       const row = inputs.get(key);
-      if (!row) continue;
+      if (!row) {
+        continue;
+      }
       row.input.value = String(current[key]);
       row.value.textContent = `${current[key]}${unit}`;
     }

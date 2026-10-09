@@ -54,7 +54,9 @@ describe('createAudioEngine', () => {
     const e = engine();
     e.attach('b', stream());
     e.update(0, listener, at(1.5, 1.5));
-    for (const g of gains()) expect(Number.isFinite((g.gain as FakeParam).value)).toBe(true);
+    for (const g of gains()) {
+      expect(Number.isFinite((g.gain as FakeParam).value)).toBe(true);
+    }
     expect(Number.isFinite(param('panner', 'positionX').value)).toBe(true);
   });
 

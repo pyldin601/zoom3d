@@ -35,7 +35,9 @@ export function connect(opts: ConnectOptions): { send(m: ClientMessage): void; c
     ws.onopen = () => ws.send(JSON.stringify(opts.makeJoin()));
     ws.onmessage = (e) => {
       const msg = parseServerMessage(String(e.data));
-      if (!msg) return;
+      if (!msg) {
+        return;
+      }
       if (msg.type === 'welcome') {
         attempt = 0;
         opts.onStatus('open');
@@ -47,7 +49,9 @@ export function connect(opts: ConnectOptions): { send(m: ClientMessage): void; c
       opts.onMessage(msg);
     };
     ws.onclose = () => {
-      if (stopped) return;
+      if (stopped) {
+        return;
+      }
       const delay = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** attempt);
       attempt++;
       opts.onStatus('reconnecting');
@@ -58,7 +62,9 @@ export function connect(opts: ConnectOptions): { send(m: ClientMessage): void; c
 
   return {
     send(m) {
-      if (ws.readyState === OPEN) ws.send(JSON.stringify(m));
+      if (ws.readyState === OPEN) {
+        ws.send(JSON.stringify(m));
+      }
     },
     close() {
       stopped = true;

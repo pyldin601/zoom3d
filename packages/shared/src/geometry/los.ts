@@ -25,8 +25,12 @@ export function hasLineOfSight(map: GameMap, ax: number, ay: number, bx: number,
       sideY += deltaY;
       y += stepY;
     }
-    if (x === endX && y === endY) return true;
-    if (tileAt(map, x, y) !== 0) return false;
+    if (x === endX && y === endY) {
+      return true;
+    }
+    if (tileAt(map, x, y) !== 0) {
+      return false;
+    }
   }
   return true;
 }

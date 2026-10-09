@@ -19,21 +19,31 @@ export function parseMap(text: string): GameMap {
   const tiles = new Uint8Array(width * height);
   const spawns: { x: number; y: number }[] = [];
   rows.forEach((row, y) => {
-    if (row.length !== width) throw new Error(`map row ${y + 1}: expected ${width} columns, got ${row.length}`);
+    if (row.length !== width) {
+      throw new Error(`map row ${y + 1}: expected ${width} columns, got ${row.length}`);
+    }
     for (let x = 0; x < width; x++) {
       const ch = row[x] as string;
       const tile = TILE_CHARS[ch];
-      if (tile === undefined) throw new Error(`map row ${y + 1}: unknown character '${ch}' at column ${x + 1}`);
-      if (ch === 'S') spawns.push({ x, y });
+      if (tile === undefined) {
+        throw new Error(`map row ${y + 1}: unknown character '${ch}' at column ${x + 1}`);
+      }
+      if (ch === 'S') {
+        spawns.push({ x, y });
+      }
       tiles[y * width + x] = tile;
     }
   });
-  if (spawns.length !== 1) throw new Error(`map must have exactly one spawn 'S', found ${spawns.length}`);
+  if (spawns.length !== 1) {
+    throw new Error(`map must have exactly one spawn 'S', found ${spawns.length}`);
+  }
   return { width, height, tiles, spawn: spawns[0] as { x: number; y: number } };
 }
 
 export function tileAt(map: GameMap, x: number, y: number): number {
-  if (x < 0 || y < 0 || x >= map.width || y >= map.height) return OUT_OF_BOUNDS;
+  if (x < 0 || y < 0 || x >= map.width || y >= map.height) {
+    return OUT_OF_BOUNDS;
+  }
   return map.tiles[y * map.width + x] as number;
 }
 
@@ -46,7 +56,9 @@ function reachableFromSpawn(map: GameMap): Set<number> {
   const stack = [map.spawn.y * map.width + map.spawn.x];
   while (stack.length > 0) {
     const i = stack.pop() as number;
-    if (seen.has(i)) continue;
+    if (seen.has(i)) {
+      continue;
+    }
     seen.add(i);
     const x = i % map.width;
     const y = (i - x) / map.width;
@@ -56,7 +68,9 @@ function reachableFromSpawn(map: GameMap): Set<number> {
       [x, y + 1],
       [x, y - 1],
     ] as const) {
-      if (tileAt(map, nx, ny) === 0) stack.push(ny * map.width + nx);
+      if (tileAt(map, nx, ny) === 0) {
+        stack.push(ny * map.width + nx);
+      }
     }
   }
   return seen;
@@ -68,10 +82,14 @@ export function validateMap(map: GameMap): string[] {
   for (let y = 0; y < map.height; y++) {
     for (let x = 0; x < map.width; x++) {
       const onBorder = x === 0 || y === 0 || x === map.width - 1 || y === map.height - 1;
-      if (onBorder && tileAt(map, x, y) === 0) errors.push(`border tile (${x}, ${y}) is not a wall`);
+      if (onBorder && tileAt(map, x, y) === 0) {
+        errors.push(`border tile (${x}, ${y}) is not a wall`);
+      }
     }
   }
-  if (errors.length > 0) return errors;
+  if (errors.length > 0) {
+    return errors;
+  }
   const reachable = reachableFromSpawn(map);
   for (let i = 0; i < map.tiles.length; i++) {
     if (map.tiles[i] === 0 && !reachable.has(i)) {
@@ -90,7 +108,9 @@ export function spawnPoint(map: GameMap, rng: () => number): { x: number; y: num
   const { x: sx, y: sy } = map.spawn;
   for (let y = sy - SPAWN_RADIUS; y <= sy + SPAWN_RADIUS; y++) {
     for (let x = sx - SPAWN_RADIUS; x <= sx + SPAWN_RADIUS; x++) {
-      if (tileAt(map, x, y) === 0 && Math.hypot(x - sx, y - sy) <= SPAWN_RADIUS) candidates.push({ x, y });
+      if (tileAt(map, x, y) === 0 && Math.hypot(x - sx, y - sy) <= SPAWN_RADIUS) {
+        candidates.push({ x, y });
+      }
     }
   }
   const tile = candidates[Math.floor(rng() * candidates.length)] ?? map.spawn;

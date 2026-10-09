@@ -56,7 +56,9 @@ export class FakeRTCPeerConnection {
   }
   async addIceCandidate(candidate?: unknown) {
     this.calls.push('addIce');
-    if (!this.remoteDescription && candidate) throw new Error('no remote description');
+    if (!this.remoteDescription && candidate) {
+      throw new Error('no remote description');
+    }
   }
   getTransceivers() {
     return this.remoteTransceivers;

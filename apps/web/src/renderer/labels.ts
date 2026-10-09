@@ -20,9 +20,13 @@ export function drawLabels(
   ctx.lineJoin = 'round';
   ctx.lineWidth = Math.max(2, hudH * 0.005);
   for (const o of others) {
-    if (!projectSprite(p, o.x, o.y, fb.width, projection)) continue;
+    if (!projectSprite(p, o.x, o.y, fb.width, projection)) {
+      continue;
+    }
     const col = Math.round(projection.screenX);
-    if (col < 0 || col >= fb.width || projection.depth >= (fb.zbuffer[col] as number)) continue;
+    if (col < 0 || col >= fb.width || projection.depth >= (fb.zbuffer[col] as number)) {
+      continue;
+    }
     const x = projection.screenX * scale;
     const y = (fb.height / 2 - projection.size / 2) * scale - hudH * 0.01;
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';

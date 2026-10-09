@@ -49,7 +49,9 @@ describe('renderSprites', () => {
     let width = 0;
     for (let x = 0; x < fb.width; x++) {
       const c = px(fb, x, 180);
-      if (c === RED || c === shade(RED)) width++;
+      if (c === RED || c === shade(RED)) {
+        width++;
+      }
     }
     expect(Math.abs(width - (2 * AVATAR_RADIUS * PROJ) / 2)).toBeLessThanOrEqual(2);
   });
@@ -117,8 +119,11 @@ test('hexToRgb packs like rgb()', () => {
 
 describe('face sprites', () => {
   const face = new Uint32Array(FACE_SIZE * FACE_SIZE);
-  for (let j = 0; j < FACE_SIZE; j++)
-    for (let i = 0; i < FACE_SIZE; i++) face[j * FACE_SIZE + i] = rgb((i * 256) / FACE_SIZE, (j * 256) / FACE_SIZE, 0);
+  for (let j = 0; j < FACE_SIZE; j++) {
+    for (let i = 0; i < FACE_SIZE; i++) {
+      face[j * FACE_SIZE + i] = rgb((i * 256) / FACE_SIZE, (j * 256) / FACE_SIZE, 0);
+    }
+  }
   // Texel column/row encoded in the red/green channels, independent of FACE_SIZE.
   const texelI = (c: number) => ((c & 0xff) * FACE_SIZE) / 256;
   const texelJ = (c: number) => (((c >> 8) & 0xff) * FACE_SIZE) / 256;
@@ -187,14 +192,20 @@ describe('floor shadows', () => {
     renderSprites(fb, player, [sprite(3.5)]);
     const shades = new Set<number>();
     fb.pixels.forEach((c, i) => {
-      if (before[i] === FLOOR && c !== FLOOR && c !== RED && c !== shade(RED)) shades.add(c);
+      if (before[i] === FLOOR && c !== FLOOR && c !== RED && c !== shade(RED)) {
+        shades.add(c);
+      }
     });
     expect(shades.size).toBeGreaterThan(1);
     expect(shades.size).toBeLessThanOrEqual(SHADOW_LEVELS);
     // Near the centre a world texel spans several screen pixels: neighbours share a colour.
     const row = floorRow(2);
     let same = 0;
-    for (let x = 300; x < 340; x++) if (px(fb, x, row) === px(fb, x + 1, row)) same++;
+    for (let x = 300; x < 340; x++) {
+      if (px(fb, x, row) === px(fb, x + 1, row)) {
+        same++;
+      }
+    }
     expect(same).toBeGreaterThan(30);
   });
 
@@ -212,7 +223,9 @@ describe('floor shadows', () => {
     const before = fb.pixels.slice();
     renderSprites(fb, player, [sprite(3.5)]);
     for (let i = 0; i < before.length; i++) {
-      if (fb.pixels[i] === before[i]) continue;
+      if (fb.pixels[i] === before[i]) {
+        continue;
+      }
       const row = Math.floor(i / fb.width);
       const isDisc = fb.pixels[i] === RED || fb.pixels[i] === shade(RED);
       expect(isDisc || (before[i] === FLOOR && row >= floorRow(2 + SHADOW_RADIUS) - 1)).toBe(true);

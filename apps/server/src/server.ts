@@ -30,7 +30,9 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
   const out: Outbox = {
     send(conn, msg) {
       const s = sockets.get(conn);
-      if (s && s.ws.readyState === s.ws.OPEN) s.ws.send(JSON.stringify(msg));
+      if (s && s.ws.readyState === s.ws.OPEN) {
+        s.ws.send(JSON.stringify(msg));
+      }
     },
     close(conn, code, reason) {
       sockets.get(conn)?.ws.close(code, reason);
@@ -66,16 +68,25 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     });
     ws.on('message', (data, isBinary) => {
       if (!bucket.take()) {
-        if (++drops >= MAX_CONSECUTIVE_DROPS) ws.close(CLOSE_RATE_LIMIT, 'rate');
+        if (++drops >= MAX_CONSECUTIVE_DROPS) {
+          ws.close(CLOSE_RATE_LIMIT, 'rate');
+        }
         return;
       }
       drops = 0;
-      if (isBinary) return;
+      if (isBinary) {
+        return;
+      }
       const msg = parseClientMessage(String(data));
-      if (msg?.type === 'join') lobby.join(conn, msg);
-      else if (msg?.type === 'state') lobby.state(conn, msg);
-      else if (msg?.type === 'media') lobby.media(conn, msg);
-      else if (msg?.type === 'signal') lobby.signal(conn, msg);
+      if (msg?.type === 'join') {
+        lobby.join(conn, msg);
+      } else if (msg?.type === 'state') {
+        lobby.state(conn, msg);
+      } else if (msg?.type === 'media') {
+        lobby.media(conn, msg);
+      } else if (msg?.type === 'signal') {
+        lobby.signal(conn, msg);
+      }
     });
     ws.on('close', () => {
       sockets.delete(conn);
@@ -104,7 +115,9 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     async close() {
       clearInterval(heartbeat);
       clearInterval(ticker);
-      for (const s of sockets.values()) s.ws.terminate();
+      for (const s of sockets.values()) {
+        s.ws.terminate();
+      }
       await new Promise<void>((resolve) => wss.close(() => resolve()));
       await new Promise<void>((resolve) => http.close(() => resolve()));
     },
