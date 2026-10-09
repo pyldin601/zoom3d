@@ -288,6 +288,27 @@ test('setVideoTrack does not start sending on a receive-only connection', async 
   expect(pc().getTransceivers()[0]?.sender.track).toBeNull();
 });
 
+const newMic = { kind: 'audio', id: 'mic2' } as unknown as MediaStreamTrack;
+
+test('setAudioTrack swaps the mic sender of existing connections, not video or the boombox', async () => {
+  const ans = mesh('a');
+  await ans.handleSignal('b', offer);
+  ans.setAudioTrack(newMic);
+  await tick();
+  const [video, audio, boombox] = pc(0).remoteTransceivers;
+  expect(audio?.sender.track).toBe(newMic);
+  expect(video?.sender.track).not.toBe(newMic);
+  expect(boombox?.sender.track).not.toBe(newMic);
+});
+
+test('setAudioTrack does not start sending on a receive-only connection', async () => {
+  const m = mesh('b', null);
+  m.connect('a');
+  m.setAudioTrack(newMic);
+  await tick();
+  expect(pc().getTransceivers()[1]?.sender.track ?? null).toBeNull();
+});
+
 describe('boombox transceiver', () => {
   /** An answered initiator connection to `peer`. */
   async function initiatorTo(m: ReturnType<typeof mesh>, peer: string, i: number) {

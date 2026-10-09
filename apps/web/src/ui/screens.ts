@@ -1,9 +1,8 @@
 // DOM screens and overlays inside the 16:9 stage. User-provided text only ever goes through textContent.
-import { NAME_MAX, sanitizeName } from '@zoom3d/shared';
-import { makeAvatar } from '../media/avatar';
 import { initials } from '../media/faces';
+import { deviceIcon } from './icons';
 
-function el<K extends keyof HTMLElementTagNameMap>(
+export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   props: Partial<HTMLElementTagNameMap[K]> = {},
   ...children: (Node | string)[]
@@ -24,7 +23,7 @@ function slot(root: HTMLElement, cls: string): HTMLElement {
   return node;
 }
 
-function setScreen(root: HTMLElement, ...children: Node[]): void {
+export function setScreen(root: HTMLElement, ...children: Node[]): void {
   slot(root, 'screen').replaceChildren(el('div', { className: 'panel' }, ...children));
 }
 
@@ -41,119 +40,6 @@ export function showLanding(root: HTMLElement, onCreate: () => void): void {
     el('p', { textContent: 'A meeting room you can walk around in.' }),
     create
   );
-}
-
-export interface JoinOptions {
-  defaultName: string;
-  /** Previously picked picture (validated), or null. */
-  defaultAvatar?: string | null;
-  error?: string;
-  /** Turns a picked file into an avatar data URL; rejects with 'unreadable' or 'too_big'. */
-  pickAvatar?: (file: File) => Promise<string>;
-  onJoin: (name: string, avatar: string | null) => void;
-}
-
-const AVATAR_ERRORS: Record<string, string> = {
-  too_big: 'That picture is too detailed — try another',
-};
-
-export function showJoin(root: HTMLElement, opts: JoinOptions): void {
-  const pickAvatar = opts.pickAvatar ?? ((file: File) => makeAvatar(file));
-  let avatar = opts.defaultAvatar ?? null;
-  // Only the latest pick counts; Join waits until it has been encoded.
-  let latestPick = 0;
-  let encoding = false;
-  const input = el('input', {
-    name: 'name',
-    value: opts.defaultName,
-    maxLength: NAME_MAX * 2,
-    placeholder: 'Your name',
-  });
-  input.setAttribute('autocomplete', 'nickname');
-  const error = el('p', { className: 'error', textContent: opts.error ?? '' });
-
-  const preview = el('div', { className: 'avatar' });
-  const file = el('input', { type: 'file', accept: 'image/*', hidden: true });
-  file.setAttribute('aria-label', 'Avatar picture');
-  const choose = el('button', { type: 'button', textContent: 'Choose picture…' });
-  const remove = el('button', { type: 'button', textContent: 'Remove' });
-  const renderAvatar = () => {
-    // The picture is a validated data: URL, set as an attribute only; names go through textContent.
-    preview.replaceChildren(avatar ? el('img', { src: avatar, alt: '' }) : initials(input.value));
-    remove.hidden = avatar === null;
-  };
-  input.addEventListener('input', () => {
-    if (!avatar) {
-      renderAvatar();
-    }
-  });
-  choose.addEventListener('click', () => file.click());
-  remove.addEventListener('click', () => {
-    avatar = null;
-    renderAvatar();
-  });
-  file.addEventListener('change', () => {
-    const picked = file.files?.[0];
-    file.value = '';
-    if (!picked) {
-      return;
-    }
-    const pick = ++latestPick;
-    setEncoding(true);
-    pickAvatar(picked).then(
-      (url) => {
-        if (pick !== latestPick) {
-          return;
-        }
-        setEncoding(false);
-        avatar = url;
-        error.textContent = '';
-        renderAvatar();
-      },
-      (err: unknown) => {
-        if (pick !== latestPick) {
-          return;
-        }
-        setEncoding(false);
-        const code = err instanceof Error ? err.message : '';
-        error.textContent = AVATAR_ERRORS[code] ?? "Couldn't read that picture";
-      }
-    );
-  });
-  renderAvatar();
-
-  const join = el('button', { type: 'submit', textContent: 'Join' });
-  function setEncoding(on: boolean) {
-    encoding = on;
-    join.disabled = on;
-  }
-  const form = el(
-    'form',
-    {},
-    el('div', { className: 'avatar-row' }, preview, el('div', {}, choose, remove), file),
-    el('label', {}, 'Your name', input),
-    join,
-    error
-  );
-  form.addEventListener('submit', (e) => {
-    e.preventDefault();
-    if (encoding) {
-      return;
-    }
-    const name = sanitizeName(input.value);
-    if (name === null) {
-      error.textContent = `Enter a name (1–${NAME_MAX} characters)`;
-      return;
-    }
-    opts.onJoin(name, avatar);
-  });
-  setScreen(
-    root,
-    el('h1', { textContent: 'Join the room' }),
-    form,
-    el('p', { className: 'hint', textContent: 'Headphones recommended.' })
-  );
-  input.focus();
 }
 
 export function showNotice(root: HTMLElement, text: string, linkText: string, href: string): void {
@@ -173,21 +59,33 @@ export interface MediaControls {
   mic: boolean;
   camAvailable: boolean;
   micAvailable: boolean;
-  onCam(on: boolean): void;
-  onMic(on: boolean): void;
+  /** Resolves to whether the camera is on now: turning it on can fail. */
+  onCam(on: boolean): Promise<boolean>;
+  onMic(on: boolean): boolean;
 }
 
-function toggle(label: string, control: string, on: boolean, available: boolean, onChange: (on: boolean) => void) {
-  const button = el('button', { type: 'button', disabled: !available });
-  button.dataset.control = control;
+function toggle(
+  kind: 'cam' | 'mic',
+  label: string,
+  on: boolean,
+  available: boolean,
+  onChange: (on: boolean) => boolean | Promise<boolean>
+) {
+  const button = el('button', { type: 'button', disabled: !available, className: 'toggle' });
+  button.dataset.control = kind;
   const render = () => {
-    button.textContent = available ? `${label} ${on ? 'on' : 'off'}` : `No ${label.toLowerCase()}`;
+    // The same icons as the lobby; the state is in the accessible name.
+    button.setAttribute('aria-label', available ? `${label} ${on ? 'on' : 'off'}` : `No ${label.toLowerCase()}`);
     button.setAttribute('aria-pressed', String(on));
+    button.classList.toggle('off', !on);
+    button.replaceChildren(deviceIcon(kind, !on));
   };
-  button.addEventListener('click', () => {
+  button.addEventListener('click', async () => {
     on = !on;
     render();
-    onChange(on);
+    // The handler has the last word: a camera that couldn't start shows as off again.
+    on = await onChange(on);
+    render();
   });
   render();
   return button;
@@ -206,8 +104,8 @@ export function showRoomBar(root: HTMLElement, inviteUrl: string, controls?: Med
   });
   const toggles = controls
     ? [
-        toggle('Mic', 'mic', controls.mic, controls.micAvailable, controls.onMic),
-        toggle('Cam', 'cam', controls.cam, controls.camAvailable, controls.onCam),
+        toggle('mic', 'Mic', controls.mic, controls.micAvailable, controls.onMic),
+        toggle('cam', 'Cam', controls.cam, controls.camAvailable, controls.onCam),
       ]
     : [];
   slot(root, 'roombar').replaceChildren(...toggles, link, copy);
@@ -233,15 +131,29 @@ export function showBanner(root: HTMLElement, text: string | null): void {
   );
 }
 
-export function showSelfPreview(root: HTMLElement, stream: MediaStream | null, visible: boolean): void {
+export interface SelfView {
+  cam: boolean;
+  name: string;
+  /** Validated picture data: URL, or null for initials. */
+  avatar: string | null;
+}
+
+/** Your own circle: the camera while it is on, else your picture or initials, as others see you. */
+export function showSelfPreview(root: HTMLElement, stream: MediaStream | null, self: SelfView): void {
   const box = slot(root, 'selfview');
   let video = box.querySelector('video');
-  if (!video) {
+  let face = box.querySelector<HTMLElement>('.face');
+  if (!video || !face) {
     video = el('video', { muted: true, autoplay: true, playsInline: true });
-    box.append(video);
+    face = el('div', { className: 'face' });
+    box.replaceChildren(video, face);
   }
   if (video.srcObject !== stream) {
     video.srcObject = stream;
   }
-  box.hidden = !visible || stream === null;
+  video.hidden = !self.cam;
+  face.hidden = self.cam;
+  // The picture is set as an attribute only; the name only ever as text.
+  face.replaceChildren(self.avatar ? el('img', { src: self.avatar, alt: '' }) : initials(self.name));
+  box.hidden = false;
 }
