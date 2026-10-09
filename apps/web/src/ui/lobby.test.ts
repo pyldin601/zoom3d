@@ -150,6 +150,19 @@ test('the pencil shows only while the camera is off', () => {
   expect(byLabel('Change picture')?.hidden).toBe(true);
 });
 
+test('a camera still starting shows the preview, not the picture', () => {
+  const { controller, set } = fakeMedia({ cam: false, pending: true }, { cam: true });
+  show({ defaultAvatar: PIC, media: controller });
+  const video = disc().querySelector('video') as HTMLVideoElement;
+  expect(video.hidden).toBe(false);
+  expect((disc().querySelector('.face') as HTMLElement).hidden).toBe(true);
+  expect(byLabel('Change picture')?.hidden).toBe(true);
+  // The request failed: back to the picture.
+  set({ pending: false, camProblem: 'busy' });
+  expect(video.hidden).toBe(true);
+  expect(disc().querySelector('img')?.getAttribute('src')).toBe(PIC);
+});
+
 test('initials follow the typed name while the camera is off', () => {
   show({ defaultName: 'Ada Lovelace', media: camOff() });
   const face = () => disc().querySelector('.face')?.textContent;
