@@ -210,6 +210,36 @@ test('unavailable devices disable their toggle', () => {
   expect((root.querySelector('button[data-control="cam"]') as HTMLButtonElement).disabled).toBe(true);
 });
 
+test('room bar held picker shows the current item and reports changes', () => {
+  const onHeld = vi.fn();
+  showRoomBar(root, 'http://x', undefined, { held: 'coffee', onHeld });
+  const select = root.querySelector('select[data-control="held"]') as HTMLSelectElement;
+  expect(select.getAttribute('aria-label')).toBe('In hand');
+  expect(select.value).toBe('coffee');
+  expect([...select.options].map((o) => o.textContent)).toEqual(['Nothing in hand', 'Beer', 'Coffee', 'Wine']);
+  select.value = 'wine';
+  select.dispatchEvent(new Event('change'));
+  expect(onHeld).toHaveBeenLastCalledWith('wine');
+  select.value = '';
+  select.dispatchEvent(new Event('change'));
+  expect(onHeld).toHaveBeenLastCalledWith(null);
+});
+
+test('the held picker gives up focus after a change', () => {
+  showRoomBar(root, 'http://x', undefined, { held: null, onHeld: () => {} });
+  const select = root.querySelector('select[data-control="held"]') as HTMLSelectElement;
+  select.focus();
+  expect(document.activeElement).toBe(select);
+  select.value = 'beer';
+  select.dispatchEvent(new Event('change'));
+  expect(document.activeElement).not.toBe(select);
+});
+
+test('no held control renders no picker', () => {
+  showRoomBar(root, 'http://x');
+  expect(root.querySelector('select[data-control="held"]')).toBeNull();
+});
+
 afterEach(() => vi.useRealTimers());
 
 test('banners show text literally and hide after 8 s', () => {

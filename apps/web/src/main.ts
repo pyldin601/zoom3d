@@ -28,6 +28,7 @@ import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
 import { makeTextures } from './renderer/textures';
 import { renderWalls } from './renderer/walls';
 import { showAudioPanel } from './ui/audio-panel';
+import { loadHeld, saveHeld } from './ui/held-store';
 import { parseRoute } from './ui/route';
 import {
   clearScreen,
@@ -176,22 +177,35 @@ async function joinRoom(roomId: string, name: string, avatar: string | null): Pr
     now: () => performance.now(),
     listener: call.listener,
   });
+  const held = loadHeld(storage());
+  session.setHeld(held);
   call.attach(session);
   if (local.problem) {
     showBanner(ui, PROBLEM_TEXT[local.problem]);
   }
   const activeCall = call;
-  showRoomBar(ui, location.href, {
-    cam: local.cam,
-    mic: local.mic,
-    camAvailable: local.cam,
-    micAvailable: local.mic,
-    onCam(on) {
-      activeCall.setCam(on);
-      showSelfPreview(ui, local.stream, activeCall.localState().cam);
+  showRoomBar(
+    ui,
+    location.href,
+    {
+      cam: local.cam,
+      mic: local.mic,
+      camAvailable: local.cam,
+      micAvailable: local.mic,
+      onCam(on) {
+        activeCall.setCam(on);
+        showSelfPreview(ui, local.stream, activeCall.localState().cam);
+      },
+      onMic: (on) => activeCall.setMic(on),
     },
-    onMic: (on) => activeCall.setMic(on),
-  });
+    {
+      held,
+      onHeld(item) {
+        saveHeld(storage(), item);
+        session?.setHeld(item);
+      },
+    }
+  );
   showSelfPreview(ui, local.stream, local.cam);
   if (new URLSearchParams(location.search).has('debug')) {
     toggleAudioPanel();
