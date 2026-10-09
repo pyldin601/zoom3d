@@ -107,12 +107,37 @@ test('constraints match the spec', () => {
   expect(AUDIO_CONSTRAINTS).toEqual({ echoCancellation: true, noiseSuppression: true, autoGainControl: true });
 });
 
-test('requests camera and mic separately with saved ids as ideal', () => {
+test('requests camera and mic separately with saved ids as exact', () => {
   make({ camId: 'c1', micId: 'm1' });
   expect(requests.map((r) => r.constraints)).toEqual([
-    { video: { ...VIDEO_CONSTRAINTS, deviceId: { ideal: 'c1' } } },
-    { audio: { ...AUDIO_CONSTRAINTS, deviceId: { ideal: 'm1' } } },
+    { video: { ...VIDEO_CONSTRAINTS, deviceId: { exact: 'c1' } } },
+    { audio: { ...AUDIO_CONSTRAINTS, deviceId: { exact: 'm1' } } },
   ]);
+});
+
+test('a saved device that is gone falls back to the default', async () => {
+  const local = make({ camId: 'gone', cam: true });
+  videoRequests()[0]?.reject(new DOMException('no such device', 'OverconstrainedError'));
+  await flush();
+  expect(videoRequests().map((r) => r.constraints)).toEqual([
+    { video: { ...VIDEO_CONSTRAINTS, deviceId: { exact: 'gone' } } },
+    { video: VIDEO_CONSTRAINTS },
+  ]);
+  const c = cam();
+  videoRequests()[1]?.resolve(c);
+  audioRequests()[0]?.resolve(mic());
+  await local.ready;
+  expect(framer.camera).toBe(c);
+  expect(local.state()).toMatchObject({ cam: true, camProblem: null });
+});
+
+test('a blocked device is not retried without its id', async () => {
+  const local = make({ camId: 'c1' });
+  videoRequests()[0]?.reject(new DOMException('no', 'NotAllowedError'));
+  audioRequests()[0]?.resolve(mic());
+  await local.ready;
+  expect(videoRequests()).toHaveLength(1);
+  expect(local.state().camProblem).toBe('blocked');
 });
 
 test('without saved ids there is no deviceId constraint', () => {
@@ -178,7 +203,7 @@ test('setCam(false) stops the camera and clears the framer; setCam(true) reopens
   expect(local.state().cam).toBe(false);
   expect(local.prefs().cam).toBe(false);
   const on = local.setCam(true);
-  expect(lastRequest().constraints).toEqual({ video: { ...VIDEO_CONSTRAINTS, deviceId: { ideal: 'c1' } } });
+  expect(lastRequest().constraints).toEqual({ video: { ...VIDEO_CONSTRAINTS, deviceId: { exact: 'c1' } } });
   const c2 = cam();
   lastRequest().resolve(c2);
   await on;
@@ -213,7 +238,7 @@ test('useCamera while on swaps before stopping the old one', async () => {
     stop();
   };
   const done = local.useCamera('c2');
-  expect(lastRequest().constraints).toEqual({ video: { ...VIDEO_CONSTRAINTS, deviceId: { ideal: 'c2' } } });
+  expect(lastRequest().constraints).toEqual({ video: { ...VIDEO_CONSTRAINTS, deviceId: { exact: 'c2' } } });
   const c2 = cam();
   lastRequest().resolve(c2);
   await done;
@@ -234,7 +259,7 @@ test("useMic replaces the stream's audio track and keeps a muted mic muted", asy
   local.setMic(false);
   expect(m.enabled).toBe(false);
   const done = local.useMic('m2');
-  expect(lastRequest().constraints).toEqual({ audio: { ...AUDIO_CONSTRAINTS, deviceId: { ideal: 'm2' } } });
+  expect(lastRequest().constraints).toEqual({ audio: { ...AUDIO_CONSTRAINTS, deviceId: { exact: 'm2' } } });
   const m2 = mic();
   lastRequest().resolve(m2);
   await done;

@@ -85,6 +85,7 @@ beforeEach(() => {
 
 afterEach(() => {
   dispose?.();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -284,12 +285,23 @@ test('a mic still starting shows as on, so it can be muted before it arrives', (
   expect(media.setMic).toHaveBeenCalledWith(false);
 });
 
-test('while media is pending the error line says what Join waits for', () => {
+test('a quick restart shows no waiting line; one that stalls (a permission prompt) does', () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   const { controller, set } = fakeMedia({ pending: true });
   show({ media: controller });
+  expect(errorLine()).toBe('');
+  vi.advanceTimersByTime(999);
+  expect(errorLine()).toBe('');
+  vi.advanceTimersByTime(1);
   expect(errorLine()).toBe('Waiting for the camera and mic: check the browser’s permission prompt.');
   set({ pending: false });
   expect(errorLine()).toBe('');
+  set({ pending: true });
+  vi.advanceTimersByTime(500);
+  set({ pending: false });
+  vi.advanceTimersByTime(1000);
+  expect(errorLine()).toBe('');
+  vi.useRealTimers();
 });
 
 test('mic toggle mutes and unmutes', () => {

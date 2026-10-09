@@ -24,6 +24,8 @@ export const PROBLEM_TEXT: { cam: Record<DeviceProblem, string>; mic: Record<Dev
 };
 
 const WAITING = 'Waiting for the camera and mic: check the browser’s permission prompt.';
+/** Only a request this slow is waiting on the user; a camera restart is quicker and must not flash a line. */
+const WAITING_DELAY_MS = 1000;
 
 /** The one device line under Join: the camera's problem first, then the mic's; '' when there is none. */
 export function problemLine(state: MediaState): string {
@@ -206,8 +208,27 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
   const error = el('p', { className: 'error' });
   const form = el('form', {}, input, join);
 
+  // Set once a request has been pending for WAITING_DELAY_MS.
+  let stalled = false;
+  let stallTimer: ReturnType<typeof setTimeout> | null = null;
+  function watchPending(pending: boolean) {
+    if (!pending) {
+      if (stallTimer !== null) {
+        clearTimeout(stallTimer);
+      }
+      stallTimer = null;
+      stalled = false;
+    } else if (stallTimer === null) {
+      stallTimer = setTimeout(() => {
+        stalled = true;
+        render();
+      }, WAITING_DELAY_MS);
+    }
+  }
+
   function render() {
     const state = media.state();
+    watchPending(state.pending);
     video.hidden = !state.cam;
     face.hidden = state.cam;
     if (state.cam) {
@@ -227,7 +248,7 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
     cam.render(state);
     mic.render(state);
     join.disabled = encoding || state.pending;
-    error.textContent = avatarError || problemLine(state) || (state.pending ? WAITING : '');
+    error.textContent = avatarError || problemLine(state) || (stalled ? WAITING : '');
   }
 
   input.addEventListener('input', render);
@@ -313,6 +334,7 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
 
   return () => {
     cancelAnimationFrame(frame);
+    watchPending(false);
     unsubscribe();
     video.srcObject = null;
   };

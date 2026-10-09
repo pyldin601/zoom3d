@@ -56,8 +56,10 @@ The sketch was agreed in chat on 2026-10-09 ("ours", minimal, pencil only with t
 
 ### 3.1 Opening the lobby
 1. Load the saved preferences (§3.5).
-2. Request media for the devices saved as on, with their saved `deviceId` (`{ ideal: id }`, so a missing
-   device falls back to the default). A camera saved as off is never opened. The mic is opened even
+2. Request media for the devices saved as on, with their saved `deviceId` as `{ exact: id }`. If that
+   device is gone (`OverconstrainedError` / `NotFoundError`), request again with no `deviceId`, so a missing
+   device falls back to the default. (*Amended 2026-10-09:* this was `{ ideal: id }`, but Chrome ignores an
+   ideal `deviceId` and returns the default device, so picking a device did nothing.) A camera saved as off is never opened. The mic is opened even
    when saved as muted, because mute keeps the track (§3.3).
 3. Each device is requested on its own (`getUserMedia({ video })`, `getUserMedia({ audio })`), so a
    blocked camera never costs the mic or the reverse. This replaces `captureLocalMedia`'s fallback chain.
@@ -86,6 +88,9 @@ gesture.
 
 ### 3.4 Join
 - Validates the name as today (`sanitizeName`).
+- Waits while a device request is in flight, so the mic that joins is the one that is sent. A request still
+  pending after 1 s is waiting on the permission prompt; only then does the line under Join say "Waiting for
+  the camera and mic: check the browser's permission prompt." (a quick camera restart shows nothing).
 - Hands the live media (§4.1) to `joinRoom`, which no longer calls `getUserMedia` itself.
 - Resumes the `AudioContext` synchronously in the click handler (autoplay policy), then reuses it for
   the spatial audio engine.

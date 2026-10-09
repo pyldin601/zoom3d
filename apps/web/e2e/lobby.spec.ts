@@ -75,6 +75,28 @@ test('camera off in the lobby stops it; turning it on in the room sends live vid
   await expect.poll(() => isLive(b, 'Ada'), { timeout: 15_000 }).toBe(true);
 });
 
+test('choosing a microphone really switches to it, and is restored after a reload', async ({ page }) => {
+  // Records the label of every mic track getUserMedia hands out.
+  await page.addInitScript(() => {
+    const w = window as unknown as { __mics: string[] };
+    w.__mics = [];
+    const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = async (c) => {
+      const stream = await original(c);
+      w.__mics.push(...stream.getAudioTracks().map((t) => t.label));
+      return stream;
+    };
+  });
+  const lastMic = () => page.evaluate(() => (window as unknown as { __mics: string[] }).__mics.at(-1) ?? null);
+  await openRoom(page);
+  await expect.poll(lastMic).toBe('Fake Default Audio Input');
+  await page.getByRole('button', { name: 'Choose microphone' }).click();
+  await page.getByRole('menuitemradio', { name: 'Fake Audio Input 2' }).click();
+  await expect.poll(lastMic).toBe('Fake Audio Input 2');
+  await page.reload();
+  await expect.poll(lastMic).toBe('Fake Audio Input 2');
+});
+
 test('closed menus stay out of sight', async ({ page }) => {
   await openRoom(page);
   await page.getByRole('button', { name: 'Turn camera off' }).click();
