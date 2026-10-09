@@ -60,6 +60,11 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   runtime dependency must be bundleable (or marked external and installed).
 - The web image renders `apps/web/nginx/default.conf.template` at start. Only env vars are
   substituted, and `/ws` resolves `SERVER_URL` per request, so nginx starts without the server.
+- Restart survival: with `STATE_FILE` set, the server saves the lobby there on SIGTERM and restores it (then deletes
+  the file) on start; unset, nothing is written. Production needs `Recreate` deploys (never two pods at once), a
+  volume at the file's directory and `fsGroup: 1000` (the image runs as `node`). The snapshot format is
+  versioned (`LobbySnapshot` in `apps/server/src/lobby.ts`): bump it when `Peer` changes in a way
+  `parsePeerInfo` defaults can't absorb.
 - `.github/workflows/docker.yml`: PRs build + smoke-test only; `main`/`v*` also push to GHCR.
 - `.github/workflows/checks.yml`: `pnpm typecheck`, `pnpm lint`, `pnpm test` on every PR and push to `main`
   (e2e is local only).

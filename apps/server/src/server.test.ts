@@ -1,3 +1,6 @@
+import { existsSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { parseServerMessage, type ServerMessage } from '@zoom3d/shared';
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import WebSocket from 'ws';
@@ -158,4 +161,29 @@ test('sips are relayed over real sockets', async () => {
   await b.waitFor('peer_held');
   a.send({ type: 'drink' });
   expect(await b.waitFor('peer_drink')).toEqual({ type: 'peer_drink', id: a.welcome.selfId });
+});
+
+test('rooms survive a restart through the state file', async () => {
+  const stateFile = join(mkdtempSync(join(tmpdir(), 'zoom3d-state-')), 'lobby.json');
+  await server.close();
+  server = await startServer({ port: 0, graceMs: 200, heartbeatMs: 100, stateFile });
+  const a = await joined('Ada');
+  const b = await joined('Bob');
+  a.send({ type: 'held', item: 'wine' });
+  await b.waitFor('peer_held');
+  await server.close();
+  expect(existsSync(stateFile)).toBe(true);
+
+  server = await startServer({ port: 0, graceMs: 200, heartbeatMs: 100, stateFile });
+  expect(existsSync(stateFile)).toBe(false);
+  const a2 = await client();
+  a2.send({ type: 'join', roomId: ROOM, name: 'Ada', resumeToken: a.welcome.resumeToken });
+  const welcome = await a2.waitFor('welcome');
+  expect(welcome.selfId).toBe(a.welcome.selfId);
+  expect(welcome.color).toBe(a.welcome.color);
+  expect(welcome.peers.map((p) => p.id)).toEqual([b.welcome.selfId]);
+  const c = await joined('Cy');
+  expect(c.welcome.peers.find((p) => p.id === a.welcome.selfId)?.held).toBe('wine');
+  // Bob never came back: his restored slot expires after the grace period.
+  expect((await a2.waitFor('peer_left')).id).toBe(b.welcome.selfId);
 });

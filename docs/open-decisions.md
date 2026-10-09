@@ -65,6 +65,12 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 
 ### D11 — Hosting / deployment
 - Needs HTTPS (getUserMedia) and likely TURN (coturn or a hosted one). Where will it run?
+- *Resolved 2026-10-09 (restarts only):* rooms survive a server restart. The server runs as one replica with the
+  k8s `Recreate` strategy. On SIGTERM it writes the lobby to `STATE_FILE` on a persistent volume, and the next
+  process reads the file at start-up and deletes it. Every restored slot gets a fresh grace period, so clients
+  resume with the same id and keep their P2P mesh. We rejected Redis plus a per-room lease (which rolling deploys
+  need, to avoid two pods serving one room) as too much machinery. With `Recreate`, the restart gap is covered by
+  the 30 s grace period, and media between peers never stops. Long-term persistence stays out of scope.
 
 ### D12 — Input and accessibility
 - Keyboard only vs mouse-look vs touch. Colour-blind/readable names above avatars? Captions?

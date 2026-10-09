@@ -7,6 +7,7 @@ import { type WebSocket, WebSocketServer } from 'ws';
 import { type IceConfig, iceConfigFromEnv, iceServersFor } from './ice';
 import { Lobby, type Outbox } from './lobby';
 import { createTokenBucket } from './rate-limit';
+import { loadSnapshot, saveSnapshot } from './snapshot';
 
 export const CLOSE_RATE_LIMIT = 4008;
 const MAX_CONSECUTIVE_DROPS = 200;
@@ -17,6 +18,8 @@ export interface ServerOptions {
   graceMs?: number;
   heartbeatMs?: number;
   ice?: IceConfig;
+  /** Where the lobby is saved on close and restored from on start; unset keeps it in memory only. */
+  stateFile?: string;
 }
 
 export interface RunningServer {
@@ -47,6 +50,12 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     graceMs: opts.graceMs,
     iceServersFor: (peerId) => iceServersFor(ice, peerId, Date.now()),
   });
+  const restored = opts.stateFile ? loadSnapshot(opts.stateFile) : null;
+  if (restored) {
+    lobby.restore(restored);
+    const peers = restored.rooms.reduce((n, r) => n + r.peers.length, 0);
+    console.log(`restored ${peers} peers in ${restored.rooms.length} rooms`);
+  }
 
   const http = createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/health') {
@@ -121,6 +130,9 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     async close() {
       clearInterval(heartbeat);
       clearInterval(ticker);
+      if (opts.stateFile) {
+        saveSnapshot(opts.stateFile, lobby.snapshot());
+      }
       for (const s of sockets.values()) {
         s.ws.terminate();
       }

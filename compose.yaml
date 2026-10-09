@@ -6,7 +6,7 @@ services:
       dockerfile: apps/server/Dockerfile
     image: ghcr.io/pyldin601/zoom3d-server:local
     environment:
-      # Optional: STUN_URLS, TURN_URLS, TURN_SECRET, TURN_TTL_S, RESUME_GRACE_MS
+      # Optional: STUN_URLS, TURN_URLS, TURN_SECRET, TURN_TTL_S, RESUME_GRACE_MS, STATE_FILE (needs a volume)
       PORT: "8787"
   web:
     build:
