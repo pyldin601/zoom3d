@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { HELD_KEY, heldForKey, loadHeld, saveHeld } from './held-store';
+import { HELD_KEY, heldForKey, heldKeyAction, loadHeld, saveHeld } from './held-store';
 
 function memoryStorage() {
   const map = new Map<string, string>();
@@ -51,4 +51,12 @@ test('other keys are not drink keys', () => {
   for (const code of ['Digit4', 'Digit9', 'Numpad5', 'KeyW', 'KeyB', 'Space', '']) {
     expect(heldForKey(code)).toBeUndefined();
   }
+});
+
+test('the key of the drink already in hand sips; any other drink key picks', () => {
+  expect(heldKeyAction('beer', 'beer')).toBe('sip');
+  expect(heldKeyAction('coffee', 'beer')).toBe('pick');
+  expect(heldKeyAction('beer', null)).toBe('pick');
+  expect(heldKeyAction(null, 'beer')).toBe('pick');
+  expect(heldKeyAction(null, null)).toBe('pick');
 });

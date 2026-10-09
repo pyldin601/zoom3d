@@ -119,7 +119,13 @@ progress: 0 at rest, 1 while held.
 - The hand and drink move from the disc's lower right to its mouth, then back.
 - The sprite's left edge goes from +0.15 r to −0.55 r, and its top from 0.3 r to 0.05 r below
   the horizon.
-- Its floor shadow follows it sideways.
+- Its floor shadow follows it sideways and fades out towards the mouth, where it would otherwise
+  sit on the disc's shadow and double it.
+- A `peer_drink` that arrives while that peer's sip is still playing (bunched by the network) is
+  ignored, so the drink never snaps back to the start mid-sip.
+
+**Putting the drink down** (`0`, or the picker) ends a playing sip at once, in both views. A
+drink picked up afterwards starts at rest.
 
 ## 3. Data
 
@@ -167,10 +173,6 @@ There's no `held` field in `join`, which follows the `media` pattern:
 
 ## 5. Server (`apps/server`)
 
-- `Lobby.drink(conn)` relays `peer_drink` per §4 and keeps the peer's last relayed sip time
-  (`lastDrinkAt`) for the 1 s gap.
-
-
 - `Peer.held` starts as `null` and is included in `info()`, which feeds `welcome.peers` and
   `peer_joined`.
 - `Lobby.held(conn, msg)` sets `peer.held` and broadcasts `peer_held` to the rest of the room,
@@ -178,6 +180,8 @@ There's no `held` field in `join`, which follows the `media` pattern:
 - `server.ts` routes `msg.type === 'held'` to `lobby.held`.
 - Resume keeps the slot and its `held`. The client resends it after `welcome` anyway, which is
   harmless.
+- `Lobby.drink(conn)` relays `peer_drink` per §4 and keeps the peer's last relayed sip time
+  (`lastDrinkAt`) for the 1 s gap.
 
 ## 6. Client
 

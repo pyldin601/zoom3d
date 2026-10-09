@@ -297,3 +297,27 @@ test('peer_drink stamps the peer and ignores unknown ids', () => {
   expect(session.peers.get('a')?.drinkAt).toBe(Date.now());
   expect(() => ws.receive({ type: 'peer_drink', id: 'zzz' })).not.toThrow();
 });
+
+test('a peer_drink during a playing sip is ignored, the next one after it is not', () => {
+  const { session, ws } = joinedSession([peer('a')]);
+  ws.receive({ type: 'peer_drink', id: 'a' });
+  const first = Date.now();
+  vi.advanceTimersByTime(1000);
+  ws.receive({ type: 'peer_drink', id: 'a' });
+  expect(session.peers.get('a')?.drinkAt).toBe(first);
+  vi.advanceTimersByTime(400);
+  ws.receive({ type: 'peer_drink', id: 'a' });
+  expect(session.peers.get('a')?.drinkAt).toBe(Date.now());
+});
+
+test('putting the drink down cancels a playing sip', () => {
+  const { session, ws } = joinedSession([{ ...peer('a'), held: 'beer' }]);
+  ws.receive({ type: 'peer_drink', id: 'a' });
+  ws.receive({ type: 'peer_held', id: 'a', item: null });
+  expect(session.peers.get('a')?.drinkAt).toBe(Number.NEGATIVE_INFINITY);
+});
+
+test('a late joiner sees a drink already in hand', () => {
+  const { session } = joinedSession([{ ...peer('a'), held: 'beer' }]);
+  expect(session.peers.get('a')?.info.held).toBe('beer');
+});

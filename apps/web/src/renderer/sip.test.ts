@@ -1,6 +1,6 @@
 import { SIP_MS } from '@zoom3d/shared';
 import { expect, test } from 'vitest';
-import { sipPose } from './sip';
+import { createSipClock, sipPose } from './sip';
 
 test('at rest outside a sip, including before any sip', () => {
   for (const t of [-1, SIP_MS, SIP_MS + 500, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
@@ -27,4 +27,17 @@ test('rises steadily, then falls steadily', () => {
   for (let t = 1050; t < 1390; t += 10) {
     expect(sipPose(t + 10)).toBeLessThanOrEqual(sipPose(t));
   }
+});
+
+test('a sip clock starts once per sip and can be cancelled', () => {
+  const clock = createSipClock();
+  expect(clock.pose(0)).toBe(0);
+  expect(clock.start(1000)).toBe(true);
+  expect(clock.pose(1000 + 700)).toBe(1);
+  expect(clock.start(1000 + SIP_MS - 1)).toBe(false);
+  expect(clock.pose(1000 + 700)).toBe(1);
+  expect(clock.start(1000 + SIP_MS)).toBe(true);
+  clock.cancel();
+  expect(clock.pose(1000 + SIP_MS + 700)).toBe(0);
+  expect(clock.start(1000 + SIP_MS + 10)).toBe(true);
 });

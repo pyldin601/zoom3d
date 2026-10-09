@@ -7,6 +7,7 @@ import {
   type PeerInfo,
   type PlayerState,
   type ServerMessage,
+  SIP_MS,
   type SignalPayload,
   SnapshotBuffer,
   STATE_INTERVAL_MS,
@@ -130,7 +131,8 @@ export function createSession(opts: SessionOptions): Session {
       }
       case 'peer_drink': {
         const peer = peers.get(m.id);
-        if (peer) {
+        // A sip arriving while one still plays (bunched by the network) would snap it back to the start.
+        if (peer && now() - peer.drinkAt >= SIP_MS) {
           peer.drinkAt = now();
         }
         break;
@@ -139,6 +141,9 @@ export function createSession(opts: SessionOptions): Session {
         const peer = peers.get(m.id);
         if (peer) {
           peer.info.held = m.item;
+          if (m.item === null) {
+            peer.drinkAt = Number.NEGATIVE_INFINITY;
+          }
         }
         break;
       }

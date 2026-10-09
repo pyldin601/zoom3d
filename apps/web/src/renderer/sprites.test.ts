@@ -475,6 +475,31 @@ describe('held item shadows', () => {
     expect(at(render('beer'))).toBeLessThan(at(render(null)));
   });
 
+  test('at full sip the item casts no extra shadow (it would double the disc shadow)', () => {
+    const row = floorRow(2);
+    const sipping = frame();
+    renderSprites(sipping, player, [{ ...holding('beer'), sip: 1 }]);
+    expect(changed(sipping, render(null), row)).toBe(0);
+  });
+
+  test("the item's shadow follows the drink towards the mouth", () => {
+    const row = floorRow(2);
+    const none = render(null);
+    const rightmost = (sip: number) => {
+      const fb = frame();
+      renderSprites(fb, player, [{ ...holding('beer'), sip }]);
+      let last = -1;
+      for (let x = 0; x < fb.width; x++) {
+        if (px(fb, x, row) !== px(none, x, row)) {
+          last = x;
+        }
+      }
+      return last;
+    };
+    expect(rightmost(0.5)).toBeGreaterThan(0);
+    expect(rightmost(0.5)).toBeLessThan(rightmost(0));
+  });
+
   test('no item, no extra shadow: the shadow is symmetric under the avatar', () => {
     const shaded = (fb: ReturnType<typeof frame>, from: number, to: number) => {
       let n = 0;

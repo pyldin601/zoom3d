@@ -39,3 +39,8 @@ const KEY_ITEMS: Record<string, HeldItem | null> = {
 export function heldForKey(code: string): HeldItem | null | undefined {
   return Object.hasOwn(KEY_ITEMS, code) ? KEY_ITEMS[code] : undefined;
 }
+
+/** A drink key sips the drink already in hand; otherwise it picks that drink (or nothing). */
+export function heldKeyAction(keyItem: HeldItem | null, holding: HeldItem | null): 'sip' | 'pick' {
+  return keyItem !== null && keyItem === holding ? 'sip' : 'pick';
+}

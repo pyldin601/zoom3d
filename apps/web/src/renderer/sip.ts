@@ -18,3 +18,28 @@ export function sipPose(elapsedMs: number): number {
   }
   return easeInOut((SIP_MS - elapsedMs) / MOVE_MS);
 }
+
+export interface SipClock {
+  /** Starts a sip at `now` unless one is still playing; true if it started. */
+  start(now: number): boolean;
+  /** Ends a playing sip at once (the drink was put down). */
+  cancel(): void;
+  pose(now: number): number;
+}
+
+export function createSipClock(): SipClock {
+  let startedAt = Number.NEGATIVE_INFINITY;
+  return {
+    start(now) {
+      if (now - startedAt < SIP_MS) {
+        return false;
+      }
+      startedAt = now;
+      return true;
+    },
+    cancel() {
+      startedAt = Number.NEGATIVE_INFINITY;
+    },
+    pose: (now) => sipPose(now - startedAt),
+  };
+}
