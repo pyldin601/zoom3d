@@ -31,7 +31,7 @@ import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
 import { makeTextures } from './renderer/textures';
 import { renderWalls } from './renderer/walls';
 import { showAudioPanel } from './ui/audio-panel';
-import { loadHeld, saveHeld } from './ui/held-store';
+import { heldForKey, loadHeld, saveHeld } from './ui/held-store';
 import { parseRoute } from './ui/route';
 import {
   clearScreen,
@@ -64,6 +64,19 @@ const input = createInput(window, document);
 let session: Session | null = null;
 /** What the local player holds, drawn in first person. */
 let ownHeld: HeldItem | null = null;
+/** Shows a held item picked by key in the room-bar picker. */
+let showHeldInBar: ((item: HeldItem | null) => void) | null = null;
+
+/** The one path for changing the drink in hand, from the picker or a number key. */
+function chooseHeld(item: HeldItem | null): void {
+  if (item === ownHeld) {
+    return;
+  }
+  ownHeld = item;
+  saveHeld(storage(), item);
+  session?.setHeld(item);
+  showHeldInBar?.(item);
+}
 let call: Call | null = null;
 let audio: AudioEngine | null = null;
 
@@ -118,6 +131,19 @@ window.addEventListener('keydown', (e) => {
   }
   e.preventDefault();
   toggleAudioPanel();
+});
+
+// 1–3 pick a drink, 0 puts it down (same as the room-bar picker).
+window.addEventListener('keydown', (e) => {
+  const item = heldForKey(e.code);
+  if (item === undefined || e.repeat || e.metaKey || e.ctrlKey || e.altKey) {
+    return;
+  }
+  if (!inRoom() || e.target instanceof HTMLInputElement) {
+    return;
+  }
+  e.preventDefault();
+  chooseHeld(item);
 });
 
 let automapVisible = false;
@@ -190,7 +216,7 @@ async function joinRoom(roomId: string, name: string, avatar: string | null): Pr
     showBanner(ui, PROBLEM_TEXT[local.problem]);
   }
   const activeCall = call;
-  showRoomBar(
+  showHeldInBar = showRoomBar(
     ui,
     location.href,
     {
@@ -204,14 +230,7 @@ async function joinRoom(roomId: string, name: string, avatar: string | null): Pr
       },
       onMic: (on) => activeCall.setMic(on),
     },
-    {
-      held,
-      onHeld(item) {
-        saveHeld(storage(), item);
-        ownHeld = item;
-        session?.setHeld(item);
-      },
-    }
+    { held, onHeld: chooseHeld }
   );
   showSelfPreview(ui, local.stream, local.cam);
   if (new URLSearchParams(location.search).has('debug')) {
