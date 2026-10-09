@@ -59,6 +59,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 ### D10 — Tooling
 - pnpm workspaces + Vite + Vitest + Playwright + ESLint/Biome, TypeScript strict.
 - **Rec:** accept as proposed.
+- *Resolved 2026-10-09:* Biome only (lint + format), no ESLint/Prettier. Code style follows the Prettier config of github.com/pyldin601/maisumtuga: 120 columns, single quotes, semicolons, `es5` trailing commas, 2-space indent.
 
 ### D11 — Hosting / deployment
 - Needs HTTPS (getUserMedia) and likely TURN (coturn or a hosted one). Where will it run?
