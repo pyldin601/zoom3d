@@ -102,6 +102,14 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   (`zoom3d.boombox.volume`). The volume is a gain before the split, so it turns down both the carrier's own monitor and what the
   room hears, with no protocol message (spec §3.1).
 
+### D18 — Join sound
+- Whether and how the room tells you someone arrived.
+- *Resolved 2026-10-09:* a doorbell: a synthesised two-tone chime (E5 then C5, each a struck bar with a
+  fast-dying ×2.76 overtone), rung on `peer_joined` only, so not for people already in the room when you join, not
+  for a peer resuming its slot after a dropped link, and not for yourself. It plays straight to `ctx.destination`
+  at a fixed low volume, not through the spatial graph: it's the room's bell, not a sound from a place. Arrivals
+  less than 2 s apart ring once. No asset file and no protocol change (`apps/web/src/audio/doorbell.ts`).
+
 ### Risks (to verify, not assume)
 - **R1 — Echo cancellation vs Web Audio output.** Chrome's AEC historically did not cancel audio played via `AudioContext`. If still true, speakers echo. Verify in an early throwaway audio spike (speakers vs headphones).
   - *Verdict 2026-10-08 (provisional):* user tested Chrome on both devices with the spike and reported it "sounds good", i.e. no echo problem heard. Interpreted as outcome (a): M4 uses the `webaudio` path (graph → `AudioContext.destination`). The per-mode table was not filled in and **Firefox is untested**, so re-check Firefox (and speakers at higher volume) in M5 before relying on (a) there.

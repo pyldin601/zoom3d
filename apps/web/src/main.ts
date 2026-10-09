@@ -9,6 +9,7 @@ import {
   spawnPoint,
   stepPlayer,
 } from '@zoom3d/shared';
+import { createDoorbell } from './audio/doorbell';
 import { type AudioEngine, createAudioEngine } from './audio/engine';
 import { loadAudioSettings, saveAudioSettings } from './audio/settings-store';
 import { startHiddenTicker } from './audio/ticker';
@@ -248,6 +249,8 @@ async function joinRoom(roomId: string, name: string, avatar: string | null): Pr
     createFace,
     createMesh,
   });
+  const callListener = call.listener;
+  const doorbell = createDoorbell(audioCtx);
   session = createSession({
     url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
     roomId,
@@ -255,7 +258,14 @@ async function joinRoom(roomId: string, name: string, avatar: string | null): Pr
     avatar,
     player,
     now: () => performance.now(),
-    listener: call.listener,
+    listener: {
+      ...call.listener,
+      // Only real arrivals: a peer resuming its slot gets no peer_joined, and those already here come in welcome.
+      peerJoined(peer) {
+        callListener.peerJoined?.(peer);
+        doorbell.ring();
+      },
+    },
   });
   const held = loadHeld(storage());
   ownHeld = held;
