@@ -10,13 +10,14 @@ gameplay effect.
 
 In scope:
 - Other people see the item on your avatar disc.
+- You see your own drink in first person (§2.1, added 2026-10-09).
+- Avatars and drinks bob while walking (§2.2, added 2026-10-09).
 - You pick it from the room bar.
 - The choice is remembered per browser.
 
 Out of scope:
-- A first-person view of your own hand (the Doom-style weapon slot).
 - Custom or uploaded items.
-- Animations.
+- Drinking or other gesture animations.
 - Any interaction with the map.
 
 ## 2. Look
@@ -66,6 +67,32 @@ distance just like the disc:
   2026-10-09 over the first placement, which floated clear of the disc).
 
 These were tuned by eye from sketches.
+
+### 2.1 Your own drink (first person)
+
+Others see the drink on their right of your disc, which is your **left** hand. To match, you see
+it in your left hand: at the bottom-left of the screen, with the hand and handle toward the screen
+centre and the drink on the outside. It is the in-game sprite mirrored, built once at load
+(`apps/web/src/renderer/own-held.ts`).
+
+- One texel is 4.6% of the screen height; the left edge is at 8.3% of the width.
+- 45% of the sprite hangs below the bottom edge, so it peeks in (variant "D"). The hand reaches
+  the bottom edge, so there is no sleeve to draw.
+- It is drawn over the scene after the sprites, only in a room, and not with nothing in hand.
+- It stays clear of the camera preview in the bottom-right corner.
+
+### 2.2 Walking bob
+
+A small tracker per walker (`apps/web/src/renderer/bob.ts`) turns distance walked into a step
+phase: one step per 0.6 tiles, so the bob follows real speed and needs no protocol change. Remote
+walkers use their interpolated positions.
+
+- **Avatars:** the disc rises up to 0.1 r at the top of each step. Its floor shadow stays put.
+- **Their drink** rises the same amount, half a step (0.9 rad) behind the disc, so it swings.
+- **Your own drink** drops up to 3% of the height and sways up to 1% of the width either way,
+  one way per step.
+- After stopping, the bob eases out over 150 ms. A jump of a tile or more in one frame (resume,
+  correction) is not counted as walking.
 
 ## 3. Data
 

@@ -1,4 +1,5 @@
 import {
+  type HeldItem,
   INTERNAL_H,
   INTERNAL_W,
   INTERP_DELAY_MS,
@@ -22,8 +23,10 @@ import { createMesh } from './media/mesh';
 import { createRemoteMedia } from './media/remote-media';
 import { createSession, type Session } from './net/session';
 import { type AutomapPeer, drawAutomap } from './renderer/automap';
+import { type Bob, createBob } from './renderer/bob';
 import { createFramebuffer } from './renderer/framebuffer';
 import { drawLabels } from './renderer/labels';
+import { renderOwnHeld } from './renderer/own-held';
 import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
 import { makeTextures } from './renderer/textures';
 import { renderWalls } from './renderer/walls';
@@ -59,6 +62,8 @@ const image = new ImageData(new Uint8ClampedArray(fb.pixels.buffer as ArrayBuffe
 const player = spawnPoint(map, Math.random);
 const input = createInput(window, document);
 let session: Session | null = null;
+/** What the local player holds, drawn in first person. */
+let ownHeld: HeldItem | null = null;
 let call: Call | null = null;
 let audio: AudioEngine | null = null;
 
@@ -178,6 +183,7 @@ async function joinRoom(roomId: string, name: string, avatar: string | null): Pr
     listener: call.listener,
   });
   const held = loadHeld(storage());
+  ownHeld = held;
   session.setHeld(held);
   call.attach(session);
   if (local.problem) {
@@ -202,6 +208,7 @@ async function joinRoom(roomId: string, name: string, avatar: string | null): Pr
       held,
       onHeld(item) {
         saveHeld(storage(), item);
+        ownHeld = item;
         session?.setHeld(item);
       },
     }
@@ -283,6 +290,8 @@ const others: (AutomapPeer & { mic: boolean })[] = [];
 const sample = { x: 0, y: 0, angle: 0 };
 const colors = new Map<string, number>();
 const positions = new Map<string, { x: number; y: number }>();
+const selfBob = createBob();
+const peerBobs = new Map<string, Bob>();
 
 /** Samples every peer's interpolated position into `positions` (reused objects). */
 function refreshPositions(s: Session, now: number): void {
@@ -324,6 +333,7 @@ startLoop((dt) => {
   if (inRoom()) {
     player.angle += mouseTurn;
     stepPlayer(map, player, input.state(), dt, player);
+    selfBob.update(player.x, player.y, dt);
   }
 
   sprites.length = 0;
@@ -332,11 +342,22 @@ startLoop((dt) => {
   if (session) {
     const now = performance.now();
     refreshPositions(session, now);
+    for (const id of peerBobs.keys()) {
+      if (!positions.has(id)) {
+        peerBobs.delete(id);
+      }
+    }
     for (const peer of session.peers.values()) {
       const pos = positions.get(peer.info.id);
       if (!pos) {
         continue;
       }
+      let bob = peerBobs.get(peer.info.id);
+      if (!bob) {
+        bob = createBob();
+        peerBobs.set(peer.info.id, bob);
+      }
+      bob.update(pos.x, pos.y, dt);
       let color = colors.get(peer.info.color);
       if (color === undefined) {
         color = hexToRgb(peer.info.color);
@@ -348,6 +369,8 @@ startLoop((dt) => {
         color,
         face: call?.faceOf(peer.info.id) ?? null,
         speaking: audio?.speaking(peer.info.id) ?? 0,
+        bob: bob.lift,
+        itemBob: bob.itemLift,
         held: peer.info.held,
       });
       others.push({
@@ -364,6 +387,9 @@ startLoop((dt) => {
 
   renderWalls(fb, map, player, textures);
   renderSprites(fb, player, sprites);
+  if (inRoom()) {
+    renderOwnHeld(fb, ownHeld, selfBob.itemLift, selfBob.sway);
+  }
   gameCtx.putImageData(image, 0, 0);
   hudCtx.clearRect(0, 0, hud.width, hud.height);
   drawLabels(hudCtx, fb, player, others, hud.width, hud.height);

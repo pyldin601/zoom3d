@@ -36,7 +36,7 @@ const PALETTE: Record<string, string> = {
 };
 
 // biome-ignore format: one row per line keeps the pixel art readable
-const MAPS: Record<HeldItem, string[]> = {
+export const HELD_MAPS: Readonly<Record<HeldItem, readonly string[]>> = {
   beer: [
     '.......fffff.',
     '......fffffff',
@@ -74,7 +74,8 @@ const MAPS: Record<HeldItem, string[]> = {
   ],
 };
 
-function toSprite(rows: string[]): HeldSprite {
+/** Packs a pixel map (one string per row, `.` transparent) into a texture. */
+export function toHeldSprite(rows: readonly string[]): HeldSprite {
   const w = rows[0]?.length ?? 0;
   const h = rows.length;
   const texels = new Uint32Array(w * h);
@@ -91,7 +92,7 @@ function toSprite(rows: string[]): HeldSprite {
 }
 
 export const HELD_SPRITES: Record<HeldItem, HeldSprite> = {
-  beer: toSprite(MAPS.beer),
-  coffee: toSprite(MAPS.coffee),
-  wine: toSprite(MAPS.wine),
+  beer: toHeldSprite(HELD_MAPS.beer),
+  coffee: toHeldSprite(HELD_MAPS.coffee),
+  wine: toHeldSprite(HELD_MAPS.wine),
 };

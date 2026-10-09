@@ -26,6 +26,8 @@ test('renderWalls + 7 face avatars around the player', async ({ bench }) => {
     color: 0xff0000ff,
     face: new Uint32Array(256 * 256).fill(0xff808080),
     speaking: 0.5,
+    bob: 0.5,
+    itemBob: 0.5,
     held: 'beer' as const,
   }));
   await bench('walls+7 sprites', () => {

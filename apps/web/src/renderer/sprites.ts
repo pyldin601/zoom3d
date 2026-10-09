@@ -15,6 +15,8 @@ const SHADOW_DARKNESS = 0.33;
 /** Retro look: the shadow is a low-res floor texture (texel in tiles) with flat darkness bands. */
 const SHADOW_TEXEL = 1 / 16;
 export const SHADOW_LEVELS = 3;
+/** Top of a walking step, in disc radii. */
+export const BOB_HEIGHT = 0.1;
 /** The camera (and every disc centre) sits at half wall height above the floor. */
 const EYE_HEIGHT = 0.5;
 
@@ -27,6 +29,10 @@ export interface Sprite {
   face: Uint32Array | null;
   /** 0..1: brightens the ring while the person talks. */
   speaking: number;
+  /** 0..1: walking bob, lifts the disc (its shadow stays on the floor). */
+  bob: number;
+  /** 0..1: walking bob of the held item, which trails the disc's. */
+  itemBob: number;
   /** Drawn in a hand on the viewer's right of the disc. */
   held: HeldItem | null;
 }
@@ -179,7 +185,7 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
   const faceSize = FACE_SIZE;
   for (const i of visible) {
     const { screenX, depth, size } = projections[i] as Projection;
-    const { color, face, speaking, held } = sprites[i] as Sprite;
+    const { color, face, speaking, held, bob, itemBob } = sprites[i] as Sprite;
     const ring = speaking > 0 ? mixWhite(color, Math.min(speaking, 1) * SPEAKING_GLOW) : color;
     const edge = face ? ring : shade(ring);
     const r = size / 2;
@@ -188,15 +194,16 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
     const inner = r * RING;
     const x0 = Math.max(0, Math.floor(screenX - r));
     const x1 = Math.min(w - 1, Math.ceil(screenX + r));
-    const y0 = Math.max(0, Math.floor(half - r));
-    const y1 = Math.min(h - 1, Math.ceil(half + r));
+    const cy = half - bob * BOB_HEIGHT * r;
+    const y0 = Math.max(0, Math.floor(cy - r));
+    const y1 = Math.min(h - 1, Math.ceil(cy + r));
     for (let col = x0; col <= x1; col++) {
       if (depth >= (zbuffer[col] as number)) {
         continue;
       }
       const dx = col + 0.5 - screenX;
       for (let row = y0; row <= y1; row++) {
-        const dy = row + 0.5 - half;
+        const dy = row + 0.5 - cy;
         const d2 = dx * dx + dy * dy;
         if (d2 > r2) {
           continue;
@@ -214,18 +221,18 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
       }
     }
     if (held) {
-      renderHeld(fb, held, screenX, depth, r);
+      renderHeld(fb, held, screenX, depth, r, itemBob);
     }
   }
 }
 
 /** Draws the held item beside a disc of on-screen radius r, depth-tested like the disc. */
-function renderHeld(fb: Framebuffer, item: HeldItem, screenX: number, depth: number, r: number): void {
+function renderHeld(fb: Framebuffer, item: HeldItem, screenX: number, depth: number, r: number, lift: number): void {
   const { width: w, height: h, pixels, zbuffer } = fb;
   const { w: tw, h: th, texels } = HELD_SPRITES[item];
   const t = HELD_TEXEL * r;
   const left = screenX + HELD_LEFT * r;
-  const top = h / 2 - HELD_TOP * r;
+  const top = h / 2 - (HELD_TOP + lift * BOB_HEIGHT) * r;
   const x0 = Math.max(0, Math.floor(left));
   const x1 = Math.min(w - 1, Math.ceil(left + tw * t) - 1);
   const y0 = Math.max(0, Math.floor(top));

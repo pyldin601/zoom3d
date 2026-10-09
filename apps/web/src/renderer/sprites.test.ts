@@ -5,6 +5,7 @@ import { createFramebuffer, rgb } from './framebuffer';
 import { HELD_LEFT, HELD_SPRITES, HELD_TEXEL, HELD_TOP } from './held-items';
 import {
   AVATAR_RADIUS,
+  BOB_HEIGHT,
   hexToRgb,
   mixWhite,
   type Projection,
@@ -45,7 +46,9 @@ const px = (fb: ReturnType<typeof frame>, x: number, y: number) => fb.pixels[y *
 describe('renderSprites', () => {
   test('a sprite straight ahead is drawn centred with diameter 2R·PROJ/depth', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face: null, speaking: 0, held: null }]);
+    renderSprites(fb, player, [
+      { x: 3.5, y: 4.5, color: RED, face: null, speaking: 0, bob: 0, itemBob: 0, held: null },
+    ]);
     expect(px(fb, 320, 180)).toBe(RED);
     let width = 0;
     for (let x = 0; x < fb.width; x++) {
@@ -59,7 +62,9 @@ describe('renderSprites', () => {
 
   test('the outer ring is shaded', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face: null, speaking: 0, held: null }]);
+    renderSprites(fb, player, [
+      { x: 3.5, y: 4.5, color: RED, face: null, speaking: 0, bob: 0, itemBob: 0, held: null },
+    ]);
     const r = (AVATAR_RADIUS * PROJ) / 2;
     expect(px(fb, Math.floor(320 + 0.92 * r), 180)).toBe(shade(RED));
   });
@@ -67,7 +72,9 @@ describe('renderSprites', () => {
   test('a sprite behind the camera draws nothing', () => {
     const fb = frame();
     const before = fb.pixels.slice();
-    renderSprites(fb, player, [{ x: 0.5, y: 4.5, color: RED, face: null, speaking: 0, held: null }]);
+    renderSprites(fb, player, [
+      { x: 0.5, y: 4.5, color: RED, face: null, speaking: 0, bob: 0, itemBob: 0, held: null },
+    ]);
     expect(fb.pixels).toEqual(before);
   });
 
@@ -87,15 +94,17 @@ describe('renderSprites', () => {
     );
     const fb = frame(walled);
     const wallPixel = px(fb, 320, 180);
-    renderSprites(fb, player, [{ x: 5.5, y: 4.5, color: RED, face: null, speaking: 0, held: null }]);
+    renderSprites(fb, player, [
+      { x: 5.5, y: 4.5, color: RED, face: null, speaking: 0, bob: 0, itemBob: 0, held: null },
+    ]);
     expect(px(fb, 320, 180)).toBe(wallPixel);
   });
 
   test('the nearer of two overlapping sprites wins regardless of input order', () => {
     const fb = frame();
     renderSprites(fb, player, [
-      { x: 3.5, y: 4.5, color: RED, face: null, speaking: 0, held: null },
-      { x: 5.5, y: 4.5, color: BLUE, face: null, speaking: 0, held: null },
+      { x: 3.5, y: 4.5, color: RED, face: null, speaking: 0, bob: 0, itemBob: 0, held: null },
+      { x: 5.5, y: 4.5, color: BLUE, face: null, speaking: 0, bob: 0, itemBob: 0, held: null },
     ]);
     expect(px(fb, 320, 180)).toBe(RED);
   });
@@ -132,7 +141,7 @@ describe('face sprites', () => {
 
   test('the disc centre shows the centre of the face texture', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0, held: null }]);
+    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0, bob: 0, itemBob: 0, held: null }]);
     const c = px(fb, 320, 180) as number;
     expect(Math.abs(texelI(c) - FACE_SIZE / 2)).toBeLessThanOrEqual(tolerance);
     expect(Math.abs(texelJ(c) - FACE_SIZE / 2)).toBeLessThanOrEqual(tolerance);
@@ -140,14 +149,14 @@ describe('face sprites', () => {
 
   test('the outer ring is the peer colour, unshaded', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0, held: null }]);
+    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0, bob: 0, itemBob: 0, held: null }]);
     const r = (AVATAR_RADIUS * PROJ) / 2;
     expect(px(fb, Math.floor(320 + 0.92 * r), 180)).toBe(RED);
   });
 
   test('the face is not mirrored: left of centre samples a smaller column', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0, held: null }]);
+    renderSprites(fb, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0, bob: 0, itemBob: 0, held: null }]);
     expect(texelI(px(fb, 290, 180) as number)).toBeLessThan(texelI(px(fb, 350, 180) as number));
   });
 });
@@ -163,10 +172,10 @@ describe('speaking ring', () => {
     const face = new Uint32Array(FACE_SIZE * FACE_SIZE).fill(rgb(1, 2, 3));
     const r = (AVATAR_RADIUS * PROJ) / 2;
     const quiet = frame();
-    renderSprites(quiet, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0, held: null }]);
+    renderSprites(quiet, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 0, bob: 0, itemBob: 0, held: null }]);
     expect(px(quiet, Math.floor(320 + 0.92 * r), 180)).toBe(RED);
     const loud = frame();
-    renderSprites(loud, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 1, held: null }]);
+    renderSprites(loud, player, [{ x: 3.5, y: 4.5, color: RED, face, speaking: 1, bob: 0, itemBob: 0, held: null }]);
     expect(px(loud, Math.floor(320 + 0.92 * r), 180)).toBe(mixWhite(RED, 0.8));
   });
 });
@@ -175,7 +184,16 @@ describe('floor shadows', () => {
   const red = (c: number | undefined) => (c ?? 0) & 0xff;
   /** Floor row under a point `depth` tiles straight ahead (camera at half wall height). */
   const floorRow = (depth: number) => Math.floor(180 + (0.5 * PROJ) / depth);
-  const sprite = (x: number, y = 4.5, color = RED) => ({ x, y, color, face: null, speaking: 0, held: null });
+  const sprite = (x: number, y = 4.5, color = RED) => ({
+    x,
+    y,
+    color,
+    face: null,
+    speaking: 0,
+    bob: 0,
+    itemBob: 0,
+    held: null,
+  });
 
   test('the floor right under an avatar is darkened, most at the centre', () => {
     const fb = frame();
@@ -275,7 +293,16 @@ describe('held items', () => {
       '111111111',
     ].join('\n')
   );
-  const beer = (x: number, y = 4.5) => ({ x, y, color: RED, face: null, speaking: 0, held: 'beer' as const });
+  const beer = (x: number, y = 4.5) => ({
+    x,
+    y,
+    color: RED,
+    face: null,
+    speaking: 0,
+    bob: 0,
+    itemBob: 0,
+    held: 'beer' as const,
+  });
   // Screen pixel of item texel (u, v) for a sprite straight ahead at `depth`.
   const itemPx = (u: number, v: number, depth: number) => {
     const r = (AVATAR_RADIUS * PROJ) / depth;
@@ -331,6 +358,42 @@ describe('held items', () => {
     expect(tex(u, v)).not.toBe(0);
   });
 
+  test('a bobbing avatar is drawn higher by BOB_HEIGHT radii; its shadow stays on the floor', () => {
+    const topRow = (fb: ReturnType<typeof frame>) => {
+      for (let y = 0; y < fb.height; y++) {
+        const c = px(fb, 320, y);
+        if (c === RED || c === shade(RED)) {
+          return y;
+        }
+      }
+      return -1;
+    };
+    const still = frame();
+    renderSprites(still, player, [{ ...beer(3.5), held: null }]);
+    const up = frame();
+    renderSprites(up, player, [{ ...beer(3.5), held: null, bob: 1 }]);
+    const r = (AVATAR_RADIUS * PROJ) / 2;
+    expect(Math.abs(topRow(still) - topRow(up) - BOB_HEIGHT * r)).toBeLessThanOrEqual(1);
+    const floor = Math.floor(180 + (0.5 * PROJ) / 2);
+    for (let x = 0; x < still.width; x++) {
+      expect(px(up, x, floor)).toBe(px(still, x, floor));
+    }
+  });
+
+  test('the drink lifts by itemBob, on its own', () => {
+    const fb = frame();
+    renderSprites(fb, player, [{ ...beer(3.5), itemBob: 1 }]);
+    const r = (AVATAR_RADIUS * PROJ) / 2;
+    const t = HELD_TEXEL * r;
+    const lifted = (u: number, v: number) =>
+      [
+        Math.floor(320 + HELD_LEFT * r + (u + 0.5) * t),
+        Math.floor(180 - HELD_TOP * r - BOB_HEIGHT * r + (v + 0.5) * t),
+      ] as const;
+    expect(px(fb, ...lifted(12, 9))).toBe(tex(12, 9));
+    expect(px(fb, ...lifted(8, 5))).toBe(tex(8, 5));
+  });
+
   test('a very near item crossing the right edge does not wrap into the next row', () => {
     const plain = frame();
     renderSprites(plain, player, [{ ...beer(2.0, 4.48), held: null }]);
@@ -344,7 +407,16 @@ describe('held items', () => {
 
 describe('held item shadows', () => {
   const floorRow = (depth: number) => Math.floor(180 + (0.5 * PROJ) / depth);
-  const holding = (held: 'beer' | 'wine' | null) => ({ x: 3.5, y: 4.5, color: RED, face: null, speaking: 0, held });
+  const holding = (held: 'beer' | 'wine' | null) => ({
+    x: 3.5,
+    y: 4.5,
+    color: RED,
+    face: null,
+    speaking: 0,
+    bob: 0,
+    itemBob: 0,
+    held,
+  });
   /** Screen column under the held item's centre for a sprite 2 tiles straight ahead. */
   const itemCol = (item: 'beer' | 'wine') => {
     const offset = (HELD_LEFT + (HELD_TEXEL * HELD_SPRITES[item].w) / 2) * AVATAR_RADIUS;
