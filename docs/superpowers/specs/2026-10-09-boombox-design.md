@@ -16,7 +16,7 @@ In scope:
 - Several players can play at once, each from their own position.
 
 Out of scope:
-- Pause, seek, volume, loop, playlists, showing the track name.
+- Pause, loop, playlists. (Seek, volume and the track name came in with the mini player, §3.1.)
 - Speakers that pulse with the music (sketch "C"; possible later, the engine already measures the level).
 - Stereo music (§5.3).
 - Anything stored or relayed by the server beyond an on/off flag.
@@ -101,8 +101,8 @@ keys in `main.ts`), calls `toggle(inRoom)`. States are `off`, `starting` and `pl
 **Graph:** created once on first use, from the `AudioContext` made in the Join click:
 
 ```
-<audio> → MediaElementSource ─┬→ MediaStreamDestination → track (to the mesh)
-                              └→ GainNode (BOOMBOX_SELF_GAIN) → ctx.destination
+<audio> → MediaElementSource → GainNode (volume) ─┬→ MediaStreamDestination → track (to the mesh)
+                                                 └→ GainNode (BOOMBOX_SELF_GAIN) → ctx.destination
 ```
 
 - The carrier hears their own music centred and dry at `BOOMBOX_SELF_GAIN = 0.5` (tuned by ear),
@@ -110,6 +110,27 @@ keys in `main.ts`), calls `toggle(inRoom)`. States are `off`, `starting` and `pl
 - `MediaElementSource` can be created only once per element, hence the single reused element.
 - With no `AudioContext` (no engine), the boombox is unavailable and `B` does nothing.
 - Opening the file dialog may release pointer lock; clicking the view re-locks as usual.
+
+### 3.1 Mini player (added 2026-10-09)
+
+While your boombox plays, a small panel shows at the top-centre (`ui/boombox-panel.ts`). The other
+corners are taken: room bar, audio panel, drink, boombox and self-view. It holds:
+- **The track name:** the file name, as text.
+- **Progress:** a slider over `currentTime / duration`, plus `m:ss / m:ss`, refreshed every 250 ms.
+  Dragging previews the time and seeks on release (`change`). The room hears the jump, since the
+  music is live.
+- **Volume:** 0–100%, starting at 100%, kept across tracks for the session and not stored.
+- **Stop:** the same as `B`.
+
+**Volume goes before the split** (the volume `GainNode` in the graph above). So one slider turns
+down both what the carrier hears and what the room receives. Listeners need no message: the level
+is in the audio itself, so late joiners and reconnects are right with nothing to sync. A volume
+number relayed by the server was rejected, because it would need `PeerInfo` state for late joiners
+and buys nothing. Changes glide over 20 ms so dragging doesn't click.
+
+The panel is gone when the music stops for any reason. Picking a file has already released pointer
+lock, so the panel is clickable at once. Clicking the view re-locks, and `Esc` releases it again.
+There is no pause: Stop and `B` end the track.
 
 ## 4. Spatial playback (listeners)
 

@@ -35,6 +35,7 @@ import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
 import { makeTextures } from './renderer/textures';
 import { renderWalls } from './renderer/walls';
 import { showAudioPanel } from './ui/audio-panel';
+import { showBoomboxPanel } from './ui/boombox-panel';
 import { heldForKey, heldKeyAction, loadHeld, saveHeld } from './ui/held-store';
 import { parseRoute } from './ui/route';
 import {
@@ -244,15 +245,29 @@ async function joinRoom(roomId: string, name: string, avatar: string | null): Pr
     showBanner(ui, PROBLEM_TEXT[local.problem]);
   }
   const activeCall = call;
-  boombox = createBoombox({
+  const box = createBoombox({
     ctx: audioCtx,
     container: localMediaContainer,
     onTrack: (track) => activeCall.setBoomboxTrack(track),
     onChange(on) {
       ownBoombox = on;
       session?.setBoombox(on);
+      showBoomboxPanel(
+        ui,
+        on
+          ? {
+              title: box.title() ?? '',
+              volume: box.volume(),
+              progress: () => box.progress(),
+              onVolume: (v) => box.setVolume(v),
+              onSeek: (seconds) => box.seek(seconds),
+              onStop: () => box.toggle(true),
+            }
+          : null
+      );
     },
   });
+  boombox = box;
   showRoomBar(ui, location.href, {
     cam: local.cam,
     mic: local.mic,
