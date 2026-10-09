@@ -31,14 +31,19 @@ export function clearScreen(root: HTMLElement): void {
   root.querySelector(':scope > .screen')?.remove();
 }
 
+/** The landing panel, in the lobby's style; main.ts draws the title picture behind it (landing-scene.ts). */
 export function showLanding(root: HTMLElement, onCreate: () => void): void {
-  const create = el('button', { type: 'button', textContent: 'Create room' });
+  const create = el('button', { type: 'button', className: 'primary', textContent: 'Start a party' });
   create.addEventListener('click', onCreate);
   setScreen(
     root,
-    el('h1', { textContent: 'zoom3d' }),
-    el('p', { textContent: 'A meeting room you can walk around in.' }),
-    create
+    el(
+      'div',
+      { className: 'lobby landing' },
+      el('h1', { textContent: 'zoom3d' }),
+      el('p', { textContent: 'Beer with your buddies in raycaster.' }),
+      create
+    )
   );
 }
 

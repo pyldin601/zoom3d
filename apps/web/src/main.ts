@@ -41,6 +41,7 @@ import { setAudioPanelBoombox, showAudioPanel } from './ui/audio-panel';
 import type { BoomboxPanelOptions } from './ui/boombox-panel';
 import { loadBoomboxVolume, saveBoomboxVolume } from './ui/boombox-store';
 import { heldForKey, heldKeyAction, loadHeld, saveHeld } from './ui/held-store';
+import { renderLandingScene } from './ui/landing-scene';
 import { joinBanner, PROBLEM_TEXT, showLobby } from './ui/lobby';
 import { createMicLevel } from './ui/mic-level';
 import { parseRoute } from './ui/route';
@@ -435,7 +436,7 @@ startHiddenTicker(
   () => document.hidden
 );
 
-startLoop((dt) => {
+function frame(dt: number): void {
   const mouseTurn = input.consumeMouseTurn();
   if (inRoom()) {
     player.angle += mouseTurn;
@@ -506,4 +507,12 @@ startLoop((dt) => {
   if (automapVisible) {
     drawAutomap(hudCtx, map, player, hud.width, hud.height, others);
   }
-});
+}
+
+if (route.kind === 'landing') {
+  // One still from the renderer as the title picture; the room only runs behind a room link.
+  renderLandingScene(fb);
+  gameCtx.putImageData(image, 0, 0);
+} else {
+  startLoop(frame);
+}

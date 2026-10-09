@@ -11,5 +11,5 @@ test('a name with movement letters can be typed on the join screen', async ({ pa
 test('Tab moves focus on the landing page', async ({ page }) => {
   await page.goto('/');
   await page.keyboard.press('Tab');
-  await expect(page.getByRole('button', { name: 'Create room' })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Start a party' })).toBeFocused();
 });

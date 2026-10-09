@@ -44,7 +44,7 @@ const isBlue = (rgb: number[] | undefined) =>
 test('a picked picture replaces initials while the camera is off, and is remembered', async ({ browser }) => {
   const a = await (await browser.newContext()).newPage();
   await a.goto('/');
-  await a.getByRole('button', { name: 'Create room' }).click();
+  await a.getByRole('button', { name: 'Start a party' }).click();
   await expect(a).toHaveURL(/\/r\//);
   const url = a.url();
 

@@ -59,7 +59,14 @@
       #ui .lobby .split > .chevron { border-left: 0; border-radius: 0 0.25em 0.25em 0; font-size: 0.7em; }
       #ui .lobby .split.off > button { color: #f99; background: #3a2020; border-color: #844; }
       #ui .lobby form input { margin: 0 0 0.45em; text-align: center; }
-      #ui .lobby form [type="submit"] { width: 100%; padding: 0.35em; color: #fff; background: #2f6fd0; border-color: #2f6fd0; font-weight: 600; }
+      #ui .lobby form [type="submit"], #ui .lobby .primary { width: 100%; padding: 0.35em; color: #fff; background: #2f6fd0; border-color: #2f6fd0; font-weight: 600; }
+      /* Landing: the title picture shows undimmed; the panel sits in the bottom-right corner, inset like the logo
+         above it (28 of 640 px, landing-scene.ts). Percentage padding is relative to the width on all sides. */
+      #ui .screen:has(.landing) { background: none; place-items: end end; padding: 0 4.375% 4.375% 0; }
+      #ui .landing { width: 14em; }
+      /* The title is drawn into the picture (landing-logo.ts); the heading stays for screen readers. */
+      #ui .landing h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+      #ui .landing p { margin: 0 0 0.8em; color: #bbb; font-size: 0.75em; }
       #ui .lobby [hidden] { display: none; }
       #ui .selfview { position: absolute; right: 0.6em; bottom: 0.6em; width: 4.5em; height: 4.5em; border-radius: 50%; overflow: hidden; border: 0.12em solid #ddd; }
       #ui .selfview[hidden] { display: none; }
