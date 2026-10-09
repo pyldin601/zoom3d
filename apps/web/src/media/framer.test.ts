@@ -21,18 +21,18 @@ test('without a detector every frame draws the centred square', () => {
   ]);
 });
 
-test('detection runs at most every 200 ms and gets the video and time', () => {
+test('detection runs at most once a second and gets the video and time', () => {
   const { s } = harness();
   const detect = vi.fn<Detector['detect']>(() => face);
   s.setDetector({ detect });
   const v = video();
-  for (const t of [0, 50, 100, 150, 200, 250, 399, 400]) {
+  for (const t of [0, 250, 500, 999, 1000, 1500, 1999, 2000]) {
     s.step(v, t);
   }
   expect(detect.mock.calls).toEqual([
     [v, 0],
-    [v, 200],
-    [v, 400],
+    [v, 1000],
+    [v, 2000],
   ]);
 });
 
@@ -47,10 +47,10 @@ test('a detector that throws is dropped and the crop returns to centre', () => {
   detect.mockImplementation(() => {
     throw new Error('context lost');
   });
-  for (let t = 2040; t <= 9000; t += 40) {
+  for (let t = 2040; t <= 12_000; t += 40) {
     s.step(video(), t);
   }
-  expect(detect).toHaveBeenCalledTimes(12); // 11 good detections (0..2000), then one that throws
+  expect(detect).toHaveBeenCalledTimes(4); // good at 0, 1000, 2000; throws at 3000
   expect(warn).toHaveBeenCalledTimes(1);
   const last = rects.at(-1) as Rect;
   expect(last.size).toBeCloseTo(480, 1);
