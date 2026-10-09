@@ -1,6 +1,7 @@
 // Pixel-art drinks held in a floating hand beside an avatar disc (held items spec §2). Column 0 is
 // the side next to the disc: mugs are gripped by the handle, the wine glass by the stem.
 import type { HeldItem } from '@zoom3d/shared';
+import { MOUTH_Y_IN_CROP } from '../media/framing';
 import { rgb } from './framebuffer';
 
 /**
@@ -10,11 +11,13 @@ import { rgb } from './framebuffer';
 export const HELD_TEXEL = 0.08;
 export const HELD_LEFT = 0.15;
 export const HELD_TOP = -0.3;
+/** The framed 256² face texture spans the disc's inner circle, 0.85 r in radius (sprites.ts `RING`). */
+const FACE_SPAN = 1.7;
 /**
- * The mouth of a framed face, in disc radii below the disc centre (held items spec §2.3). It follows
- * from the face framing (`FACE_SCALE` 2.2, `HEADROOM` 0.1 in media/framing.ts): re-check it if they change.
+ * The mouth of a framed face, in disc radii below the disc centre (held items spec §2.3): face framing puts
+ * it at `MOUTH_Y_IN_CROP` of the framed video's height, horizontally centred.
  */
-export const FACE_MOUTH_Y = 0.38;
+export const FACE_MOUTH_Y = (MOUTH_Y_IN_CROP - 0.5) * FACE_SPAN;
 /** The texel (u, v) of each drink that meets the lips at the top of a sip: its rim, or the foam. */
 export const HELD_LIPS: Readonly<Record<HeldItem, readonly [number, number]>> = {
   beer: [9.5, 2.5],

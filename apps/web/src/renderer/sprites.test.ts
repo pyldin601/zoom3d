@@ -1,6 +1,7 @@
 import { type PlayerState, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { FACE_SIZE } from '../media/faces';
+import { MOUTH_Y_IN_CROP } from '../media/framing';
 import { createFramebuffer, rgb } from './framebuffer';
 import { FACE_MOUTH_Y, HELD_LEFT, HELD_LIPS, HELD_SPRITES, HELD_TEXEL, HELD_TOP, sipLeft, sipTop } from './held-items';
 import {
@@ -407,7 +408,8 @@ describe('held items', () => {
   });
 
   test("at full sip each drink's lip point is on the framed face's mouth", () => {
-    expect(FACE_MOUTH_Y).toBe(0.38);
+    // The framed 256² face spans the disc's inner circle (1.7 r across); framing puts the mouth at MOUTH_Y_IN_CROP.
+    expect(FACE_MOUTH_Y).toBeCloseTo((MOUTH_Y_IN_CROP - 0.5) * 1.7, 9);
     expect(HELD_LIPS).toEqual({ beer: [9.5, 2.5], coffee: [9.5, 2], wine: [3, 0.5] });
     for (const item of ['beer', 'coffee', 'wine'] as const) {
       const [u, v] = HELD_LIPS[item];
