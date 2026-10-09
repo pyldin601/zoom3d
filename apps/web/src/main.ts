@@ -238,7 +238,11 @@ async function joinRoom(roomId: string, name: string, avatar: string | null): Pr
   const local = await captureLocalMedia({
     isSecureContext: window.isSecureContext,
     getUserMedia: (c) => navigator.mediaDevices.getUserMedia(c),
-    frame: (raw) => createFramer({ rawTrack: raw, container: localMediaContainer, document }),
+    frame: (raw) => {
+      const framer = createFramer({ container: localMediaContainer, document });
+      framer.setCamera(raw);
+      return framer;
+    },
   });
   call = createCall({
     local,

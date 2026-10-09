@@ -52,19 +52,20 @@ export function createFrameStep(draw: (video: HTMLVideoElement, rect: Rect) => v
 }
 
 export interface Framer {
-  /** The framed OUTPUT_SIZE² canvas track. */
+  /** The framed OUTPUT_SIZE² canvas track; exists with or without a camera, disabled without one. */
   readonly track: MediaStreamTrack;
-  /** The camera track. */
-  readonly rawTrack: MediaStreamTrack;
-  /** What senders should carry now: the raw track while the tab is hidden (the canvas freezes), else `track`. */
+  /** The camera track feeding the canvas, or null. The framer never stops it; its owner does. */
+  readonly camera: MediaStreamTrack | null;
+  /** What senders should carry now: the camera while the tab is hidden (the canvas freezes), else `track`. */
   readonly sendTrack: MediaStreamTrack;
   /** Set by the call; fired whenever `sendTrack` may have changed. */
   onSendTrackChange: (() => void) | null;
+  /** Swaps the camera behind the canvas (lobby spec §4.2); null stops drawing. */
+  setCamera(raw: MediaStreamTrack | null): void;
   setEnabled(on: boolean): void;
 }
 
 export interface FramerOptions {
-  rawTrack: MediaStreamTrack;
   /** A visibility:hidden box of its own (#local-media), never the remote #media box. */
   container: HTMLElement;
   document: Document;
@@ -79,20 +80,20 @@ type FrameVideo = HTMLVideoElement & {
 const POLL_MS = 42;
 
 export function createFramer(opts: FramerOptions): Framer {
-  const { rawTrack, document: doc } = opts;
+  const { document: doc } = opts;
   const video = doc.createElement('video') as FrameVideo;
   video.muted = true;
   video.playsInline = true;
   video.autoplay = true;
-  video.srcObject = new MediaStream([rawTrack]);
   opts.container.append(video);
-  void video.play().catch(() => {});
+  let camera: MediaStreamTrack | null = null;
 
   const canvas = doc.createElement('canvas');
   canvas.width = OUTPUT_SIZE;
   canvas.height = OUTPUT_SIZE;
   const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
   const track = canvas.captureStream(OUTPUT_FPS).getVideoTracks()[0] as MediaStreamTrack;
+  track.enabled = false;
   const frameStep = createFrameStep((v, r) => {
     ctx.drawImage(v, r.x, r.y, r.size, r.size, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
   });
@@ -118,15 +119,28 @@ export function createFramer(opts: FramerOptions): Framer {
 
   const framer: Framer = {
     track,
-    rawTrack,
+    get camera() {
+      return camera;
+    },
     get sendTrack() {
-      return doc.visibilityState === 'hidden' ? rawTrack : track;
+      return doc.visibilityState === 'hidden' && camera ? camera : track;
     },
     onSendTrackChange: null,
+    setCamera(raw) {
+      camera = raw;
+      video.srcObject = raw ? new MediaStream([raw]) : null;
+      if (raw) {
+        void video.play().catch(() => {});
+      }
+      track.enabled = raw !== null && enabled;
+      framer.onSendTrackChange?.();
+    },
     setEnabled(on) {
       enabled = on;
-      rawTrack.enabled = on;
-      track.enabled = on;
+      if (camera) {
+        camera.enabled = on;
+      }
+      track.enabled = on && camera !== null;
     },
   };
   doc.addEventListener('visibilitychange', () => framer.onSendTrackChange?.());
