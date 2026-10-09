@@ -6,6 +6,7 @@ import {
   LEVEL1,
   newRoomId,
   parseMap,
+  SIP_MS,
   spawnPoint,
   stepPlayer,
 } from '@zoom3d/shared';
@@ -27,6 +28,7 @@ import { type Bob, createBob } from './renderer/bob';
 import { createFramebuffer } from './renderer/framebuffer';
 import { drawLabels } from './renderer/labels';
 import { renderOwnHeld } from './renderer/own-held';
+import { sipPose } from './renderer/sip';
 import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
 import { makeTextures } from './renderer/textures';
 import { renderWalls } from './renderer/walls';
@@ -64,6 +66,8 @@ const input = createInput(window, document);
 let session: Session | null = null;
 /** What the local player holds, drawn in first person. */
 let ownHeld: HeldItem | null = null;
+/** performance.now() when the local player's last sip started. */
+let ownSipAt = Number.NEGATIVE_INFINITY;
 /** Shows a held item picked by key in the room-bar picker. */
 let showHeldInBar: ((item: HeldItem | null) => void) | null = null;
 
@@ -76,6 +80,15 @@ function chooseHeld(item: HeldItem | null): void {
   saveHeld(storage(), item);
   session?.setHeld(item);
   showHeldInBar?.(item);
+}
+/** Takes a sip of the drink in hand, unless one is still playing (held items spec §2.3). */
+function startSip(): void {
+  const now = performance.now();
+  if (now - ownSipAt < SIP_MS) {
+    return;
+  }
+  ownSipAt = now;
+  session?.sendDrink();
 }
 let call: Call | null = null;
 let audio: AudioEngine | null = null;
@@ -143,7 +156,12 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   e.preventDefault();
-  chooseHeld(item);
+  // The key of the drink already in hand takes a sip instead.
+  if (item !== null && item === ownHeld) {
+    startSip();
+  } else {
+    chooseHeld(item);
+  }
 });
 
 let automapVisible = false;
@@ -390,6 +408,7 @@ startLoop((dt) => {
         speaking: audio?.speaking(peer.info.id) ?? 0,
         bob: bob.lift,
         itemBob: bob.itemLift,
+        sip: sipPose(now - peer.drinkAt),
         held: peer.info.held,
       });
       others.push({
@@ -407,7 +426,7 @@ startLoop((dt) => {
   renderWalls(fb, map, player, textures);
   renderSprites(fb, player, sprites);
   if (inRoom()) {
-    renderOwnHeld(fb, ownHeld, selfBob.itemLift, selfBob.sway);
+    renderOwnHeld(fb, ownHeld, selfBob.itemLift, selfBob.sway, sipPose(performance.now() - ownSipAt));
   }
   gameCtx.putImageData(image, 0, 0);
   hudCtx.clearRect(0, 0, hud.width, hud.height);
