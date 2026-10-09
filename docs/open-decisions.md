@@ -124,6 +124,17 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   at a fixed low volume, not through the spatial graph: it's the room's bell, not a sound from a place. Arrivals
   less than 2 s apart ring once. No asset file and no protocol change (`apps/web/src/audio/doorbell.ts`).
 
+### D19 — Landing page
+- What `/` shows before anyone has a room.
+- *Resolved 2026-10-09:* a title picture in the spirit of a Wolfenstein 3-D title screen, but nothing copied from it:
+  one still frame from our own renderer (`apps/web/src/ui/landing-scene.ts`). Max sneaks a beer in a niche behind a
+  corner while Ada and Bob talk down the blue-stone corridor. They are real avatars with 16×16 pixel-art faces
+  scaled into the face texture, and no name labels. Tests pin the staging: every disc is whole from the camera, and
+  Max is out of Ada's and Bob's line of sight. "zoom3d" is pixel lettering drawn into the same frame, centred at the
+  top in line with the panel below, like a title screen (`landing-logo.ts`): blocky glyphs, chrome fading into red, black outline and drop shadow. The frame is
+  drawn once; the room loop never starts on `/`. A lobby-style panel (tagline, blue "Start a party"; the heading is
+  for screen readers only) sits on the floor below the people, undimmed.
+
 ### Risks (to verify, not assume)
 - **R1 — Echo cancellation vs Web Audio output.** Chrome's AEC historically did not cancel audio played via `AudioContext`. If still true, speakers echo. Verify in an early throwaway audio spike (speakers vs headphones).
   - *Verdict 2026-10-08 (provisional):* user tested Chrome on both devices with the spike and reported it "sounds good", i.e. no echo problem heard. Interpreted as outcome (a): M4 uses the `webaudio` path (graph → `AudioContext.destination`). The per-mode table was not filled in and **Firefox is untested**, so re-check Firefox (and speakers at higher volume) in M5 before relying on (a) there.

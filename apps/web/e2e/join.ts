@@ -3,7 +3,7 @@ import { expect, type Page } from '@playwright/test';
 /** Opens a fresh room from the landing page and joins it; returns the room URL. */
 export async function createAndJoin(page: Page, name: string): Promise<string> {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Create room' }).click();
+  await page.getByRole('button', { name: 'Start a party' }).click();
   await expect(page).toHaveURL(/\/r\/[A-Za-z0-9_-]{22}$/);
   await joinAs(page, name);
   return page.url();
