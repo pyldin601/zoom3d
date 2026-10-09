@@ -41,7 +41,7 @@ export function showLanding(root: HTMLElement, onCreate: () => void): void {
       'div',
       { className: 'lobby landing' },
       el('h1', { textContent: 'zoom3d' }),
-      el('p', { textContent: 'Beer with your buddies in a raycaster.' }),
+      el('p', { textContent: 'Beer with your buddies in raycaster.' }),
       create
     )
   );

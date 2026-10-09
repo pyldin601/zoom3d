@@ -30,7 +30,7 @@ test('every glyph is a rectangle of # and . no taller than the logo', () => {
   }
 });
 
-test('the logo is centred horizontally, `top` pixels down', () => {
+test('the logo sits in the top-right corner, `margin` pixels from the top and from the right', () => {
   const fb = blank();
   drawLogo(fb, 20);
   let minX = fb.width;
@@ -44,9 +44,8 @@ test('the logo is centred horizontally, `top` pixels down', () => {
     }
   }
   // The outline reaches LOGO_OUTLINE past the letters on the left and top; the shadow only falls right and down.
-  const lettersLeft = minX + LOGO_OUTLINE;
-  const lettersRight = lettersLeft + LOGO_WIDTH * LOGO_CELL;
-  expect(Math.abs(lettersLeft - (fb.width - lettersRight))).toBeLessThanOrEqual(1);
+  const lettersRight = minX + LOGO_OUTLINE + LOGO_WIDTH * LOGO_CELL;
+  expect(fb.width - lettersRight).toBe(20);
   expect(minY + LOGO_OUTLINE).toBe(20);
 });
 
@@ -54,7 +53,7 @@ test('letters are filled with the gradient, edged in black', () => {
   const fb = blank();
   drawLogo(fb, 20);
   // The `d` is the last glyph; its top-right cell is filled (`....##`).
-  const x = Math.floor((fb.width - LOGO_WIDTH * LOGO_CELL) / 2) + LOGO_WIDTH * LOGO_CELL - 2;
+  const x = fb.width - 20 - 2;
   expect(fb.pixels[(20 + 1) * fb.width + x]).toBe(logoColour(1));
   expect(fb.pixels[(20 - 1) * fb.width + x]).toBe(rgb(0, 0, 0));
 });

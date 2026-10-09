@@ -130,10 +130,11 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   one still frame from our own renderer (`apps/web/src/ui/landing-scene.ts`). Max sneaks a beer in a niche behind a
   corner while Ada and Bob talk down the blue-stone corridor. They are real avatars with 16×16 pixel-art faces
   scaled into the face texture, and no name labels. Tests pin the staging: every disc is whole from the camera, and
-  Max is out of Ada's and Bob's line of sight. "zoom3d" is pixel lettering drawn into the same frame, centred at the
-  top in line with the panel below, like a title screen (`landing-logo.ts`): blocky glyphs, chrome fading into red, black outline and drop shadow. The frame is
+  Max is out of Ada's and Bob's line of sight. "zoom3d" is pixel lettering drawn into the same frame in the top-right
+  corner (`landing-logo.ts`): blocky glyphs, chrome fading into red, black outline and drop shadow. The frame is
   drawn once; the room loop never starts on `/`. A lobby-style panel (tagline, blue "Start a party"; the heading is
-  for screen readers only) sits on the floor below the people, undimmed.
+  for screen readers only) sits in the bottom-right corner below it, undimmed; both are inset
+  28 of 640 px from their corner.
 
 ### Risks (to verify, not assume)
 - **R1 — Echo cancellation vs Web Audio output.** Chrome's AEC historically did not cancel audio played via `AudioContext`. If still true, speakers echo. Verify in an early throwaway audio spike (speakers vs headphones).
