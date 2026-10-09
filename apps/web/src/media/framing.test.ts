@@ -100,3 +100,29 @@ test('update reuses one rect object', () => {
   const f = createFraming(W, H);
   expect(f.update(face, 0)).toBe(f.update(null, 16));
 });
+
+test('a remembered rect is the start and is held until the face search starts', () => {
+  const f = createFraming(W, H, framed);
+  expect(f.update(null, 0, false)).toEqual(framed);
+  for (let t = 100; t <= 20_000; t += 100) {
+    f.update(null, t, false);
+  }
+  close(f.update(null, 20_100, false), framed);
+});
+
+test('once searching, a remembered rect is lost after 3 s without a face', () => {
+  const f = createFraming(W, H, framed);
+  f.update(null, 0, false);
+  close(settle(f, null, 10_000, 2900), framed);
+  close(settle(f, null, 13_000, SETTLE), CENTRE);
+});
+
+test('a remembered rect that does not fit the frame is ignored', () => {
+  expect(createFraming(W, H, { x: 600, y: 0, size: 176 }).update(null, 0)).toEqual(CENTRE);
+});
+
+test('target is where the crop is heading', () => {
+  const f = createFraming(W, H);
+  f.update(face, 0);
+  expect(f.target).toEqual(framed);
+});

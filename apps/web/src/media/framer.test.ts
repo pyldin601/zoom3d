@@ -76,9 +76,67 @@ test('step skips frames before the video has a size', () => {
   expect(detect).not.toHaveBeenCalled();
 });
 
+describe('framing memory', () => {
+  const framed = { x: 232, y: 144.4, size: 176 };
+  const memory = (saved: Rect | null) => ({
+    load: vi.fn((_camera: string, _w: number, _h: number) => saved),
+    save: vi.fn((_camera: string, _w: number, _h: number, _r: Rect) => {}),
+  });
+
+  test('starts from the rect remembered for this frame size and holds it while the detector loads', () => {
+    const m = memory(framed);
+    const rects: Rect[] = [];
+    const s = createFrameStep((_, r) => rects.push({ ...r }), m);
+    s.setCamera('cam1');
+    for (let t = 0; t <= 10_000; t += 40) {
+      s.step(video(), t);
+    }
+    expect(m.load).toHaveBeenCalledWith('cam1', 640, 480);
+    expect(rects.every((r) => r.x === framed.x && r.y === framed.y && r.size === framed.size)).toBe(true);
+  });
+
+  test('a detector that never loads lets the remembered rect go after 3 s', () => {
+    const rects: Rect[] = [];
+    const s = createFrameStep((_, r) => rects.push({ ...r }), memory(framed));
+    s.setCamera('cam1');
+    s.step(video(), 0);
+    s.setDetector(null);
+    for (let t = 40; t <= 12_000; t += 40) {
+      s.step(video(), t);
+    }
+    expect((rects.at(-1) as Rect).size).toBeCloseTo(480, 1);
+  });
+
+  test('a detection with a face saves where the crop is heading', () => {
+    const m = memory(null);
+    const s = createFrameStep(() => {}, m);
+    s.setCamera('cam1');
+    s.setDetector({ detect: () => face });
+    s.step(video(), 0);
+    expect(m.save).toHaveBeenCalledWith('cam1', 640, 480, framed);
+    s.setDetector({ detect: () => null });
+    s.step(video(), 1000);
+    expect(m.save).toHaveBeenCalledTimes(1);
+  });
+
+  test("switching cameras starts from the new camera's remembered rect", () => {
+    const other = { x: 100, y: 50, size: 300 };
+    const m = memory(null);
+    m.load.mockImplementation((camera) => (camera === 'cam2' ? other : framed));
+    const rects: Rect[] = [];
+    const s = createFrameStep((_, r) => rects.push({ ...r }), m);
+    s.setCamera('cam1');
+    s.step(video(), 0);
+    s.setCamera('cam2');
+    s.step(video(), 40);
+    expect(rects).toEqual([framed, other]);
+  });
+});
+
 describe('createFramer', () => {
   const canvasTrack = () => ({ kind: 'video', id: 'canvas', enabled: true }) as unknown as MediaStreamTrack;
-  const raw = (id: string) => ({ kind: 'video', id, enabled: true }) as unknown as MediaStreamTrack;
+  const raw = (id: string) =>
+    ({ kind: 'video', id, enabled: true, getSettings: () => ({ deviceId: id }) }) as unknown as MediaStreamTrack;
   let visibility: DocumentVisibilityState;
 
   beforeEach(() => {

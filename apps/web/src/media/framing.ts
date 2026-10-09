@@ -37,13 +37,19 @@ export interface Rect {
 }
 
 export interface Framing {
-  /** Pass the fresh face box on detection frames, else null. Returns a reused rect: copy it to keep it. */
-  update(face: Box | null, now: number): Rect;
+  /**
+   * Pass the fresh face box on detection frames, else null; `searching` is false until the detector has loaded.
+   * Returns a reused rect: copy it to keep it.
+   */
+  update(face: Box | null, now: number, searching?: boolean): Rect;
+  /** Where the crop is heading. Reused: copy it to keep it. */
+  readonly target: Rect;
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-export function createFraming(frameW: number, frameH: number): Framing {
+/** `start` is a rect remembered from an earlier visit; it is held until the face search begins. */
+export function createFraming(frameW: number, frameH: number, start: Rect | null = null): Framing {
   const full = Math.min(frameW, frameH);
   const centred = (r: Rect) => {
     r.x = (frameW - full) / 2;
@@ -53,9 +59,17 @@ export function createFraming(frameW: number, frameH: number): Framing {
   const target: Rect = { x: 0, y: 0, size: 0 };
   const current: Rect = { x: 0, y: 0, size: 0 };
   const candidate: Rect = { x: 0, y: 0, size: 0 };
-  centred(target);
-  centred(current);
-  let lastBoxAt = Number.NEGATIVE_INFINITY;
+  const fits = (r: Rect) => r.size > 0 && r.x >= 0 && r.y >= 0 && r.x + r.size <= frameW && r.y + r.size <= frameH;
+  const remembered = start !== null && fits(start);
+  if (remembered) {
+    Object.assign(target, start);
+    Object.assign(current, start);
+  } else {
+    centred(target);
+    centred(current);
+  }
+  // null: a remembered start not yet searched for, so not yet lost.
+  let lastBoxAt: number | null = remembered ? null : Number.NEGATIVE_INFINITY;
   let lastNow: number | null = null;
 
   const fromBox = (b: Box) => {
@@ -68,7 +82,11 @@ export function createFraming(frameW: number, frameH: number): Framing {
   };
 
   return {
-    update(face, now) {
+    target,
+    update(face, now, searching = true) {
+      if (lastBoxAt === null && searching) {
+        lastBoxAt = now;
+      }
       if (face) {
         lastBoxAt = now;
         fromBox(face);
@@ -81,7 +99,7 @@ export function createFraming(frameW: number, frameH: number): Framing {
           target.y = candidate.y;
           target.size = candidate.size;
         }
-      } else if (now - lastBoxAt > LOST_MS) {
+      } else if (lastBoxAt !== null && now - lastBoxAt > LOST_MS) {
         centred(target);
       }
       const k = lastNow === null ? 0 : 1 - Math.exp(-(now - lastNow) / EASE_MS);
