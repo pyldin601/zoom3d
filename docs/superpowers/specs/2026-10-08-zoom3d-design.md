@@ -139,6 +139,7 @@ Client → server:
 - `join {roomId, name, resumeToken?, avatar?}`
 - `state {x, y, angle, seq}`, sent at 15 Hz while moving and 1 Hz while idle
 - `media {cam: bool, mic: bool}`
+- `held {item}`, where `item` is `'beer' | 'coffee' | 'wine' | null` (see the [held items spec](2026-10-09-held-items-design.md))
 - `signal {to, payload}`, where `payload` is an SDP description or an ICE candidate
 
 Server → client:
@@ -146,12 +147,14 @@ Server → client:
 - `peer_joined {peer}`, `peer_left {id}`
 - `peer_state {id, x, y, angle, seq}`, relayed immediately
 - `peer_media {id, cam, mic}`
+- `peer_held {id, item}`
 - `correction {x, y, angle, seq}`: sent only to the sender when its `state` is rejected
 - `signal {from, payload}`
 - `error {code, message}`
 
-where `Peer = {id, name, color, x, y, angle, cam, mic, avatar}`. `avatar` is a
+where `Peer = {id, name, color, x, y, angle, cam, mic, avatar, held}`. `avatar` is a
 `data:image/jpeg;base64,…` URL of a 128×128 picture (≤ 12 000 chars) or `null` (§8.1).
+`held` is the item in the peer's hand or `null`.
 
 ### 7.3 Server validation
 - Names are trimmed to 1–24 chars. `roomId` must match the format above.
