@@ -26,7 +26,7 @@ const OPEN = parseMap(
     '1.......1',
     '1.......1',
     '111111111',
-  ].join('\n'),
+  ].join('\n')
 );
 const PROJ = 320 / Math.tan(FOV / 2);
 const textures = makeTextures(1);
@@ -80,7 +80,7 @@ describe('renderSprites', () => {
         '1.......1',
         '1.......1',
         '111111111',
-      ].join('\n'),
+      ].join('\n')
     );
     const fb = frame(walled);
     const wallPixel = px(fb, 320, 180);
@@ -118,8 +118,7 @@ test('hexToRgb packs like rgb()', () => {
 describe('face sprites', () => {
   const face = new Uint32Array(FACE_SIZE * FACE_SIZE);
   for (let j = 0; j < FACE_SIZE; j++)
-    for (let i = 0; i < FACE_SIZE; i++)
-      face[j * FACE_SIZE + i] = rgb((i * 256) / FACE_SIZE, (j * 256) / FACE_SIZE, 0);
+    for (let i = 0; i < FACE_SIZE; i++) face[j * FACE_SIZE + i] = rgb((i * 256) / FACE_SIZE, (j * 256) / FACE_SIZE, 0);
   // Texel column/row encoded in the red/green channels, independent of FACE_SIZE.
   const texelI = (c: number) => ((c & 0xff) * FACE_SIZE) / 256;
   const texelJ = (c: number) => (((c >> 8) & 0xff) * FACE_SIZE) / 256;
@@ -233,7 +232,7 @@ describe('floor shadows', () => {
         '1.......1',
         '1.......1',
         '111111111',
-      ].join('\n'),
+      ].join('\n')
     );
     const fb = frame(walled);
     const before = fb.pixels.slice();

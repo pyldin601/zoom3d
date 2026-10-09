@@ -58,7 +58,7 @@ export function drawAutomap(
   p: PlayerState,
   hudW: number,
   hudH: number,
-  others: readonly AutomapPeer[] = [],
+  others: readonly AutomapPeer[] = []
 ): void {
   const { originX, originY, cell } = automapLayout(map, hudW, hudH);
   ctx.fillStyle = BACKDROP;

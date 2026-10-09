@@ -37,7 +37,7 @@ export function showLanding(root: HTMLElement, onCreate: () => void): void {
     root,
     el('h1', { textContent: 'zoom3d' }),
     el('p', { textContent: 'A meeting room you can walk around in.' }),
-    create,
+    create
   );
 }
 
@@ -107,7 +107,7 @@ export function showJoin(root: HTMLElement, opts: JoinOptions): void {
         setEncoding(false);
         const code = err instanceof Error ? err.message : '';
         error.textContent = AVATAR_ERRORS[code] ?? "Couldn't read that picture";
-      },
+      }
     );
   });
   renderAvatar();
@@ -123,7 +123,7 @@ export function showJoin(root: HTMLElement, opts: JoinOptions): void {
     el('div', { className: 'avatar-row' }, preview, el('div', {}, choose, remove), file),
     el('label', {}, 'Your name', input),
     join,
-    error,
+    error
   );
   form.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -139,7 +139,7 @@ export function showJoin(root: HTMLElement, opts: JoinOptions): void {
     root,
     el('h1', { textContent: 'Join the room' }),
     form,
-    el('p', { className: 'hint', textContent: 'Headphones recommended.' }),
+    el('p', { className: 'hint', textContent: 'Headphones recommended.' })
   );
   input.focus();
 }
@@ -165,13 +165,7 @@ export interface MediaControls {
   onMic(on: boolean): void;
 }
 
-function toggle(
-  label: string,
-  control: string,
-  on: boolean,
-  available: boolean,
-  onChange: (on: boolean) => void,
-) {
+function toggle(label: string, control: string, on: boolean, available: boolean, onChange: (on: boolean) => void) {
   const button = el('button', { type: 'button', disabled: !available });
   button.dataset.control = control;
   const render = () => {
@@ -195,7 +189,7 @@ export function showRoomBar(root: HTMLElement, inviteUrl: string, controls?: Med
       () => {
         copy.textContent = 'Copied!';
       },
-      () => link.select(),
+      () => link.select()
     ) ?? link.select();
   });
   const toggles = controls
@@ -221,7 +215,7 @@ export function showBanner(root: HTMLElement, text: string | null): void {
   banner.textContent = text;
   bannerTimers.set(
     banner,
-    setTimeout(() => banner.remove(), BANNER_MS),
+    setTimeout(() => banner.remove(), BANNER_MS)
   );
 }
 

@@ -52,11 +52,7 @@ export function normalizeAudioSettings(v: unknown): AudioSettings {
   };
 }
 
-export function voiceGains(
-  distance: number,
-  occluded: boolean,
-  s: AudioSettings,
-): { dry: number; send: number } {
+export function voiceGains(distance: number, occluded: boolean, s: AudioSettings): { dry: number; send: number } {
   if (!Number.isFinite(distance)) return { dry: 0, send: 0 };
   const n = Math.min(Math.max((distance - s.ref) / (s.max - s.ref), 0), 1);
   const k = occluded ? s.occludedGain : 1;

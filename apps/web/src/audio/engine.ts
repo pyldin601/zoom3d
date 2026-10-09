@@ -75,11 +75,7 @@ interface Voice {
   speaking: number;
 }
 
-export function createAudioEngine(opts: {
-  ctx: AudioContext;
-  map: GameMap;
-  settings?: AudioSettings;
-}): AudioEngine {
+export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; settings?: AudioSettings }): AudioEngine {
   const { ctx, map } = opts;
   let settings = opts.settings ?? DEFAULT_AUDIO_SETTINGS;
   const voices = new Map<string, Voice>();
@@ -204,11 +200,7 @@ export function createAudioEngine(opts: {
           if (occluded !== v.occluded) {
             v.occluded = occluded;
             v.occlusionChangedAt = now;
-            v.filter.frequency.setTargetAtTime(
-              occluded ? settings.muffleHz : MUFFLE_OPEN_HZ,
-              t,
-              TAU_OCCLUSION,
-            );
+            v.filter.frequency.setTargetAtTime(occluded ? settings.muffleHz : MUFFLE_OPEN_HZ, t, TAU_OCCLUSION);
           }
         }
 

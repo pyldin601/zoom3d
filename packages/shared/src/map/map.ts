@@ -19,13 +19,11 @@ export function parseMap(text: string): GameMap {
   const tiles = new Uint8Array(width * height);
   const spawns: { x: number; y: number }[] = [];
   rows.forEach((row, y) => {
-    if (row.length !== width)
-      throw new Error(`map row ${y + 1}: expected ${width} columns, got ${row.length}`);
+    if (row.length !== width) throw new Error(`map row ${y + 1}: expected ${width} columns, got ${row.length}`);
     for (let x = 0; x < width; x++) {
       const ch = row[x] as string;
       const tile = TILE_CHARS[ch];
-      if (tile === undefined)
-        throw new Error(`map row ${y + 1}: unknown character '${ch}' at column ${x + 1}`);
+      if (tile === undefined) throw new Error(`map row ${y + 1}: unknown character '${ch}' at column ${x + 1}`);
       if (ch === 'S') spawns.push({ x, y });
       tiles[y * width + x] = tile;
     }
@@ -97,7 +95,7 @@ export function spawnPoint(map: GameMap, rng: () => number): { x: number; y: num
   }
   const tile = candidates[Math.floor(rng() * candidates.length)] ?? map.spawn;
   const open = CARDINALS.filter(
-    (a) => tileAt(map, tile.x + Math.round(Math.cos(a)), tile.y + Math.round(Math.sin(a))) === 0,
+    (a) => tileAt(map, tile.x + Math.round(Math.cos(a)), tile.y + Math.round(Math.sin(a))) === 0
   );
   const angle = open[Math.floor(rng() * open.length)] ?? 0;
   return { x: tile.x + 0.5, y: tile.y + 0.5, angle };

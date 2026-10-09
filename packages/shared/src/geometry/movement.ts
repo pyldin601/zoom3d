@@ -37,20 +37,14 @@ export function moveWithCollision(
   y: number,
   dx: number,
   dy: number,
-  radius = PLAYER_RADIUS,
+  radius = PLAYER_RADIUS
 ): { x: number; y: number } {
   const nx = blocked(map, x + dx, y, radius) ? x : x + dx;
   const ny = blocked(map, nx, y + dy, radius) ? y : y + dy;
   return { x: nx, y: ny };
 }
 
-export function stepPlayer(
-  map: GameMap,
-  s: PlayerState,
-  input: MoveInput,
-  dt: number,
-  out: PlayerState,
-): PlayerState {
+export function stepPlayer(map: GameMap, s: PlayerState, input: MoveInput, dt: number, out: PlayerState): PlayerState {
   const t = Math.min(Math.max(dt, 0), MAX_DT);
   let angle = (s.angle + input.turn * TURN_SPEED * t) % TWO_PI;
   if (angle < 0) angle += TWO_PI;

@@ -2,14 +2,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import {
-  LEVEL1,
-  MAX_MESSAGE_BYTES,
-  parseClientMessage,
-  parseMap,
-  RATE_BURST,
-  RATE_PER_SEC,
-} from '@zoom3d/shared';
+import { LEVEL1, MAX_MESSAGE_BYTES, parseClientMessage, parseMap, RATE_BURST, RATE_PER_SEC } from '@zoom3d/shared';
 import { type WebSocket, WebSocketServer } from 'ws';
 import { type IceConfig, iceConfigFromEnv, iceServersFor } from './ice';
 import { Lobby, type Outbox } from './lobby';

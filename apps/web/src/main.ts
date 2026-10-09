@@ -278,7 +278,7 @@ startHiddenTicker(
     refreshPositions(session, now);
     audio.update(now, player, positions);
   },
-  () => document.hidden,
+  () => document.hidden
 );
 
 startLoop((dt) => {

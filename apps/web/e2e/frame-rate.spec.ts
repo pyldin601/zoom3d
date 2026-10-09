@@ -24,7 +24,7 @@ test('the game keeps ~60 fps while a peer is connected', async ({ browser }) => 
           else resolve([...deltas].sort((x, y) => x - y)[60] as number);
         };
         requestAnimationFrame(step);
-      }),
+      })
   );
   expect(median).toBeLessThan(20);
 });

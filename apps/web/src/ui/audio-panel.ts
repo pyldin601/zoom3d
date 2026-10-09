@@ -22,7 +22,7 @@ const timers = new WeakMap<HTMLElement, ReturnType<typeof setInterval>>();
 
 function make<K extends keyof HTMLElementTagNameMap>(
   tag: K,
-  props: Record<string, string> = {},
+  props: Record<string, string> = {}
 ): HTMLElementTagNameMap[K] {
   const node: HTMLElementTagNameMap[K] = document.createElement(tag);
   Object.assign(node, props);
@@ -92,7 +92,7 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
           const item = make('li');
           item.append(make('span', { textContent: name }), bar);
           return item;
-        }),
+        })
       );
     };
     draw();

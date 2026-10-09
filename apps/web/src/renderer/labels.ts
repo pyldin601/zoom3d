@@ -11,7 +11,7 @@ export function drawLabels(
   p: PlayerState,
   others: readonly { x: number; y: number; name: string; mic: boolean }[],
   hudW: number,
-  hudH: number,
+  hudH: number
 ): void {
   const scale = hudW / fb.width;
   ctx.font = `${Math.round(hudH * 0.028)}px system-ui, sans-serif`;

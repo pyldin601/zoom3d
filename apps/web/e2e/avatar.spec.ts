@@ -33,7 +33,7 @@ const bluePng = async (page: Page) =>
       ctx.fillRect(0, 0, 300, 200);
       return c.toDataURL('image/png').split(',')[1] as string;
     }),
-    'base64',
+    'base64'
   );
 
 const isBlue = (rgb: number[] | undefined) =>

@@ -222,12 +222,7 @@ export class Lobby {
     }
   }
 
-  private reject(
-    conn: string,
-    code: 'room_full' | 'invalid_room' | 'invalid_name',
-    message: string,
-    close: number,
-  ) {
+  private reject(conn: string, code: 'room_full' | 'invalid_room' | 'invalid_name', message: string, close: number) {
     this.opts.out.send(conn, { type: 'error', code, message });
     this.opts.out.close(conn, close, code);
   }

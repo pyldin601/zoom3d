@@ -22,10 +22,7 @@ interface TestClient {
   closed: Promise<number>;
   send(v: unknown): void;
   sendRaw(raw: string): void;
-  waitFor<T extends ServerMessage['type']>(
-    type: T,
-    after?: number,
-  ): Promise<Extract<ServerMessage, { type: T }>>;
+  waitFor<T extends ServerMessage['type']>(type: T, after?: number): Promise<Extract<ServerMessage, { type: T }>>;
 }
 
 async function client(): Promise<TestClient> {

@@ -48,9 +48,7 @@ test('faces stream both ways, cam off falls back to initials, leaving cleans up'
   await c.addInitScript(() => {
     const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
     navigator.mediaDevices.getUserMedia = (constraints) =>
-      constraints?.video
-        ? Promise.reject(new DOMException('denied', 'NotAllowedError'))
-        : original(constraints);
+      constraints?.video ? Promise.reject(new DOMException('denied', 'NotAllowedError')) : original(constraints);
   });
   await c.goto(url);
   await joinAs(c, 'Cy');

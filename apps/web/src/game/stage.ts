@@ -27,7 +27,7 @@ export function watchLayout(onChange: () => void): void {
         onChange();
         watchDpr();
       },
-      { once: true },
+      { once: true }
     );
   };
   watchDpr();

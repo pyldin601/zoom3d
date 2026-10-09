@@ -98,7 +98,7 @@ export function createMesh(opts: MeshOptions): MediaTransport {
   async function applyDescription(
     peerId: string,
     conn: Conn,
-    d: Extract<SignalPayload, { kind: 'description' }>['description'],
+    d: Extract<SignalPayload, { kind: 'description' }>['description']
   ): Promise<void> {
     const { pc } = conn;
     const collision = d.type === 'offer' && (conn.makingOffer || pc.signalingState !== 'stable');

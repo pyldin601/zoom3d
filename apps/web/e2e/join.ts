@@ -15,8 +15,8 @@ export async function joinAs(page: Page, name: string): Promise<void> {
   await expect
     .poll(() =>
       page.evaluate(() =>
-        (window as unknown as { __game: { session: { status(): string } | null } }).__game.session?.status(),
-      ),
+        (window as unknown as { __game: { session: { status(): string } | null } }).__game.session?.status()
+      )
     )
     .toBe('open');
 }

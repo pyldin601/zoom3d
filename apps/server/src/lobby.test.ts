@@ -56,9 +56,7 @@ describe('join', () => {
     expect(w.peers).toEqual([]);
     expect(w.color).toBe(PEER_COLORS[0]);
     expect(isWallAt(map, w.spawn.x, w.spawn.y)).toBe(false);
-    expect(Math.hypot(w.spawn.x - (map.spawn.x + 0.5), w.spawn.y - (map.spawn.y + 0.5))).toBeLessThanOrEqual(
-      2,
-    );
+    expect(Math.hypot(w.spawn.x - (map.spawn.x + 0.5), w.spawn.y - (map.spawn.y + 0.5))).toBeLessThanOrEqual(2);
   });
 
   test('second joiner is announced to the first and sees the first in its welcome', () => {

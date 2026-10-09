@@ -61,13 +61,7 @@ export function hexToRgb(hex: string): number {
 }
 
 /** Camera-space projection matching renderWalls. Returns false when behind the camera. */
-export function projectSprite(
-  p: PlayerState,
-  x: number,
-  y: number,
-  fbWidth: number,
-  out: Projection,
-): boolean {
+export function projectSprite(p: PlayerState, x: number, y: number, fbWidth: number, out: Projection): boolean {
   const planeLen = Math.tan(FOV / 2);
   const dirX = Math.cos(p.angle);
   const dirY = Math.sin(p.angle);
@@ -135,7 +129,7 @@ function lateralOf(
   dirX: number,
   dirY: number,
   planeX: number,
-  planeY: number,
+  planeY: number
 ): number {
   const invDet = 1 / (planeX * dirY - dirX * planeY);
   return invDet * (dirY * (x - p.x) - dirX * (y - p.y));

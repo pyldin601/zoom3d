@@ -22,10 +22,7 @@ export function loadAvatar(storage: Pick<Storage, 'getItem'> | null): string | n
   }
 }
 
-export function saveAvatar(
-  storage: Pick<Storage, 'setItem' | 'removeItem'> | null,
-  avatar: string | null,
-): void {
+export function saveAvatar(storage: Pick<Storage, 'setItem' | 'removeItem'> | null, avatar: string | null): void {
   try {
     if (avatar === null) storage?.removeItem(AVATAR_KEY);
     else storage?.setItem(AVATAR_KEY, avatar);

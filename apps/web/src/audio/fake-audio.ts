@@ -59,9 +59,7 @@ export class FakeAudioContext {
     return this.track(Object.assign(new FakeNode('gain'), { gain: new FakeParam(1) }));
   }
   createBiquadFilter() {
-    return this.track(
-      Object.assign(new FakeNode('biquad'), { type: 'lowpass', frequency: new FakeParam(350) }),
-    );
+    return this.track(Object.assign(new FakeNode('biquad'), { type: 'lowpass', frequency: new FakeParam(350) }));
   }
   createPanner() {
     return this.track(
@@ -72,7 +70,7 @@ export class FakeAudioContext {
         positionX: new FakeParam(),
         positionY: new FakeParam(),
         positionZ: new FakeParam(),
-      }),
+      })
     );
   }
   createConvolver() {
@@ -86,7 +84,7 @@ export class FakeAudioContext {
         getFloatTimeDomainData(out: Float32Array) {
           out.set(data.subarray(0, out.length));
         },
-      }),
+      })
     );
   }
   createMediaStreamSource(mediaStream: MediaStream) {

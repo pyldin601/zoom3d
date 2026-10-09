@@ -82,9 +82,7 @@ describe('spawnPoint', () => {
       expect(p.y % 1).toBe(0.5);
       expect(Math.hypot(p.x - (map.spawn.x + 0.5), p.y - (map.spawn.y + 0.5))).toBeLessThanOrEqual(2);
       expect([0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]).toContain(p.angle);
-      expect(isWallAt(map, p.x + Math.round(Math.cos(p.angle)), p.y + Math.round(Math.sin(p.angle)))).toBe(
-        false,
-      );
+      expect(isWallAt(map, p.x + Math.round(Math.cos(p.angle)), p.y + Math.round(Math.sin(p.angle)))).toBe(false);
     });
   }
 });
