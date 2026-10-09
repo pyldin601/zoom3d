@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import { mediapipeWasm } from './mediapipe-wasm';
+import { mediapipeWasm } from './mediapipe-wasm.ts';
 
 export default defineConfig({
   plugins: [mediapipeWasm()],
