@@ -72,7 +72,7 @@ A thin wrapper around `@mediapipe/tasks-vision` (Apache-2.0), using the BlazeFac
 
 ```ts
 interface Detector { detect(video: HTMLVideoElement, now: number): Box | null }  // largest face, or null
-loadFaceDetector(base?: string): Promise<Detector | null>
+loadFaceDetector(deps?: { load?: () => Promise<typeof import('@mediapipe/tasks-vision')> }): Promise<Detector | null>  // `load` injectable for tests
 ```
 
 - **Self-hosted, no CDN at runtime.**

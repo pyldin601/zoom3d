@@ -33,6 +33,16 @@ const ATTEMPTS: { constraints: MediaStreamConstraints; problem: LocalMedia['prob
   { constraints: { video: VIDEO_CONSTRAINTS }, problem: 'no-mic' },
 ];
 
+/** A framer that cannot start must not cost the camera: send the raw stream instead, as before framing. */
+function tryFrame(frame: (raw: MediaStreamTrack) => Framer, raw: MediaStreamTrack): Framer | null {
+  try {
+    return frame(raw);
+  } catch (err) {
+    console.warn('face framing unavailable; sending the raw camera', err);
+    return null;
+  }
+}
+
 export async function captureLocalMedia(env: CaptureEnv): Promise<LocalMedia> {
   if (!env.isSecureContext) {
     return { stream: null, cam: false, mic: false, problem: 'insecure', framer: null };
@@ -41,7 +51,7 @@ export async function captureLocalMedia(env: CaptureEnv): Promise<LocalMedia> {
     try {
       const raw = await env.getUserMedia(constraints);
       const video = raw.getVideoTracks()[0];
-      const framer = video && env.frame ? env.frame(video) : null;
+      const framer = video && env.frame ? tryFrame(env.frame, video) : null;
       const createStream = env.createStream ?? ((tracks) => new MediaStream(tracks));
       return {
         stream: framer ? createStream([framer.track, ...raw.getAudioTracks()]) : raw,

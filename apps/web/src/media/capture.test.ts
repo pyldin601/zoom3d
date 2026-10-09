@@ -105,3 +105,20 @@ test('no camera, no framer', async () => {
   expect(frame).not.toHaveBeenCalled();
   expect(local.framer).toBeNull();
 });
+
+test('a framer that fails to start leaves the raw camera stream in place', async () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  const { calls, getUserMedia } = fakeGetUserMedia({ video: true, audio: true });
+  const local = await captureLocalMedia({
+    isSecureContext: true,
+    getUserMedia,
+    frame: () => {
+      throw new Error('no captureStream');
+    },
+  });
+  expect(calls).toHaveLength(1);
+  expect(local).toMatchObject({ cam: true, mic: true, problem: null, framer: null });
+  expect(local.stream?.getVideoTracks()).toEqual([{ kind: 'video', id: 'raw' }]);
+  expect(warn).toHaveBeenCalledTimes(1);
+  warn.mockRestore();
+});
