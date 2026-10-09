@@ -102,6 +102,19 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   (`zoom3d.boombox.volume`). The volume is a gain before the split, so it turns down both the carrier's own monitor and what the
   room hears, with no protocol message (spec §3.1).
 
+### D17 — Lobby (pre-join screen)
+- What the join screen offers for camera, mic, name and picture, and what "camera off" means.
+- *Resolved 2026-10-09:* a minimal lobby: a 176 px disc showing the live framed camera (or, with the camera
+  off, the picture or initials plus a pencil for Choose picture… / Remove), a mic-level ring around it,
+  camera and mic split buttons (icon toggles, chevron picks the device), the name, Join. Camera and mic start
+  when the invite link opens, each requested separately with the saved `deviceId`; a camera saved as off is
+  never opened. Camera off **stops** the camera (light out) in the lobby and in the room; mic off only mutes.
+  To turn the camera back on in the room without renegotiating, the framer's canvas track is always sent and
+  the framer gets a swappable camera source. Devices and on/off states are remembered in `zoom3d.media`.
+  Rejected: a 16:9 Zoom-style preview (avatars are discs), a separate mic meter bar and labelled fields (too
+  busy), a pencil shown with the camera on (it changes nothing visible). Out of scope: speaker choice,
+  switching devices in the room. Spec: [2026-10-09-lobby-design.md](superpowers/specs/2026-10-09-lobby-design.md).
+
 ### Risks (to verify, not assume)
 - **R1 — Echo cancellation vs Web Audio output.** Chrome's AEC historically did not cancel audio played via `AudioContext`. If still true, speakers echo. Verify in an early throwaway audio spike (speakers vs headphones).
   - *Verdict 2026-10-08 (provisional):* user tested Chrome on both devices with the spike and reported it "sounds good", i.e. no echo problem heard. Interpreted as outcome (a): M4 uses the `webaudio` path (graph → `AudioContext.destination`). The per-mode table was not filled in and **Firefox is untested**, so re-check Firefox (and speakers at higher volume) in M5 before relying on (a) there.

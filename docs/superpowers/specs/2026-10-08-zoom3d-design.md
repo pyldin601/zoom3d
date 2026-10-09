@@ -202,8 +202,9 @@ server keeps the peer slot for 30 s, so others see the avatar freeze, not disapp
 - **Remote streams:** each is attached to a muted, playing `<video>` element kept in the DOM
   (1×1 px, `opacity: 0.01`) so Chrome decodes it and feeds it to Web Audio. The video is
   the source for the face canvas.
-- **Camera off or denied:** the video track is absent or disabled, and the receiver shows the
-  peer's avatar picture if it has one (§8.1), else the initials disc. Mic denied: the user joins as a listener, shown as muted.
+- **Camera off or denied:** the camera is stopped, but the framer's canvas track is always sent, so
+  turning the camera on never renegotiates ([lobby spec](2026-10-09-lobby-design.md) §4.3). Receivers go
+  by `cam` in `media` and show the peer's avatar picture if it has one (§8.1), else the initials disc. Mic denied: the user joins as a listener, shown as muted.
 
 ### 8.1 Avatar picture
 - Picked on the join screen (file input, `image/*`), remembered in `localStorage`
@@ -268,7 +269,7 @@ spike (§12) must verify this first.** Possible outcomes:
 ## 10. UI flow and errors
 
 1. **Landing `/`:** "Create room" generates a `roomId` and navigates to `/r/<id>`.
-2. **Join screen `/r/<id>`:** name input, avatar picture (§8.1), camera/mic preview and pickers, headphones hint, Join button.
+2. **Lobby `/r/<id>`:** camera/mic preview, toggles and device pickers, name, avatar picture (§8.1), Join button. See the [lobby spec](2026-10-09-lobby-design.md).
 3. **Join click:** resume the `AudioContext`, open the WebSocket, receive `welcome`, spawn, connect to peers.
 4. **In room:** game view, HUD, automap toggle, mic/cam toggles, copy-invite-link button.
 
