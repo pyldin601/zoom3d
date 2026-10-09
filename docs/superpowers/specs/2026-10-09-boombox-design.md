@@ -113,8 +113,9 @@ keys in `main.ts`). States are `off` and `playing`:
   carrier's position (the hand's offset of about 0.3 tiles is ignored).
 - It has its own key, so it never lights the carrier's speaking ring.
 - Chrome only feeds remote WebRTC audio into Web Audio while the stream plays in an element, so
-  the boombox stream also goes through `remote.attach('boombox:<peerId>', stream)` (muted, hidden,
-  as the voice's).
+  the boombox stream also plays in a muted, hidden `<audio>` element
+  (`remote.attachAudio('boombox:<peerId>', stream)`, in the same container as the voices' videos).
+  It is an `<audio>`, not a `<video>`, so the e2e specs that count `#media video` are unaffected.
 
 ## 5. Transport (`apps/web/src/media/mesh.ts`)
 
@@ -173,7 +174,7 @@ Same pattern as `held` (held items spec §4):
 - `media/call.ts`:
   - `setBoomboxTrack(track | null)` forwards to the mesh and is reapplied to a mesh recreated
     after an identity change.
-  - `onRemoteBoombox` → `remote.attach(key, stream)` and `audio.attach(key, stream, peerId)`.
+  - `onRemoteBoombox` → `remote.attachAudio(key, stream)` and `audio.attach(key, stream, peerId)`.
   - `drop`/`teardown` detach the `boombox:` key too.
 - `main.ts`: the `B` key handler, the boombox created with the engine's context, `onTrack` → call,
   `onChange` → session and the own-view flag, and stopping it when leaving the room.
