@@ -324,9 +324,9 @@ describe('held items', () => {
   };
   const tex = (u: number, v: number) => HELD_SPRITES.beer.texels[v * HELD_SPRITES.beer.w + u];
   const SAMPLES = [
-    [12, 9],
-    [8, 5],
-    [2, 5],
+    [0, 9],
+    [4, 5],
+    [10, 5],
   ] as const;
 
   test("a held beer is drawn to the viewer's right of the disc", () => {
@@ -349,7 +349,7 @@ describe('held items', () => {
     const empty = frame();
     const fb = frame();
     renderSprites(fb, player, [{ ...beer(3.5), held: null }]);
-    expect(px(fb, ...itemPx(8, 5, 2))).toBe(px(empty, ...itemPx(8, 5, 2)));
+    expect(px(fb, ...itemPx(10, 5, 2))).toBe(px(empty, ...itemPx(10, 5, 2)));
   });
 
   test('walls in front hide the item too', () => {
@@ -403,14 +403,14 @@ describe('held items', () => {
         Math.floor(320 + HELD_LEFT * r + (u + 0.5) * t),
         Math.floor(180 - HELD_TOP * r - BOB_HEIGHT * r + (v + 0.5) * t),
       ] as const;
-    expect(px(fb, ...lifted(12, 9))).toBe(tex(12, 9));
-    expect(px(fb, ...lifted(8, 5))).toBe(tex(8, 5));
+    expect(px(fb, ...lifted(0, 9))).toBe(tex(0, 9));
+    expect(px(fb, ...lifted(4, 5))).toBe(tex(4, 5));
   });
 
   test("at full sip each drink's lip point is on the framed face's mouth", () => {
     // The framed 256² face spans the disc's inner circle (1.7 r across); framing puts the mouth at MOUTH_Y_IN_CROP.
     expect(FACE_MOUTH_Y).toBeCloseTo((MOUTH_Y_IN_CROP - 0.5) * 1.7, 9);
-    expect(HELD_LIPS).toEqual({ beer: [9.5, 2.5], coffee: [9.5, 2], wine: [3, 0.5] });
+    expect(HELD_LIPS).toEqual({ beer: [3.5, 2.5], coffee: [3.5, 2], wine: [4, 0.5] });
     for (const item of ['beer', 'coffee', 'wine'] as const) {
       const [u, v] = HELD_LIPS[item];
       expect(sipLeft(item) + u * HELD_TEXEL).toBeCloseTo(0, 9);
@@ -427,7 +427,7 @@ describe('held items', () => {
       renderSprites(fb, player, [{ ...beer(3.5), held: item, sip: 1 }]);
       expect(hand).not.toContain(px(fb, ...mouth));
       if (item === 'beer') {
-        expect(px(fb, ...mouth)).toBe(tex(9, 2));
+        expect(px(fb, ...mouth)).toBe(tex(3, 2));
       }
     }
   });
@@ -439,7 +439,7 @@ describe('held items', () => {
     const t = HELD_TEXEL * r;
     const left = (HELD_LEFT + sipLeft('beer')) / 2;
     const top = (HELD_TOP + sipTop('beer')) / 2;
-    expect(px(fb, Math.floor(320 + left * r + 8.5 * t), Math.floor(180 - top * r + 5.5 * t))).toBe(tex(8, 5));
+    expect(px(fb, Math.floor(320 + left * r + 4.5 * t), Math.floor(180 - top * r + 5.5 * t))).toBe(tex(4, 5));
   });
 
   test('a very near item crossing the right edge does not wrap into the next row', () => {
