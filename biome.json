@@ -18,5 +18,12 @@
       "semicolons": "always",
       "trailingCommas": "es5"
     }
+  },
+  "linter": {
+    "rules": {
+      "style": {
+        "useBlockStatements": "error"
+      }
+    }
   }
 }
