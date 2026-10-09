@@ -30,6 +30,12 @@ server {
         try_files $uri =404;
     }
 
+    # Self-hosted MediaPipe model + wasm (face framing). A missing file must 404, not fall back to index.html.
+    location /mediapipe/ {
+        add_header Cache-Control "public, max-age=86400";
+        try_files $uri =404;
+    }
+
     # SPA: room links (/r/<id>) and the landing page are all index.html.
     location / {
         add_header Cache-Control "no-cache";

@@ -1,0 +1,80 @@
+import { expect, test } from 'vitest';
+import { type Box, createFraming, type Framing } from './framing';
+
+const W = 640;
+const H = 480;
+const CENTRE = { x: 80, y: 0, size: 480 };
+const face: Box = { x: 280, y: 200, w: 80, h: 100 }; // centre (320, 250) → side 176, headroom 17.6
+const framed = { x: 232, y: 144.4, size: 176 };
+
+/** Feeds `box` every 100 ms (as detections would) from `from` for `ms`; returns a copy of the last rect. */
+function settle(f: Framing, box: Box | null, from: number, ms: number) {
+  let r = f.update(box, from);
+  for (let t = from + 100; t <= from + ms; t += 100) {
+    r = f.update(box, t);
+  }
+  return { ...r };
+}
+const close = (r: { x: number; y: number; size: number }, e: typeof r) => {
+  expect(r.x).toBeCloseTo(e.x, 1);
+  expect(r.y).toBeCloseTo(e.y, 1);
+  expect(r.size).toBeCloseTo(e.size, 1);
+};
+
+test('starts at the centred square', () => {
+  expect(createFraming(W, H).update(null, 0)).toEqual(CENTRE);
+});
+
+test('settles on a square 2.2× the face width, raised by 10% headroom', () => {
+  close(settle(createFraming(W, H), face, 0, 3000), framed);
+});
+
+test('the square is clamped inside the frame, never padded', () => {
+  close(settle(createFraming(W, H), { x: 0, y: 200, w: 80, h: 100 }, 0, 3000), { x: 0, y: 144.4, size: 176 });
+  close(settle(createFraming(W, H), { x: 560, y: 200, w: 80, h: 100 }, 0, 3000), { x: 464, y: 144.4, size: 176 });
+  close(settle(createFraming(W, H), { x: 280, y: 0, w: 80, h: 60 }, 0, 3000), { x: 232, y: 0, size: 176 });
+  close(settle(createFraming(W, H), { x: 280, y: 420, w: 80, h: 60 }, 0, 3000), { x: 232, y: 304, size: 176 });
+});
+
+test('zoom is limited to [160, min(w, h)]', () => {
+  expect(settle(createFraming(W, H), { x: 300, y: 220, w: 40, h: 50 }, 0, 3000).size).toBeCloseTo(160, 1);
+  expect(settle(createFraming(W, H), { x: 170, y: 100, w: 300, h: 360 }, 0, 3000).size).toBeCloseTo(480, 1);
+});
+
+test('small detector jitter inside the dead zone does not move the crop', () => {
+  const f = createFraming(W, H);
+  const before = settle(f, face, 0, 3000);
+  close(settle(f, { ...face, x: face.x + 5, w: face.w + 4 }, 3100, 1000), before);
+});
+
+test('a real move outside the dead zone is followed', () => {
+  const f = createFraming(W, H);
+  settle(f, face, 0, 3000);
+  close(settle(f, { ...face, x: face.x + 40 }, 3100, 3000), { ...framed, x: framed.x + 40 });
+});
+
+test('easing is time-based: one 300 ms step equals ten 30 ms steps', () => {
+  const a = createFraming(W, H);
+  a.update(face, 0);
+  const one = { ...a.update(null, 300) };
+  const b = createFraming(W, H);
+  b.update(face, 0);
+  let ten = b.update(null, 30);
+  for (let t = 60; t <= 300; t += 30) {
+    ten = b.update(null, t);
+  }
+  close(ten, one);
+});
+
+test('a lost face eases back to centre after 1.5 s, and a returning face is tracked again', () => {
+  const f = createFraming(W, H);
+  settle(f, face, 0, 3000);
+  close(settle(f, null, 3100, 1300), framed); // still within LOST_MS of the last box at 3000
+  close(settle(f, null, 4600, 5000), CENTRE);
+  close(settle(f, face, 9700, 3000), framed);
+});
+
+test('update reuses one rect object', () => {
+  const f = createFraming(W, H);
+  expect(f.update(face, 0)).toBe(f.update(null, 16));
+});

@@ -241,3 +241,41 @@ describe('recovery from lost signalling', () => {
     expect(FakeRTCPeerConnection.instances).toHaveLength(1);
   });
 });
+
+const rawTrack = { kind: 'video', id: 'raw' } as unknown as MediaStreamTrack;
+
+test('setVideoTrack swaps the video sender of existing connections, not audio', async () => {
+  const init = mesh('b');
+  init.connect('a');
+  init.setVideoTrack(rawTrack);
+  await tick();
+  expect(pc(0).getTransceivers()[0]?.sender.track).toBe(rawTrack);
+
+  const ans = mesh('a');
+  await ans.handleSignal('b', offer);
+  ans.setVideoTrack(rawTrack);
+  await tick();
+  const [video, audio] = pc(1).remoteTransceivers;
+  expect(video?.sender.track).toBe(rawTrack);
+  expect(audio?.sender.track).toBe(audioTrack);
+});
+
+test('connections made after setVideoTrack send the chosen track', async () => {
+  const init = mesh('b');
+  init.setVideoTrack(rawTrack);
+  init.connect('a');
+  expect(pc(0).transceivers[0]?.trackOrKind).toBe(rawTrack);
+
+  const ans = mesh('a');
+  ans.setVideoTrack(rawTrack);
+  await ans.handleSignal('b', offer);
+  expect(pc(1).remoteTransceivers[0]?.sender.track).toBe(rawTrack);
+});
+
+test('setVideoTrack does not start sending on a receive-only connection', async () => {
+  const m = mesh('b', null);
+  m.connect('a');
+  m.setVideoTrack(rawTrack);
+  await tick();
+  expect(pc().getTransceivers()[0]?.sender.track).toBeNull();
+});

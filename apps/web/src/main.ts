@@ -19,6 +19,7 @@ import { loadAvatar, saveAvatar } from './media/avatar';
 import { type Call, createCall } from './media/call';
 import { captureLocalMedia, type LocalMedia } from './media/capture';
 import { createFace } from './media/faces';
+import { createFramer } from './media/framer';
 import { createMesh } from './media/mesh';
 import { createRemoteMedia } from './media/remote-media';
 import { createSession, type Session } from './net/session';
@@ -53,6 +54,7 @@ const game = document.getElementById('game') as HTMLCanvasElement;
 const hud = document.getElementById('hud') as HTMLCanvasElement;
 const ui = document.getElementById('ui') as HTMLDivElement;
 const mediaContainer = document.getElementById('media') as HTMLDivElement;
+const localMediaContainer = document.getElementById('local-media') as HTMLDivElement;
 const gameCtx = game.getContext('2d') as CanvasRenderingContext2D;
 const hudCtx = hud.getContext('2d') as CanvasRenderingContext2D;
 
@@ -200,6 +202,7 @@ async function joinRoom(roomId: string, name: string, avatar: string | null): Pr
   const local = await captureLocalMedia({
     isSecureContext: window.isSecureContext,
     getUserMedia: (c) => navigator.mediaDevices.getUserMedia(c),
+    frame: (raw) => createFramer({ rawTrack: raw, container: localMediaContainer, document }),
   });
   call = createCall({
     local,

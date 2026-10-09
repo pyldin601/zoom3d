@@ -43,7 +43,7 @@
       #ui .audio-panel .bar { height: 0.5em; background: #6c6; }
       /* visibility:hidden, not opacity: a visible playing <video> makes Chrome pace the page to the
          video's 30 fps. Hidden elements keep decoding, firing requestVideoFrameCallback and feeding Web Audio. */
-      #media { position: fixed; width: 1px; height: 1px; visibility: hidden; pointer-events: none; overflow: hidden; }
+      #media, #local-media { position: fixed; width: 1px; height: 1px; visibility: hidden; pointer-events: none; overflow: hidden; }
     </style>
   </head>
   <body>
@@ -53,6 +53,7 @@
       <div id="ui"></div>
     </div>
     <div id="media" aria-hidden="true"></div>
+    <div id="local-media" aria-hidden="true"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
