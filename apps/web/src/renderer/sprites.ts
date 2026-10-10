@@ -16,7 +16,7 @@ import {
   sipLeft,
   sipTop,
 } from './held-items';
-import { FOV, shade } from './walls';
+import { shade } from './walls';
 
 export const AVATAR_RADIUS = 0.35; // tiles
 const MIN_DEPTH = 0.1;
@@ -94,8 +94,15 @@ export function hexToRgb(hex: string): number {
 }
 
 /** Camera-space projection matching renderWalls. Returns false when behind the camera. */
-export function projectSprite(p: PlayerState, x: number, y: number, fbWidth: number, out: Projection): boolean {
-  const planeLen = Math.tan(FOV / 2);
+export function projectSprite(
+  p: PlayerState,
+  x: number,
+  y: number,
+  fbWidth: number,
+  fov: number,
+  out: Projection
+): boolean {
+  const planeLen = Math.tan(fov / 2);
   const dirX = Math.cos(p.angle);
   const dirY = Math.sin(p.angle);
   const planeX = -dirY * planeLen;
@@ -130,7 +137,7 @@ function renderShadow(
   strength: number
 ): void {
   const { width: w, height: h, pixels, zbuffer } = fb;
-  const planeLen = Math.tan(FOV / 2);
+  const planeLen = Math.tan(fb.fov / 2);
   const proj = w / 2 / planeLen;
   const half = h / 2;
   const dirX = Math.cos(p.angle);
@@ -195,7 +202,7 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
       projections[i] = { screenX: 0, depth: 0, size: 0 };
     }
     const proj = projections[i] as Projection;
-    if (projectSprite(p, s.x, s.y, w, proj)) {
+    if (projectSprite(p, s.x, s.y, w, fb.fov, proj)) {
       visible.push(i);
     }
   }

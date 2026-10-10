@@ -21,7 +21,7 @@ and see people in proportion to where they are.
 
 ## Non-goals (for now)
 - Interactive map elements (doors, pickups, screens), combat, game rules.
-- Native apps, mobile-first controls.
+- Native apps.
 - Recording, chat history, screen sharing.
 - Accounts/identity beyond what invites require.
 

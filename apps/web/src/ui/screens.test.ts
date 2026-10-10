@@ -142,3 +142,15 @@ test('with the camera off the self preview shows your picture, else your initial
   expect(face.querySelector('b')).toBeNull();
   expect(face.textContent).toBe('<L');
 });
+
+test('compact room bar has a copy-link button and no link field', async () => {
+  const writeText = vi.fn(() => Promise.resolve());
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+  showRoomBar(root, 'http://x/r/AAAAAAAAAAAAAAAAAAAAAA', undefined, { compact: true });
+  expect(root.querySelector('.roombar input')).toBeNull();
+  const copy = root.querySelector('.roombar button[aria-label="Copy invite link"]') as HTMLButtonElement;
+  copy.click();
+  expect(writeText).toHaveBeenCalledWith('http://x/r/AAAAAAAAAAAAAAAAAAAAAA');
+  await Promise.resolve();
+  expect(copy.textContent).toBe('Copied');
+});

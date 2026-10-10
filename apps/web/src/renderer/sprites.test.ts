@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { FACE_SIZE } from '../media/faces';
 import { MOUTH_Y_IN_CROP } from '../media/framing';
 import { BOOMBOX_LEFT, BOOMBOX_SPRITE, BOOMBOX_TOP } from './boombox';
-import { createFramebuffer, rgb } from './framebuffer';
+import { createFramebuffer, DEFAULT_FOV, rgb } from './framebuffer';
 import {
   CHEERS_LEFT,
   CHEERS_TOP,
@@ -29,7 +29,7 @@ import {
   SHADOW_RADIUS,
 } from './sprites';
 import { makeTextures } from './textures';
-import { FLOOR, FOV, renderWalls, shade } from './walls';
+import { FLOOR, renderWalls, shade } from './walls';
 
 const OPEN = parseMap(
   [
@@ -44,7 +44,7 @@ const OPEN = parseMap(
     '111111111',
   ].join('\n')
 );
-const PROJ = 320 / Math.tan(FOV / 2);
+const PROJ = 320 / Math.tan(DEFAULT_FOV / 2);
 const textures = makeTextures(1);
 const player: PlayerState = { x: 1.5, y: 4.5, angle: 0 };
 const RED = rgb(255, 0, 0);
@@ -205,13 +205,13 @@ describe('renderSprites', () => {
 describe('projectSprite', () => {
   test('a sprite to the north while facing east is left of centre', () => {
     const out: Projection = { screenX: 0, depth: 0, size: 0 };
-    expect(projectSprite(player, 3.5, 3.5, 640, out)).toBe(true);
+    expect(projectSprite(player, 3.5, 3.5, 640, DEFAULT_FOV, out)).toBe(true);
     expect(out.screenX).toBeLessThan(320);
     expect(out.depth).toBeCloseTo(2);
   });
 
   test('reports sprites behind the camera as not visible', () => {
-    expect(projectSprite(player, 0.5, 4.5, 640, { screenX: 0, depth: 0, size: 0 })).toBe(false);
+    expect(projectSprite(player, 0.5, 4.5, 640, DEFAULT_FOV, { screenX: 0, depth: 0, size: 0 })).toBe(false);
   });
 });
 
@@ -841,4 +841,12 @@ describe('boombox', () => {
       expect(px(sipping, ...boxPx(u, v, 2))).toBe(px(still, ...boxPx(u, v, 2)));
     }
   });
+});
+
+test('projectSprite size scales with 1/tan(fov/2)', () => {
+  const a = { screenX: 0, depth: 0, size: 0 };
+  const b = { screenX: 0, depth: 0, size: 0 };
+  projectSprite(player, player.x + 2, player.y, 296, (66 * Math.PI) / 180, a);
+  projectSprite(player, player.x + 2, player.y, 296, (50 * Math.PI) / 180, b);
+  expect(b.size / a.size).toBeCloseTo(Math.tan((33 * Math.PI) / 180) / Math.tan((25 * Math.PI) / 180), 9);
 });

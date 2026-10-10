@@ -102,3 +102,33 @@ describe('createInput', () => {
     expect(prevented()).toBe(0);
   });
 });
+
+test('keyboard and touch combine per axis, clamped, and turns add up', () => {
+  const win = new FakeTarget();
+  const doc = new FakeTarget();
+  let touchState = { forward: 1, strafe: -1, turn: 0 };
+  let touchTurn = 0.5;
+  let resets = 0;
+  const input = createInput(win, doc, {
+    state: () => touchState,
+    consumeTurn: () => {
+      const t = touchTurn;
+      touchTurn = 0;
+      return t;
+    },
+    reset: () => {
+      resets++;
+    },
+    attachPad: () => {},
+  });
+  const key = (type: string, code: string) => win.dispatch(type, { code, preventDefault() {} });
+  key('keydown', 'KeyW');
+  expect(input.state()).toEqual({ forward: 1, strafe: -1, turn: 0 });
+  key('keyup', 'KeyW');
+  key('keydown', 'KeyS');
+  expect(input.state().forward).toBe(0);
+  touchState = { forward: 0, strafe: 0, turn: 0 };
+  expect(input.consumeMouseTurn()).toBe(0.5);
+  input.reset();
+  expect(resets).toBe(1);
+});

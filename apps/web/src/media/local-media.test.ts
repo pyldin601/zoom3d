@@ -121,7 +121,7 @@ test('a saved device that is gone falls back to the default', async () => {
   await flush();
   expect(videoRequests().map((r) => r.constraints)).toEqual([
     { video: { ...VIDEO_CONSTRAINTS, deviceId: { exact: 'gone' } } },
-    { video: VIDEO_CONSTRAINTS },
+    { video: { ...VIDEO_CONSTRAINTS, facingMode: { ideal: 'user' } } },
   ]);
   const c = cam();
   videoRequests()[1]?.resolve(c);
@@ -140,9 +140,12 @@ test('a blocked device is not retried without its id', async () => {
   expect(local.state().camProblem).toBe('blocked');
 });
 
-test('without saved ids there is no deviceId constraint', () => {
+test('without saved ids the camera prefers the front camera and the mic has no deviceId', () => {
   make();
-  expect(requests.map((r) => r.constraints)).toEqual([{ video: VIDEO_CONSTRAINTS }, { audio: AUDIO_CONSTRAINTS }]);
+  expect(requests.map((r) => r.constraints)).toEqual([
+    { video: { ...VIDEO_CONSTRAINTS, facingMode: { ideal: 'user' } } },
+    { audio: AUDIO_CONSTRAINTS },
+  ]);
 });
 
 test('the stream carries the canvas track, then the mic once granted', async () => {
@@ -303,7 +306,7 @@ test('an ended camera track restarts on the default device', async () => {
   const { c } = await grantStart();
   c.end();
   expect(framer.camera).toBeNull();
-  expect(lastRequest().constraints).toEqual({ video: VIDEO_CONSTRAINTS });
+  expect(lastRequest().constraints).toEqual({ video: { ...VIDEO_CONSTRAINTS, facingMode: { ideal: 'user' } } });
   const c2 = cam();
   lastRequest().resolve(c2);
   await flush();

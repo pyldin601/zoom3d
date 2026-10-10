@@ -74,12 +74,22 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 
 ### D12 — Input and accessibility
 - Keyboard only vs mouse-look vs touch. Colour-blind/readable names above avatars? Captions?
+- *Partially resolved 2026-10-10 (touch):* phones and tablets get on-screen controls. A faded move pad bottom-left (one
+  touch area, 8 directions, dead zone in the middle), drag anywhere on the view to turn (no turn buttons, which would
+  cover faces), a drink button (tap to sip, hold to cheers) and a ⋯ tray for drinks, boombox and map. A touchscreen
+  laptop shows them after its first touch. Pointer lock is only for mouse pointers. Accessibility questions stay open.
+  Spec: [2026-10-10-mobile-design.md](superpowers/specs/2026-10-10-mobile-design.md).
 
 ### D13 — Findability
 - *Resolved-pending-spec 2026-10-08:* shared spawn near the blue-diamond start + toggleable automap showing walls and named participant dots.
 
 ### D14 — Aspect ratio
 - *Resolved-pending-spec 2026-10-08:* the UI keeps a stable 16:9 aspect ratio: letterboxed game viewport, fixed FOV, HUD and overlays anchored to the viewport box. Optional integer-scale mode.
+- *Amended 2026-10-10:* touch devices (`(pointer: coarse)`, decided once at page load) get a full-window frame shaped
+  to the screen instead: the internal buffer's long side is 640 px, and the horizontal FOV goes from 66° at 16:9 and
+  wider down to 50° on a tall phone (9:19.5), linear in aspect. Desktop keeps the 16:9 letterbox. We rejected "cover"
+  cropping of the 16:9 picture: on an upright phone it keeps only a quarter of the view (~17°). Spec:
+  [2026-10-10-mobile-design.md](superpowers/specs/2026-10-10-mobile-design.md).
 
 ### D15 — Held items
 - How an avatar shows a drink in hand, and how the choice syncs.

@@ -81,10 +81,13 @@ export function createLocalMedia(env: LocalMediaEnv, initial: MediaPrefs): Local
   // `exact`, not `ideal`: Chrome ignores an ideal deviceId and hands back the default device.
   const constraints = (base: MediaTrackConstraints, id: string | null): MediaTrackConstraints =>
     id ? { ...base, deviceId: { exact: id } } : { ...base };
+  // No saved camera: on a phone, the front one (mobile spec §6); laptops have only one anyway.
+  const camConstraints = (id: string | null): MediaTrackConstraints =>
+    id ? constraints(VIDEO_CONSTRAINTS, id) : { ...VIDEO_CONSTRAINTS, facingMode: { ideal: 'user' } };
 
   async function open(kind: Kind, id: string | null): Promise<MediaStreamTrack> {
     const s = await env.getUserMedia(
-      kind === 'cam' ? { video: constraints(VIDEO_CONSTRAINTS, id) } : { audio: constraints(AUDIO_CONSTRAINTS, id) }
+      kind === 'cam' ? { video: camConstraints(id) } : { audio: constraints(AUDIO_CONSTRAINTS, id) }
     );
     const track = (kind === 'cam' ? s.getVideoTracks() : s.getAudioTracks())[0];
     if (!track) {

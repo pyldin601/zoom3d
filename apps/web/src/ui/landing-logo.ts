@@ -38,12 +38,16 @@ export function logoColour(y: number): number {
   return rgb(mix(240, 110, t), mix(70, 12, t), mix(60, 12, t));
 }
 
-/** Draws the logo in the top-right corner of `fb`, its letters `margin` pixels from the top and from the right. */
-export function drawLogo(fb: Framebuffer, margin: number): void {
+/**
+ * Draws the logo `margin` pixels from the top of `fb`: in the top-right corner, `margin` from the right, or centred
+ * (a portrait phone frame, mobile spec §3).
+ */
+export function drawLogo(fb: Framebuffer, margin: number, align: 'right' | 'center' = 'right'): void {
   const pad = LOGO_OUTLINE + LOGO_SHADOW;
   const w = LOGO_WIDTH * LOGO_CELL + 2 * pad;
   const h = LOGO_ROWS * LOGO_CELL + 2 * pad;
-  const left = fb.width - margin - LOGO_WIDTH * LOGO_CELL - pad;
+  const letters = LOGO_WIDTH * LOGO_CELL;
+  const left = (align === 'center' ? Math.round((fb.width - letters) / 2) : fb.width - margin - letters) - pad;
   const top = margin - pad;
   // Which pixels of the padded box the letters cover.
   const ink = new Uint8Array(w * h);

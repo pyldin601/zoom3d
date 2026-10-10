@@ -84,6 +84,15 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   whose connect to the endpoint-less Service hangs. Keep nginx's `proxy_connect_timeout` short and the client's
   welcome deadline (`connection.ts`) in place.
 - E2E runs Chrome with `--use-fake-device-for-media-stream`; `window.__game.call` exposes `isLive`/`stats` (dev only).
+  `e2e/mobile.spec.ts` emulates a portrait phone (`hasTouch`, `isMobile`), which Chrome reports as `(pointer: coarse)`.
+- Touch mode (mobile spec §2.0) is `matchMedia('(pointer: coarse)')` read once at load (`TOUCH` in `main.ts`, plus
+  `html.touch` for CSS). Never re-evaluate it: the frame size, FOV and room UI would flip mid-visit. The FOV lives on
+  the `Framebuffer` (`fb.fov`); every projection reads it, so never reintroduce a FOV constant. The buffer is rebuilt
+  only when the frame's size or FOV changes, never per frame.
+- iOS: `navigator.audioSession.type = 'play-and-record'` (set in `openLobby`, before capture) keeps Web Audio audible
+  with the ringer switch on silent. Pointer lock is requested only for `pointerType === 'mouse'`. Touch-mode relayouts
+  are held back while a text field has focus (the on-screen keyboard resizes the visual viewport) and replayed on
+  focusout.
 - Frame rate: the remote `<video>` container must be `visibility: hidden` (not `opacity`). A
   playing video Chrome considers visible paces the whole page to 30 fps (guarded by `e2e/frame-rate.spec.ts`).
 - Audio: remote `<video>` elements must stay **muted but playing**. Chrome only feeds WebRTC

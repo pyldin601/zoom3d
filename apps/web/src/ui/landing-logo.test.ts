@@ -66,3 +66,28 @@ test('the gradient runs from chrome at the top to red at the bottom', () => {
   expect(blue(top)).toBeGreaterThan(200);
   expect(red(bottom)).toBeGreaterThan(blue(bottom) * 3);
 });
+
+test('a centred logo fits a 296 px frame with equal side margins, `margin` from the top', () => {
+  const fb = createFramebuffer(296, 640);
+  fb.pixels.fill(SKY);
+  drawLogo(fb, 28, 'center');
+  let minX = fb.width;
+  let maxX = -1;
+  let minY = fb.height;
+  for (let y = 0; y < fb.height; y++) {
+    for (let x = 0; x < fb.width; x++) {
+      if (fb.pixels[y * fb.width + x] !== SKY) {
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y);
+      }
+    }
+  }
+  // Letters span LOGO_WIDTH cells; the outline adds LOGO_OUTLINE on the left, outline + shadow on the right.
+  const lettersLeft = minX + LOGO_OUTLINE;
+  const lettersRight = lettersLeft + LOGO_WIDTH * LOGO_CELL;
+  expect(lettersLeft).toBeGreaterThan(0);
+  expect(Math.abs(lettersLeft - (fb.width - lettersRight))).toBeLessThanOrEqual(1);
+  expect(maxX).toBeLessThan(fb.width);
+  expect(minY + LOGO_OUTLINE).toBe(28);
+});

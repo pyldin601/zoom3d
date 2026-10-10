@@ -1,5 +1,6 @@
-// Keyboard + pointer-lock mouse input. Held keys are released on blur / tab hide.
+// Keyboard + pointer-lock mouse input, merged with touch when present. Held keys are released on blur / tab hide.
 import type { MoveInput } from '@zoom3d/shared';
+import type { TouchSource } from './touch';
 
 export const MOUSE_TURN_PER_PX = 0.0025; // radians
 
@@ -35,15 +36,16 @@ export interface Input {
 }
 
 /** Keys typed into text fields belong to the field, not to movement. */
-function isTextEntry(target: EventTarget | null): boolean {
+export function isTextEntry(target: EventTarget | null): boolean {
   const t = target as { tagName?: string; isContentEditable?: boolean } | null;
   return !!t && (t.isContentEditable === true || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName ?? ''));
 }
 
-export function createInput(win: Listenable, doc: InputDocument): Input {
+export function createInput(win: Listenable, doc: InputDocument, touch?: TouchSource): Input {
   const held = new Set<Action>();
   let mouseTurn = 0;
   const axis = (pos: Action, neg: Action) => (held.has(pos) ? 1 : 0) - (held.has(neg) ? 1 : 0);
+  const clamp = (v: number) => Math.max(-1, Math.min(1, v));
   const reset = () => {
     held.clear();
     mouseTurn = 0;
@@ -86,16 +88,22 @@ export function createInput(win: Listenable, doc: InputDocument): Input {
   });
 
   return {
-    state: () => ({
-      forward: axis('forward', 'back'),
-      strafe: axis('right', 'left'),
-      turn: axis('turnRight', 'turnLeft'),
-    }),
+    state() {
+      const t = touch?.state();
+      return {
+        forward: clamp(axis('forward', 'back') + (t?.forward ?? 0)),
+        strafe: clamp(axis('right', 'left') + (t?.strafe ?? 0)),
+        turn: clamp(axis('turnRight', 'turnLeft') + (t?.turn ?? 0)),
+      };
+    },
     consumeMouseTurn() {
-      const turn = mouseTurn;
+      const turn = mouseTurn + (touch?.consumeTurn() ?? 0);
       mouseTurn = 0;
       return turn;
     },
-    reset,
+    reset() {
+      reset();
+      touch?.reset();
+    },
   };
 }
