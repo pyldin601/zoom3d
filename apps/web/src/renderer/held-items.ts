@@ -12,6 +12,10 @@ import { rgb } from './framebuffer';
 export const HELD_TEXEL = 0.08;
 export const HELD_LEFT = 0.15;
 export const HELD_TOP = -0.3;
+/** Raised in a cheers (held items spec §2.4): left edge and top in disc radii, and the wobble's reach either way. */
+export const CHEERS_LEFT = 0.35;
+export const CHEERS_TOP = 1.15;
+export const CHEERS_WOBBLE = 0.06;
 /** The framed 256² face texture spans the disc's inner circle, 0.85 r in radius (sprites.ts `RING`). */
 const FACE_SPAN = 1.7;
 /**

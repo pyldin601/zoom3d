@@ -171,6 +171,8 @@ export function renderLandingScene(fb: Framebuffer, { logo = true }: { logo?: bo
     bob: 0,
     itemBob: 0,
     sip: p.sip ?? 0,
+    cheers: 0,
+    wobble: 0,
     held: p.held ?? null,
     boombox: false,
   }));

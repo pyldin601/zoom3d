@@ -481,6 +481,8 @@ function frame(dt: number): void {
         bob: bob.lift,
         itemBob: bob.itemLift,
         sip: peer.gesture?.kind === 'sip' ? sipPose(now - peer.gesture.at) : 0,
+        cheers: 0,
+        wobble: 0,
         held: peer.info.held,
         boombox: peer.info.boombox,
       });
@@ -499,7 +501,7 @@ function frame(dt: number): void {
   renderWalls(fb, map, player, textures);
   renderSprites(fb, player, sprites);
   if (inRoom()) {
-    renderOwnHeld(fb, ownHeld, selfBob.itemLift, selfBob.sway, ownSip.pose(performance.now()).sip);
+    renderOwnHeld(fb, ownHeld, selfBob.itemLift, selfBob.sway, ownSip.pose(performance.now()));
     renderOwnBoombox(fb, ownBoombox, selfBob.itemLift, selfBob.sway);
   }
   gameCtx.putImageData(image, 0, 0);

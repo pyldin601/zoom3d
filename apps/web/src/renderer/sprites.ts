@@ -4,7 +4,18 @@ import type { HeldItem, PlayerState } from '@zoom3d/shared';
 import { FACE_SIZE } from '../media/faces';
 import { BOOMBOX_LEFT, BOOMBOX_SPRITE, BOOMBOX_TOP } from './boombox';
 import { type Framebuffer, rgb } from './framebuffer';
-import { HELD_LEFT, HELD_SPRITES, HELD_TEXEL, HELD_TOP, type HeldSprite, sipLeft, sipTop } from './held-items';
+import {
+  CHEERS_LEFT,
+  CHEERS_TOP,
+  CHEERS_WOBBLE,
+  HELD_LEFT,
+  HELD_SPRITES,
+  HELD_TEXEL,
+  HELD_TOP,
+  type HeldSprite,
+  sipLeft,
+  sipTop,
+} from './held-items';
 import { FOV, shade } from './walls';
 
 export const AVATAR_RADIUS = 0.35; // tiles
@@ -36,6 +47,10 @@ export interface Sprite {
   itemBob: number;
   /** 0..1: sip progress, from resting in front of the body (0) to at the mouth (1). */
   sip: number;
+  /** 0..1: cheers lift, from resting (0) to raised over the head (1); never above 0 together with `sip`. */
+  cheers: number;
+  /** −1..1: the raised drink's side-to-side wobble, already scaled by the lift. */
+  wobble: number;
   /** Drawn in a hand on the viewer's right of the disc. */
   held: HeldItem | null;
   /** A boombox carried in a hand on the viewer's left of the disc (boombox spec §2.1). */
@@ -191,12 +206,21 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
     const s = sprites[i] as Sprite;
     const depth = (projections[i] as Projection).depth;
     renderShadow(fb, p, s.x, s.y, depth, SHADOW_RADIUS, 1);
-    // At the mouth the item's shadow would sit on the disc's and double it, so it fades out.
-    if (s.held && s.sip < 1) {
+    // Lifted to the mouth or over the head, the item's shadow would sit on the disc's and double it, so it fades out.
+    const lifted = Math.max(s.sip, s.cheers);
+    if (s.held && lifted < 1) {
       // Under the item, which sits beside the disc along the camera plane, so at the same depth.
       const radius = (HELD_TEXEL * HELD_SPRITES[s.held].w * AVATAR_RADIUS) / 2;
-      const offset = heldLeft(s.held, s.sip) * AVATAR_RADIUS + radius;
-      renderShadow(fb, p, s.x - Math.sin(p.angle) * offset, s.y + Math.cos(p.angle) * offset, depth, radius, 1 - s.sip);
+      const offset = heldLeft(s.held, s.sip, s.cheers, s.wobble) * AVATAR_RADIUS + radius;
+      renderShadow(
+        fb,
+        p,
+        s.x - Math.sin(p.angle) * offset,
+        s.y + Math.cos(p.angle) * offset,
+        depth,
+        radius,
+        1 - lifted
+      );
     }
     if (s.boombox) {
       const offset = BOOMBOX_SHADOW_OFFSET;
@@ -216,7 +240,7 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
   const faceSize = FACE_SIZE;
   for (const i of visible) {
     const { screenX, depth, size } = projections[i] as Projection;
-    const { color, face, speaking, held, bob, itemBob, sip, boombox } = sprites[i] as Sprite;
+    const { color, face, speaking, held, bob, itemBob, sip, cheers, wobble, boombox } = sprites[i] as Sprite;
     const ring = speaking > 0 ? mixWhite(color, Math.min(speaking, 1) * SPEAKING_GLOW) : color;
     const edge = face ? ring : shade(ring);
     const r = size / 2;
@@ -252,7 +276,7 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
       }
     }
     if (held) {
-      renderHeld(fb, held, screenX, depth, r, itemBob, sip);
+      renderHeld(fb, held, screenX, depth, r, itemBob, sip, cheers, wobble);
     }
     if (boombox) {
       const top = h / 2 - (BOOMBOX_TOP + itemBob * BOB_HEIGHT) * r;
@@ -261,9 +285,11 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
   }
 }
 
-/** The held item's left edge and top, in disc radii, partway (`sip` 0..1) to the mouth. */
-const heldLeft = (item: HeldItem, sip: number) => HELD_LEFT + (sipLeft(item) - HELD_LEFT) * sip;
-const heldTop = (item: HeldItem, sip: number) => HELD_TOP + (sipTop(item) - HELD_TOP) * sip;
+/** The held item's left edge and top, in disc radii, partway to the mouth (`sip`) or raised (`cheers`, plus `wobble`). */
+const heldLeft = (item: HeldItem, sip: number, cheers: number, wobble: number) =>
+  HELD_LEFT + (sipLeft(item) - HELD_LEFT) * sip + (CHEERS_LEFT - HELD_LEFT) * cheers + CHEERS_WOBBLE * wobble;
+const heldTop = (item: HeldItem, sip: number, cheers: number) =>
+  HELD_TOP + (sipTop(item) - HELD_TOP) * sip + (CHEERS_TOP - HELD_TOP) * cheers;
 
 /** Draws the held item beside a disc of on-screen radius r, depth-tested like the disc. */
 function renderHeld(
@@ -273,10 +299,12 @@ function renderHeld(
   depth: number,
   r: number,
   lift: number,
-  sip: number
+  sip: number,
+  cheers: number,
+  wobble: number
 ): void {
-  const left = screenX + heldLeft(item, sip) * r;
-  const top = fb.height / 2 - (heldTop(item, sip) + lift * BOB_HEIGHT) * r;
+  const left = screenX + heldLeft(item, sip, cheers, wobble) * r;
+  const top = fb.height / 2 - (heldTop(item, sip, cheers) + lift * BOB_HEIGHT) * r;
   blitItem(fb, HELD_SPRITES[item], left, top, HELD_TEXEL * r, depth);
 }
 

@@ -60,7 +60,7 @@ describe('renderOwnBoombox', () => {
 
   test('it never overlaps the resting drink', () => {
     const drink = createFramebuffer();
-    renderOwnHeld(drink, 'beer', 0, 0, 0);
+    renderOwnHeld(drink, 'beer', 0, 0, { sip: 0, cheers: 0, wobble: 0 });
     const box = createFramebuffer();
     renderOwnBoombox(box, true, 0, 0);
     expect(drink.pixels.some((c, i) => c !== 0 && box.pixels[i] !== 0)).toBe(false);
