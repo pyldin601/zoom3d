@@ -22,6 +22,22 @@
       #ui select { font: inherit; padding: 0.3em; cursor: pointer; }
       /* Touch mode (mobile spec §2.5): every tap target is at least 44 px tall. */
       :where(html.touch) #ui button, :where(html.touch) #ui input { min-height: 44px; }
+      /* Room touch controls (mobile spec §5), also on a touchscreen laptop once touched: the pad bottom-left, faded at
+         rest; the drink and ⋯ buttons stacked above the self-view; the tray opens beside them. */
+      #ui .touch-pad { position: absolute; left: calc(0.6em + env(safe-area-inset-left)); bottom: calc(0.6em + env(safe-area-inset-bottom)); width: max(132px, 7em); height: max(132px, 7em); display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); opacity: 0.35; pointer-events: auto; touch-action: none; transition: opacity 0.15s; }
+      #ui .touch-pad.active { opacity: 1; }
+      #ui .touch-pad span { display: grid; place-items: center; margin: 2px; background: #222; border: 0.1em solid #888; border-radius: 0.25em; color: #eee; font-size: 0.9em; }
+      #ui .touch-pad .up { grid-area: 1 / 2; }
+      #ui .touch-pad .left { grid-area: 2 / 1; }
+      #ui .touch-pad .right { grid-area: 2 / 3; }
+      #ui .touch-pad .down { grid-area: 3 / 2; }
+      #ui .touch-buttons { position: absolute; right: calc(0.6em + env(safe-area-inset-right)); bottom: calc(5.6em + env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 0.4em; pointer-events: auto; }
+      #ui .touch-buttons button { width: max(44px, 2.6em); height: max(44px, 2.6em); padding: 0; display: grid; place-items: center; color: #ddd; background: rgba(30, 30, 30, 0.85); border: 0.06em solid #555; border-radius: 0.3em; touch-action: none; -webkit-touch-callout: none; }
+      #ui .touch-buttons button[hidden], #ui .tray[hidden] { display: none; }
+      #ui .tray { position: absolute; right: calc(0.6em + max(44px, 2.6em) + 0.5em + env(safe-area-inset-right)); bottom: calc(5.6em + env(safe-area-inset-bottom)); display: flex; flex-direction: column; min-width: 8em; padding: 0.2em 0; background: rgba(15, 15, 15, 0.94); border: 0.1em solid #555; border-radius: 0.3em; pointer-events: auto; }
+      #ui .tray button { display: flex; align-items: center; gap: 0.6em; min-height: 44px; padding: 0 0.8em; color: #ddd; background: none; border: 0; text-align: left; }
+      #ui .tray button[aria-pressed="true"] { color: #8cf; }
+      #ui .touch-buttons svg, #ui .tray svg { width: 1.3em; height: 1.3em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
       #ui a { color: #8cf; display: inline-block; margin-top: 0.6em; }
       #ui .error { color: #f88; min-height: 1.2em; margin: 0.5em 0 0; }
       #ui .status { position: absolute; top: 40%; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.75); padding: 0.4em 1em; }

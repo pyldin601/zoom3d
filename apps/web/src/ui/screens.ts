@@ -1,6 +1,6 @@
-// DOM screens and overlays inside the 16:9 stage. User-provided text only ever goes through textContent.
+// DOM screens and overlays inside the stage. User-provided text only ever goes through textContent.
 import { initials } from '../media/faces';
-import { deviceIcon } from './icons';
+import { deviceIcon, touchIcon } from './icons';
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -97,7 +97,39 @@ function toggle(
   return button;
 }
 
-export function showRoomBar(root: HTMLElement, inviteUrl: string, controls?: MediaControls): void {
+/** How long the compact copy button says "Copied". */
+const COPIED_MS = 2000;
+
+/** The touch room bar's copy button (mobile spec §5.1): no link field, the button alone, "Copied" for a moment. */
+function copyLinkButton(inviteUrl: string): HTMLButtonElement {
+  const copy = el('button', { type: 'button', className: 'toggle copy-link' });
+  copy.setAttribute('aria-label', 'Copy invite link');
+  copy.append(touchIcon('link'));
+  copy.addEventListener('click', () => {
+    navigator.clipboard?.writeText(inviteUrl).then(() => {
+      copy.textContent = 'Copied';
+      setTimeout(() => copy.replaceChildren(touchIcon('link')), COPIED_MS);
+    });
+  });
+  return copy;
+}
+
+export function showRoomBar(
+  root: HTMLElement,
+  inviteUrl: string,
+  controls?: MediaControls,
+  { compact = false }: { compact?: boolean } = {}
+): void {
+  const toggles = controls
+    ? [
+        toggle('mic', 'Mic', controls.mic, controls.micAvailable, controls.onMic),
+        toggle('cam', 'Cam', controls.cam, controls.camAvailable, controls.onCam),
+      ]
+    : [];
+  if (compact) {
+    slot(root, 'roombar').replaceChildren(...toggles, copyLinkButton(inviteUrl));
+    return;
+  }
   const link = el('input', { readOnly: true, value: inviteUrl, ariaLabel: 'Invite link' });
   const copy = el('button', { type: 'button', textContent: 'Copy invite link' });
   copy.addEventListener('click', () => {
@@ -108,12 +140,6 @@ export function showRoomBar(root: HTMLElement, inviteUrl: string, controls?: Med
       () => link.select()
     ) ?? link.select();
   });
-  const toggles = controls
-    ? [
-        toggle('mic', 'Mic', controls.mic, controls.micAvailable, controls.onMic),
-        toggle('cam', 'Cam', controls.cam, controls.camAvailable, controls.onCam),
-      ]
-    : [];
   slot(root, 'roombar').replaceChildren(...toggles, link, copy);
 }
 
