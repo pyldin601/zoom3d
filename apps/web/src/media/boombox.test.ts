@@ -1,6 +1,6 @@
 import { beforeEach, expect, test, vi } from 'vitest';
 import { asAudioContext, FakeAudioContext, type FakeNode } from '../audio/fake-audio';
-import { BOOMBOX_SELF_GAIN, type Boombox, createBoombox } from './boombox';
+import { BOOMBOX_ACCEPT, BOOMBOX_SELF_GAIN, type Boombox, createBoombox } from './boombox';
 
 class FakeElement {
   private listeners = new Map<string, (() => void)[]>();
@@ -55,7 +55,7 @@ let box: Boombox;
 let order: string[];
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
-const file = { name: 'Song – live.mp3' };
+const file = { name: 'Song – live.mp3', type: 'audio/mpeg' };
 
 beforeEach(() => {
   ctx = new FakeAudioContext();
@@ -98,12 +98,60 @@ async function pickAndPlay() {
 }
 
 test('B when off opens an audio file picker and changes nothing else', () => {
-  expect([input.type, input.accept, input.hidden]).toEqual(['file', 'audio/*', true]);
+  expect([input.type, input.accept, input.hidden]).toEqual(['file', BOOMBOX_ACCEPT, true]);
   box.toggle(true);
   expect(input.click).toHaveBeenCalledTimes(1);
   expect(onTrack).not.toHaveBeenCalled();
   expect(onChange).not.toHaveBeenCalled();
   expect(box.playing()).toBe(false);
+});
+
+test('the picker offers only formats every browser plays, by MIME type and extension', () => {
+  expect(BOOMBOX_ACCEPT.split(',')).toEqual([
+    'audio/mpeg',
+    '.mp3',
+    'audio/mp4',
+    '.m4a',
+    'audio/aac',
+    '.aac',
+    'audio/wav',
+    '.wav',
+    'audio/flac',
+    '.flac',
+  ]);
+});
+
+test.each([
+  { name: 'cat.jpg', type: 'image/jpeg' },
+  { name: 'clip.mp4', type: 'video/mp4' },
+  { name: 'notes.txt', type: '' },
+  { name: 'song.wma', type: 'audio/x-ms-wma' },
+  // Patchy in Safari, so left out even where this browser could play them.
+  { name: 'song.ogg', type: 'audio/ogg' },
+  { name: 'voice.opus', type: '' },
+  { name: 'song.weba', type: 'audio/webm' },
+])('a pick outside the supported formats ($name) is ignored', async (picked) => {
+  input.files = [picked];
+  input.dispatch('change');
+  await flush();
+  expect(audio.play).not.toHaveBeenCalled();
+  expect(created).toEqual([]);
+  expect(box.title()).toBeNull();
+  expect(input.value).toBe('');
+  // Still off, so B opens the picker again.
+  box.toggle(true);
+  expect(input.click).toHaveBeenCalledTimes(1);
+});
+
+test.each([
+  // Some systems report no type for .flac, and macOS reports .m4a as audio/x-m4a.
+  { name: 'Track.FLAC', type: '' },
+  { name: 'tune.m4a', type: 'audio/x-m4a' },
+  { name: 'tone.wav', type: 'audio/x-wav' },
+])('a supported file ($name) is recognised by its extension or a MIME alias', (picked) => {
+  input.files = [picked];
+  input.dispatch('change');
+  expect(audio.play).toHaveBeenCalledTimes(1);
 });
 
 test('B releases pointer lock before opening the picker', () => {

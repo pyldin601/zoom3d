@@ -85,8 +85,16 @@ These numbers come from the sketch and get tuned by eye at implementation.
 **Trigger:** `KeyB` without repeat or modifiers, and not while typing in an input (as the held-item
 keys in `main.ts`), calls `toggle(inRoom)`. States are `off`, `starting` and `playing`:
 - `off` → `B`, only in a room: release pointer lock (you need a cursor to pick a file) and click a
-  hidden `<input type="file" accept="audio/*">`. The keydown is the user activation the picker
-  needs. Cancelling the picker does nothing.
+  hidden `<input type="file">`. The keydown is the user activation the picker needs. Cancelling the
+  picker does nothing.
+- What it offers: only formats every current browser decodes, Safari on iOS included: MP3, M4A
+  (AAC), AAC, WAV and FLAC. WebRTC takes any format, since the `<audio>` element decodes the file
+  and the mesh re-encodes it as Opus, so the limit is the browsers' decoders; Ogg, Opus and WebM are
+  left out because Safari's support is patchy. `accept` lists their MIME types and extensions, with
+  no `audio/*` (it would admit formats some browsers can't play, and iOS ignores it and offers
+  photos). `accept` is only a hint, so a picked file is checked again, by MIME type (or a known
+  alias such as `audio/x-m4a`) or by extension when the type is empty; a file that fails does
+  nothing.
 - File chosen → `starting`: the file becomes an object URL on a single reused `<audio>` element
   (`loop = false`), and `play()` is called. The input is reset (`value = ''`) so the same file can
   be picked again.
