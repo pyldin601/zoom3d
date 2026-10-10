@@ -66,6 +66,9 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   versioned (`LobbySnapshot` in `apps/server/src/lobby.ts`): bump it when `Peer` changes in a way
   `parsePeerInfo` defaults can't absorb.
 - `.github/workflows/docker.yml`: PRs build + smoke-test only; `main`/`v*` also push to GHCR.
+- Observability (decision D20): the server logs JSON lines (`LOG_LEVEL`), serves Prometheus metrics at `/metrics`
+  (not routed publicly), and reports to Sentry when `SENTRY_DSN` is set. The web image takes `VITE_SENTRY_DSN`,
+  `VITE_AMPLITUDE_API_KEY` and `VITE_RELEASE` as build args; CI passes them, and unset leaves both off.
 - `.github/workflows/checks.yml`: `pnpm typecheck`, `pnpm lint`, `pnpm test` on every PR and push to `main`
   (e2e is local only).
 
@@ -98,5 +101,9 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   the mic's `addTrack` (which would otherwise take it) and is only ever swapped with `replaceTrack`; don't add
   transceivers before it or renegotiate to toggle it. Its 128 kbps cap must be set again after the answer:
   Chrome drops parameters set on a trackless sender before then.
+- Telemetry privacy: logs, metrics labels, Sentry and Amplitude never get names, resume tokens or IPs, nor raw room
+  ids: a room link is the room's only key. Server logs use `roomRef()` (a short hash), and the browser Sentry
+  `beforeSend` scrubs `/r/<id>`.
+  Add an analytics event by extending `AnalyticsEvent` in `apps/web/src/telemetry/analytics.ts`.
 - Playwright file choosers: start `page.waitForEvent('filechooser')` before the action that opens one, with a
   step in between. Interception turns on asynchronously, and a dialog opened right away can go unseen.

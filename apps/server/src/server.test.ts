@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { parseServerMessage, RATE_BURST, type ServerMessage } from '@zoom3d/shared';
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import WebSocket from 'ws';
-import { startServer } from './server';
+import type { Logger } from './log';
+import { roomRef, startServer } from './server';
 
 const ROOM = 'AAAAAAAAAAAAAAAAAAAAAA';
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -78,6 +79,62 @@ test('health check', async () => {
   expect((await fetch(`http://localhost:${server.port}/nope`)).status).toBe(404);
 });
 
+async function metrics(): Promise<string> {
+  const res = await fetch(`http://localhost:${server.port}/metrics`);
+  expect(res.status).toBe(200);
+  expect(res.headers.get('content-type')).toContain('text/plain');
+  return res.text();
+}
+
+function captureLog() {
+  const lines: { level: string; msg: string; [k: string]: unknown }[] = [];
+  const at = (level: string) => (msg: string, fields?: Record<string, unknown>) =>
+    lines.push({ ...fields, level, msg });
+  const log: Logger = { debug: at('debug'), info: at('info'), warn: at('warn'), error: at('error') };
+  return { log, lines };
+}
+
+test('metrics count rooms, peers, joins and dropped messages', async () => {
+  const a = await joined('Ada');
+  await joined('Bob');
+  a.sendRaw('not json');
+  a.ws.send(Buffer.from([1, 2, 3]));
+  const { x, y } = a.welcome.spawn;
+  a.send({ type: 'state', x, y, angle: 1, seq: 1 });
+  a.send({ type: 'state', x: x + 50, y, angle: 1, seq: 2 });
+  await new Promise((r) => setTimeout(r, 50));
+  const text = await metrics();
+  expect(text).toContain('zoom3d_connections 2');
+  expect(text).toContain('zoom3d_rooms 1');
+  expect(text).toContain('zoom3d_peers{state="connected"} 2');
+  expect(text).toContain('zoom3d_joins_total{result="new"} 2');
+  expect(text).toContain('zoom3d_messages_total{type="join"} 2');
+  expect(text).toContain('zoom3d_messages_total{type="state"} 2');
+  expect(text).toContain('zoom3d_messages_dropped_total{reason="invalid"} 1');
+  expect(text).toContain('zoom3d_messages_dropped_total{reason="binary"} 1');
+  expect(text).toContain('zoom3d_move_corrections_total 1');
+  expect(text).toContain('process_cpu_user_seconds_total');
+});
+
+test('lobby events and connection ends are logged without names, tokens or room ids', async () => {
+  await server.close();
+  const { log, lines } = captureLog();
+  server = await startServer({ port: 0, graceMs: 50, heartbeatMs: 100, log });
+  const a = await joined('Ada');
+  a.ws.close();
+  // The lobby ticks once a second.
+  await expect.poll(() => lines.map((l) => l.msg), { timeout: 3000 }).toContain('room_closed');
+  const msgs = lines.map((l) => l.msg);
+  expect(msgs).toEqual(
+    expect.arrayContaining(['room_opened', 'peer_joined', 'connection_closed', 'peer_disconnected', 'peer_left'])
+  );
+  expect(lines.find((l) => l.msg === 'peer_joined')).toMatchObject({ room: roomRef(ROOM), peerId: a.welcome.selfId });
+  const all = JSON.stringify(lines);
+  expect(all).not.toContain(ROOM);
+  expect(all).not.toContain('Ada');
+  expect(all).not.toContain(a.welcome.resumeToken);
+});
+
 test('two clients see each other and state is relayed', async () => {
   const a = await joined('Ada');
   const b = await joined('Bob');
@@ -114,7 +171,8 @@ test('a flood is rate limited and finally closed with 4008', async () => {
   // A frozen rate-limit clock: the bucket never refills, however long the flood takes to process.
   // On the real clock one refilled token (1/60 s) resets the drop streak and the socket never closes.
   await server.close();
-  server = await startServer({ port: 0, graceMs: 200, heartbeatMs: 100, rateLimitClock: () => 0 });
+  const { log, lines } = captureLog();
+  server = await startServer({ port: 0, graceMs: 200, heartbeatMs: 100, rateLimitClock: () => 0, log });
   const a = await joined('Ada');
   const b = await joined('Bob');
   const { x, y } = a.welcome.spawn;
@@ -131,6 +189,10 @@ test('a flood is rate limited and finally closed with 4008', async () => {
   const relayed = b.messages.filter((m) => m.type === 'peer_state').length;
   expect(relayed).toBe(RATE_BURST - 1); // the burst, less Ada's join
   expect(b.ws.readyState).toBe(WebSocket.OPEN);
+  expect(lines.find((l) => l.msg === 'rate_limited')?.level).toBe('warn');
+  const text = await metrics();
+  expect(text).toContain('zoom3d_connections_terminated_total{reason="rate_limit"} 1');
+  expect(text).toMatch(/zoom3d_messages_dropped_total\{reason="rate_limit"\} [1-9]/);
 });
 
 test('a vanished client is announced as left after the grace period', async () => {

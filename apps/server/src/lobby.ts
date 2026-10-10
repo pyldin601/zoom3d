@@ -30,6 +30,24 @@ export interface Outbox {
   close(connId: string, code: number, reason: string): void;
 }
 
+type RejectReason = 'room_full' | 'invalid_room' | 'invalid_name';
+
+/** What happened in the lobby, for logs and metrics. Carries ids only: never names or tokens. */
+export type LobbyEvent =
+  | { type: 'room_opened' | 'room_closed'; roomId: string }
+  | { type: 'joined'; roomId: string; peerId: string; resumed: boolean; replaced: boolean; peers: number }
+  | { type: 'rejected'; reason: RejectReason }
+  | { type: 'disconnected' | 'move_corrected'; roomId: string; peerId: string }
+  | { type: 'left'; roomId: string; peerId: string; peers: number };
+
+export interface LobbyStats {
+  rooms: number;
+  /** Peers with a live connection. */
+  connected: number;
+  /** Peers in their resume grace period. */
+  waiting: number;
+}
+
 export interface LobbyOptions {
   map: GameMap;
   out: Outbox;
@@ -39,6 +57,7 @@ export interface LobbyOptions {
   newToken: () => string;
   graceMs?: number;
   iceServersFor?: (peerId: string) => IceServer[];
+  onEvent?: (e: LobbyEvent) => void;
 }
 
 interface Peer extends PeerInfo {
@@ -95,6 +114,21 @@ export class Lobby {
     return this.rooms.get(roomId)?.size ?? 0;
   }
 
+  stats(): LobbyStats {
+    let connected = 0;
+    let waiting = 0;
+    for (const room of this.rooms.values()) {
+      for (const p of room.values()) {
+        if (p.conn === null) {
+          waiting++;
+        } else {
+          connected++;
+        }
+      }
+    }
+    return { rooms: this.rooms.size, connected, waiting };
+  }
+
   join(conn: string, msg: JoinMessage): void {
     if (this.conns.has(conn)) {
       return;
@@ -113,6 +147,7 @@ export class Lobby {
     const resumable = [...room.values()].find((p) => p.resumeToken === msg.resumeToken);
     if (msg.resumeToken !== undefined && resumable) {
       // The client often notices a dead link before the server does: hand the slot to the new connection.
+      const replaced = resumable.conn !== null;
       if (resumable.conn !== null) {
         const stale = resumable.conn;
         this.conns.delete(stale);
@@ -122,6 +157,14 @@ export class Lobby {
       resumable.disconnectedAt = null;
       this.conns.set(conn, { roomId: msg.roomId, peerId: resumable.id });
       this.welcome(conn, room, resumable);
+      this.emit({
+        type: 'joined',
+        roomId: msg.roomId,
+        peerId: resumable.id,
+        resumed: true,
+        replaced,
+        peers: room.size,
+      });
       return;
     }
     if (room.size >= MAX_PEERS) {
@@ -148,11 +191,22 @@ export class Lobby {
       lastAcceptedAt: this.opts.now(),
       disconnectedAt: null,
     };
+    if (room.size === 0) {
+      this.emit({ type: 'room_opened', roomId: msg.roomId });
+    }
     room.set(peer.id, peer);
     this.rooms.set(msg.roomId, room);
     this.conns.set(conn, { roomId: msg.roomId, peerId: peer.id });
     this.welcome(conn, room, peer);
     this.broadcast(room, peer.id, { type: 'peer_joined', peer: info(peer) });
+    this.emit({
+      type: 'joined',
+      roomId: msg.roomId,
+      peerId: peer.id,
+      resumed: false,
+      replaced: false,
+      peers: room.size,
+    });
   }
 
   state(conn: string, msg: StateMessage): void {
@@ -160,10 +214,11 @@ export class Lobby {
     if (!found) {
       return;
     }
-    const { room, peer } = found;
+    const { roomId, room, peer } = found;
     const now = this.opts.now();
     if (!isPlausibleMove(this.opts.map, peer, msg, now - peer.lastAcceptedAt)) {
       this.opts.out.send(conn, { type: 'correction', x: peer.x, y: peer.y, angle: peer.angle, seq: msg.seq });
+      this.emit({ type: 'move_corrected', roomId, peerId: peer.id });
       return;
     }
     peer.x = msg.x;
@@ -251,6 +306,7 @@ export class Lobby {
     }
     found.peer.conn = null;
     found.peer.disconnectedAt = this.opts.now();
+    this.emit({ type: 'disconnected', roomId: found.roomId, peerId: found.peer.id });
   }
 
   /** Expires peers whose grace has run out and deletes empty rooms. */
@@ -261,10 +317,12 @@ export class Lobby {
         if (peer.disconnectedAt !== null && now - peer.disconnectedAt >= this.graceMs) {
           room.delete(peer.id);
           this.broadcast(room, peer.id, { type: 'peer_left', id: peer.id });
+          this.emit({ type: 'left', roomId, peerId: peer.id, peers: room.size });
         }
       }
       if (room.size === 0) {
         this.rooms.delete(roomId);
+        this.emit({ type: 'room_closed', roomId });
       }
     }
   }
@@ -292,14 +350,19 @@ export class Lobby {
         room.set(p.id, { ...p, conn: null, disconnectedAt: now, lastGestureAt: Number.NEGATIVE_INFINITY });
       }
       this.rooms.set(id, room);
+      this.emit({ type: 'room_opened', roomId: id });
     }
   }
 
-  private lookup(conn: string): { room: Room; peer: Peer } | null {
+  private lookup(conn: string): { roomId: string; room: Room; peer: Peer } | null {
     const binding = this.conns.get(conn);
     const room = binding && this.rooms.get(binding.roomId);
     const peer = binding && room?.get(binding.peerId);
-    return room && peer ? { room, peer } : null;
+    return binding && room && peer ? { roomId: binding.roomId, room, peer } : null;
+  }
+
+  private emit(e: LobbyEvent): void {
+    this.opts.onEvent?.(e);
   }
 
   private welcome(conn: string, room: Room, self: Peer): void {
@@ -322,8 +385,9 @@ export class Lobby {
     }
   }
 
-  private reject(conn: string, code: 'room_full' | 'invalid_room' | 'invalid_name', message: string, close: number) {
+  private reject(conn: string, code: RejectReason, message: string, close: number) {
     this.opts.out.send(conn, { type: 'error', code, message });
     this.opts.out.close(conn, close, code);
+    this.emit({ type: 'rejected', reason: code });
   }
 }

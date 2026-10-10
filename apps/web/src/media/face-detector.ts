@@ -1,6 +1,7 @@
 // MediaPipe Face Detector (BlazeFace short range), self-hosted under /mediapipe/ (face-framing spec §4).
 // Loaded lazily after Join; any failure means no detector, and the framer keeps the centred crop.
 import type * as Vision from '@mediapipe/tasks-vision';
+import { track } from '../telemetry/analytics';
 import type { Box } from './framing';
 
 const WASM_BASE = '/mediapipe/wasm';
@@ -58,6 +59,7 @@ export async function loadFaceDetector(deps: { load?: () => Promise<typeof Visio
     };
   } catch (err) {
     console.warn('face detector unavailable', err);
+    track({ name: 'face_detector_unavailable' });
     return null;
   }
 }

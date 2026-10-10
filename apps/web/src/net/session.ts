@@ -33,6 +33,8 @@ export interface SessionListener {
   peerLeft?(id: string): void;
   peerMedia?(id: string, cam: boolean, mic: boolean): void;
   signal?(from: string, payload: SignalPayload): void;
+  /** A new connection status. Timer and socket driven, so it keeps coming while the tab is hidden. */
+  status?(status: ConnStatus): void;
 }
 
 export interface Session {
@@ -188,6 +190,14 @@ export function createSession(opts: SessionOptions): Session {
     }
   };
 
+  let notified: ConnStatus = status;
+  const notifyStatus = () => {
+    if (status !== notified) {
+      notified = status;
+      opts.listener?.status?.(status);
+    }
+  };
+
   const conn = connect({
     url: opts.url,
     makeJoin: () => ({
@@ -197,9 +207,16 @@ export function createSession(opts: SessionOptions): Session {
       ...(resumeToken ? { resumeToken } : {}),
       ...(opts.avatar ? { avatar: opts.avatar } : {}),
     }),
-    onMessage: handle,
+    // 'open' and 'failed' arrive with the welcome or error that caused them: tell the listener once that is applied.
+    onMessage: (msg) => {
+      handle(msg);
+      notifyStatus();
+    },
     onStatus: (s) => {
       status = s;
+      if (s === 'reconnecting') {
+        notifyStatus();
+      }
     },
     WebSocketImpl: opts.WebSocketImpl,
   });

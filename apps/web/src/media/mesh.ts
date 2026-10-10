@@ -6,6 +6,7 @@
 // The m-line order is fixed: video, mic, then the boombox (index 2). The boombox transceiver is
 // opened sendrecv at creation and only ever swapped with replaceTrack, so music never renegotiates.
 import type { IceServer, SignalPayload } from '@zoom3d/shared';
+import { track } from '../telemetry/analytics';
 
 export const VIDEO_MAX_BITRATE = 350_000;
 /** Index of the boombox transceiver in getTransceivers() on both sides (boombox spec §5.1). */
@@ -210,6 +211,7 @@ export function createMesh(opts: MeshOptions): MediaTransport {
         opts.sendSignal(peerId, describe(pc));
       } catch (err) {
         console.warn('negotiation failed', peerId, err);
+        track({ name: 'webrtc_failed', stage: 'negotiation' });
       } finally {
         conn.makingOffer = false;
       }
@@ -242,7 +244,11 @@ export function createMesh(opts: MeshOptions): MediaTransport {
     };
     // Only the initiator restarts ICE, so restarts never collide (see the module comment).
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed' && conn.initiator) {
+      if (pc.connectionState !== 'failed') {
+        return;
+      }
+      track({ name: 'webrtc_failed', stage: 'ice' });
+      if (conn.initiator) {
         pc.restartIce();
       }
     };
@@ -302,6 +308,7 @@ export function createMesh(opts: MeshOptions): MediaTransport {
         }
       } catch (err) {
         console.warn('signal handling failed', from, err);
+        track({ name: 'webrtc_failed', stage: 'signal' });
       }
     },
 

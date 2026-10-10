@@ -153,6 +153,28 @@ test('a fatal error is exposed', () => {
   expect(session.status()).toBe('failed');
 });
 
+test('the listener hears status changes after the session applied them, also with the tab hidden', () => {
+  const calls: unknown[][] = [];
+  let session: Session | null = null;
+  const listener: SessionListener = {
+    status: (s) => calls.push([s, session?.peers.size, session?.error()]),
+  };
+  const result = joinedSession([peer('a'), peer('b')], listener);
+  session = result.session;
+  result.ws.serverClose(1006);
+  vi.advanceTimersByTime(500);
+  FakeWebSocket.latest().open();
+  FakeWebSocket.latest().receive(welcome([peer('a')]));
+  FakeWebSocket.latest().receive({ type: 'error', code: 'room_full', message: 'full' });
+  // The first 'open' fires inside createSession's welcome, before `session` is assigned here.
+  expect(calls).toEqual([
+    ['open', undefined, undefined],
+    ['reconnecting', 2, null],
+    ['open', 1, null],
+    ['failed', 1, 'room_full'],
+  ]);
+});
+
 test('the listener hears welcomes with identity changes, after the session updated itself', () => {
   const calls: unknown[][] = [];
   let session: Session | null = null;

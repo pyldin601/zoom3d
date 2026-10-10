@@ -10,13 +10,14 @@ import {
   type ServerMessage,
 } from '@zoom3d/shared';
 import { beforeEach, describe, expect, test } from 'vitest';
-import { Lobby, type Outbox } from './lobby';
+import { Lobby, type LobbyEvent, type Outbox } from './lobby';
 
 const ROOM = 'AAAAAAAAAAAAAAAAAAAAAA';
 const map = parseMap(LEVEL1);
 
 let sent: { conn: string; msg: ServerMessage }[];
 let closed: { conn: string; code: number }[];
+let events: LobbyEvent[];
 let time: number;
 let lobby: Lobby;
 
@@ -28,6 +29,7 @@ const outbox: Outbox = {
 beforeEach(() => {
   sent = [];
   closed = [];
+  events = [];
   time = 0;
   let n = 0;
   lobby = new Lobby({
@@ -37,6 +39,7 @@ beforeEach(() => {
     rng: () => 0,
     newToken: () => `t${++n}`,
     iceServersFor: (id) => [{ urls: [`stun:${id}`] }],
+    onEvent: (e) => events.push(e),
   });
 });
 
@@ -454,7 +457,14 @@ describe('snapshot and restore', () => {
   let m = 0;
   /** Replaces the lobby with a new one restored from its JSON snapshot, as a restarted server would. */
   const restart = () => {
-    const next = new Lobby({ map, out: outbox, now: () => time, rng: () => 0, newToken: () => `r${++m}` });
+    const next = new Lobby({
+      map,
+      out: outbox,
+      now: () => time,
+      rng: () => 0,
+      newToken: () => `r${++m}`,
+      onEvent: (e) => events.push(e),
+    });
     next.restore(JSON.parse(JSON.stringify(lobby.snapshot())));
     lobby = next;
   };
@@ -483,6 +493,13 @@ describe('snapshot and restore', () => {
       held: 'beer',
       boombox: true,
     });
+  });
+
+  test('each restored room is reported opened, so its later close has a match', () => {
+    join('A');
+    events = [];
+    restart();
+    expect(events).toEqual([{ type: 'room_opened', roomId: ROOM }]);
   });
 
   test('a fresh join after restore gets a colour nobody holds', () => {
@@ -532,5 +549,63 @@ describe('snapshot and restore', () => {
     time += RESUME_GRACE_MS;
     lobby.tick();
     expect(lobby.roomCount()).toBe(0);
+  });
+});
+
+describe('events and stats', () => {
+  test('a first join opens the room; joins report the room size', () => {
+    join('A');
+    join('B');
+    expect(events).toEqual([
+      { type: 'room_opened', roomId: ROOM },
+      { type: 'joined', roomId: ROOM, peerId: 't1', resumed: false, replaced: false, peers: 1 },
+      { type: 'joined', roomId: ROOM, peerId: 't3', resumed: false, replaced: false, peers: 2 },
+    ]);
+  });
+
+  test('rejections carry the reason', () => {
+    join('A', '');
+    lobby.join('B', { type: 'join', roomId: 'bad', name: 'B' });
+    for (let i = 0; i < MAX_PEERS + 1; i++) {
+      join(`P${i}`);
+    }
+    expect(events.filter((e) => e.type === 'rejected')).toEqual([
+      { type: 'rejected', reason: 'invalid_name' },
+      { type: 'rejected', reason: 'invalid_room' },
+      { type: 'rejected', reason: 'room_full' },
+    ]);
+  });
+
+  test('disconnect, resume, replace, expiry and room close are reported', () => {
+    join('A');
+    const token = welcome('A').resumeToken;
+    join('A2', 'A', { resumeToken: token });
+    lobby.disconnect('A2');
+    join('A3', 'A', { resumeToken: token });
+    lobby.disconnect('A3');
+    time += RESUME_GRACE_MS;
+    lobby.tick();
+    expect(events.slice(2)).toEqual([
+      { type: 'joined', roomId: ROOM, peerId: 't1', resumed: true, replaced: true, peers: 1 },
+      { type: 'disconnected', roomId: ROOM, peerId: 't1' },
+      { type: 'joined', roomId: ROOM, peerId: 't1', resumed: true, replaced: false, peers: 1 },
+      { type: 'disconnected', roomId: ROOM, peerId: 't1' },
+      { type: 'left', roomId: ROOM, peerId: 't1', peers: 0 },
+      { type: 'room_closed', roomId: ROOM },
+    ]);
+  });
+
+  test('an implausible move is reported', () => {
+    join('A');
+    lobby.state('A', { type: 'state', x: 99, y: 99, angle: 0, seq: 1 });
+    expect(events.at(-1)).toEqual({ type: 'move_corrected', roomId: ROOM, peerId: 't1' });
+  });
+
+  test('stats count rooms and connected and waiting peers', () => {
+    join('A');
+    join('B');
+    lobby.join('C', { type: 'join', roomId: 'BBBBBBBBBBBBBBBBBBBBBB', name: 'C' });
+    lobby.disconnect('B');
+    expect(lobby.stats()).toEqual({ rooms: 2, connected: 2, waiting: 1 });
   });
 });
