@@ -1,36 +1,6 @@
 import { expect, test } from 'vitest';
 import type { MediaState } from '../media/local-media';
-import { lobbyEntry, markHost, mediaOutcome } from './onboarding';
-
-const ROOM = 'AAAAAAAAAAAAAAAAAAAAAA';
-const OTHER = 'BBBBBBBBBBBBBBBBBBBBBB';
-
-function memoryStorage(): Storage {
-  const data = new Map<string, string>();
-  return {
-    getItem: (k) => data.get(k) ?? null,
-    setItem: (k, v) => void data.set(k, v),
-    removeItem: (k) => void data.delete(k),
-    clear: () => data.clear(),
-    key: () => null,
-    get length() {
-      return data.size;
-    },
-  };
-}
-
-test('the tab that started a party opens its lobby as host, any other room as an invitee', () => {
-  const tab = memoryStorage();
-  expect(lobbyEntry(tab, ROOM)).toBe('invite');
-  markHost(tab, ROOM);
-  expect(lobbyEntry(tab, ROOM)).toBe('host');
-  expect(lobbyEntry(tab, OTHER)).toBe('invite');
-});
-
-test('without storage everyone is an invitee and nothing throws', () => {
-  expect(() => markHost(null, ROOM)).not.toThrow();
-  expect(lobbyEntry(null, ROOM)).toBe('invite');
-});
+import { mediaOutcome } from './onboarding';
 
 const state = (s: Partial<MediaState>): MediaState => ({
   cam: false,

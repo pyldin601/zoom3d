@@ -159,10 +159,14 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     `boombox_started`) and connection health (`connection_lost/restored/failed`, `webrtc_failed`,
     `face_detector_unavailable`). There are no camera/mic toggle events. The full list is the `AnalyticsEvent` type
     in `apps/web/src/telemetry/analytics.ts`.
-    *Amended 2026-10-10:* the device id moved from `'none'` (new each page load) to `'sessionStorage'`, so
-    single-visit onboarding funnels work. One tab counts as one user, across reloads and the "Start a party" page
-    load, and is forgotten when the tab closes. Retention and returning-user cohorts would need a persistent id behind
-    an opt-in banner. sessionStorage used for analytics is a grey area under ePrivacy rules, accepted for now.
+    *Amended 2026-10-10:* storage-free, so no consent banner is needed. ePrivacy Art. 5(3) requires consent for any
+    storage access that isn't strictly necessary, and that covers sessionStorage and the SDK's default localStorage
+    queue of unsent events as much as cookies. The device id (`identityStorage: 'none'`) and the event queue (an
+    in-memory `storageProvider`) therefore live in memory, so one page load is one user. To keep the onboarding funnel
+    in one load, "Start a party" switches to the lobby in-page with `history.pushState` instead of a page load, and Back
+    or Forward reloads the page. The host/invite flag is a variable. `/privacy.html` (linked from the landing panel)
+    covers GDPR transparency, with legitimate interest as the basis. Retention and returning-user cohorts would need a
+    persistent id behind an opt-in banner.
   - **Config:** the web DSN, the Amplitude key and the release are Vite build args passed by
     `.github/workflows/docker.yml`. Both values are public by design, since browsers see them anyway. Unset (dev,
     tests, forks), everything stays off. Both SDKs are lazy chunks, so the main bundle stays the same size.

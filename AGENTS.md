@@ -104,6 +104,8 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
 - Telemetry privacy: logs, metrics labels, Sentry and Amplitude never get names, resume tokens or IPs, nor raw room
   ids: a room link is the room's only key. Server logs use `roomRef()` (a short hash), and the browser Sentry
   `beforeSend` scrubs `/r/<id>`.
-  Add an analytics event by extending `AnalyticsEvent` in `apps/web/src/telemetry/analytics.ts`.
+  Add an analytics event by extending `AnalyticsEvent` in `apps/web/src/telemetry/analytics.ts`. Analytics must stay
+  storage-free (no cookies, localStorage or sessionStorage; that's why no consent banner is needed), so "Start a party"
+  is an in-page `pushState`, not a page load. Keep `public/privacy.html` in step with what is collected.
 - Playwright file choosers: start `page.waitForEvent('filechooser')` before the action that opens one, with a
   step in between. Interception turns on asynchronously, and a dialog opened right away can go unseen.
