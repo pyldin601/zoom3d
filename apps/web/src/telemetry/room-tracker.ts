@@ -19,7 +19,16 @@ export function createRoomTracker(track: (e: AnalyticsEvent) => void, now: () =>
   let lostAt = 0;
   let peersMax = 0;
   let drops = 0;
+  let met = false;
   let done = false;
+
+  // Activation: the first time anyone else is in the room with us.
+  const meet = (peers: number) => {
+    if (peers > 0 && joinedAt !== null && !met) {
+      met = true;
+      track({ name: 'peer_met', afterS: Math.round((now() - joinedAt) / 1000) });
+    }
+  };
 
   return {
     update(status, peers, error) {
@@ -42,11 +51,15 @@ export function createRoomTracker(track: (e: AnalyticsEvent) => void, now: () =>
         track({ name: 'connection_failed', reason: error ?? 'unknown', joined: joinedAt !== null });
       }
       last = status;
+      if (status === 'open') {
+        meet(peers);
+      }
     },
     peers(n) {
       if (n > peersMax) {
         peersMax = n;
       }
+      meet(n);
     },
     leave() {
       if (joinedAt === null || done) {

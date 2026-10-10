@@ -38,6 +38,7 @@ import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
 import { makeTextures } from './renderer/textures';
 import { renderWalls } from './renderer/walls';
 import { flushOnHide, initAnalytics, track } from './telemetry/analytics';
+import { lobbyEntry, markHost, mediaOutcome } from './telemetry/onboarding';
 import { createRoomTracker, type RoomTracker, withRoomTracker } from './telemetry/room-tracker';
 import { initSentry } from './telemetry/sentry';
 import { setAudioPanelBoombox, showAudioPanel } from './ui/audio-panel';
@@ -129,6 +130,14 @@ let ownBoombox = false;
 const storage = (): Storage | null => {
   try {
     return window.localStorage;
+  } catch {
+    return null;
+  }
+};
+/** This tab only: remembers which room the tab started, for the onboarding funnel. */
+const tabStorage = (): Storage | null => {
+  try {
+    return window.sessionStorage;
   } catch {
     return null;
   }
@@ -393,8 +402,12 @@ function saveName(name: string): void {
 
 const route = parseRoute(location.pathname);
 if (route.kind === 'landing') {
+  track({ name: 'landing_viewed' });
   showLanding(ui, () => {
-    location.assign(`/r/${newRoomId(crypto.getRandomValues(new Uint8Array(16)))}`);
+    const roomId = newRoomId(crypto.getRandomValues(new Uint8Array(16)));
+    markHost(tabStorage(), roomId);
+    track({ name: 'party_started' });
+    location.assign(`/r/${roomId}`);
   });
 } else if (route.kind === 'invalid') {
   showNotice(ui, 'Bad room link', 'Start a new room', '/');
@@ -419,6 +432,8 @@ function openLobby(roomId: string): void {
     },
     loadMediaPrefs(storage())
   );
+  track({ name: 'lobby_viewed', entry: lobbyEntry(tabStorage(), roomId) });
+  void local.ready.then(() => track({ name: 'media_permission', ...mediaOutcome(local.state()) }));
   // Saved for the whole visit, so the room's Cam/Mic buttons are remembered too.
   local.subscribe(() => saveMediaPrefs(storage(), local.prefs()));
   const meter = createMicLevel(audioCtx);

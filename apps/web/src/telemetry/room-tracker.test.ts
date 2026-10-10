@@ -22,7 +22,10 @@ test('the first open reports a join with the peers already there', () => {
   time = 500;
   tracker.update('open', 2, null);
   tracker.update('open', 2, null);
-  expect(events).toEqual([{ name: 'room_joined', peers: 2 }]);
+  expect(events).toEqual([
+    { name: 'room_joined', peers: 2 },
+    { name: 'peer_met', afterS: 0 },
+  ]);
 });
 
 test('a drop and a recovery after joining are reported with the downtime', () => {
@@ -31,7 +34,11 @@ test('a drop and a recovery after joining are reported with the downtime', () =>
   tracker.update('reconnecting', 0, null);
   time = 13_400;
   tracker.update('open', 1, null);
-  expect(events.slice(1)).toEqual([{ name: 'connection_lost' }, { name: 'connection_restored', downS: 3 }]);
+  expect(events.slice(1)).toEqual([
+    { name: 'connection_lost' },
+    { name: 'connection_restored', downS: 3 },
+    { name: 'peer_met', afterS: 13 },
+  ]);
 });
 
 test('retries before the first welcome are not drops', () => {
@@ -70,6 +77,28 @@ test('the largest room counts peers who joined between status changes', () => {
   expect(events.at(-1)).toMatchObject({ name: 'room_left', peersMax: 5 });
 });
 
+test('meeting another person is reported once, with the wait since joining', () => {
+  time = 1000;
+  tracker.update('open', 0, null);
+  time = 1000 + 42_400;
+  tracker.peers(1);
+  tracker.peers(2);
+  expect(events.filter((e) => e.name === 'peer_met')).toEqual([{ name: 'peer_met', afterS: 42 }]);
+});
+
+test('someone already in the room is met on joining', () => {
+  tracker.update('open', 2, null);
+  expect(events).toEqual([
+    { name: 'room_joined', peers: 2 },
+    { name: 'peer_met', afterS: 0 },
+  ]);
+});
+
+test('peers seen before the first welcome are not a meeting', () => {
+  tracker.peers(1);
+  expect(events).toEqual([]);
+});
+
 test('leaving a room never joined reports nothing', () => {
   tracker.update('connecting', 0, null);
   tracker.leave();
@@ -92,6 +121,7 @@ test('withRoomTracker feeds status and room size from the session, keeping the w
   expect(seen).toEqual(['open', 'c']);
   expect(events).toEqual([
     { name: 'room_joined', peers: 1 },
+    { name: 'peer_met', afterS: 0 },
     { name: 'room_left', durationS: 0, peersMax: 3, drops: 0 },
   ]);
 });

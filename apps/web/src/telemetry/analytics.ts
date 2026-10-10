@@ -1,8 +1,16 @@
 // Anonymous product analytics (Amplitude). Off unless the build sets VITE_AMPLITUDE_API_KEY.
-// No stored device id (a new one each visit), no IP, no autocapture, and never names or room ids.
+// The device id lives in sessionStorage: one tab is one user, across reloads and the "Start a party" page load, and
+// forgotten when the tab closes. No IP, no autocapture, and never names or room ids.
 import type { HeldItem } from '@zoom3d/shared';
+import type { MediaOutcome } from './onboarding';
 
 export type AnalyticsEvent =
+  // Onboarding
+  | { name: 'landing_viewed' }
+  | { name: 'party_started' }
+  | { name: 'lobby_viewed'; entry: 'host' | 'invite' }
+  | { name: 'media_permission'; cam: MediaOutcome; mic: MediaOutcome }
+  | { name: 'peer_met'; afterS: number }
   // Sessions
   | { name: 'room_joined'; peers: number }
   | { name: 'room_left'; durationS: number; peersMax: number; drops: number }
@@ -40,7 +48,7 @@ export function initAnalytics(apiKey: string | undefined, appVersion: string | u
       sdk.init(apiKey, {
         appVersion,
         autocapture: false,
-        identityStorage: 'none',
+        identityStorage: 'sessionStorage',
         trackingOptions: { ipAddress: false },
         // Remote config could switch autocapture back on from Amplitude's UI.
         remoteConfig: { fetchRemoteConfig: false },

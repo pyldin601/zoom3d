@@ -152,12 +152,17 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     is a build arg. Projects `zoom3d-server` and `zoom3d-web` are in the `myownradio` org. The browser `beforeSend`
     scrubs `/r/<roomId>` from the whole event: a room link is the room's only key. Sentry v11 is bundled with
     `enableRuntimeChannelInjection: false`, since a bundle can't load its instrumentation hooks.
-  - **Amplitude, web only, anonymous, no consent banner:** project `zoom3d`. `identityStorage: 'none'` (a new device
-    id each visit), no IP, no autocapture, remote config off, so Amplitude's UI can't turn autocapture back on.
-    Events: sessions (`room_joined`, `room_left` with duration, largest room and drops), social (`drink_picked`, `sip`,
-    `cheers`, `boombox_started`) and connection health (`connection_lost/restored/failed`, `webrtc_failed`,
-    `face_detector_unavailable`). There are no media-toggle events. The full list is the `AnalyticsEvent` type in
-    `apps/web/src/telemetry/analytics.ts`.
+  - **Amplitude, web only, anonymous, no consent banner:** project `zoom3d`. No IP, no autocapture, remote config off,
+    so Amplitude's UI can't turn autocapture back on. Events: onboarding (`landing_viewed`, `party_started`,
+    `lobby_viewed` as host or invitee, `media_permission`, and `peer_met` as the activation step), sessions
+    (`room_joined`, `room_left` with duration, largest room and drops), social (`drink_picked`, `sip`, `cheers`,
+    `boombox_started`) and connection health (`connection_lost/restored/failed`, `webrtc_failed`,
+    `face_detector_unavailable`). There are no camera/mic toggle events. The full list is the `AnalyticsEvent` type
+    in `apps/web/src/telemetry/analytics.ts`.
+    *Amended 2026-10-10:* the device id moved from `'none'` (new each page load) to `'sessionStorage'`, so
+    single-visit onboarding funnels work. One tab counts as one user, across reloads and the "Start a party" page
+    load, and is forgotten when the tab closes. Retention and returning-user cohorts would need a persistent id behind
+    an opt-in banner. sessionStorage used for analytics is a grey area under ePrivacy rules, accepted for now.
   - **Config:** the web DSN, the Amplitude key and the release are Vite build args passed by
     `.github/workflows/docker.yml`. Both values are public by design, since browsers see them anyway. Unset (dev,
     tests, forks), everything stays off. Both SDKs are lazy chunks, so the main bundle stays the same size.
