@@ -37,6 +37,9 @@ import { cheersPose, createGestureClock, sipPose } from './renderer/sip';
 import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
 import { makeTextures } from './renderer/textures';
 import { renderWalls } from './renderer/walls';
+import { flushOnHide, initAnalytics, track } from './telemetry/analytics';
+import { createRoomTracker, type RoomTracker } from './telemetry/room-tracker';
+import { initSentry } from './telemetry/sentry';
 import { setAudioPanelBoombox, showAudioPanel } from './ui/audio-panel';
 import type { BoomboxPanelOptions } from './ui/boombox-panel';
 import { loadBoomboxVolume, saveBoomboxVolume } from './ui/boombox-store';
@@ -55,6 +58,9 @@ import {
   showSelfPreview,
   showStatus,
 } from './ui/screens';
+
+initSentry(import.meta.env.VITE_SENTRY_DSN, import.meta.env.VITE_RELEASE);
+initAnalytics(import.meta.env.VITE_AMPLITUDE_API_KEY, import.meta.env.VITE_RELEASE);
 
 const PIXEL_PERFECT = new URLSearchParams(location.search).has('pixelperfect');
 const NAME_KEY = 'zoom3d.name';
@@ -75,6 +81,12 @@ const image = new ImageData(new Uint8ClampedArray(fb.pixels.buffer as ArrayBuffe
 const player = spawnPoint(map, Math.random);
 const input = createInput(window, document);
 let session: Session | null = null;
+let roomTracker: RoomTracker | null = null;
+// pagehide, not unload: it fires on mobile and for pages entering the back/forward cache.
+window.addEventListener('pagehide', () => {
+  roomTracker?.leave();
+  flushOnHide();
+});
 /** What the local player holds, drawn in first person. */
 let ownHeld: HeldItem | null = null;
 /** The local player's sip or cheers, on the performance.now() clock (held items spec §2.3–2.4). */
@@ -104,6 +116,9 @@ function chooseHeld(item: HeldItem | null): void {
   }
   saveHeld(storage(), item);
   session?.setHeld(item);
+  if (item !== null) {
+    track({ name: 'drink_picked', item });
+  }
 }
 let call: Call | null = null;
 let audio: AudioEngine | null = null;
@@ -215,6 +230,7 @@ window.addEventListener('keydown', (e) => {
       // Like a sip, nothing during a reconnect: the others would never see it.
       if (inRoom() && ownGesture.start('cheers', now)) {
         session?.sendCheers();
+        track({ name: 'cheers' });
       }
     }
   }, CHEERS_HOLD_MS);
@@ -233,6 +249,7 @@ window.addEventListener('keyup', (e) => {
     } else {
       session?.sendCheers();
     }
+    track({ name: kind });
   }
 });
 // A key released in another window never reports keyup here: forget the press.
@@ -309,6 +326,7 @@ function joinRoom(
     now: () => performance.now(),
     listener: withDoorbell(call.listener, createDoorbell(audioCtx)),
   });
+  roomTracker = createRoomTracker(track, () => performance.now());
   const held = loadHeld(storage());
   ownHeld = held;
   session.setHeld(held);
@@ -324,6 +342,9 @@ function joinRoom(
     container: localMediaContainer,
     onTrack: (track) => activeCall.setBoomboxTrack(track),
     onChange(on) {
+      if (on) {
+        track({ name: 'boombox_started' });
+      }
       ownBoombox = on;
       session?.setBoombox(on);
       setAudioPanelBoombox(ui, boomboxControls());
@@ -556,6 +577,7 @@ function frame(dt: number): void {
       });
     }
     setStatus(statusText(session));
+    roomTracker?.update(session.status(), session.peers.size, session.error());
     audio?.update(now, player, positions);
   }
 

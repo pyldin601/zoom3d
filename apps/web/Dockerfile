@@ -11,6 +11,8 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --filter @zoom3d/web...
 COPY packages/shared packages/shared
 COPY apps/web apps/web
+# Baked into the bundle; empty (local builds, forks) leaves Sentry and analytics off. Both values are public.
+ARG VITE_SENTRY_DSN="" VITE_AMPLITUDE_API_KEY="" VITE_RELEASE=""
 RUN pnpm --filter @zoom3d/web build
 
 FROM nginxinc/nginx-unprivileged:stable-alpine
