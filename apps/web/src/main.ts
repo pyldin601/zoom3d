@@ -33,7 +33,7 @@ import { createFramebuffer } from './renderer/framebuffer';
 import { drawLabels } from './renderer/labels';
 import { renderOwnBoombox } from './renderer/own-boombox';
 import { renderOwnHeld } from './renderer/own-held';
-import { createSipClock, sipPose } from './renderer/sip';
+import { createGestureClock, sipPose } from './renderer/sip';
 import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
 import { makeTextures } from './renderer/textures';
 import { renderWalls } from './renderer/walls';
@@ -77,7 +77,7 @@ let session: Session | null = null;
 /** What the local player holds, drawn in first person. */
 let ownHeld: HeldItem | null = null;
 /** The local player's sip, on the performance.now() clock (held items spec §2.3). */
-const ownSip = createSipClock();
+const ownSip = createGestureClock();
 /** The one path for changing the drink in hand, from a number key. */
 function chooseHeld(item: HeldItem | null): void {
   if (item === ownHeld) {
@@ -181,7 +181,7 @@ window.addEventListener('keydown', (e) => {
   e.preventDefault();
   if (heldKeyAction(item, ownHeld) === 'pick') {
     chooseHeld(item);
-  } else if (ownSip.start(performance.now())) {
+  } else if (ownSip.start('sip', performance.now())) {
     session?.sendDrink();
   }
 });
@@ -499,7 +499,7 @@ function frame(dt: number): void {
   renderWalls(fb, map, player, textures);
   renderSprites(fb, player, sprites);
   if (inRoom()) {
-    renderOwnHeld(fb, ownHeld, selfBob.itemLift, selfBob.sway, ownSip.pose(performance.now()));
+    renderOwnHeld(fb, ownHeld, selfBob.itemLift, selfBob.sway, ownSip.pose(performance.now()).sip);
     renderOwnBoombox(fb, ownBoombox, selfBob.itemLift, selfBob.sway);
   }
   gameCtx.putImageData(image, 0, 0);
