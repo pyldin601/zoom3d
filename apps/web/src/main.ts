@@ -480,7 +480,7 @@ function frame(dt: number): void {
         speaking: audio?.speaking(peer.info.id) ?? 0,
         bob: bob.lift,
         itemBob: bob.itemLift,
-        sip: sipPose(now - peer.drinkAt),
+        sip: peer.gesture?.kind === 'sip' ? sipPose(now - peer.gesture.at) : 0,
         held: peer.info.held,
         boombox: peer.info.boombox,
       });
