@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>zoom3d</title>
     <link rel="icon" href="/favicon.png" sizes="32x32" type="image/png" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -92,6 +92,13 @@
       #ui .boombox-panel .title { margin-bottom: 0.4em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       /* visibility:hidden, not opacity: a visible playing <video> makes Chrome pace the page to the
          video's 30 fps. Hidden elements keep decoding, firing requestVideoFrameCallback and feeding Web Audio. */
+      /* Touch mode (mobile spec §2.4): no page gestures on the stage, readable inputs (iOS zooms below 16 px), and room
+         overlays kept clear of the notch and home bar. */
+      html.touch #stage { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+      html.touch #ui input { font-size: max(16px, 1em); -webkit-user-select: text; user-select: text; }
+      html.touch #ui .roombar { top: calc(0.5em + env(safe-area-inset-top)); right: calc(0.5em + env(safe-area-inset-right)); }
+      html.touch #ui .selfview { right: calc(0.6em + env(safe-area-inset-right)); bottom: calc(0.6em + env(safe-area-inset-bottom)); }
+      html.touch #ui .banner { bottom: calc(0.6em + env(safe-area-inset-bottom)); }
       #media, #local-media { position: fixed; width: 1px; height: 1px; visibility: hidden; pointer-events: none; overflow: hidden; }
     </style>
   </head>

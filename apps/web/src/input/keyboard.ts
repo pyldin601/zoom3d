@@ -35,7 +35,7 @@ export interface Input {
 }
 
 /** Keys typed into text fields belong to the field, not to movement. */
-function isTextEntry(target: EventTarget | null): boolean {
+export function isTextEntry(target: EventTarget | null): boolean {
   const t = target as { tagName?: string; isContentEditable?: boolean } | null;
   return !!t && (t.isContentEditable === true || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName ?? ''));
 }

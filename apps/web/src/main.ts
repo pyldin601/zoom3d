@@ -1,20 +1,10 @@
-import {
-  type HeldItem,
-  INTERNAL_H,
-  INTERNAL_W,
-  INTERP_DELAY_MS,
-  LEVEL1,
-  newRoomId,
-  parseMap,
-  spawnPoint,
-  stepPlayer,
-} from '@zoom3d/shared';
+import { type HeldItem, INTERP_DELAY_MS, LEVEL1, newRoomId, parseMap, spawnPoint, stepPlayer } from '@zoom3d/shared';
 import { createDoorbell, withDoorbell } from './audio/doorbell';
 import { type AudioEngine, createAudioEngine } from './audio/engine';
 import { loadAudioSettings, saveAudioSettings } from './audio/settings-store';
 import { startHiddenTicker } from './audio/ticker';
 import { startLoop } from './game/loop';
-import { layoutStage, watchLayout } from './game/stage';
+import { type Frame, layoutStage, watchLayout } from './game/stage';
 import { createInput } from './input/keyboard';
 import { loadAvatar, saveAvatar } from './media/avatar';
 import { type Boombox, createBoombox } from './media/boombox';
@@ -29,7 +19,7 @@ import { createRemoteMedia } from './media/remote-media';
 import { createSession, type Session } from './net/session';
 import { type AutomapPeer, drawAutomap } from './renderer/automap';
 import { type Bob, createBob } from './renderer/bob';
-import { createFramebuffer } from './renderer/framebuffer';
+import { createFramebuffer, type Framebuffer } from './renderer/framebuffer';
 import { drawLabels } from './renderer/labels';
 import { renderOwnBoombox } from './renderer/own-boombox';
 import { renderOwnHeld } from './renderer/own-held';
@@ -64,6 +54,9 @@ initSentry(import.meta.env.VITE_SENTRY_DSN, import.meta.env.VITE_RELEASE);
 initAnalytics(import.meta.env.VITE_AMPLITUDE_API_KEY, import.meta.env.VITE_RELEASE);
 
 const PIXEL_PERFECT = new URLSearchParams(location.search).has('pixelperfect');
+/** Touch mode (mobile spec §2.0): decided once at load, never re-evaluated, so the frame never flips mid-visit. */
+const TOUCH = matchMedia('(pointer: coarse)').matches;
+document.documentElement.classList.toggle('touch', TOUCH);
 const NAME_KEY = 'zoom3d.name';
 
 const stage = document.getElementById('stage') as HTMLDivElement;
@@ -77,8 +70,11 @@ const hudCtx = hud.getContext('2d') as CanvasRenderingContext2D;
 
 const map = parseMap(LEVEL1);
 const textures = makeTextures(1);
-const fb = createFramebuffer(INTERNAL_W, INTERNAL_H);
-const image = new ImageData(new Uint8ClampedArray(fb.pixels.buffer as ArrayBuffer), fb.width, fb.height);
+let fb: Framebuffer = createFramebuffer();
+let image = imageOf(fb);
+function imageOf(buffer: Framebuffer): ImageData {
+  return new ImageData(new Uint8ClampedArray(buffer.pixels.buffer as ArrayBuffer), buffer.width, buffer.height);
+}
 const player = spawnPoint(map, Math.random);
 const input = createInput(window, document);
 let session: Session | null = null;
@@ -135,13 +131,30 @@ const storage = (): Storage | null => {
   }
 };
 
-const relayout = () => layoutStage(stage, hud, PIXEL_PERFECT);
+/** Whether the frame loop runs; before that the stage shows a still that a new frame size must redraw. */
+let looping = false;
+let still: { logo: boolean } | null = null;
+/** Swaps in a buffer of the new size or FOV; only on rotation or resize, never per frame. */
+function rebuildFrame(frame: Frame): void {
+  if (frame.width === fb.width && frame.height === fb.height && frame.fov === fb.fov) {
+    return;
+  }
+  fb = createFramebuffer(frame.width, frame.height, frame.fov);
+  image = imageOf(fb);
+  game.width = fb.width;
+  game.height = fb.height;
+  if (!looping && still) {
+    showStill(still.logo);
+  }
+}
+const relayout = () => rebuildFrame(layoutStage(stage, hud, { touch: TOUCH, pixelPerfect: PIXEL_PERFECT }));
 relayout();
-watchLayout(relayout);
+watchLayout(relayout, { skipWhileTyping: TOUCH });
 
 const inRoom = () => session?.status() === 'open';
-game.addEventListener('click', () => {
-  if (inRoom()) {
+// Mouse-look only: iOS has no pointer lock, and a finger on the view turns by dragging instead (mobile spec §4.1).
+game.addEventListener('pointerdown', (e) => {
+  if (inRoom() && e.pointerType === 'mouse') {
     game.requestPointerLock();
   }
 });
@@ -450,7 +463,7 @@ function openLobby(roomId: string): void {
       closeLobby();
       stopMetering();
       meter.dispose();
-      startLoop(frame);
+      startFrames();
       joinRoom(roomId, name, avatar, local, audioCtx);
     },
   });
@@ -613,12 +626,18 @@ function frame(dt: number): void {
 /** One still from the renderer: the title picture on the landing page, the same corridor without the title behind
  * the lobby. The room loop starts on Join. */
 function showStill(logo: boolean): void {
+  still = { logo };
   renderLandingScene(fb, { logo });
   gameCtx.putImageData(image, 0, 0);
 }
 
-if (route.kind === 'invalid') {
+function startFrames(): void {
+  looping = true;
   startLoop(frame);
+}
+
+if (route.kind === 'invalid') {
+  startFrames();
 } else {
   showStill(route.kind === 'landing');
 }
