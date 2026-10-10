@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>zoom3d · Privacy</title>
+    <link rel="icon" href="/favicon.png" sizes="32x32" type="image/png" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <style>
+      body { margin: 0; padding: 2em 1em; background: #111; color: #ddd; font: 16px/1.55 system-ui, sans-serif; }
+      main { max-width: 40em; margin: 0 auto; }
+      h1 { font-size: 1.6em; margin: 0 0 0.2em; }
+      h2 { font-size: 1.1em; margin: 1.6em 0 0.4em; color: #fff; }
+      p, li { color: #ccc; }
+      a { color: #8cf; }
+      .updated { color: #888; font-size: 0.85em; margin: 0 0 1.5em; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Privacy</h1>
+      <p class="updated">Last updated 10 October 2026</p>
+      <p>zoom3d is a small hobby project: a retro 3D room where friends meet as their camera faces. This page says what
+        happens to your data when you use it.</p>
+
+      <h2>Your camera and microphone</h2>
+      <p>Video and sound go directly between the people in your room (peer to peer, over WebRTC). They do not pass
+        through our server and are never recorded.</p>
+
+      <h2>What the server keeps</h2>
+      <p>While a room exists, the server holds what the others in it need to see: your display name, your picture
+        if you chose one, where you stand and what you hold. A room is forgotten a short while after everyone has left.
+        During a server restart it is written to disk briefly and deleted again on start.</p>
+      <p>Server logs record technical events, like a connection opening or a room closing, with random ids and a
+        scrambled form of the room link. They never contain names, pictures or room links. Like most websites, our web
+        servers may also keep standard access logs, including IP addresses, for operation and security.</p>
+
+      <h2>What stays in your browser</h2>
+      <p>Your name, picture, camera and microphone choices, volume and drink are remembered in your browser (local
+        storage), so you don't have to set them again. They stay on your device, except your name and picture, which
+        the people in your room see.</p>
+
+      <h2>Usage statistics</h2>
+      <p>To learn how zoom3d is used (for example, whether people find each other, or how often connections drop), the
+        app sends anonymous events to <a href="https://amplitude.com/privacy">Amplitude</a>. The events use a
+        random id that is forgotten when you reload or close the page. Nothing is stored on your device for this: no
+        cookies, no local storage. No IP address, name or room link is included.</p>
+
+      <h2>Error reports</h2>
+      <p>When something breaks, technical details (the error, your browser and the app version) go to
+        <a href="https://sentry.io/privacy/">Sentry</a> so we can fix it. Room links are removed first.</p>
+
+      <h2>Why, and your rights</h2>
+      <p>We process this data because we have a legitimate interest in keeping zoom3d working and making it better.
+        Amplitude and Sentry may process it in the United States. We don't sell data or use it for advertising.
+        Questions or requests:
+        <a href="https://github.com/pyldin601/zoom3d/issues">open an issue on GitHub</a>.</p>
+
+      <p><a href="/">Back to zoom3d</a></p>
+    </main>
+  </body>
+</html>

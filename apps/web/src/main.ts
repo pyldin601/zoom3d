@@ -38,6 +38,7 @@ import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
 import { makeTextures } from './renderer/textures';
 import { renderWalls } from './renderer/walls';
 import { flushOnHide, initAnalytics, track } from './telemetry/analytics';
+import { mediaOutcome } from './telemetry/onboarding';
 import { createRoomTracker, type RoomTracker, withRoomTracker } from './telemetry/room-tracker';
 import { initSentry } from './telemetry/sentry';
 import { setAudioPanelBoombox, showAudioPanel } from './ui/audio-panel';
@@ -392,9 +393,21 @@ function saveName(name: string): void {
 }
 
 const route = parseRoute(location.pathname);
+/** The room this page load created with "Start a party": its lobby counts as the host's, any other as an invite. */
+let hostedRoom: string | null = null;
+// "Start a party" changes the URL without a page load; going back or forward loads the page for that URL again.
+window.addEventListener('popstate', () => location.reload());
+
 if (route.kind === 'landing') {
+  track({ name: 'landing_viewed' });
   showLanding(ui, () => {
-    location.assign(`/r/${newRoomId(crypto.getRandomValues(new Uint8Array(16)))}`);
+    // Stays in the page (no reload), so the in-memory analytics id carries the funnel into the lobby.
+    const roomId = newRoomId(crypto.getRandomValues(new Uint8Array(16)));
+    hostedRoom = roomId;
+    track({ name: 'party_started' });
+    history.pushState(null, '', `/r/${roomId}`);
+    showStill(false);
+    openLobby(roomId);
   });
 } else if (route.kind === 'invalid') {
   showNotice(ui, 'Bad room link', 'Start a new room', '/');
@@ -419,6 +432,8 @@ function openLobby(roomId: string): void {
     },
     loadMediaPrefs(storage())
   );
+  track({ name: 'lobby_viewed', entry: roomId === hostedRoom ? 'host' : 'invite' });
+  void local.ready.then(() => track({ name: 'media_permission', ...mediaOutcome(local.state()) }));
   // Saved for the whole visit, so the room's Cam/Mic buttons are remembered too.
   local.subscribe(() => saveMediaPrefs(storage(), local.prefs()));
   const meter = createMicLevel(audioCtx);
@@ -595,11 +610,15 @@ function frame(dt: number): void {
   }
 }
 
+/** One still from the renderer: the title picture on the landing page, the same corridor without the title behind
+ * the lobby. The room loop starts on Join. */
+function showStill(logo: boolean): void {
+  renderLandingScene(fb, { logo });
+  gameCtx.putImageData(image, 0, 0);
+}
+
 if (route.kind === 'invalid') {
   startLoop(frame);
 } else {
-  // One still from the renderer: the title picture on the landing page, the same corridor without the title behind
-  // the lobby. The room loop starts on Join.
-  renderLandingScene(fb, { logo: route.kind === 'landing' });
-  gameCtx.putImageData(image, 0, 0);
+  showStill(route.kind === 'landing');
 }

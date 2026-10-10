@@ -1,8 +1,18 @@
 // Anonymous product analytics (Amplitude). Off unless the build sets VITE_AMPLITUDE_API_KEY.
-// No stored device id (a new one each visit), no IP, no autocapture, and never names or room ids.
+// Storage-free (ePrivacy: no consent needed when nothing is read from or written to the device): the device id and the
+// unsent-event queue live in memory, so one page load is one user. "Start a party" stays in the page to keep the
+// onboarding funnel in one load. No IP, no autocapture, and never names or room ids.
+import type { Types } from '@amplitude/analytics-browser';
 import type { HeldItem } from '@zoom3d/shared';
+import type { MediaOutcome } from './onboarding';
 
 export type AnalyticsEvent =
+  // Onboarding
+  | { name: 'landing_viewed' }
+  | { name: 'party_started' }
+  | { name: 'lobby_viewed'; entry: 'host' | 'invite' }
+  | { name: 'media_permission'; cam: MediaOutcome; mic: MediaOutcome }
+  | { name: 'peer_met'; afterS: number }
   // Sessions
   | { name: 'room_joined'; peers: number }
   | { name: 'room_left'; durationS: number; peersMax: number; drops: number }
@@ -25,6 +35,22 @@ type Amplitude = typeof import('@amplitude/analytics-browser');
 let amp: Amplitude | null = null;
 let queue: AnalyticsEvent[] | null = null;
 
+type EventStorage = NonNullable<Types.BrowserOptions['storageProvider']>;
+type StoredEvents = Awaited<ReturnType<EventStorage['get']>>;
+
+/** Replaces the SDK's default localStorage queue for unsent events. */
+function memoryStorage(): EventStorage {
+  const data = new Map<string, StoredEvents>();
+  return {
+    isEnabled: async () => true,
+    get: async (key) => data.get(key),
+    getRaw: async (key) => (data.has(key) ? JSON.stringify(data.get(key)) : undefined),
+    set: async (key, value) => void data.set(key, value),
+    remove: async (key) => void data.delete(key),
+    reset: async () => data.clear(),
+  };
+}
+
 function send(sdk: Amplitude, e: AnalyticsEvent): void {
   const { name, ...props } = e;
   sdk.track(name, props);
@@ -41,6 +67,7 @@ export function initAnalytics(apiKey: string | undefined, appVersion: string | u
         appVersion,
         autocapture: false,
         identityStorage: 'none',
+        storageProvider: memoryStorage(),
         trackingOptions: { ipAddress: false },
         // Remote config could switch autocapture back on from Amplitude's UI.
         remoteConfig: { fetchRemoteConfig: false },

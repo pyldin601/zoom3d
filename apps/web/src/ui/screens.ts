@@ -42,7 +42,8 @@ export function showLanding(root: HTMLElement, onCreate: () => void): void {
       { className: 'lobby landing' },
       el('h1', { textContent: 'zoom3d' }),
       el('p', { textContent: 'Beer with your buddies in raycaster.' }),
-      create
+      create,
+      el('a', { href: '/privacy.html', className: 'privacy', textContent: 'Privacy' })
     )
   );
 }

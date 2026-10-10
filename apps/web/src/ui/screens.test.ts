@@ -18,6 +18,7 @@ test('landing is a lobby-styled panel whose primary button calls onCreate', () =
   expect(create.textContent).toBe('Start a party');
   create.click();
   expect(onCreate).toHaveBeenCalledOnce();
+  expect(panel.querySelector('a.privacy')?.getAttribute('href')).toBe('/privacy.html');
 });
 
 test('status overlay shows and clears independently of the screen', () => {
