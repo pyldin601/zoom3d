@@ -1,11 +1,11 @@
 import { parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
-import { createFramebuffer } from './framebuffer';
+import { createFramebuffer, DEFAULT_FOV } from './framebuffer';
 import { makeTextures, TEX } from './textures';
-import { CEILING, FLOOR, FOV, renderWalls, shade } from './walls';
+import { CEILING, FLOOR, renderWalls, shade } from './walls';
 
 const ROOM = parseMap('11111\n1...1\n1.S.1\n1...1\n11111');
-const PROJ = 320 / Math.tan(FOV / 2);
+const PROJ = 320 / Math.tan(DEFAULT_FOV / 2);
 const textures = makeTextures(1);
 
 function column(fb: ReturnType<typeof createFramebuffer>, x: number): number[] {
@@ -80,4 +80,19 @@ describe('makeTextures', () => {
     expect(textures[2]).not.toEqual(textures[3]);
     expect(textures.slice(1).every((t) => t.every((c) => c >>> 24 === 0xff))).toBe(true);
   });
+});
+
+test('a narrower FOV draws the same wall taller', () => {
+  const player = { x: 2.5, y: 2.5, angle: 0 };
+  const wide = createFramebuffer(296, 640, (66 * Math.PI) / 180);
+  const narrow = createFramebuffer(296, 640, (50 * Math.PI) / 180);
+  renderWalls(wide, ROOM, player, textures);
+  renderWalls(narrow, ROOM, player, textures);
+  const wallHeight = (fb: ReturnType<typeof createFramebuffer>) =>
+    column(fb, 148).filter((c) => c !== CEILING && c !== FLOOR).length;
+  expect(wallHeight(narrow)).toBeGreaterThan(wallHeight(wide));
+  expect(wallHeight(narrow) / wallHeight(wide)).toBeCloseTo(
+    Math.tan((33 * Math.PI) / 180) / Math.tan((25 * Math.PI) / 180),
+    1
+  );
 });

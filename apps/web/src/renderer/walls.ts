@@ -3,7 +3,6 @@ import { castRay, createRayHit, type GameMap, type PlayerState } from '@zoom3d/s
 import { type Framebuffer, rgb } from './framebuffer';
 import { TEX } from './textures';
 
-export const FOV = (66 * Math.PI) / 180;
 export const CEILING = rgb(0x38, 0x38, 0x38);
 export const FLOOR = rgb(0x70, 0x70, 0x70);
 
@@ -21,7 +20,7 @@ export function renderWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textu
   const { width: w, height: h, pixels, zbuffer } = fb;
   const dirX = Math.cos(p.angle);
   const dirY = Math.sin(p.angle);
-  const planeLen = Math.tan(FOV / 2);
+  const planeLen = Math.tan(fb.fov / 2);
   // Camera plane points to the right of facing: (-sin, cos) in y-down coordinates.
   const planeX = -dirY * planeLen;
   const planeY = dirX * planeLen;

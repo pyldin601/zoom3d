@@ -2,7 +2,7 @@
 // the drink at the bottom-left (boombox spec §2.2). The sprite is symmetric, so it isn't mirrored.
 import { BOOMBOX_SPRITE } from './boombox';
 import type { Framebuffer } from './framebuffer';
-import { drawOverlay, OWN_BOB, OWN_SWAY, OWN_TEXEL } from './own-held';
+import { drawOverlay, OWN_BOB, OWN_SWAY, ownTexel } from './own-held';
 
 /** Right edge as a fraction of the width: clear of the camera self-view (~0.908 onward). */
 export const OWN_BOOMBOX_RIGHT = 0.88;
@@ -16,7 +16,7 @@ export function renderOwnBoombox(fb: Framebuffer, on: boolean, bob: number, sway
   }
   const { width: w, height: h } = fb;
   const { w: tw, h: th } = BOOMBOX_SPRITE;
-  const t = OWN_TEXEL * h;
+  const t = ownTexel(fb);
   const left = OWN_BOOMBOX_RIGHT * w - tw * t - sway * OWN_SWAY * w;
   const top = h - (1 - OWN_BOOMBOX_CROP) * th * t + bob * OWN_BOB * h;
   drawOverlay(fb, BOOMBOX_SPRITE, left, top, t);

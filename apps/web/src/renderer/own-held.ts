@@ -6,7 +6,7 @@ import type { Framebuffer } from './framebuffer';
 import { HELD_MAPS, type HeldSprite, toHeldSprite } from './held-items';
 import type { HeldPose } from './sip';
 
-/** Texel size, as a fraction of the screen height. */
+/** Texel size, as a fraction of the screen's shorter side (the height on desktop). */
 export const OWN_TEXEL = 0.046;
 /** Left edge, as a fraction of the screen width. */
 export const OWN_LEFT = 0.083;
@@ -33,6 +33,11 @@ export const OWN_HELD_SPRITES: Record<HeldItem, HeldSprite> = {
   wine: toHeldSprite(mirror(HELD_MAPS.wine)),
 };
 
+/** One texel of a first-person overlay, in framebuffer pixels: from the shorter side, so a tall phone frame keeps it small. */
+export function ownTexel(fb: Framebuffer): number {
+  return OWN_TEXEL * Math.min(fb.width, fb.height);
+}
+
 /**
  * Draws over the scene; `bob` 0..1 drops it, `sway` −1..1 shifts it sideways, a sip brings it to the bottom-centre
  * (held items spec §2.3) and a cheers raises it into view (§2.4).
@@ -44,7 +49,7 @@ export function renderOwnHeld(fb: Framebuffer, item: HeldItem | null, bob: numbe
   const { width: w, height: h } = fb;
   const sprite = OWN_HELD_SPRITES[item];
   const { w: tw, h: th } = sprite;
-  const t = OWN_TEXEL * h;
+  const t = ownTexel(fb);
   const rest = OWN_LEFT * w;
   const { sip, cheers, wobble } = pose;
   const left =

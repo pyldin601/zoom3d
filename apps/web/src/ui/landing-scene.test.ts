@@ -58,7 +58,7 @@ test('the camera sees every disc whole, none cut by a wall', () => {
   renderWalls(fb, LANDING_MAP, LANDING_CAMERA, makeTextures(1));
   const proj: Projection = { screenX: 0, depth: 0, size: 0 };
   for (const p of LANDING_PEOPLE) {
-    expect(projectSprite(LANDING_CAMERA, p.x, p.y, fb.width, proj), p.name).toBe(true);
+    expect(projectSprite(LANDING_CAMERA, p.x, p.y, fb.width, fb.fov, proj), p.name).toBe(true);
     const left = Math.floor(proj.screenX - proj.size / 2);
     const right = Math.ceil(proj.screenX + proj.size / 2);
     expect(left, p.name).toBeGreaterThanOrEqual(0);
@@ -86,7 +86,7 @@ test('the scene draws walls and the people over them', () => {
   expect(fb.zbuffer.every((d) => d > 0)).toBe(true);
   const proj: Projection = { screenX: 0, depth: 0, size: 0 };
   const ada = byName('Ada');
-  projectSprite(LANDING_CAMERA, ada.x, ada.y, fb.width, proj);
+  projectSprite(LANDING_CAMERA, ada.x, ada.y, fb.width, fb.fov, proj);
   const centre = fb.pixels[(fb.height / 2) * fb.width + Math.round(proj.screenX)];
   expect(centre).not.toBe(rgb(0, 0, 0));
   expect(Object.values(FACE_PALETTE).map(hexToRgb).concat(hexToRgb(ada.color))).toContain(centre);

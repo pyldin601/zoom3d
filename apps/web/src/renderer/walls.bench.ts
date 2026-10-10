@@ -1,4 +1,4 @@
-import { LEVEL1, parseMap } from '@zoom3d/shared';
+import { fovForAspect, LEVEL1, parseMap } from '@zoom3d/shared';
 import { test } from 'vitest';
 import { createFramebuffer } from './framebuffer';
 import { makeTextures } from './textures';
@@ -13,6 +13,15 @@ test('renderWalls 640x360 on LEVEL1 from spawn', async ({ bench }) => {
   await bench('renderWalls', () => {
     angle += 0.05;
     renderWalls(fb, map, { x: map.spawn.x + 0.5, y: map.spawn.y + 0.5, angle }, textures);
+  }).run();
+});
+
+const portrait = createFramebuffer(296, 640, fovForAspect(296 / 640));
+
+test('renderWalls 296x640 portrait on LEVEL1 from spawn', async ({ bench }) => {
+  await bench('renderWalls portrait', () => {
+    angle += 0.05;
+    renderWalls(portrait, map, { x: map.spawn.x + 0.5, y: map.spawn.y + 0.5, angle }, textures);
   }).run();
 });
 

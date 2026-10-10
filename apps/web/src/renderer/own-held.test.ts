@@ -10,6 +10,7 @@ import {
   OWN_SIP_VISIBLE,
   OWN_SWAY,
   OWN_TEXEL,
+  ownTexel,
   renderOwnHeld,
 } from './own-held';
 import { hexToRgb } from './sprites';
@@ -139,4 +140,9 @@ describe('renderOwnHeld', () => {
       });
     }
   });
+});
+
+test('own texel comes from the shorter side: same on desktop, smaller in portrait', () => {
+  expect(ownTexel(createFramebuffer(640, 360))).toBe(OWN_TEXEL * 360);
+  expect(ownTexel(createFramebuffer(296, 640))).toBe(OWN_TEXEL * 296);
 });
