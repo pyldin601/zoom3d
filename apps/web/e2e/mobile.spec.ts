@@ -64,6 +64,8 @@ test.describe('portrait phone', () => {
     const startBox = await start.boundingBox();
     expect(startBox?.height).toBeGreaterThanOrEqual(44);
     expect((startBox?.y ?? 0) + (startBox?.height ?? 0)).toBeLessThanOrEqual(844);
+    const privacy = await page.getByRole('link', { name: 'Privacy' }).boundingBox();
+    expect(privacy?.height).toBeGreaterThanOrEqual(44);
     await start.click();
     const joinBox = await page.getByRole('button', { name: 'Join' }).boundingBox();
     expect(joinBox?.height).toBeGreaterThanOrEqual(44);

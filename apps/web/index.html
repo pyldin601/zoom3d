@@ -122,6 +122,7 @@
          at least 44 px, and the picture menu opens below the disc instead of off the right edge. */
       html.touch #ui .screen:has(.landing) { place-items: end center; padding: 0 16px calc(24px + env(safe-area-inset-bottom)); }
       html.touch #ui .landing { width: min(14em, 100%); }
+      html.touch #ui .landing .privacy { display: inline-flex; align-items: center; min-height: 44px; padding: 0 0.8em; margin-top: 0; }
       html.touch #ui .lobby .split > button { min-width: 44px; }
       html.touch #ui .lobby .pencil { width: 44px; height: 44px; font-size: inherit; }
       html.touch #ui .lobby .picture-menu { left: 50%; top: 100%; bottom: auto; transform: translateX(-50%); }

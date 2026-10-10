@@ -159,7 +159,7 @@ watchLayout(relayout, { skipWhileTyping: TOUCH });
 const inRoom = () => session?.status() === 'open';
 // Mouse-look only: iOS has no pointer lock, and a finger on the view turns by dragging instead (mobile spec §4.1).
 game.addEventListener('pointerdown', (e) => {
-  if (inRoom() && e.pointerType === 'mouse') {
+  if (inRoom() && e.pointerType === 'mouse' && e.button === 0) {
     game.requestPointerLock();
   }
 });
