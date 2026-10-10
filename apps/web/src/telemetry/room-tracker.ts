@@ -1,10 +1,14 @@
-// Turns the session's connection status, sampled every frame, into join / drop / leave analytics events.
+// Turns the session's connection status changes into join / drop / leave analytics events. Fed by session listener
+// callbacks, not the render loop, so drops while the tab is hidden still count.
 import type { ConnStatus } from '../net/connection';
+import type { Session, SessionListener } from '../net/session';
 import type { AnalyticsEvent } from './analytics';
 
 export interface RoomTracker {
-  /** Called every frame: compares and counts, allocates only when it reports something. */
+  /** The session's status changed (a repeat is ignored); `peers` and `error` as the session has them now. */
   update(status: ConnStatus, peers: number, error: string | null): void;
+  /** The room's size changed: keeps the largest seen. */
+  peers(n: number): void;
   /** The tab is going away: reports how the visit went, once. */
   leave(): void;
 }
@@ -39,12 +43,37 @@ export function createRoomTracker(track: (e: AnalyticsEvent) => void, now: () =>
       }
       last = status;
     },
+    peers(n) {
+      if (n > peersMax) {
+        peersMax = n;
+      }
+    },
     leave() {
       if (joinedAt === null || done) {
         return;
       }
       done = true;
       track({ name: 'room_left', durationS: Math.round((now() - joinedAt) / 1000), peersMax, drops });
+    },
+  };
+}
+
+/** Feeds `tracker` from a session's listener callbacks. The session is read lazily: it exists by the first callback. */
+export function withRoomTracker(
+  listener: SessionListener,
+  tracker: RoomTracker,
+  session: () => Session | null
+): SessionListener {
+  return {
+    ...listener,
+    status(s) {
+      listener.status?.(s);
+      const current = session();
+      tracker.update(s, current?.peers.size ?? 0, current?.error() ?? null);
+    },
+    peerJoined(peer) {
+      listener.peerJoined?.(peer);
+      tracker.peers(session()?.peers.size ?? 0);
     },
   };
 }

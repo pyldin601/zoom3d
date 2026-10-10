@@ -350,6 +350,7 @@ export class Lobby {
         room.set(p.id, { ...p, conn: null, disconnectedAt: now, lastGestureAt: Number.NEGATIVE_INFINITY });
       }
       this.rooms.set(id, room);
+      this.emit({ type: 'room_opened', roomId: id });
     }
   }
 

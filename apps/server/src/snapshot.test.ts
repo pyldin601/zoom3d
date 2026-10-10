@@ -77,7 +77,9 @@ test('a corrupt file loads as nothing, without throwing, and is consumed', () =>
   expect(existsSync(path)).toBe(false);
 });
 
-test('a failed save does not throw', () => {
-  vi.spyOn(console, 'error').mockImplementation(() => {});
-  expect(() => saveSnapshot(join(dir, 'missing', 'lobby.json'), { version: 1, rooms: [] }, silentLogger)).not.toThrow();
+test('a failed save is logged, not thrown', () => {
+  const errors: string[] = [];
+  const log = { ...silentLogger, error: (msg: string) => errors.push(msg) };
+  expect(() => saveSnapshot(join(dir, 'missing', 'lobby.json'), { version: 1, rooms: [] }, log)).not.toThrow();
+  expect(errors).toEqual(['snapshot_write_failed']);
 });

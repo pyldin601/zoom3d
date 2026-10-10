@@ -5,7 +5,7 @@ import { parseServerMessage, RATE_BURST, type ServerMessage } from '@zoom3d/shar
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import WebSocket from 'ws';
 import type { Logger } from './log';
-import { startServer } from './server';
+import { roomRef, startServer } from './server';
 
 const ROOM = 'AAAAAAAAAAAAAAAAAAAAAA';
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -116,7 +116,7 @@ test('metrics count rooms, peers, joins and dropped messages', async () => {
   expect(text).toContain('process_cpu_user_seconds_total');
 });
 
-test('lobby events and connection ends are logged without names or tokens', async () => {
+test('lobby events and connection ends are logged without names, tokens or room ids', async () => {
   await server.close();
   const { log, lines } = captureLog();
   server = await startServer({ port: 0, graceMs: 50, heartbeatMs: 100, log });
@@ -128,8 +128,9 @@ test('lobby events and connection ends are logged without names or tokens', asyn
   expect(msgs).toEqual(
     expect.arrayContaining(['room_opened', 'peer_joined', 'connection_closed', 'peer_disconnected', 'peer_left'])
   );
-  expect(lines.find((l) => l.msg === 'peer_joined')).toMatchObject({ roomId: ROOM, peerId: a.welcome.selfId });
+  expect(lines.find((l) => l.msg === 'peer_joined')).toMatchObject({ room: roomRef(ROOM), peerId: a.welcome.selfId });
   const all = JSON.stringify(lines);
+  expect(all).not.toContain(ROOM);
   expect(all).not.toContain('Ada');
   expect(all).not.toContain(a.welcome.resumeToken);
 });

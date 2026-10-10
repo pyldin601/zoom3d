@@ -140,8 +140,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 ### D20 — Logs, metrics, error reporting, analytics
 - *Resolved 2026-10-10:*
   - **Server logs:** one JSON object per line on stdout (`apps/server/src/log.ts`), level from `LOG_LEVEL` (default
-    `info`). Hand-rolled, no logger library. Lobby events carry room and peer ids only: never names, resume tokens or
-    IPs.
+    `info`). Hand-rolled, no logger library. Lobby events carry peer ids and `room`, a 10-character sha256 prefix
+    of the room id (`roomRef`). That is enough to follow one room through the logs, but useless for joining it. Never
+    names, resume tokens, IPs or client close reasons.
   - **Server metrics:** Prometheus text at `GET /metrics` on the server port (`metrics.ts`), using
     `@prometheus-io/client` (`prom-client` is deprecated in its favour): rooms, peers (connected / waiting), joins by
     result, messages by type, drops by reason, server-cut connections, plus Node process metrics. Not public: Traefik

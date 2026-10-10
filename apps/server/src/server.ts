@@ -1,5 +1,5 @@
 // HTTP + WebSocket transport around the Lobby: rate limit, size cap, heartbeat, grace ticking, logs and metrics.
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { LEVEL1, MAX_MESSAGE_BYTES, parseClientMessage, parseMap, RATE_BURST, RATE_PER_SEC } from '@zoom3d/shared';
@@ -33,16 +33,24 @@ export interface RunningServer {
   close(): Promise<void>;
 }
 
+/**
+ * A room id is the room's only key (anyone with the link walks in), so logs carry a short hash of it instead:
+ * enough to follow one room through the logs, useless for joining it.
+ */
+export function roomRef(roomId: string): string {
+  return createHash('sha256').update(roomId).digest('base64url').slice(0, 10);
+}
+
 /** Every lobby event becomes one log line and feeds the counters. */
 function observe(e: LobbyEvent, log: Logger, metrics: Metrics): void {
   switch (e.type) {
     case 'room_opened':
     case 'room_closed':
-      log.info(e.type, { roomId: e.roomId });
+      log.info(e.type, { room: roomRef(e.roomId) });
       break;
     case 'joined': {
-      const { type: _, ...fields } = e;
-      log.info('peer_joined', fields);
+      const { type: _, roomId, ...fields } = e;
+      log.info('peer_joined', { room: roomRef(roomId), ...fields });
       metrics.joins.inc({ result: e.resumed ? 'resumed' : 'new' });
       break;
     }
@@ -51,14 +59,14 @@ function observe(e: LobbyEvent, log: Logger, metrics: Metrics): void {
       metrics.joins.inc({ result: e.reason });
       break;
     case 'disconnected':
-      log.info('peer_disconnected', { roomId: e.roomId, peerId: e.peerId });
+      log.info('peer_disconnected', { room: roomRef(e.roomId), peerId: e.peerId });
       break;
     case 'left':
-      log.info('peer_left', { roomId: e.roomId, peerId: e.peerId, peers: e.peers });
+      log.info('peer_left', { room: roomRef(e.roomId), peerId: e.peerId, peers: e.peers });
       metrics.peersLeft.inc();
       break;
     case 'move_corrected':
-      log.debug('move_corrected', { roomId: e.roomId, peerId: e.peerId });
+      log.debug('move_corrected', { room: roomRef(e.roomId), peerId: e.peerId });
       metrics.moveCorrections.inc();
       break;
   }
@@ -168,9 +176,10 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         lobby.signal(conn, msg);
       }
     });
-    ws.on('close', (code, reason) => {
+    // The close reason is client-chosen text, so only the code is logged.
+    ws.on('close', (code) => {
       sockets.delete(conn);
-      log.info('connection_closed', { conn, code, reason: reason.toString(), durationMs: Date.now() - openedAt });
+      log.info('connection_closed', { conn, code, durationMs: Date.now() - openedAt });
       lobby.disconnect(conn);
     });
     ws.on('error', (err) => {

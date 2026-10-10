@@ -457,7 +457,14 @@ describe('snapshot and restore', () => {
   let m = 0;
   /** Replaces the lobby with a new one restored from its JSON snapshot, as a restarted server would. */
   const restart = () => {
-    const next = new Lobby({ map, out: outbox, now: () => time, rng: () => 0, newToken: () => `r${++m}` });
+    const next = new Lobby({
+      map,
+      out: outbox,
+      now: () => time,
+      rng: () => 0,
+      newToken: () => `r${++m}`,
+      onEvent: (e) => events.push(e),
+    });
     next.restore(JSON.parse(JSON.stringify(lobby.snapshot())));
     lobby = next;
   };
@@ -486,6 +493,13 @@ describe('snapshot and restore', () => {
       held: 'beer',
       boombox: true,
     });
+  });
+
+  test('each restored room is reported opened, so its later close has a match', () => {
+    join('A');
+    events = [];
+    restart();
+    expect(events).toEqual([{ type: 'room_opened', roomId: ROOM }]);
   });
 
   test('a fresh join after restore gets a colour nobody holds', () => {

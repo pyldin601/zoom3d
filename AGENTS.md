@@ -101,8 +101,9 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   the mic's `addTrack` (which would otherwise take it) and is only ever swapped with `replaceTrack`; don't add
   transceivers before it or renegotiate to toggle it. Its 128 kbps cap must be set again after the answer:
   Chrome drops parameters set on a trackless sender before then.
-- Telemetry privacy: logs, metrics labels, Sentry and Amplitude never get names, resume tokens or IPs, and
-  analytics never gets room ids (a room link is the room's only key; the browser Sentry `beforeSend` scrubs them).
+- Telemetry privacy: logs, metrics labels, Sentry and Amplitude never get names, resume tokens or IPs, nor raw room
+  ids: a room link is the room's only key. Server logs use `roomRef()` (a short hash), and the browser Sentry
+  `beforeSend` scrubs `/r/<id>`.
   Add an analytics event by extending `AnalyticsEvent` in `apps/web/src/telemetry/analytics.ts`.
 - Playwright file choosers: start `page.waitForEvent('filechooser')` before the action that opens one, with a
   step in between. Interception turns on asynchronously, and a dialog opened right away can go unseen.

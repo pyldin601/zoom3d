@@ -1,6 +1,8 @@
+import type { PeerInfo } from '@zoom3d/shared';
 import { beforeEach, expect, test } from 'vitest';
+import type { Session } from '../net/session';
 import type { AnalyticsEvent } from './analytics';
-import { createRoomTracker, type RoomTracker } from './room-tracker';
+import { createRoomTracker, type RoomTracker, withRoomTracker } from './room-tracker';
 
 let events: AnalyticsEvent[];
 let time: number;
@@ -59,8 +61,37 @@ test('leaving reports the duration, the largest room seen and the drops, once', 
   expect(events.filter((e) => e.name === 'room_left')).toHaveLength(1);
 });
 
+test('the largest room counts peers who joined between status changes', () => {
+  tracker.update('open', 1, null);
+  tracker.peers(2);
+  tracker.peers(5);
+  tracker.peers(3);
+  tracker.leave();
+  expect(events.at(-1)).toMatchObject({ name: 'room_left', peersMax: 5 });
+});
+
 test('leaving a room never joined reports nothing', () => {
   tracker.update('connecting', 0, null);
   tracker.leave();
   expect(events).toEqual([]);
+});
+
+test('withRoomTracker feeds status and room size from the session, keeping the wrapped callbacks', () => {
+  const seen: string[] = [];
+  const session = { peers: new Map([['a', {}]]), error: () => null } as unknown as Session;
+  const listener = withRoomTracker(
+    { status: (s) => seen.push(s), peerJoined: (p) => seen.push(p.id) },
+    tracker,
+    () => session
+  );
+  listener.status?.('open');
+  session.peers.set('b', {} as never);
+  session.peers.set('c', {} as never);
+  listener.peerJoined?.({ id: 'c' } as PeerInfo);
+  tracker.leave();
+  expect(seen).toEqual(['open', 'c']);
+  expect(events).toEqual([
+    { name: 'room_joined', peers: 1 },
+    { name: 'room_left', durationS: 0, peersMax: 3, drops: 0 },
+  ]);
 });

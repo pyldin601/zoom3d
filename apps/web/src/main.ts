@@ -38,7 +38,7 @@ import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
 import { makeTextures } from './renderer/textures';
 import { renderWalls } from './renderer/walls';
 import { flushOnHide, initAnalytics, track } from './telemetry/analytics';
-import { createRoomTracker, type RoomTracker } from './telemetry/room-tracker';
+import { createRoomTracker, type RoomTracker, withRoomTracker } from './telemetry/room-tracker';
 import { initSentry } from './telemetry/sentry';
 import { setAudioPanelBoombox, showAudioPanel } from './ui/audio-panel';
 import type { BoomboxPanelOptions } from './ui/boombox-panel';
@@ -317,6 +317,8 @@ function joinRoom(
     createFace,
     createMesh,
   });
+  const tracker = createRoomTracker(track, () => performance.now());
+  roomTracker = tracker;
   session = createSession({
     url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
     roomId,
@@ -324,9 +326,8 @@ function joinRoom(
     avatar,
     player,
     now: () => performance.now(),
-    listener: withDoorbell(call.listener, createDoorbell(audioCtx)),
+    listener: withRoomTracker(withDoorbell(call.listener, createDoorbell(audioCtx)), tracker, () => session),
   });
-  roomTracker = createRoomTracker(track, () => performance.now());
   const held = loadHeld(storage());
   ownHeld = held;
   session.setHeld(held);
@@ -577,7 +578,6 @@ function frame(dt: number): void {
       });
     }
     setStatus(statusText(session));
-    roomTracker?.update(session.status(), session.peers.size, session.error());
     audio?.update(now, player, positions);
   }
 
