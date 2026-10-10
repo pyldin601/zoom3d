@@ -98,7 +98,7 @@ export function showTouchControls(root: HTMLElement, opts: TouchControlsOptions)
     tray.hidden = !open;
     more.setAttribute('aria-expanded', String(open));
   };
-  more.addEventListener('click', () => setOpen(tray.hidden));
+  more.addEventListener('click', () => setOpen(tray.hidden !== false));
 
   const drinkButtons = DRINKS.map(({ item, label }) => {
     const button = iconButton('', label, touchIcon(item ?? 'none'), label);
