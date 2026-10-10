@@ -84,7 +84,8 @@ glue to browser/Node APIs.
 
 - **Internal buffer:** 640×360 `ImageData` (configurable down to 320×180, always 16:9), drawn
   to an offscreen canvas and scaled with `imageSmoothingEnabled = false`.
-- **Fixed aspect ratio (16:9):** the game viewport never stretches or changes shape.
+- **Fixed aspect ratio (16:9):** the game viewport never stretches or changes shape. (Desktop only since 2026-10-10:
+  touch devices fill the screen with an aspect-dependent FOV, see the [mobile spec](2026-10-10-mobile-design.md) §2.)
   - It is the largest 16:9 box that fits the window (or fullscreen), centred, with black
     letterbox or pillarbox bars filling the rest.
   - Because the aspect is fixed, the projection (FOV 66°) is identical for every window
@@ -121,7 +122,7 @@ glue to browser/Node APIs.
 ## 6. Movement and input
 
 - WASD/arrows to move and strafe, arrows or pointer-lock mouse to turn. Move speed 3 tiles/s,
-  turn speed 2.5 rad/s.
+  turn speed 2.5 rad/s. Touch: a move pad and drag-to-turn (see the [mobile spec](2026-10-10-mobile-design.md) §4).
 - Collision: player radius 0.25 tiles against wall tiles, with axis-separated sliding.
   Avatars do not collide with each other.
 - Positions use continuous tile coordinates (`x, y` floats; `angle` in radians).
