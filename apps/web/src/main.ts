@@ -33,13 +33,14 @@ import { createFramebuffer } from './renderer/framebuffer';
 import { drawLabels } from './renderer/labels';
 import { renderOwnBoombox } from './renderer/own-boombox';
 import { renderOwnHeld } from './renderer/own-held';
-import { createSipClock, sipPose } from './renderer/sip';
+import { cheersPose, createGestureClock, sipPose } from './renderer/sip';
 import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
 import { makeTextures } from './renderer/textures';
 import { renderWalls } from './renderer/walls';
 import { setAudioPanelBoombox, showAudioPanel } from './ui/audio-panel';
 import type { BoomboxPanelOptions } from './ui/boombox-panel';
 import { loadBoomboxVolume, saveBoomboxVolume } from './ui/boombox-store';
+import { CHEERS_HOLD_MS, createDrinkPress } from './ui/drink-press';
 import { heldForKey, heldKeyAction, loadHeld, saveHeld } from './ui/held-store';
 import { renderLandingScene } from './ui/landing-scene';
 import { joinBanner, PROBLEM_TEXT, showLobby } from './ui/lobby';
@@ -76,16 +77,30 @@ const input = createInput(window, document);
 let session: Session | null = null;
 /** What the local player holds, drawn in first person. */
 let ownHeld: HeldItem | null = null;
-/** The local player's sip, on the performance.now() clock (held items spec §2.3). */
-const ownSip = createSipClock();
+/** The local player's sip or cheers, on the performance.now() clock (held items spec §2.3–2.4). */
+const ownGesture = createGestureClock();
+/** The held drink's key: a tap sips on release, a press held CHEERS_HOLD_MS raises a cheers (spec §2.4). */
+const drinkPress = createDrinkPress();
+/** The `e.code` of the key being pressed, and the timer that turns a long press into a cheers. */
+let pressKey: string | null = null;
+let pressTimer: ReturnType<typeof setTimeout> | null = null;
+function cancelPress(): void {
+  drinkPress.cancel();
+  pressKey = null;
+  if (pressTimer !== null) {
+    clearTimeout(pressTimer);
+    pressTimer = null;
+  }
+}
 /** The one path for changing the drink in hand, from a number key. */
 function chooseHeld(item: HeldItem | null): void {
   if (item === ownHeld) {
     return;
   }
   ownHeld = item;
+  cancelPress();
   if (item === null) {
-    ownSip.cancel();
+    ownGesture.cancel();
   }
   saveHeld(storage(), item);
   session?.setHeld(item);
@@ -181,10 +196,46 @@ window.addEventListener('keydown', (e) => {
   e.preventDefault();
   if (heldKeyAction(item, ownHeld) === 'pick') {
     chooseHeld(item);
-  } else if (ownSip.start(performance.now())) {
-    session?.sendDrink();
+    return;
+  }
+  // The held drink's key: nothing while a gesture plays, else a press that is a sip or a cheers by its length, timed
+  // by the key events themselves (e.timeStamp, the performance.now() clock) so a busy main thread can't stretch a tap.
+  const downAt = e.timeStamp;
+  if (ownGesture.kind(performance.now()) !== null || pressKey !== null) {
+    return;
+  }
+  drinkPress.down(downAt);
+  pressKey = e.code;
+  pressTimer = setTimeout(() => {
+    pressTimer = null;
+    // A timer can fire a hair before the clock reads CHEERS_HOLD_MS; it is due either way.
+    const now = Math.max(performance.now(), downAt + CHEERS_HOLD_MS);
+    if (drinkPress.due(now) === 'cheers') {
+      pressKey = null;
+      if (ownGesture.start('cheers', now)) {
+        session?.sendCheers();
+      }
+    }
+  }, CHEERS_HOLD_MS);
+});
+window.addEventListener('keyup', (e) => {
+  if (e.code !== pressKey) {
+    return;
+  }
+  // A cheers here means the hold timer is running late; the release settles it instead.
+  const kind = drinkPress.up(e.timeStamp);
+  cancelPress();
+  const now = performance.now();
+  if (kind && inRoom() && ownGesture.start(kind, now)) {
+    if (kind === 'sip') {
+      session?.sendDrink();
+    } else {
+      session?.sendCheers();
+    }
   }
 });
+// A key released in another window never reports keyup here: forget the press.
+window.addEventListener('blur', cancelPress);
 
 // B opens the boombox's file picker, or stops the music (boombox spec §3).
 window.addEventListener('keydown', (e) => {
@@ -472,6 +523,9 @@ function frame(dt: number): void {
         color = hexToRgb(peer.info.color);
         colors.set(peer.info.color, color);
       }
+      const gesture = peer.gesture;
+      // cheersPose returns a reused object: read it before the next call.
+      const raised = gesture?.kind === 'cheers' ? cheersPose(now - gesture.at) : null;
       sprites.push({
         x: pos.x,
         y: pos.y,
@@ -480,7 +534,9 @@ function frame(dt: number): void {
         speaking: audio?.speaking(peer.info.id) ?? 0,
         bob: bob.lift,
         itemBob: bob.itemLift,
-        sip: sipPose(now - peer.drinkAt),
+        sip: gesture?.kind === 'sip' ? sipPose(now - gesture.at) : 0,
+        cheers: raised ? raised.lift : 0,
+        wobble: raised ? raised.wobble : 0,
         held: peer.info.held,
         boombox: peer.info.boombox,
       });
@@ -499,7 +555,7 @@ function frame(dt: number): void {
   renderWalls(fb, map, player, textures);
   renderSprites(fb, player, sprites);
   if (inRoom()) {
-    renderOwnHeld(fb, ownHeld, selfBob.itemLift, selfBob.sway, ownSip.pose(performance.now()));
+    renderOwnHeld(fb, ownHeld, selfBob.itemLift, selfBob.sway, ownGesture.pose(performance.now()));
     renderOwnBoombox(fb, ownBoombox, selfBob.itemLift, selfBob.sway);
   }
   gameCtx.putImageData(image, 0, 0);

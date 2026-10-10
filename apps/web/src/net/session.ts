@@ -1,5 +1,6 @@
 // Multiplayer session: remote peers with interpolation buffers, corrections, and timer-driven state sync.
 import {
+  CHEERS_MS,
   type ErrorCode,
   type HeldItem,
   type IceServer,
@@ -21,8 +22,8 @@ export interface RemotePeer {
   info: PeerInfo;
   buffer: SnapshotBuffer;
   lastSeq: number;
-  /** now() when this peer's last sip arrived; −Infinity before any. */
-  drinkAt: number;
+  /** This peer's last sip or cheers, by when it arrived (now()); null before any or once the drink is put down. */
+  gesture: { kind: 'sip' | 'cheers'; at: number } | null;
 }
 
 /** Notified after the session has applied each server event to its own state. */
@@ -44,6 +45,8 @@ export interface Session {
   setBoombox(on: boolean): void;
   /** Takes a sip of the held drink; not resent after a reconnect. */
   sendDrink(): void;
+  /** Raises the held drink in a cheers; not resent after a reconnect. */
+  sendCheers(): void;
   selfId(): string | null;
   selfColor(): string | null;
   status(): ConnStatus;
@@ -67,6 +70,7 @@ export interface SessionOptions {
 export function createSession(opts: SessionOptions): Session {
   const { player, now } = opts;
   const peers = new Map<string, RemotePeer>();
+  const playing = (g: RemotePeer['gesture']) => g !== null && now() - g.at < (g.kind === 'sip' ? SIP_MS : CHEERS_MS);
   let selfId: string | null = null;
   let color: string | null = null;
   let resumeToken: string | undefined;
@@ -85,7 +89,7 @@ export function createSession(opts: SessionOptions): Session {
   const addPeer = (info: PeerInfo) => {
     const buffer = new SnapshotBuffer();
     buffer.push({ t: now(), x: info.x, y: info.y, angle: info.angle });
-    peers.set(info.id, { info: { ...info }, buffer, lastSeq: -1, drinkAt: Number.NEGATIVE_INFINITY });
+    peers.set(info.id, { info: { ...info }, buffer, lastSeq: -1, gesture: null });
   };
 
   const handle = (m: ServerMessage) => {
@@ -136,11 +140,12 @@ export function createSession(opts: SessionOptions): Session {
         listener.peerMedia?.(m.id, m.cam, m.mic);
         break;
       }
-      case 'peer_drink': {
+      case 'peer_drink':
+      case 'peer_cheers': {
         const peer = peers.get(m.id);
-        // A sip arriving while one still plays (bunched by the network) would snap it back to the start.
-        if (peer && now() - peer.drinkAt >= SIP_MS) {
-          peer.drinkAt = now();
+        // A gesture arriving while one still plays (bunched by the network) would snap it back to the start.
+        if (peer && !playing(peer.gesture)) {
+          peer.gesture = { kind: m.type === 'peer_drink' ? 'sip' : 'cheers', at: now() };
         }
         break;
       }
@@ -156,7 +161,7 @@ export function createSession(opts: SessionOptions): Session {
         if (peer) {
           peer.info.held = m.item;
           if (m.item === null) {
-            peer.drinkAt = Number.NEGATIVE_INFINITY;
+            peer.gesture = null;
           }
         }
         break;
@@ -244,6 +249,11 @@ export function createSession(opts: SessionOptions): Session {
     sendDrink() {
       if (status === 'open') {
         conn.send({ type: 'drink' });
+      }
+    },
+    sendCheers() {
+      if (status === 'open') {
+        conn.send({ type: 'cheers' });
       }
     },
     selfId: () => selfId,

@@ -4,6 +4,7 @@
 import type { HeldItem } from '@zoom3d/shared';
 import type { Framebuffer } from './framebuffer';
 import { HELD_MAPS, type HeldSprite, toHeldSprite } from './held-items';
+import type { HeldPose } from './sip';
 
 /** Texel size, as a fraction of the screen height. */
 export const OWN_TEXEL = 0.046;
@@ -16,6 +17,13 @@ export const OWN_BOB = 0.03;
 export const OWN_SWAY = 0.01;
 /** At the top of a sip the drink sits at the bottom-centre, under your mouth, this much of it visible. */
 export const OWN_SIP_VISIBLE = 0.3;
+/**
+ * Raised in a cheers (held items spec §2.4): left edge at this fraction of the width, fully in view with its bottom
+ * this fraction of the height above the bottom edge, wobbling by this fraction of the width.
+ */
+export const OWN_CHEERS_LEFT = 0.2;
+export const OWN_CHEERS_RAISE = 0.08;
+export const OWN_CHEERS_WOBBLE = 0.015;
 
 const mirror = (rows: readonly string[]) => rows.map((row) => [...row].reverse().join(''));
 
@@ -26,10 +34,10 @@ export const OWN_HELD_SPRITES: Record<HeldItem, HeldSprite> = {
 };
 
 /**
- * Draws over the scene; `bob` 0..1 drops it, `sway` −1..1 shifts it sideways, `sip` 0..1 brings
- * it to the bottom-centre (held items spec §2.3).
+ * Draws over the scene; `bob` 0..1 drops it, `sway` −1..1 shifts it sideways, a sip brings it to the bottom-centre
+ * (held items spec §2.3) and a cheers raises it into view (§2.4).
  */
-export function renderOwnHeld(fb: Framebuffer, item: HeldItem | null, bob: number, sway: number, sip: number): void {
+export function renderOwnHeld(fb: Framebuffer, item: HeldItem | null, bob: number, sway: number, pose: HeldPose): void {
   if (!item) {
     return;
   }
@@ -38,9 +46,16 @@ export function renderOwnHeld(fb: Framebuffer, item: HeldItem | null, bob: numbe
   const { w: tw, h: th } = sprite;
   const t = OWN_TEXEL * h;
   const rest = OWN_LEFT * w;
-  const left = rest + ((w - tw * t) / 2 - rest) * sip + sway * OWN_SWAY * w;
-  const visible = 1 - OWN_CROP + (OWN_SIP_VISIBLE - (1 - OWN_CROP)) * sip;
-  const top = h - visible * th * t + bob * OWN_BOB * h;
+  const { sip, cheers, wobble } = pose;
+  const left =
+    rest +
+    ((w - tw * t) / 2 - rest) * sip +
+    (OWN_CHEERS_LEFT * w - rest) * cheers +
+    (sway * OWN_SWAY + wobble * OWN_CHEERS_WOBBLE) * w;
+  // How far the sprite's top sits above the bottom edge, at rest, at the top of a sip and raised in a cheers.
+  const restUp = (1 - OWN_CROP) * th * t;
+  const up = restUp + (OWN_SIP_VISIBLE * th * t - restUp) * sip + (th * t + OWN_CHEERS_RAISE * h - restUp) * cheers;
+  const top = h - up + bob * OWN_BOB * h;
   drawOverlay(fb, sprite, left, top, t);
 }
 

@@ -46,7 +46,7 @@ interface Peer extends PeerInfo {
   conn: string | null;
   lastAcceptedAt: number;
   /** When this peer's last sip was relayed (not shared: sips are never stored). */
-  lastDrinkAt: number;
+  lastGestureAt: number;
   disconnectedAt: number | null;
 }
 
@@ -142,7 +142,7 @@ export class Lobby {
       avatar: isValidAvatar(msg.avatar) ? msg.avatar : null,
       held: null,
       boombox: false,
-      lastDrinkAt: Number.NEGATIVE_INFINITY,
+      lastGestureAt: Number.NEGATIVE_INFINITY,
       resumeToken: this.opts.newToken(),
       conn,
       lastAcceptedAt: this.opts.now(),
@@ -213,15 +213,24 @@ export class Lobby {
     this.broadcast(found.room, found.peer.id, { type: 'peer_boombox', id: found.peer.id, on: msg.on });
   }
 
-  /** Relays a sip, only from a peer holding a drink and at most once per DRINK_GAP_MS. */
+  /** Relays a sip, only from a peer holding a drink and at most one gesture per DRINK_GAP_MS. */
   drink(conn: string): void {
+    this.gesture(conn, 'peer_drink');
+  }
+
+  /** Relays a cheers under the same rules as a sip, sharing its gap. */
+  cheers(conn: string): void {
+    this.gesture(conn, 'peer_cheers');
+  }
+
+  private gesture(conn: string, type: 'peer_drink' | 'peer_cheers'): void {
     const found = this.lookup(conn);
     const now = this.opts.now();
-    if (!found || found.peer.held === null || now - found.peer.lastDrinkAt < DRINK_GAP_MS) {
+    if (!found || found.peer.held === null || now - found.peer.lastGestureAt < DRINK_GAP_MS) {
       return;
     }
-    found.peer.lastDrinkAt = now;
-    this.broadcast(found.room, found.peer.id, { type: 'peer_drink', id: found.peer.id });
+    found.peer.lastGestureAt = now;
+    this.broadcast(found.room, found.peer.id, { type, id: found.peer.id });
   }
 
   /** Relays WebRTC signalling only to another live peer of the sender's room. */
@@ -280,7 +289,7 @@ export class Lobby {
     for (const { id, peers } of snap.rooms) {
       const room: Room = new Map();
       for (const p of peers) {
-        room.set(p.id, { ...p, conn: null, disconnectedAt: now, lastDrinkAt: Number.NEGATIVE_INFINITY });
+        room.set(p.id, { ...p, conn: null, disconnectedAt: now, lastGestureAt: Number.NEGATIVE_INFINITY });
       }
       this.rooms.set(id, room);
     }

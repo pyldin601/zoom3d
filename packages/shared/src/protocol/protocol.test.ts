@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   AVATAR_MAX_CHARS,
   AVATAR_SIZE,
+  CHEERS_MS,
   DRINK_GAP_MS,
   HELD_ITEMS,
   isHeldItem,
@@ -264,6 +265,19 @@ describe('held items', () => {
 
   test('peer_drink without an id is rejected', () => {
     expect(parseServerMessage(json({ type: 'peer_drink' }))).toBeNull();
+  });
+
+  test('a cheers lasts 1.6 s', () => {
+    expect(CHEERS_MS).toBe(1600);
+  });
+
+  test('cheers parses and drops extra fields', () => {
+    expect(parseClientMessage(json({ type: 'cheers', x: 1 }))).toEqual({ type: 'cheers' });
+  });
+
+  test('peer_cheers needs a string id', () => {
+    expect(parseServerMessage(json({ type: 'peer_cheers', id: 'a' }))).toEqual({ type: 'peer_cheers', id: 'a' });
+    expect(parseServerMessage(json({ type: 'peer_cheers', id: 5 }))).toBeNull();
   });
 
   test('isHeldItem accepts only the listed items', () => {

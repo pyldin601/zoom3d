@@ -74,6 +74,7 @@ export type StateMessage = { type: 'state'; x: number; y: number; angle: number;
 export type MediaMessage = { type: 'media'; cam: boolean; mic: boolean };
 export type HeldMessage = { type: 'held'; item: HeldItem | null };
 export type DrinkMessage = { type: 'drink' };
+export type CheersMessage = { type: 'cheers' };
 export type BoomboxMessage = { type: 'boombox'; on: boolean };
 export type SignalMessage = { type: 'signal'; to: string; payload: SignalPayload };
 export type ClientMessage =
@@ -82,6 +83,7 @@ export type ClientMessage =
   | MediaMessage
   | HeldMessage
   | DrinkMessage
+  | CheersMessage
   | BoomboxMessage
   | SignalMessage;
 
@@ -102,6 +104,7 @@ export type ServerMessage =
   | { type: 'peer_media'; id: string; cam: boolean; mic: boolean }
   | { type: 'peer_held'; id: string; item: HeldItem | null }
   | { type: 'peer_drink'; id: string }
+  | { type: 'peer_cheers'; id: string }
   | { type: 'peer_boombox'; id: string; on: boolean }
   | { type: 'signal'; from: string; payload: SignalPayload }
   | { type: 'peer_left'; id: string }
@@ -145,7 +148,12 @@ export type HeldItem = (typeof HELD_ITEMS)[number];
 
 /** One sip of the held drink lasts this long (held items spec §2.3). */
 export const SIP_MS = 1400;
-/** The server relays at most one sip per peer per this gap: shorter than a sip, so network jitter can't drop an honest one. */
+/** A cheers (the held drink raised) lasts this long (held items spec §2.4). */
+export const CHEERS_MS = 1600;
+/**
+ * The server relays at most one gesture (sip or cheers) per peer per this gap: shorter than a sip, so network jitter
+ * can't drop an honest one.
+ */
 export const DRINK_GAP_MS = 1000;
 
 export function isHeldItem(v: unknown): v is HeldItem {
@@ -295,6 +303,9 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   if (m.type === 'drink') {
     return { type: 'drink' };
   }
+  if (m.type === 'cheers') {
+    return { type: 'cheers' };
+  }
   if (m.type === 'boombox') {
     return isBool(m.on) ? { type: 'boombox', on: m.on } : null;
   }
@@ -367,6 +378,8 @@ export function parseServerMessage(raw: string): ServerMessage | null {
       return isStr(m.id) ? { type: 'peer_held', id: m.id, item: isHeldItem(m.item) ? m.item : null } : null;
     case 'peer_drink':
       return isStr(m.id) ? { type: 'peer_drink', id: m.id } : null;
+    case 'peer_cheers':
+      return isStr(m.id) ? { type: 'peer_cheers', id: m.id } : null;
     case 'peer_boombox':
       return isStr(m.id) ? { type: 'peer_boombox', id: m.id, on: m.on === true } : null;
     case 'signal': {

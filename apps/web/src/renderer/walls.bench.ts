@@ -29,6 +29,8 @@ test('renderWalls + 7 face avatars around the player', async ({ bench }) => {
     bob: 0.5,
     itemBob: 0.5,
     sip: 0,
+    cheers: 0,
+    wobble: 0,
     held: 'beer' as const,
     boombox: true,
   }));
