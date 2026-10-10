@@ -11,11 +11,13 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --filter @zoom3d/server...
 COPY packages/shared packages/shared
 COPY apps/server apps/server
-# One self-contained file: shared code and ws are bundled in.
+# One self-contained file: shared code and every dependency are bundled in.
 RUN pnpm --filter @zoom3d/server build
 
 FROM node:22-alpine
-ENV NODE_ENV=production PORT=8787
+# CI passes the commit; Sentry tags server errors with it. Set SENTRY_DSN at runtime to turn Sentry on.
+ARG GIT_SHA=""
+ENV NODE_ENV=production PORT=8787 SENTRY_RELEASE=$GIT_SHA
 WORKDIR /app
 COPY --from=build /repo/apps/server/dist/server.mjs ./server.mjs
 USER node

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { MAX_PEERS } from '@zoom3d/shared';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { LobbySnapshot, SnapshotPeer } from './lobby';
+import { silentLogger } from './log';
 import { loadSnapshot, parseSnapshot, saveSnapshot } from './snapshot';
 
 const ROOM = 'AAAAAAAAAAAAAAAAAAAAAA';
@@ -62,21 +63,21 @@ test('fields missing from an older snapshot read as their defaults', () => {
 test('save then load round-trips, and loading consumes the file', () => {
   const path = join(dir, 'lobby.json');
   const s: LobbySnapshot = { version: 1, rooms: [{ id: ROOM, peers: [peer('a')] }] };
-  saveSnapshot(path, s);
+  saveSnapshot(path, s, silentLogger);
   expect(readdirSync(dir)).toEqual(['lobby.json']);
-  expect(loadSnapshot(path)).toEqual(s);
+  expect(loadSnapshot(path, silentLogger)).toEqual(s);
   expect(existsSync(path)).toBe(false);
-  expect(loadSnapshot(path)).toBeNull();
+  expect(loadSnapshot(path, silentLogger)).toBeNull();
 });
 
 test('a corrupt file loads as nothing, without throwing, and is consumed', () => {
   const path = join(dir, 'lobby.json');
   writeFileSync(path, '{"version":1,"rooms":[');
-  expect(loadSnapshot(path)).toBeNull();
+  expect(loadSnapshot(path, silentLogger)).toBeNull();
   expect(existsSync(path)).toBe(false);
 });
 
 test('a failed save does not throw', () => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
-  expect(() => saveSnapshot(join(dir, 'missing', 'lobby.json'), { version: 1, rooms: [] })).not.toThrow();
+  expect(() => saveSnapshot(join(dir, 'missing', 'lobby.json'), { version: 1, rooms: [] }, silentLogger)).not.toThrow();
 });
