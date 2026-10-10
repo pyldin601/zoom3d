@@ -1,4 +1,5 @@
 import { type HeldItem, INTERP_DELAY_MS, LEVEL1, newRoomId, parseMap, spawnPoint, stepPlayer } from '@zoom3d/shared';
+import { preferPlayAndRecord } from './audio/audio-session';
 import { createDoorbell, withDoorbell } from './audio/doorbell';
 import { type AudioEngine, createAudioEngine } from './audio/engine';
 import { loadAudioSettings, saveAudioSettings } from './audio/settings-store';
@@ -6,6 +7,7 @@ import { startHiddenTicker } from './audio/ticker';
 import { startLoop } from './game/loop';
 import { type Frame, layoutStage, watchLayout } from './game/stage';
 import { createInput } from './input/keyboard';
+import { createTouchInput } from './input/touch';
 import { loadAvatar, saveAvatar } from './media/avatar';
 import { type Boombox, createBoombox } from './media/boombox';
 import { type Call, createCall } from './media/call';
@@ -49,6 +51,7 @@ import {
   showSelfPreview,
   showStatus,
 } from './ui/screens';
+import { showTouchControls, type TouchControls } from './ui/touch-controls';
 
 initSentry(import.meta.env.VITE_SENTRY_DSN, import.meta.env.VITE_RELEASE);
 initAnalytics(import.meta.env.VITE_AMPLITUDE_API_KEY, import.meta.env.VITE_RELEASE);
@@ -76,7 +79,8 @@ function imageOf(buffer: Framebuffer): ImageData {
   return new ImageData(new Uint8ClampedArray(buffer.pixels.buffer as ArrayBuffer), buffer.width, buffer.height);
 }
 const player = spawnPoint(map, Math.random);
-const input = createInput(window, document);
+const touch = createTouchInput({ surface: game, win: window, doc: document, surfaceWidth: () => game.clientWidth });
+const input = createInput(window, document, touch);
 let session: Session | null = null;
 let roomTracker: RoomTracker | null = null;
 // pagehide, not unload: it fires on mobile and for pages entering the back/forward cache.
@@ -108,6 +112,7 @@ function chooseHeld(item: HeldItem | null): void {
   }
   ownHeld = item;
   cancelPress();
+  refreshTouchControls();
   if (item === null) {
     ownGesture.cancel();
   }
@@ -227,14 +232,23 @@ window.addEventListener('keydown', (e) => {
     chooseHeld(item);
     return;
   }
-  // The held drink's key: nothing while a gesture plays, else a press that is a sip or a cheers by its length, timed
-  // by the key events themselves (e.timeStamp, the performance.now() clock) so a busy main thread can't stretch a tap.
-  const downAt = e.timeStamp;
+  beginDrinkPress(e.timeStamp, e.code);
+});
+window.addEventListener('keyup', (e) => {
+  endDrinkPress(e.timeStamp, e.code);
+});
+
+/**
+ * A press of the held drink, from its number key or the touch drink button (`source`: the key's code, or 'touch'):
+ * nothing while a gesture plays, else a sip or a cheers by its length, timed by the input events themselves
+ * (`timeStamp`, the performance.now() clock) so a busy main thread can't stretch a tap.
+ */
+function beginDrinkPress(downAt: number, source: string): void {
   if (ownGesture.kind(performance.now()) !== null || pressKey !== null) {
     return;
   }
   drinkPress.down(downAt);
-  pressKey = e.code;
+  pressKey = source;
   pressTimer = setTimeout(() => {
     pressTimer = null;
     // A timer can fire a hair before the clock reads CHEERS_HOLD_MS; it is due either way.
@@ -248,13 +262,14 @@ window.addEventListener('keydown', (e) => {
       }
     }
   }, CHEERS_HOLD_MS);
-});
-window.addEventListener('keyup', (e) => {
-  if (e.code !== pressKey) {
+}
+
+function endDrinkPress(upAt: number, source: string): void {
+  if (source !== pressKey) {
     return;
   }
   // A cheers here means the hold timer is running late; the release settles it instead.
-  const kind = drinkPress.up(e.timeStamp);
+  const kind = drinkPress.up(upAt);
   cancelPress();
   const now = performance.now();
   if (kind && inRoom() && ownGesture.start(kind, now)) {
@@ -265,7 +280,7 @@ window.addEventListener('keyup', (e) => {
     }
     track({ name: kind });
   }
-});
+}
 // A key released in another window never reports keyup here: forget the press.
 window.addEventListener('blur', cancelPress);
 // Nor does one released while Cmd is held, on macOS; a modifier mid-press means a shortcut anyway.
@@ -285,10 +300,17 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   e.preventDefault();
-  boombox.toggle(inRoom());
+  toggleBoombox();
 });
+function toggleBoombox(): void {
+  boombox?.toggle(inRoom());
+}
 
 let automapVisible = false;
+function toggleAutomap(): void {
+  automapVisible = !automapVisible;
+  refreshTouchControls();
+}
 window.addEventListener('keydown', (e) => {
   if (e.code !== 'Tab' && e.code !== 'KeyM') {
     return;
@@ -299,7 +321,51 @@ window.addEventListener('keydown', (e) => {
   }
   e.preventDefault();
   if (!e.repeat) {
-    automapVisible = !automapVisible;
+    toggleAutomap();
+  }
+});
+
+/** The room's touch controls (mobile spec §5): from Join in touch mode, else from the first touch in the room. */
+let touchControls: TouchControls | null = null;
+function showTouch(): void {
+  if (touchControls || !session) {
+    return;
+  }
+  touchControls = showTouchControls(ui, {
+    held: ownHeld,
+    boombox: ownBoombox,
+    map: automapVisible,
+    onPick(item) {
+      if (inRoom()) {
+        chooseHeld(item);
+      }
+    },
+    onDrinkDown: (t) => {
+      if (inRoom()) {
+        beginDrinkPress(t, 'touch');
+      }
+    },
+    onDrinkUp: (t) => endDrinkPress(t, 'touch'),
+    onDrinkCancel: () => {
+      if (pressKey === 'touch') {
+        cancelPress();
+      }
+    },
+    onBoombox: toggleBoombox,
+    onMap: () => {
+      if (inRoom()) {
+        toggleAutomap();
+      }
+    },
+  });
+  touch.attachPad(touchControls.pad);
+}
+function refreshTouchControls(): void {
+  touchControls?.update({ held: ownHeld, boombox: ownBoombox, map: automapVisible });
+}
+window.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'touch') {
+    showTouch();
   }
 });
 
@@ -361,29 +427,38 @@ function joinRoom(
         track({ name: 'boombox_started' });
       }
       ownBoombox = on;
+      refreshTouchControls();
       session?.setBoombox(on);
       setAudioPanelBoombox(ui, boomboxControls());
     },
   });
   boombox.setVolume(loadBoomboxVolume(storage()));
   const media = local.state();
-  showRoomBar(ui, location.href, {
-    cam: media.cam,
-    mic: media.mic,
-    camAvailable: media.camAvailable,
-    micAvailable: media.micAvailable,
-    async onCam(on) {
-      const now = await activeCall.setCam(on);
-      showSelfPreview(ui, local.stream, { cam: now, name, avatar });
-      const problem = local.state().camProblem;
-      if (on && !now && problem) {
-        showBanner(ui, PROBLEM_TEXT.cam[problem]);
-      }
-      return now;
+  showRoomBar(
+    ui,
+    location.href,
+    {
+      cam: media.cam,
+      mic: media.mic,
+      camAvailable: media.camAvailable,
+      micAvailable: media.micAvailable,
+      async onCam(on) {
+        const now = await activeCall.setCam(on);
+        showSelfPreview(ui, local.stream, { cam: now, name, avatar });
+        const problem = local.state().camProblem;
+        if (on && !now && problem) {
+          showBanner(ui, PROBLEM_TEXT.cam[problem]);
+        }
+        return now;
+      },
+      onMic: (on) => activeCall.setMic(on),
     },
-    onMic: (on) => activeCall.setMic(on),
-  });
+    { compact: TOUCH }
+  );
   showSelfPreview(ui, local.stream, { cam: media.cam, name, avatar });
+  if (TOUCH) {
+    showTouch();
+  }
   if (new URLSearchParams(location.search).has('debug')) {
     toggleAudioPanel();
   }
@@ -430,6 +505,8 @@ if (route.kind === 'landing') {
 
 /** The lobby owns the camera, mic and AudioContext from here on; Join hands them to the room (lobby spec §4.5). */
 function openLobby(roomId: string): void {
+  // Before any capture: on iOS this keeps voices audible with the ringer switch on silent (mobile spec §6).
+  preferPlayAndRecord(navigator as { audioSession?: { type: string } });
   // Created now for the mic meter; a browser that keeps it suspended lets it start on the first click or key.
   const audioCtx = new AudioContext({ latencyHint: 'interactive' });
   const resume = () => void audioCtx.resume();
