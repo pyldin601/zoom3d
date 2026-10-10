@@ -1,5 +1,5 @@
-// Drink gestures (held items spec §2.3–2.4): a sip goes to the mouth, a cheers raises the drink with a wobble. Both are
-// there, held, back, with eased moves, and a player plays one at a time.
+// Drink gestures (held items spec §2.3–2.4): a sip goes to the mouth, a cheers raises the drink with a wobble.
+// Both go there, hold, and come back with eased moves, and a player plays one at a time.
 import { CHEERS_MS, SIP_MS } from '@zoom3d/shared';
 
 const MOVE_MS = 350;

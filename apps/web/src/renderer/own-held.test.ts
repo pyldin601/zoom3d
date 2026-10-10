@@ -71,16 +71,43 @@ describe('renderOwnHeld', () => {
   test('raised in a cheers, the drink comes fully into view at the left', () => {
     const fb = createFramebuffer();
     renderOwnHeld(fb, 'beer', 0, 0, { sip: 0, cheers: 1, wobble: 0 });
-    const { h: th } = OWN_HELD_SPRITES.beer;
+    const { w: tw, h: th } = OWN_HELD_SPRITES.beer;
     const t = OWN_TEXEL * H;
     const left = OWN_CHEERS_LEFT * W;
     const top = H - OWN_CHEERS_RAISE * H - th * t;
-    for (const [u, v] of [
-      [7, 1],
-      [5, th - 1],
-    ] as const) {
-      expect(fb.pixels[Math.floor(top + (v + 0.5) * t) * W + Math.floor(left + (u + 0.5) * t)]).toBe(tex(u, v));
+    // The whole sprite is on screen, and every texel is drawn where it belongs.
+    expect(top).toBeGreaterThanOrEqual(0);
+    expect(top + th * t).toBeLessThanOrEqual(H);
+    for (let v = 0; v < th; v++) {
+      for (let u = 0; u < tw; u++) {
+        const at = Math.floor(top + (v + 0.5) * t) * W + Math.floor(left + (u + 0.5) * t);
+        expect(fb.pixels[at], `texel ${u},${v}`).toBe(tex(u, v));
+      }
     }
+    // And its edges sit where they belong, to the pixel: centre samples alone miss a shift under half a texel.
+    let [minU, maxU, minV, maxV] = [tw, -1, th, -1];
+    for (let v = 0; v < th; v++) {
+      for (let u = 0; u < tw; u++) {
+        if (tex(u, v) !== 0) {
+          [minU, maxU, minV, maxV] = [Math.min(minU, u), Math.max(maxU, u), Math.min(minV, v), Math.max(maxV, v)];
+        }
+      }
+    }
+    let [x0, x1, y0, y1] = [W, -1, H, -1];
+    fb.pixels.forEach((c, i) => {
+      if (c !== 0) {
+        [x0, x1, y0, y1] = [
+          Math.min(x0, i % W),
+          Math.max(x1, i % W),
+          Math.min(y0, Math.floor(i / W)),
+          Math.max(y1, Math.floor(i / W)),
+        ];
+      }
+    });
+    expect(Math.abs(x0 - (left + minU * t))).toBeLessThanOrEqual(1);
+    expect(Math.abs(x1 + 1 - (left + (maxU + 1) * t))).toBeLessThanOrEqual(1);
+    expect(Math.abs(y0 - (top + minV * t))).toBeLessThanOrEqual(1);
+    expect(Math.abs(y1 + 1 - (top + (maxV + 1) * t))).toBeLessThanOrEqual(1);
   });
 
   test('at full sip the drink is centred and lower', () => {

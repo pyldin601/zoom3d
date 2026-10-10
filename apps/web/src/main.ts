@@ -212,7 +212,8 @@ window.addEventListener('keydown', (e) => {
     const now = Math.max(performance.now(), downAt + CHEERS_HOLD_MS);
     if (drinkPress.due(now) === 'cheers') {
       pressKey = null;
-      if (ownGesture.start('cheers', now)) {
+      // Like a sip, nothing during a reconnect: the others would never see it.
+      if (inRoom() && ownGesture.start('cheers', now)) {
         session?.sendCheers();
       }
     }
@@ -236,6 +237,12 @@ window.addEventListener('keyup', (e) => {
 });
 // A key released in another window never reports keyup here: forget the press.
 window.addEventListener('blur', cancelPress);
+// Nor does one released while Cmd is held, on macOS; a modifier mid-press means a shortcut anyway.
+window.addEventListener('keydown', (e) => {
+  if (pressKey !== null && (e.key === 'Meta' || e.key === 'Control' || e.key === 'Alt')) {
+    cancelPress();
+  }
+});
 
 // B opens the boombox's file picker, or stops the music (boombox spec §3).
 window.addEventListener('keydown', (e) => {
