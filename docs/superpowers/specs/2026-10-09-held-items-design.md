@@ -37,24 +37,25 @@ The sketch was agreed in chat on 2026-10-09: avatar style "A", grip "3".
   2026-10-09).
   - It sits under the item's centre: the avatar's position moved along the viewer's right by
     `(HELD_LEFT + HELD_TEXEL·w/2) × AVATAR_RADIUS` (w = the item's texel width).
-  - Its radius is half the item's world width, `HELD_TEXEL·w·AVATAR_RADIUS / 2`: about 0.18
+  - Its radius is half the item's world width, `HELD_TEXEL·w·AVATAR_RADIUS / 2`: about 0.14
     tiles for a mug and 0.1 for wine.
   - It is drawn in the same pass as the disc shadows, so discs and items cover it.
 
-The reference art is the beer sprite below. The pixel maps are 13×10, read left to right
-starting from the side next to the disc:
+The reference art is the beer sprite below. The pixel maps are 10×10, read left to right
+starting from the side next to the disc. The fist is small, 4×5 at most for a mug, so the drink is what you see
+first (shrunk 2026-10-10 from a 7×6 fist as wide as the mug):
 
 ```
-.fffff.......     f foam      F foam shade
-fffffff......     b beer      B beer shade
-fFffFfoooo...     g glass / handle
-gbbbbossso...     s skin      l finger crease    o hand outline
-gbbbbbgsssso.
-gBbbbbglllloo
-gBbbbbgssssoo
-gBbbbbgooooo.
-gbbbbbg......
-ggggggg......
+.fffff....     f foam      F foam shade
+fffffff...     b beer      B beer shade
+fFffFfg...     g glass / handle
+gbbbbooo..     s skin      l finger crease    o hand outline
+gBbbbosso.
+gBbbbolso.
+gBbbbosso.
+gBbbbooo..
+gbbbbbg...
+ggggggg...
 ```
 
 (The exact strings live in code. The coffee mug and the wine glass follow the same layout:

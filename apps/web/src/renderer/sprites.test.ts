@@ -326,10 +326,11 @@ describe('held items', () => {
     return [Math.floor(320 + HELD_LEFT * r + (u + 0.5) * t), Math.floor(180 - HELD_TOP * r + (v + 0.5) * t)] as const;
   };
   const tex = (u: number, v: number) => HELD_SPRITES.beer.texels[v * HELD_SPRITES.beer.w + u];
+  // Glass, beer and fist.
   const SAMPLES = [
     [0, 9],
     [4, 5],
-    [10, 5],
+    [7, 5],
   ] as const;
 
   test("a held beer is drawn to the viewer's right of the disc", () => {
@@ -352,7 +353,7 @@ describe('held items', () => {
     const empty = frame();
     const fb = frame();
     renderSprites(fb, player, [{ ...beer(3.5), held: null, boombox: false }]);
-    expect(px(fb, ...itemPx(10, 5, 2))).toBe(px(empty, ...itemPx(10, 5, 2)));
+    expect(px(fb, ...itemPx(7, 5, 2))).toBe(px(empty, ...itemPx(7, 5, 2)));
   });
 
   test('walls in front hide the item too', () => {
@@ -533,8 +534,9 @@ describe('held item shadows', () => {
     };
     const none = render(null);
     expect(Math.abs(shaded(none, 320, 640) - shaded(none, 0, 320))).toBeLessThanOrEqual(1);
+    // The beer's own shadow, sized from its width, reaches past the avatar's on the right.
     const beer = render('beer');
-    expect(shaded(beer, 320, 640) - shaded(beer, 0, 320)).toBeGreaterThan(5);
+    expect(shaded(beer, 320, 640) - shaded(beer, 0, 320)).toBeGreaterThan(1);
   });
 
   test("an item's shadow is smaller than the avatar's, and follows the item's width", () => {
