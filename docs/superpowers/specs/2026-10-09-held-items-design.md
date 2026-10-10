@@ -137,6 +137,34 @@ progress: 0 at rest, 1 while held.
 **Putting the drink down** (`0`) ends a playing sip at once, in both views. A
 drink picked up afterwards starts at rest.
 
+### 2.4 Cheers (added 2026-10-10)
+
+Holding the key of the drink in your hand raises it in a toast. A quick press still sips (§2.3).
+
+**Keys:**
+- A press of the held drink's key that is released before `CHEERS_HOLD_MS` (500 ms) is a sip, started on
+  release.
+- A press still down after 500 ms is a cheers, started at that moment, without waiting for release.
+- A key for another drink still picks it at once on key-down, and `0` still puts the drink down and ends a
+  playing gesture.
+- A press is forgotten if the window loses focus or the drink changes before it ends, so nothing fires.
+
+**Timing:** a cheers lasts `CHEERS_MS` (1.6 s): 0.3 s up, 1.0 s held, 0.3 s back, eased like the sip.
+While held the drink wobbles side to side, twice a second, by ±0.06 r (±1.5% of the view width in
+your own view), easing in and out with the lift. There's no sound and nothing else is drawn.
+
+**One gesture at a time:** a sip and a cheers never play together. Locally, a press while either plays
+does nothing. A `peer_drink` or `peer_cheers` that arrives while that peer's gesture is still playing
+is ignored, as for sips today.
+
+**Others' view:** the hand and drink rise from the disc's lower right (§2) to above its upper right,
+left edge 0.35 r right of the disc centre and top 1.15 r above it, so the drink is raised over the
+head. The floor shadow fades out with the lift, as for a sip.
+
+**Your view:** the drink rises from its resting spot (§2.1) until it is fully in view with its bottom
+8% of the view height above the bottom edge, its left edge moving to 20% of the width. The walking bob
+still applies on top.
+
 ## 3. Data
 
 In `packages/shared`:
@@ -175,6 +203,14 @@ Validation:
 - Nothing is stored, so a late joiner never replays an old sip.
 - An older server ignores `drink`, and an older client ignores `peer_drink`.
 
+**Cheers** (added 2026-10-10):
+- Client → server: `cheers {}`. Extra fields are dropped.
+- Server → client: `peer_cheers {id}`, sent to the rest of the room.
+- Same rules as sips: relayed only if the sender holds something, nothing is stored, and one 1 s gap
+  (`DRINK_GAP_MS`) covers sips and cheers together, since a player makes one gesture at a time.
+- `CHEERS_MS` (1600) lives in `packages/shared` next to `SIP_MS`.
+- An older server ignores `cheers`, and an older client ignores `peer_cheers`.
+
 There's no `held` field in `join`, which follows the `media` pattern:
 - After every `welcome` (fresh or resumed), the client sends its current `held` once it has
   one, **including `null`**. Otherwise a "Nothing" picked while disconnected would never reach a
@@ -190,8 +226,10 @@ There's no `held` field in `join`, which follows the `media` pattern:
 - `server.ts` routes `msg.type === 'held'` to `lobby.held`.
 - Resume keeps the slot and its `held`. The client resends it after `welcome` anyway, which is
   harmless.
-- `Lobby.drink(conn)` relays `peer_drink` per §4 and keeps the peer's last relayed sip time
-  (`lastDrinkAt`) for the 1 s gap.
+- `Lobby.drink(conn)` relays `peer_drink` per §4 and keeps the peer's last relayed gesture time
+  (`lastGestureAt`, was `lastDrinkAt`) for the 1 s gap.
+- `Lobby.cheers(conn)` relays `peer_cheers` under the same rules and the same `lastGestureAt`; `server.ts`
+  routes `cheers` to it.
 
 ## 6. Client
 
@@ -218,6 +256,14 @@ There's no `held` field in `join`, which follows the `media` pattern:
   - Ignored with Cmd/Ctrl/Alt (browser shortcuts), on key repeat, and while typing in a text
     field.
   - A pick draws, saves and sends the new choice. Re-picking the current drink sends nothing.
+  - The held drink's own key sips or cheers by press length (§2.4). The press timing is a pure module,
+    `apps/web/src/ui/drink-press.ts`: `down(now)`, `up(now)` → `'sip' | null`, `due(now)` → `'cheers' | null`
+    (called by a 500 ms timer), `cancel()`.
+- **Gesture clock** (`apps/web/src/renderer/sip.ts`): the sip clock becomes `createGestureClock()`, whose
+  `start(kind, now)` starts a `'sip'` or `'cheers'` unless one is playing, and whose `pose(now)` gives
+  `{ sip, cheers, wobble }`. `cheersPose(elapsedMs)` returns `{ lift, wobble }` (§2.4).
+- **Session:** `sendCheers()` next to `sendDrink()`. Each peer keeps its last gesture,
+  `gesture: { kind, at } | null` instead of `drinkAt`, and `peer_cheers` sets it like `peer_drink`.
 
 ### 6.4 Renderer (`apps/web/src/renderer/`)
 
@@ -233,6 +279,9 @@ There's no `held` field in `join`, which follows the `media` pattern:
 - Hot path: no allocations per frame or per column. The textures are prebuilt, and the
   rectangle maths uses locals only.
 - `main.ts` passes `peer.info.held` into the sprite.
+- `Sprite` gains `cheers` (0..1 lift) and `wobble` (−1..1) next to `sip`. The item's position blends
+  from rest to the raised pose by `cheers`, plus the wobble; its shadow fades by the larger of `sip` and
+  `cheers`. `renderOwnHeld` takes the same three values for your own view.
 
 ## 7. Testing (failing test first for logic)
 
@@ -257,6 +306,17 @@ There's no `held` field in `join`, which follows the `media` pattern:
   - A farther sprite has a proportionally smaller item.
   - A wall nearer than the sprite hides the item.
   - `held: null` draws nothing extra.
+- **cheers (added 2026-10-10):**
+  - drink press: a release before 500 ms is a sip; reaching 500 ms is one cheers, and the release
+    after it does nothing; `cancel` drops a press; a release with no press does nothing.
+  - `cheersPose`: 0 lift at the start and end, 1 while held, wobble 0 at rest and within ±1.
+  - gesture clock: a cheers blocks a sip while playing and the other way round; `cancel` ends either.
+  - shared protocol: `cheers` parses and drops extra fields; `peer_cheers` needs a string `id`.
+  - lobby: relays `peer_cheers` to the others, not the sender; only with a drink in hand; a sip and a
+    cheers within 1 s share the gap; nothing reaches a later joiner.
+  - session: `peer_cheers` starts that peer's gesture; one arriving mid-gesture is ignored.
+  - renderer: at full lift the item sits above the disc's upper right; the wobble moves it sideways;
+    your own drink rises fully into view.
 - **Manual check:** two tabs in one room. Press `1` (beer) in one tab and watch it appear on that
   avatar in the other. Reload; the choice is kept. Walk behind a wall; the item is hidden along
   with the disc.
