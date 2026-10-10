@@ -163,6 +163,15 @@ test('sips are relayed over real sockets', async () => {
   expect(await b.waitFor('peer_drink')).toEqual({ type: 'peer_drink', id: a.welcome.selfId });
 });
 
+test('cheers are relayed over real sockets', async () => {
+  const a = await joined('Ada');
+  const b = await joined('Bob');
+  a.send({ type: 'held', item: 'beer' });
+  await b.waitFor('peer_held');
+  a.send({ type: 'cheers' });
+  expect(await b.waitFor('peer_cheers')).toEqual({ type: 'peer_cheers', id: a.welcome.selfId });
+});
+
 test('rooms survive a restart through the state file', async () => {
   const stateFile = join(mkdtempSync(join(tmpdir(), 'zoom3d-state-')), 'lobby.json');
   await server.close();

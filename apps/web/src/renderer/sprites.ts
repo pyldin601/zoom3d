@@ -285,7 +285,9 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
   }
 }
 
-/** The held item's left edge and top, in disc radii, partway to the mouth (`sip`) or raised (`cheers`, plus `wobble`). */
+/**
+ * The held item's left edge and top, in disc radii: partway to the mouth (`sip`) or raised (`cheers`, plus `wobble`).
+ */
 const heldLeft = (item: HeldItem, sip: number, cheers: number, wobble: number) =>
   HELD_LEFT + (sipLeft(item) - HELD_LEFT) * sip + (CHEERS_LEFT - HELD_LEFT) * cheers + CHEERS_WOBBLE * wobble;
 const heldTop = (item: HeldItem, sip: number, cheers: number) =>

@@ -45,14 +45,14 @@ interface Peer extends PeerInfo {
   resumeToken: string;
   conn: string | null;
   lastAcceptedAt: number;
-  /** When this peer's last sip was relayed (not shared: sips are never stored). */
+  /** When this peer's last sip or cheers was relayed (not shared: gestures are never stored). */
   lastGestureAt: number;
   disconnectedAt: number | null;
 }
 
 type Room = Map<string, Peer>;
 
-/** A peer as written to the restart snapshot: no connection, no sip timing. */
+/** A peer as written to the restart snapshot: no connection, no gesture timing. */
 export interface SnapshotPeer extends PeerInfo {
   resumeToken: string;
   lastAcceptedAt: number;
