@@ -62,6 +62,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 - pnpm workspaces + Vite + Vitest + Playwright + ESLint/Biome, TypeScript strict.
 - **Rec:** accept as proposed.
 - *Resolved 2026-10-09:* Biome only (lint + format), no ESLint/Prettier. Code style follows the Prettier config of github.com/pyldin601/maisumtuga: 120 columns, single quotes, semicolons, `es5` trailing commas, 2-space indent. Control-flow bodies always use braces (`style/useBlockStatements`, like ESLint `curly`).
+- *Resolved 2026-10-10:* pnpm 12. It fails the install (`ERR_PNPM_IGNORED_BUILDS`) when a dependency's build script is not reviewed, so `pnpm-workspace.yaml` lists the allowed ones under `allowBuilds` (only `esbuild`). A new dependency with a build script must be added there as `true` or `false`. pnpm also rejects packages published less than a day ago (`minimumReleaseAge`, `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`), so `renovate.json` sets `minimumReleaseAge: "1 day"` to hold updates back for the same window.
 
 ### D11 — Hosting / deployment
 - Needs HTTPS (getUserMedia) and likely TURN (coturn or a hosted one). Where will it run?

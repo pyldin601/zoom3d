@@ -17,7 +17,7 @@ around whoever is talking. Press `` ` `` in a room to tune the audio. See the
 
 ## Quick start
 
-Requires Node ≥ 22 and pnpm 9.
+Requires Node ≥ 22 and pnpm 12.
 
 ```bash
 pnpm install
