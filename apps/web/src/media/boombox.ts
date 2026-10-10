@@ -3,6 +3,37 @@
 
 /** How loud the carrier hears their own music; it's in their hand, not out in the room. */
 export const BOOMBOX_SELF_GAIN = 0.5;
+/**
+ * The audio formats every current browser decodes, Safari on iOS included. WebRTC takes any of them: the <audio>
+ * element decodes the file and the mesh re-encodes it as Opus. Ogg, Opus and WebM are left out (patchy in Safari).
+ * `mimes` are the types systems report for the format, the first being the standard one.
+ */
+const FORMATS: { mimes: string[]; exts: string[] }[] = [
+  { mimes: ['audio/mpeg', 'audio/mp3'], exts: ['.mp3'] },
+  { mimes: ['audio/mp4', 'audio/x-m4a', 'audio/m4a'], exts: ['.m4a'] },
+  { mimes: ['audio/aac', 'audio/x-aac'], exts: ['.aac'] },
+  { mimes: ['audio/wav', 'audio/x-wav', 'audio/wave'], exts: ['.wav'] },
+  { mimes: ['audio/flac', 'audio/x-flac'], exts: ['.flac'] },
+];
+
+/**
+ * The picker's filter. No audio/*: it would let through formats some browsers can't play, and iOS ignores it and
+ * offers photos and the camera. It's only a hint (desktop dialogs can show all files), so a pick is checked again.
+ */
+export const BOOMBOX_ACCEPT = FORMATS.flatMap((f) => [f.mimes[0], ...f.exts]).join(',');
+
+/** Whether `file` is a supported format: by MIME type, or by extension when the type is empty or an unknown alias. */
+function isSupported(file: File): boolean {
+  if (FORMATS.some((f) => f.mimes.includes(file.type))) {
+    return true;
+  }
+  if (file.type !== '' && !file.type.startsWith('audio/')) {
+    return false;
+  }
+  const name = file.name.toLowerCase();
+  return FORMATS.some((f) => f.exts.some((ext) => name.endsWith(ext)));
+}
+
 /** Volume changes glide this fast (s), so dragging the slider doesn't click. */
 const VOLUME_TAU = 0.02;
 
@@ -39,7 +70,7 @@ export function createBoombox(opts: BoomboxOptions): Boombox {
   const doc = container.ownerDocument;
   const input = doc.createElement('input');
   input.type = 'file';
-  input.accept = 'audio/*';
+  input.accept = BOOMBOX_ACCEPT;
   input.hidden = true;
   // One element for the whole session: an element can feed only one MediaElementSource.
   const audio = doc.createElement('audio');
@@ -98,7 +129,7 @@ export function createBoombox(opts: BoomboxOptions): Boombox {
     const file = input.files?.[0];
     // Reset so picking the same file again still fires change.
     input.value = '';
-    if (!file || state !== 'off') {
+    if (!file || state !== 'off' || !isSupported(file)) {
       return;
     }
     state = 'starting';

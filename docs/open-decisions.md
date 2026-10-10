@@ -110,7 +110,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   playing, the audio panel (`` ` ``) shows a Boombox column right of the tuning settings with the track name, a
   seekable progress bar, volume and Stop; starting the music doesn't open the panel; the volume is remembered per browser
   (`zoom3d.boombox.volume`). The volume is a gain before the split, so it turns down both the carrier's own monitor and what the
-  room hears, with no protocol message (spec §3.1).
+  room hears, with no protocol message (spec §3.1). *Amended 2026-10-10:* the picker offers, and the boombox
+  accepts, only formats every current browser decodes (MP3, M4A/AAC, WAV, FLAC), not `audio/*`. WebRTC re-encodes
+  whatever the element decodes, so the decoders are the real limit; Ogg, Opus and WebM are left out as patchy in
+  Safari, so a track that plays for one carrier plays for any (spec §3).
 
 ### D17 — Lobby (pre-join screen)
 - What the join screen offers for camera, mic, name and picture, and what "camera off" means.
