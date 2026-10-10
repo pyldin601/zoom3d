@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseServerMessage, type ServerMessage } from '@zoom3d/shared';
+import { parseServerMessage, RATE_BURST, type ServerMessage } from '@zoom3d/shared';
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import WebSocket from 'ws';
 import { startServer } from './server';
@@ -111,16 +111,25 @@ test('an oversized message closes only the offender', async () => {
 });
 
 test('a flood is rate limited and finally closed with 4008', async () => {
+  // A frozen rate-limit clock: the bucket never refills, however long the flood takes to process.
+  // On the real clock one refilled token (1/60 s) resets the drop streak and the socket never closes.
+  await server.close();
+  server = await startServer({ port: 0, graceMs: 200, heartbeatMs: 100, rateLimitClock: () => 0 });
   const a = await joined('Ada');
   const b = await joined('Bob');
   const { x, y } = a.welcome.spawn;
   for (let i = 0; i < 400; i++) {
+    if (i === 200) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
     a.send({ type: 'state', x, y, angle: 0, seq: 10 + i });
   }
   expect(await a.closed).toBe(4008);
-  await b.waitFor('peer_state');
+  // Cy's arrival reaches Bob after every relay of Ada's flood, on the same socket.
+  await joined('Cy');
+  await b.waitFor('peer_joined');
   const relayed = b.messages.filter((m) => m.type === 'peer_state').length;
-  expect(relayed).toBeLessThanOrEqual(200);
+  expect(relayed).toBe(RATE_BURST - 1); // the burst, less Ada's join
   expect(b.ws.readyState).toBe(WebSocket.OPEN);
 });
 

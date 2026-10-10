@@ -20,6 +20,8 @@ export interface ServerOptions {
   ice?: IceConfig;
   /** Where the lobby is saved on close and restored from on start; unset keeps it in memory only. */
   stateFile?: string;
+  /** Clock for the per-socket rate limit; defaults to `Date.now`. Tests freeze it. */
+  rateLimitClock?: () => number;
 }
 
 export interface RunningServer {
@@ -70,7 +72,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     const conn = randomUUID();
     const entry = { ws, alive: true };
     sockets.set(conn, entry);
-    const bucket = createTokenBucket(RATE_PER_SEC, RATE_BURST, Date.now);
+    const bucket = createTokenBucket(RATE_PER_SEC, RATE_BURST, opts.rateLimitClock ?? Date.now);
     let drops = 0;
     ws.on('pong', () => {
       entry.alive = true;
