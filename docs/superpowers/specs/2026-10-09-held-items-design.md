@@ -257,8 +257,9 @@ There's no `held` field in `join`, which follows the `media` pattern:
     field.
   - A pick draws, saves and sends the new choice. Re-picking the current drink sends nothing.
   - The held drink's own key sips or cheers by press length (§2.4). The press timing is a pure module,
-    `apps/web/src/ui/drink-press.ts`: `down(now)`, `up(now)` → `'sip' | null`, `due(now)` → `'cheers' | null`
-    (called by a 500 ms timer), `cancel()`.
+    `apps/web/src/ui/drink-press.ts`: `down(now)`, `up(now)` → `'sip' | 'cheers' | null`, `due(now)` → `'cheers' | null`
+    (called by a 500 ms timer), `cancel()`. A release after 500 ms whose timer hasn't run yet (a long task delayed
+    it) is a cheers too, so no press is lost. Press times come from the key events' `timeStamp`.
 - **Gesture clock** (`apps/web/src/renderer/sip.ts`): the sip clock becomes `createGestureClock()`, whose
   `start(kind, now)` starts a `'sip'` or `'cheers'` unless one is playing, and whose `pose(now)` gives
   `{ sip, cheers, wobble }`. `cheersPose(elapsedMs)` returns `{ lift, wobble }` (§2.4).

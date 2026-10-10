@@ -198,9 +198,10 @@ window.addEventListener('keydown', (e) => {
     chooseHeld(item);
     return;
   }
-  // The held drink's key: nothing while a gesture plays, else a press that is a sip or a cheers by its length.
-  const downAt = performance.now();
-  if (ownGesture.kind(downAt) !== null || pressKey !== null) {
+  // The held drink's key: nothing while a gesture plays, else a press that is a sip or a cheers by its length, timed
+  // by the key events themselves (e.timeStamp, the performance.now() clock) so a busy main thread can't stretch a tap.
+  const downAt = e.timeStamp;
+  if (ownGesture.kind(performance.now()) !== null || pressKey !== null) {
     return;
   }
   drinkPress.down(downAt);
@@ -221,11 +222,16 @@ window.addEventListener('keyup', (e) => {
   if (e.code !== pressKey) {
     return;
   }
-  const now = performance.now();
-  const quick = drinkPress.up(now) === 'sip';
+  // A cheers here means the hold timer is running late; the release settles it instead.
+  const kind = drinkPress.up(e.timeStamp);
   cancelPress();
-  if (quick && inRoom() && ownGesture.start('sip', now)) {
-    session?.sendDrink();
+  const now = performance.now();
+  if (kind && inRoom() && ownGesture.start(kind, now)) {
+    if (kind === 'sip') {
+      session?.sendDrink();
+    } else {
+      session?.sendCheers();
+    }
   }
 });
 // A key released in another window never reports keyup here: forget the press.

@@ -19,6 +19,13 @@ test('reaching 500 ms is one cheers, and the release after it does nothing', () 
   expect(press.up(900)).toBeNull();
 });
 
+test('a release after 500 ms is a cheers when the timer has not fired yet', () => {
+  const press = createDrinkPress();
+  press.down(0);
+  expect(press.up(520)).toBe('cheers');
+  expect(press.due(600)).toBeNull();
+});
+
 test('not yet due before 500 ms', () => {
   const press = createDrinkPress();
   press.down(0);
