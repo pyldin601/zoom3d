@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Build context: repository root.
-FROM node:22-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /repo
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
@@ -14,7 +14,7 @@ COPY apps/server apps/server
 # One self-contained file: shared code and every dependency are bundled in.
 RUN pnpm --filter @zoom3d/server build
 
-FROM node:22-alpine
+FROM node:24-alpine
 # CI passes the commit; Sentry tags server errors with it. Set SENTRY_DSN at runtime to turn Sentry on.
 ARG GIT_SHA=""
 ENV NODE_ENV=production PORT=8787 SENTRY_RELEASE=$GIT_SHA
