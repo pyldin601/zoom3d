@@ -99,6 +99,15 @@
       html.touch #ui .roombar { top: calc(0.5em + env(safe-area-inset-top)); right: calc(0.5em + env(safe-area-inset-right)); }
       html.touch #ui .selfview { right: calc(0.6em + env(safe-area-inset-right)); bottom: calc(0.6em + env(safe-area-inset-bottom)); }
       html.touch #ui .banner { bottom: calc(0.6em + env(safe-area-inset-bottom)); }
+      html.touch #ui .status, html.touch #ui .banner { max-width: calc(100% - 32px); box-sizing: border-box; text-align: center; }
+      /* Touch landing and lobby (mobile spec §3): the panel spans the bottom under the centred title, tap targets are
+         at least 44 px, and the picture menu opens below the disc instead of off the right edge. */
+      html.touch #ui .screen:has(.landing) { place-items: end center; padding: 0 16px calc(24px + env(safe-area-inset-bottom)); }
+      html.touch #ui .landing { width: min(14em, 100%); }
+      html.touch #ui button, html.touch #ui input { min-height: 44px; }
+      html.touch #ui .split > button { min-width: 44px; }
+      html.touch #ui .lobby .pencil { width: 44px; height: 44px; font-size: inherit; }
+      html.touch #ui .lobby .picture-menu { left: 50%; top: 100%; bottom: auto; transform: translateX(-50%); }
       #media, #local-media { position: fixed; width: 1px; height: 1px; visibility: hidden; pointer-events: none; overflow: hidden; }
     </style>
   </head>

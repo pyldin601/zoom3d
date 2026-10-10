@@ -1,4 +1,4 @@
-import { hasLineOfSight, isWallAt } from '@zoom3d/shared';
+import { fovForAspect, hasLineOfSight, isWallAt } from '@zoom3d/shared';
 import { expect, test } from 'vitest';
 import { FACE_SIZE } from '../media/faces';
 import { createFramebuffer, rgb } from '../renderer/framebuffer';
@@ -10,8 +10,10 @@ import {
   FACE_PALETTE,
   faceTexels,
   LANDING_CAMERA,
+  LANDING_CAMERA_PORTRAIT,
   LANDING_MAP,
   LANDING_PEOPLE,
+  landingCamera,
   renderLandingScene,
 } from './landing-scene';
 
@@ -106,4 +108,26 @@ test('the lobby gets the same picture without the logo', () => {
   // Everything below the logo is the same picture.
   const row = (fb: typeof bare) => fb.pixels.slice(200 * fb.width, 201 * fb.width).join();
   expect(row(without)).toBe(row(withLogo));
+});
+
+test('a portrait phone frame sees every disc whole, none cut by a wall', () => {
+  const fb = createFramebuffer(296, 640, fovForAspect(296 / 640));
+  renderWalls(fb, LANDING_MAP, LANDING_CAMERA_PORTRAIT, makeTextures(1));
+  const proj: Projection = { screenX: 0, depth: 0, size: 0 };
+  for (const p of LANDING_PEOPLE) {
+    expect(projectSprite(LANDING_CAMERA_PORTRAIT, p.x, p.y, fb.width, fb.fov, proj), p.name).toBe(true);
+    const left = Math.floor(proj.screenX - proj.size / 2);
+    const right = Math.ceil(proj.screenX + proj.size / 2);
+    expect(left, p.name).toBeGreaterThanOrEqual(0);
+    expect(right, p.name).toBeLessThanOrEqual(fb.width);
+    for (let col = left; col < right; col++) {
+      expect(fb.zbuffer[col] as number, `${p.name} at column ${col}`).toBeGreaterThan(proj.depth);
+    }
+  }
+});
+
+test('the portrait camera is used for frames taller than wide', () => {
+  expect(landingCamera(createFramebuffer(296, 640))).toBe(LANDING_CAMERA_PORTRAIT);
+  expect(landingCamera(createFramebuffer(640, 360))).toBe(LANDING_CAMERA);
+  expect(landingCamera(createFramebuffer(640, 296))).toBe(LANDING_CAMERA);
 });

@@ -20,6 +20,13 @@ export const LANDING_MAP: GameMap = parseMap(`
 `);
 
 export const LANDING_CAMERA: PlayerState = { x: 1.2, y: 4.8, angle: -0.4 };
+/** A portrait phone's narrower view (mobile spec §3): backed into the corner, so Max, Ada and Bob all still fit. */
+export const LANDING_CAMERA_PORTRAIT: PlayerState = { x: 1.05, y: 4.9, angle: -0.36 };
+
+/** The camera for this frame's shape. */
+export function landingCamera(fb: Framebuffer): PlayerState {
+  return fb.width < fb.height ? LANDING_CAMERA_PORTRAIT : LANDING_CAMERA;
+}
 
 export const FACE_GRID = 16;
 /**
@@ -161,7 +168,8 @@ export function faceTexels(person: LandingPerson): Uint32Array {
  * starts the room.
  */
 export function renderLandingScene(fb: Framebuffer, { logo = true }: { logo?: boolean } = {}): void {
-  renderWalls(fb, LANDING_MAP, LANDING_CAMERA, makeTextures(1));
+  const camera = landingCamera(fb);
+  renderWalls(fb, LANDING_MAP, camera, makeTextures(1));
   const sprites: Sprite[] = LANDING_PEOPLE.map((p) => ({
     x: p.x,
     y: p.y,
@@ -176,8 +184,8 @@ export function renderLandingScene(fb: Framebuffer, { logo = true }: { logo?: bo
     held: p.held ?? null,
     boombox: false,
   }));
-  renderSprites(fb, LANDING_CAMERA, sprites);
+  renderSprites(fb, camera, sprites);
   if (logo) {
-    drawLogo(fb, LOGO_MARGIN);
+    drawLogo(fb, LOGO_MARGIN, camera === LANDING_CAMERA_PORTRAIT ? 'center' : 'right');
   }
 }
