@@ -97,6 +97,8 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         lobby.held(conn, msg);
       } else if (msg?.type === 'drink') {
         lobby.drink(conn);
+      } else if (msg?.type === 'cheers') {
+        lobby.cheers(conn);
       } else if (msg?.type === 'boombox') {
         lobby.boombox(conn, msg);
       } else if (msg?.type === 'signal') {

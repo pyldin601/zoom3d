@@ -334,6 +334,44 @@ describe('held items', () => {
   });
 });
 
+describe('cheers', () => {
+  const cheers = (conn: string) => to(conn).filter((m) => m.type === 'peer_cheers');
+  beforeEach(() => {
+    join('A');
+    join('B');
+    lobby.held('A', { type: 'held', item: 'beer' });
+  });
+
+  test('a cheers is relayed to the others, not the sender', () => {
+    const aSent = to('A').length;
+    lobby.cheers('A');
+    expect(last('B')).toEqual({ type: 'peer_cheers', id: welcome('A').selfId });
+    expect(to('A')).toHaveLength(aSent);
+  });
+
+  test('nothing in hand, no cheers', () => {
+    lobby.held('A', { type: 'held', item: null });
+    lobby.cheers('A');
+    expect(cheers('B')).toEqual([]);
+  });
+
+  test('a sip and a cheers share one gap', () => {
+    lobby.drink('A');
+    time = DRINK_GAP_MS - 1;
+    lobby.cheers('A');
+    expect(cheers('B')).toEqual([]);
+    time = DRINK_GAP_MS;
+    lobby.cheers('A');
+    expect(cheers('B')).toHaveLength(1);
+  });
+
+  test('cheers are not stored: a later joiner gets no peer_cheers', () => {
+    lobby.cheers('A');
+    join('C');
+    expect(cheers('C')).toEqual([]);
+  });
+});
+
 describe('sips', () => {
   const drinks = (conn: string) => to(conn).filter((m) => m.type === 'peer_drink');
   beforeEach(() => {
