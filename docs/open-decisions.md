@@ -137,6 +137,30 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   28 of 640 px from their corner. *Amended 2026-10-10:* the lobby shows the same picture without the logo, dimmed, behind its
   centred panel; the room loop starts on Join instead of running behind the lobby.
 
+### D20 — Logs, metrics, error reporting, analytics
+- *Resolved 2026-10-10:*
+  - **Server logs:** one JSON object per line on stdout (`apps/server/src/log.ts`), level from `LOG_LEVEL` (default
+    `info`). Hand-rolled, no logger library. Lobby events carry room and peer ids only: never names, resume tokens or
+    IPs.
+  - **Server metrics:** Prometheus text at `GET /metrics` on the server port (`metrics.ts`), using
+    `@prometheus-io/client` (`prom-client` is deprecated in its favour): rooms, peers (connected / waiting), joins by
+    result, messages by type, drops by reason, server-cut connections, plus Node process metrics. Not public: Traefik
+    and the web nginx route only `/ws` to the server. casa's Prometheus is currently disabled, so nothing scrapes it yet.
+  - **Sentry, both sides, errors only:** no tracing, no session replay (the screen shows names and faces). The server
+    turns on when `SENTRY_DSN` is set at runtime and reads `SENTRY_RELEASE`, which CI bakes into the image. The web DSN
+    is a build arg. Projects `zoom3d-server` and `zoom3d-web` are in the `myownradio` org. The browser `beforeSend`
+    scrubs `/r/<roomId>` from the whole event: a room link is the room's only key. Sentry v11 is bundled with
+    `enableRuntimeChannelInjection: false`, since a bundle can't load its instrumentation hooks.
+  - **Amplitude, web only, anonymous, no consent banner:** project `zoom3d`. `identityStorage: 'none'` (a new device
+    id each visit), no IP, no autocapture, remote config off, so Amplitude's UI can't turn autocapture back on.
+    Events: sessions (`room_joined`, `room_left` with duration, largest room and drops), social (`drink_picked`, `sip`,
+    `cheers`, `boombox_started`) and connection health (`connection_lost/restored/failed`, `webrtc_failed`,
+    `face_detector_unavailable`). There are no media-toggle events. The full list is the `AnalyticsEvent` type in
+    `apps/web/src/telemetry/analytics.ts`.
+  - **Config:** the web DSN, the Amplitude key and the release are Vite build args passed by
+    `.github/workflows/docker.yml`. Both values are public by design, since browsers see them anyway. Unset (dev,
+    tests, forks), everything stays off. Both SDKs are lazy chunks, so the main bundle stays the same size.
+
 ### Risks (to verify, not assume)
 - **R1 — Echo cancellation vs Web Audio output.** Chrome's AEC historically did not cancel audio played via `AudioContext`. If still true, speakers echo. Verify in an early throwaway audio spike (speakers vs headphones).
   - *Verdict 2026-10-08 (provisional):* user tested Chrome on both devices with the spike and reported it "sounds good", i.e. no echo problem heard. Interpreted as outcome (a): M4 uses the `webaudio` path (graph → `AudioContext.destination`). The per-mode table was not filled in and **Firefox is untested**, so re-check Firefox (and speakers at higher volume) in M5 before relying on (a) there.
