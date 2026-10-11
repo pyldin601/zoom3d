@@ -137,6 +137,24 @@ describe('look-ahead for peers not drawn', () => {
     ).toBe(64);
   });
 
+  test('in view but hidden behind someone nearer (0 columns seen) → off', () => {
+    const covered = { drawnColumns: 0, projectedSize: 30 };
+    expect(
+      createInterest()
+        .update(input([NEAR], { a: covered }))
+        .get('a')?.video
+    ).toBe('off');
+  });
+
+  test('in view but too close to project (standing on top of us, size 0) → 64, as look-ahead', () => {
+    const tooClose = { drawnColumns: 0, projectedSize: 0 };
+    expect(
+      createInterest()
+        .update(input([NEAR], { a: tooClose }))
+        .get('a')?.video
+    ).toBe(64);
+  });
+
   test('just outside the view but within the widened view → 64', () => {
     // 45° to the right: outside the 33° half-FOV, inside 33° + 15°.
     const side = { id: 'a', x: 5.5, y: 7.5 };

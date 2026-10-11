@@ -197,6 +197,8 @@ const projections: Projection[] = [];
 const visible: number[] = [];
 /** Each sprite's facts object for this frame (null without a facts map). */
 const spriteFacts: (PeerFacts | null)[] = [];
+/** Per column, the tallest disc slice (half-height, px) already counted this frame, nearest disc first. */
+let cover = new Float64Array(0);
 
 function zeroFacts(f: PeerFacts): void {
   f.drawnColumns = 0;
@@ -204,8 +206,9 @@ function zeroFacts(f: PeerFacts): void {
 }
 
 /**
- * Draws the discs. With `facts`, also writes, per sprite key, how many disc columns passed the wall depth test and
- * the disc's diameter (both 0 when not drawn); every key in the map is zeroed first, and objects are reused.
+ * Draws the discs. With `facts`, also writes, per sprite key, how many of its disc's columns are seen (in front of
+ * the walls and not hidden behind a nearer disc) and the disc's diameter (both 0 when not drawn); every key in the
+ * map is zeroed first, and objects are reused.
  */
 export function renderSprites(
   fb: Framebuffer,
@@ -237,6 +240,9 @@ export function renderSprites(
     }
   }
   visible.sort((a, b) => (projections[b] as Projection).depth - (projections[a] as Projection).depth);
+  if (facts) {
+    countSeenColumns(w, zbuffer);
+  }
 
   // Shadows lie on the floor, so every disc (drawn next) covers every shadow.
   for (const i of visible) {
@@ -289,16 +295,9 @@ export function renderSprites(
     const cy = half - bob * BOB_HEIGHT * r;
     const y0 = Math.max(0, Math.floor(cy - r));
     const y1 = Math.min(h - 1, Math.ceil(cy + r));
-    const f = spriteFacts[i] as PeerFacts | null;
-    if (f) {
-      f.projectedSize = size;
-    }
     for (let col = x0; col <= x1; col++) {
       if (depth >= (zbuffer[col] as number)) {
         continue;
-      }
-      if (f) {
-        f.drawnColumns++;
       }
       const dx = col + 0.5 - screenX;
       for (let row = y0; row <= y1; row++) {
@@ -325,6 +324,45 @@ export function renderSprites(
     if (boombox) {
       const top = h / 2 - (BOOMBOX_TOP + itemBob * BOB_HEIGHT) * r;
       blitItem(fb, BOOMBOX_SPRITE, screenX + BOOMBOX_LEFT * r, top, HELD_TEXEL * r, depth);
+    }
+  }
+}
+
+/**
+ * Facts for dynamic subscription (6c): walks `visible` nearest first. Every disc is centred on the eye line, so a
+ * column of a farther disc is hidden when a nearer disc's slice in that column is at least as tall; the walking bob
+ * is ignored. Only touches each disc's columns once and allocates only when the frame width changes.
+ */
+function countSeenColumns(w: number, zbuffer: Float64Array): void {
+  if (cover.length !== w) {
+    cover = new Float64Array(w);
+  } else {
+    cover.fill(0);
+  }
+  for (let k = visible.length - 1; k >= 0; k--) {
+    const i = visible[k] as number;
+    const f = spriteFacts[i] as PeerFacts | null;
+    if (!f) {
+      continue;
+    }
+    const { screenX, depth, size } = projections[i] as Projection;
+    f.projectedSize = size;
+    const r = size / 2;
+    const x0 = Math.max(0, Math.floor(screenX - r));
+    const x1 = Math.min(w - 1, Math.ceil(screenX + r));
+    for (let col = x0; col <= x1; col++) {
+      if (depth >= (zbuffer[col] as number)) {
+        continue;
+      }
+      const dx = col + 0.5 - screenX;
+      if (dx * dx >= r * r) {
+        continue;
+      }
+      const slice = Math.sqrt(r * r - dx * dx);
+      if (slice > (cover[col] as number)) {
+        f.drawnColumns++;
+        cover[col] = slice;
+      }
     }
   }
 }

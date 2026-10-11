@@ -11,7 +11,7 @@ export interface Want {
 
 /** Written by the renderer's sprite pass each frame. */
 export interface PeerFacts {
-  /** Disc columns that passed the wall depth test (0 = not on screen, or fully hidden). */
+  /** Disc columns seen: in front of the walls and not behind a nearer disc (0 = not on screen, or fully hidden). */
   drawnColumns: number;
   /** The disc's diameter in framebuffer pixels. */
   projectedSize: number;
@@ -95,7 +95,13 @@ export function createInterest(): { update(input: InterestInput): ReadonlyMap<st
       return 'off';
     }
     const bearing = Math.atan2(peer.y - player.y, peer.x - player.x);
-    if (Math.abs(angleDiff(bearing, player.angle)) > input.fov / 2 + LOOKAHEAD_RAD) {
+    const off = Math.abs(angleDiff(bearing, player.angle));
+    if (off > input.fov / 2 + LOOKAHEAD_RAD) {
+      return 'off';
+    }
+    // Look-ahead is for people just outside the view. Inside it, a frame that projected their disc but drew none of it
+    // means they're hidden (behind someone nearer, or a wall). Too close to project (size 0) still counts as near.
+    if (facts && facts.projectedSize > 0 && off <= input.fov / 2) {
       return 'off';
     }
     return hasLineOfSight(input.map, player.x, player.y, peer.x, peer.y) ? 64 : 'off';
