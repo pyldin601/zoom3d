@@ -39,7 +39,7 @@ docs/            vision, architecture, decisions, roadmap
 
 ## Commands
 
-Node ≥ 22, pnpm 9.
+Node ≥ 22, pnpm 12.
 
 ```
 pnpm install      # install workspace deps
