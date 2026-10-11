@@ -4,6 +4,7 @@ import {
   INTERP_DELAY_MS,
   LEVEL1,
   newRoomId,
+  type PlayerState,
   parseMap,
   spawnPoint,
   stepPlayer,
@@ -11,8 +12,9 @@ import {
 import { preferPlayAndRecord } from './audio/audio-session';
 import { createDoorbell, withDoorbell } from './audio/doorbell';
 import { type AudioEngine, createAudioEngine } from './audio/engine';
+import { createObjectSounds, type ObjectSounds } from './audio/object-sounds';
 import { loadAudioSettings, saveAudioSettings } from './audio/settings-store';
-import { startHiddenTicker } from './audio/ticker';
+import { HIDDEN_TICK_MS, startHiddenTicker } from './audio/ticker';
 import { startLoop } from './game/loop';
 import { type Frame, layoutStage, watchLayout } from './game/stage';
 import { createInput } from './input/keyboard';
@@ -30,16 +32,18 @@ import { createLiveKitTransport } from './media/livekit';
 import { createLocalMedia, type LocalMediaController } from './media/local-media';
 import { loadMediaPrefs, saveMediaPrefs } from './media/media-prefs';
 import { createRemoteMedia } from './media/remote-media';
-import { createSession, type Session } from './net/session';
+import { createSession, objectKey, type Session } from './net/session';
 import { type AutomapPeer, drawAutomap } from './renderer/automap';
 import { type Bob, createBob } from './renderer/bob';
 import { createFramebuffer, type Framebuffer } from './renderer/framebuffer';
 import { drawLabels } from './renderer/labels';
+import { VACUUM_MODEL } from './renderer/models/vacuum';
 import { renderOwnBoombox } from './renderer/own-boombox';
 import { renderOwnHeld } from './renderer/own-held';
 import { cheersPose, createGestureClock, sipPose } from './renderer/sip';
 import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
 import { makeTextures } from './renderer/textures';
+import type { VoxelInstance } from './renderer/voxels';
 import { renderWalls } from './renderer/walls';
 import { flushOnHide, initAnalytics, track } from './telemetry/analytics';
 import { mediaOutcome } from './telemetry/onboarding';
@@ -136,6 +140,8 @@ function chooseHeld(item: HeldItem | null): void {
 }
 let call: Call | null = null;
 let audio: AudioEngine | null = null;
+/** The robot vacuum's hum (and any later object's sound), made when the room is joined. */
+let objectSounds: ObjectSounds | null = null;
 let boombox: Boombox | null = null;
 /** Whether our boombox is playing, drawn in first person. */
 let ownBoombox = false;
@@ -407,6 +413,8 @@ function joinRoom(
   audioCtx: AudioContext
 ): void {
   audio = createAudioEngine({ ctx: audioCtx, map, settings: loadAudioSettings(storage()) });
+  const sounds = createObjectSounds(audioCtx, audio);
+  objectSounds = sounds;
   saveName(name);
   saveAvatar(storage(), avatar);
   clearScreen(ui);
@@ -428,7 +436,10 @@ function joinRoom(
     bots: botsParam(location.search),
     player,
     now: () => performance.now(),
-    listener: withRoomTracker(withDoorbell(call.listener, createDoorbell(audioCtx)), tracker, () => session),
+    listener: {
+      ...withRoomTracker(withDoorbell(call.listener, createDoorbell(audioCtx)), tracker, () => session),
+      objectEvent: (id, e) => sounds.event(id, e),
+    },
   });
   const held = loadHeld(storage());
   ownHeld = held;
@@ -608,15 +619,40 @@ const others: (AutomapPeer & { mic: boolean })[] = [];
 const sample = { x: 0, y: 0, angle: 0 };
 const colors = new Map<string, number>();
 const positions = new Map<string, { x: number; y: number }>();
+/** Each world object's interpolated pose, by objectKey(id); the same objects are in `positions`, for the audio. */
+const objectPoses = new Map<string, PlayerState>();
+/** Voxel objects to draw this frame (reused instances). */
+const voxels: VoxelInstance[] = [];
 const selfBob = createBob();
 const peerBobs = new Map<string, Bob>();
 
-/** Samples every peer's interpolated position into `positions` (reused objects). */
+/** Samples every peer's and object's interpolated position into `positions` (reused objects). */
 function refreshPositions(s: Session, now: number): void {
   const renderTime = now - INTERP_DELAY_MS;
+  for (const key of objectPoses.keys()) {
+    if (!s.objects.has(key.slice('object:'.length))) {
+      objectPoses.delete(key);
+    }
+  }
   for (const id of positions.keys()) {
-    if (!s.peers.has(id)) {
+    if (!s.peers.has(id) && !objectPoses.has(id)) {
       positions.delete(id);
+    }
+  }
+  for (const obj of s.objects.values()) {
+    if (!obj.buffer.sample(renderTime, sample)) {
+      continue;
+    }
+    const key = objectKey(obj.info.id);
+    const pose = objectPoses.get(key);
+    if (pose) {
+      pose.x = sample.x;
+      pose.y = sample.y;
+      pose.angle = sample.angle;
+    } else {
+      const fresh = { x: sample.x, y: sample.y, angle: sample.angle };
+      objectPoses.set(key, fresh);
+      positions.set(key, fresh);
     }
   }
   for (const peer of s.peers.values()) {
@@ -696,6 +732,7 @@ startHiddenTicker(
     }
     const now = performance.now();
     refreshPositions(session, now);
+    objectSounds?.sync(session.objects, objectPoses, HIDDEN_TICK_MS / 1000);
     audio?.update(now, player, positions);
     updateInterest(session, now, true);
   },
@@ -763,12 +800,22 @@ function frame(dt: number): void {
         mic: peer.info.mic,
       });
     }
+    let n = 0;
+    for (const pose of objectPoses.values()) {
+      const v = voxels[n] ?? { model: VACUUM_MODEL, x: 0, y: 0, angle: 0 };
+      v.x = pose.x;
+      v.y = pose.y;
+      v.angle = pose.angle;
+      voxels[n++] = v;
+    }
+    voxels.length = n;
+    objectSounds?.sync(session.objects, objectPoses, dt);
     setStatus(statusText(session));
     audio?.update(now, player, positions);
   }
 
   renderWalls(fb, map, player, textures);
-  renderSprites(fb, player, sprites, facts);
+  renderSprites(fb, player, sprites, facts, session ? voxels : undefined);
   if (session) {
     updateInterest(session, performance.now(), document.hidden);
   }

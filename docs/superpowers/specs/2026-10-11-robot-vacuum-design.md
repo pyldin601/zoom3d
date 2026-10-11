@@ -1,6 +1,6 @@
 # Robot vacuum (first voxel object): design spec
 
-Status: draft for review. Decision record: [open-decisions.md](../../open-decisions.md) D22.
+Status: approved design, implemented 2026-10-11. Decision record: [open-decisions.md](../../open-decisions.md) D22.
 
 Calls marked **(my call)** were made by the designer, not by the product owner, and can be overridden.
 
@@ -104,8 +104,8 @@ clients only interpolate and draw.
   tile is *dirty* at spawn.
 - **Next patch:** the robot picks the dirty patch nearest by walking distance (BFS over floor tiles) and drives there
   along a path. Tile-centre waypoints from BFS are fine; a straight line works where there's line of sight.
-- **Inside a patch,** it follows a coverage route over the patch's floor at about half-tile spacing, roughly its brush
-  width:
+- **Inside a patch,** it follows a coverage route over the patch's floor with points **0.6 tiles** apart, a little under
+  its width, so the lanes overlap:
   1. **Edge first:** it goes round the patch's outer ring.
   2. **Then fill:** it covers the inside in back-and-forth lanes.
 
@@ -115,24 +115,26 @@ clients only interpolate and draw.
 - **Done:** when the route is finished, the patch is clean.
 - **Waypoint give-up:** a waypoint is skipped when it can't be reached. That covers being blocked for **> 10 s**
   (someone standing on it) and making no progress (wedged on a corner).
-- **Pace check:** a full patch is about 18 tiles of driving plus about 15 turns, roughly 40 s. A partial patch is
-  less. With all the patches that touch LEVEL1's ~1,000 floor tiles, plus travel, a full clean comes to about 1–1.5 h.
-  The builder must confirm this with a simulated run in a unit test (fast-forwarding `step`), and tune the speed or
-  spacing if it lands outside about **50 min – 2 h**.
+- **Pace:** LEVEL1 has 164 patches with floor in them, 54 of them full. A unit test fast-forwards a full clean and
+  holds it inside **50 min – 2 h**. It came to about 109 simulated minutes, with no point given up.
+  - At half-tile spacing it took 138 minutes, 46 of them turning in place, so the spacing went up to 0.6 tiles.
+  - Reaching a waypoint costs no time of its own.
 
 ### 3.4 Bumping into people
 
 - **People only:** it reacts to people, **not bots** **(my call)**. A 100-bot stress room would otherwise jam it, and
   bots are test traffic.
 - **Bump:** a bump happens when a connected person's position is within `0.35 + PLAYER_RADIUS` of the robot's centre,
-  inside its front half-plane, while it's driving.
+  within about 78° of its heading, while it's driving. A person exactly beside it is not in its way.
 - **Reaction:**
   1. It stops and the bump event fires (§4.2).
   2. It pauses about 0.3 s.
-  3. It turns 90° away from the person, toward the side with more free room.
-  4. It drives about 0.6 tiles.
+  3. It turns 90° away from the person and drives 0.7 tiles aside. If a wall is on that side, it goes the other way.
+  4. It drives 1.2 tiles on, past the person.
   5. It turns back toward its current waypoint and carries on.
-- **Repeat bumps** follow the same rule. The 10 s waypoint give-up stops it pestering someone forever.
+- **Repeat bumps** follow the same rule.
+- **Give-up through detours:** a detour keeps the give-up deadline of the waypoint it leads to. Someone standing on a
+  waypoint therefore costs the robot that waypoint after about 10 s, not forever.
 - **When people move into it:** people walking through it don't count. Only its own driving into someone is a bump.
 
 ### 3.5 Searching for the dock (after the floor is clean)

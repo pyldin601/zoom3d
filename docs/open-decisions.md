@@ -278,5 +278,23 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 - **R2 — Background tabs.** rAF stops in hidden tabs; nothing peers depend on may be driven by the render loop.
 - **R3 — Safari** WebRTC/Web Audio quirks; best-effort support.
 
+### D22 — Voxel objects and the robot vacuum
+- *Resolved 2026-10-11* ([spec](superpowers/specs/2026-10-11-robot-vacuum-design.md)): zoom3d gets **world objects**,
+  starting with a robot vacuum in every room. It cleans the floor in 3×3-tile patches (the edge first, then lanes) at a
+  real robot's pace, about 1.5 h for LEVEL1, then searches for its dock forever and never finds it.
+  - **World objects are not peers.** The server simulates them per room (`apps/server/src/vacuum*.ts`, stepped with
+    the bots at 10 Hz) and relays `object_state`. They have no labels, automap dot, media or `MAX_PEERS` slot, and
+    never keep a room open. The robot is saved in the state file with a map fingerprint; a different map gives a
+    fresh robot.
+  - **Models are described in code** (`renderer/models/`), not imported from an editor. `renderer/voxels.ts` draws
+    their exposed faces as flat-shaded quads, far to near among the discs and depth-tested against the walls. The
+    look is variant C, "chunky retro toy", picked in the brainstorm.
+  - **It bumps into people, not bots,** then steps aside and drives round them. A 100-bot room would otherwise jam it.
+    People walk through it.
+  - **Its hum is synthesised** (variant B, "soft purr", picked by ear) and goes through the voice path
+    (`AudioEngine.attachNode`). It is always quieter than a voice at the same distance (`VACUUM_GAIN`).
+  - **Pace:** it drives at 0.6 tiles/s and turns at 90°/s. Lanes are 0.6 tiles apart, which brought the full clean
+    inside the 50 min – 2 h target.
+
 ## Resolved
 _(none yet)_
