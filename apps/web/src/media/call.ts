@@ -47,7 +47,7 @@ export function createCall(opts: CallOptions): Call {
   let boomboxTrack: MediaStreamTrack | null = null;
   const { framer } = local;
   // The canvas track is always sent, so camera on/off never renegotiates (lobby spec §4.3).
-  framer.onSendTrackChange = () => transport?.setVideoTrack(framer.sendTrack);
+  framer.onSendTrackChange = () => transport?.setVideoTracks(framer.sendTracks());
 
   /** Media LiveKit delivered before the game announced its peer (it is never sent again). */
   const early = new Map<string, { stream?: MediaStream; boombox?: MediaStream }>();
@@ -86,7 +86,6 @@ export function createCall(opts: CallOptions): Call {
   };
 
   const drop = (peerId: string) => {
-    transport?.disconnect(peerId);
     remote.detach(peerId);
     remote.detach(boomboxKey(peerId));
     opts.audio?.detach(peerId);
@@ -159,7 +158,7 @@ export function createCall(opts: CallOptions): Call {
         });
         transport.setBoomboxTrack(boomboxTrack);
         // The tab may already be hidden, in which case peers get the raw camera track.
-        transport.setVideoTrack(framer.sendTrack);
+        transport.setVideoTracks(framer.sendTracks());
       } else {
         // A resume's fresh token: LiveKit's own reconnects outlast the first one's 6 h.
         transport.setAccess(livekit);
@@ -172,12 +171,10 @@ export function createCall(opts: CallOptions): Call {
       }
       for (const peer of present.values()) {
         ensureFace(peer.info);
-        transport.connect(peer.info.id);
       }
     },
     peerJoined(peer) {
       ensureFace(peer);
-      transport?.connect(peer.id);
     },
     peerLeft: drop,
     peerMedia(id, cam) {

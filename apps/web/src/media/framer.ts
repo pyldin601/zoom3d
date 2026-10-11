@@ -79,11 +79,10 @@ export interface Framer {
   readonly tracks: FaceTracks;
   /** The camera track feeding the canvas, or null. The framer never stops it; its owner does. */
   readonly camera: MediaStreamTrack | null;
-  /** What senders should carry now: the camera while the tab is hidden (the canvas freezes), else `track`. */
-  readonly sendTrack: MediaStreamTrack;
-  /** What the three face senders should carry now: the camera for all three while hidden, else `tracks`. */
+  /** What the three face senders should carry now: the camera for all three while the tab is hidden (the canvases
+   * freeze), else `tracks`. */
   sendTracks(): FaceTracks;
-  /** Set by the call; fired whenever `sendTrack` may have changed. */
+  /** Set by the call; fired whenever `sendTracks()` may have changed. */
   onSendTrackChange: (() => void) | null;
   /** Swaps the camera behind the canvas (lobby spec §4.2); null stops drawing. */
   setCamera(raw: MediaStreamTrack | null): void;
@@ -160,9 +159,6 @@ export function createFramer(opts: FramerOptions): Framer {
       return camera;
     },
     tracks,
-    get sendTrack() {
-      return doc.visibilityState === 'hidden' && camera ? camera : track;
-    },
     sendTracks() {
       return doc.visibilityState === 'hidden' && camera ? { 256: camera, 128: camera, 64: camera } : tracks;
     },

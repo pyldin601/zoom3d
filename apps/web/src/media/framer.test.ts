@@ -182,7 +182,7 @@ describe('createFramer', () => {
     expect(f.track.id).toBe('canvas');
     expect(f.camera).toBeNull();
     expect(f.track.enabled).toBe(false);
-    expect(f.sendTrack).toBe(f.track);
+    expect(f.sendTracks()).toBe(f.tracks);
   });
 
   test('setCamera swaps the video source and fires onSendTrackChange', () => {
@@ -203,16 +203,16 @@ describe('createFramer', () => {
     expect(changed).toHaveBeenCalledTimes(2);
   });
 
-  test('while hidden, sendTrack is the camera; with no camera it is the canvas', () => {
+  test('while hidden, sendTracks are the camera; with no camera the canvases', () => {
     const f = make();
     const changed = vi.fn();
     f.onSendTrackChange = changed;
     const a = raw('a');
     f.setCamera(a);
     visibility = 'hidden';
-    expect(f.sendTrack).toBe(a);
+    expect(f.sendTracks()).toEqual({ 256: a, 128: a, 64: a });
     f.setCamera(null);
-    expect(f.sendTrack).toBe(f.track);
+    expect(f.sendTracks()).toBe(f.tracks);
     expect(changed).toHaveBeenCalledTimes(2);
   });
 

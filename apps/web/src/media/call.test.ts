@@ -25,10 +25,9 @@ const info = (id: string, cam = true): PeerInfo => ({
 
 let transports: {
   opts: TransportOptions;
-  connect: ReturnType<typeof vi.fn>;
-  disconnect: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
-  setVideoTrack: ReturnType<typeof vi.fn>;
+  setVideoTracks: ReturnType<typeof vi.fn>;
+  setWanted: ReturnType<typeof vi.fn>;
   setAudioTrack: ReturnType<typeof vi.fn>;
   setBoomboxTrack: ReturnType<typeof vi.fn>;
   setAccess: ReturnType<typeof vi.fn>;
@@ -44,8 +43,16 @@ let remote: {
 };
 let audio: { attach: ReturnType<typeof vi.fn>; detach: ReturnType<typeof vi.fn> };
 
-function fakeFramer(sendTrack: unknown) {
-  return { track: { id: 'canvas' }, sendTrack, onSendTrackChange: null as (() => void) | null };
+const CANVASES = { 256: { id: 'canvas' }, 128: { id: 'canvas-128' }, 64: { id: 'canvas-64' } };
+function fakeFramer() {
+  const framer = {
+    track: CANVASES[256],
+    tracks: CANVASES,
+    send: CANVASES as Record<number, unknown>,
+    sendTracks: () => framer.send,
+    onSendTrackChange: null as (() => void) | null,
+  };
+  return framer;
 }
 
 /** A controller whose camera comes up only if `camWorks`. */
@@ -64,7 +71,7 @@ function fakeLocal(init: { cam?: boolean; mic?: boolean; camWorks?: boolean } = 
       micTrack = t;
       notify();
     },
-    framer: fakeFramer({ id: 'canvas' }),
+    framer: fakeFramer(),
     stream: { id: 'local' } as unknown as MediaStream,
     notify,
     controller: {
@@ -126,11 +133,10 @@ function makeCall(init: Parameters<typeof fakeLocal>[0] = {}) {
     createTransport: (opts) => {
       const transport = {
         opts,
-        connect: vi.fn(),
-        disconnect: vi.fn(),
         close: vi.fn(),
         stats: vi.fn(async () => ({ bytesReceived: 5, boomboxBytesReceived: 2 })),
-        setVideoTrack: vi.fn(),
+        setVideoTracks: vi.fn(),
+        setWanted: vi.fn(),
         setAudioTrack: vi.fn(),
         setBoomboxTrack: vi.fn(),
         setAccess: vi.fn(),
@@ -165,13 +171,13 @@ test('attaching publishes the local media state', () => {
   expect(session.setMedia).toHaveBeenCalledWith(false, true);
 });
 
-test('a fresh welcome creates a transport and connects every peer with a face', () => {
+test('a fresh welcome creates a transport and a face for every peer', () => {
   const call = makeCall();
   setPeers(info('a'), info('b', false));
   call.listener.welcome?.('me', LK, true);
   expect(transports).toHaveLength(1);
   expect(transports[0]?.opts).toMatchObject({ url: 'ws://lk', token: 'tok' });
-  expect(transports[0]?.connect.mock.calls.map((c) => c[0])).toEqual(['a', 'b']);
+  expect([...faces.keys()]).toEqual(['a', 'b']);
   expect(faces.get('b')?.setCam).toHaveBeenCalledWith(false);
   expect(call.faceOf('a')).toBe(faces.get('a')?.texels);
 });
@@ -186,15 +192,15 @@ test("faces get the peer's avatar picture", () => {
   expect(faceAvatars.get('b')).toBeNull();
 });
 
-test('a resume keeps the transport, connects newcomers and drops peers that are gone', () => {
+test('a resume keeps the transport, adds newcomers and drops peers that are gone', () => {
   const call = makeCall();
   setPeers(info('a'), info('b'));
   call.listener.welcome?.('me', LK, true);
   setPeers(info('b'), info('c'));
   call.listener.welcome?.('me', LK, false);
   expect(transports).toHaveLength(1);
-  expect(transports[0]?.connect.mock.calls.map((c) => c[0])).toEqual(['a', 'b', 'b', 'c']);
-  expect(transports[0]?.disconnect).toHaveBeenCalledWith('a');
+  expect(call.faceOf('a')).toBeNull();
+  expect(call.faceOf('c')).toBe(faces.get('c')?.texels);
   expect(faces.get('a')?.dispose).toHaveBeenCalled();
 });
 
@@ -208,13 +214,12 @@ test('a new identity replaces the transport entirely', () => {
   expect(transports[1]?.opts.token).toBe('tok2');
 });
 
-test('peers joining and leaving are connected and cleaned up', () => {
+test('peers joining get a face; leaving cleans up', () => {
   const call = makeCall();
   call.listener.welcome?.('me', LK, true);
   call.listener.peerJoined?.(info('a'));
-  expect(transports[0]?.connect).toHaveBeenCalledWith('a');
+  expect(call.faceOf('a')).toBe(faces.get('a')?.texels);
   call.listener.peerLeft?.('a');
-  expect(transports[0]?.disconnect).toHaveBeenCalledWith('a');
   expect(remote.detach).toHaveBeenCalledWith('a');
   expect(faces.get('a')?.dispose).toHaveBeenCalled();
   expect(call.faceOf('a')).toBeNull();
@@ -321,10 +326,10 @@ test('a new identity detaches every voice', () => {
   expect(audio.detach).toHaveBeenCalledWith('a');
 });
 
-test("a new transport starts with the framer's send track", () => {
+test("a new transport starts with the framer's send tracks", () => {
   const call = makeCall();
   call.listener.welcome?.('me', LK, true);
-  expect(transports[0]?.setVideoTrack).toHaveBeenCalledWith({ id: 'canvas' });
+  expect(transports[0]?.setVideoTracks).toHaveBeenCalledWith(CANVASES);
   expect(transports[0]?.opts.localStream).toBe(local.stream);
 });
 
@@ -341,9 +346,10 @@ test('a replaced mic reaches the current transport', () => {
 test('a send-track change reaches the current transport', () => {
   const call = makeCall();
   call.listener.welcome?.('me', LK, true);
-  local.framer.sendTrack = { id: 'raw' };
+  const raw = { id: 'raw' };
+  local.framer.send = { 256: raw, 128: raw, 64: raw };
   local.framer.onSendTrackChange?.();
-  expect(transports[0]?.setVideoTrack).toHaveBeenLastCalledWith({ id: 'raw' });
+  expect(transports[0]?.setVideoTracks).toHaveBeenLastCalledWith({ 256: raw, 128: raw, 64: raw });
 });
 
 test('a boombox stream plays through the engine at its owner', () => {
