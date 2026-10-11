@@ -4,8 +4,8 @@ import { type GameMap, hasLineOfSight, isWallAt } from '@zoom3d/shared';
 
 /** Tiles per patch side. */
 export const PATCH = 3;
-/** Route point spacing in tiles, about the robot's brush width. */
-export const LANE = 0.5;
+/** Route point spacing in tiles, a little under the robot's width so lanes overlap (tuned for the ~1.5 h full clean). */
+export const LANE = 0.6;
 /** The robot's collision radius in tiles. */
 export const VACUUM_RADIUS = 0.35;
 /** How far a route point keeps the robot's centre from a wall. */

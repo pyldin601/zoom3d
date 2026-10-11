@@ -26,20 +26,21 @@ describe('createVacuumNav', () => {
     expect(nav.floor).toHaveLength(989);
   });
 
-  test('a full 3×3 floor patch routes the 20-point ring before the 16 inner points', () => {
+  test('a full 3×3 floor patch routes the 16-point ring before the 9 inner points', () => {
     const open = createVacuumNav(OPEN);
     const patch = open.patchOf(4, 4);
     const route = open.route(patch, { x: 3.5, y: 3.5 });
-    expect(route).toHaveLength(36);
-    const onRing = (p: Point) => [p.x - 3, p.y - 3].some((v) => v === 0.25 || v === 2.75);
-    expect(route.slice(0, 20).every(onRing)).toBe(true);
-    expect(route.slice(20).some(onRing)).toBe(false);
+    expect(route).toHaveLength(25);
+    const onRing = (p: Point) => [p.x - 3, p.y - 3].some((v) => Math.abs(v - 0.3) < 1e-9 || Math.abs(v - 2.7) < 1e-9);
+    expect(route.slice(0, 16).every(onRing)).toBe(true);
+    expect(route.slice(16).some(onRing)).toBe(false);
   });
 
   test('route starts at the ring point nearest from', () => {
     const open = createVacuumNav(OPEN);
-    const route = open.route(open.patchOf(4, 4), { x: 6.9, y: 4.6 });
-    expect(route[0]).toEqual({ x: 5.75, y: 4.75 });
+    const route = open.route(open.patchOf(4, 4), { x: 6.9, y: 5.2 });
+    expect(route[0]?.x).toBeCloseTo(5.7);
+    expect(route[0]?.y).toBeCloseTo(5.1);
   });
 
   test('route points keep the robot clear of walls', () => {
