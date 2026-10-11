@@ -125,6 +125,7 @@ function makeCall(init: Parameters<typeof fakeLocal>[0] = {}) {
         update: vi.fn(),
         setVideo: vi.fn(),
         setCam: vi.fn(),
+        setPaused: vi.fn(),
         dispose: vi.fn(),
       };
       faces.set(name, face as never);
@@ -331,6 +332,39 @@ test("a new transport starts with the framer's send tracks", () => {
   call.listener.welcome?.('me', LK, true);
   expect(transports[0]?.setVideoTracks).toHaveBeenCalledWith(CANVASES);
   expect(transports[0]?.opts.localStream).toBe(local.stream);
+});
+
+test('wants reach the transport; a face pauses while its video is off', () => {
+  const call = makeCall();
+  setPeers(info('a'));
+  call.listener.welcome?.('me', LK, true);
+  call.setWanted('a', { video: 'off', audio: true });
+  expect(transports[0]?.setWanted).toHaveBeenLastCalledWith('a', { video: 'off', audio: true });
+  expect(faces.get('a')?.setPaused).toHaveBeenLastCalledWith(true);
+  call.setWanted('a', { video: 64, audio: true });
+  expect(transports[0]?.setWanted).toHaveBeenLastCalledWith('a', { video: 64, audio: true });
+  expect(faces.get('a')?.setPaused).toHaveBeenLastCalledWith(false);
+});
+
+test('wants made before a face or a transport exists are applied when they do', () => {
+  const call = makeCall();
+  call.setWanted('a', { video: 'off', audio: false });
+  setPeers(info('a'));
+  call.listener.welcome?.('me', LK, true);
+  expect(transports[0]?.setWanted).toHaveBeenCalledWith('a', { video: 'off', audio: false });
+  expect(faces.get('a')?.setPaused).toHaveBeenCalledWith(true);
+  call.listener.welcome?.('me2', LK, true);
+  expect(transports[1]?.setWanted).toHaveBeenCalledWith('a', { video: 'off', audio: false });
+});
+
+test('a peer that leaves is forgotten', () => {
+  const call = makeCall();
+  setPeers(info('a'));
+  call.listener.welcome?.('me', LK, true);
+  call.setWanted('a', { video: 256, audio: true });
+  call.listener.peerLeft?.('a');
+  call.listener.welcome?.('me2', LK, true);
+  expect(transports[1]?.setWanted).not.toHaveBeenCalled();
 });
 
 test('a replaced mic reaches the current transport', () => {

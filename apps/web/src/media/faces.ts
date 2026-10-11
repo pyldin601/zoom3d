@@ -27,8 +27,11 @@ export interface FaceSource {
   readonly texels: Uint32Array;
   live(): boolean;
   update(now: number): void;
+  /** A new element or stream keeps showing the last frame until its own first frame (or the stall). */
   setVideo(video: HTMLVideoElement | null): void;
   setCam(on: boolean): void;
+  /** Video is off on purpose (out of sight, 6c spec §4.4): keep showing the last live frame, however old. */
+  setPaused(paused: boolean): void;
   dispose(): void;
 }
 
@@ -68,6 +71,11 @@ export function createFace(opts: FaceOptions): FaceSource {
   let frameHandle: number | null = null;
   let camOn = true;
   let lastFrameAt: number | null = null;
+  /** Whether liveTexels holds a frame at all. */
+  let hasFrame = false;
+  /** When the current video was set: the last frame is held for FACE_STALL_MS from then. */
+  let videoSetAt = Number.NEGATIVE_INFINITY;
+  let paused = false;
   let lastVideoTime = -1;
   let lastPollAt = Number.NEGATIVE_INFINITY;
   let now = 0;
@@ -96,6 +104,7 @@ export function createFace(opts: FaceOptions): FaceSource {
     const { data } = ctx.getImageData(0, 0, FACE_SIZE, FACE_SIZE);
     liveTexels.set(new Uint32Array(data.buffer, data.byteOffset, data.byteLength / 4));
     lastFrameAt = at;
+    hasFrame = true;
   };
 
   const onFrame = (at: number) => {
@@ -113,10 +122,11 @@ export function createFace(opts: FaceOptions): FaceSource {
   };
 
   const isLive = () => camOn && video !== null && lastFrameAt !== null && now - lastFrameAt < FACE_STALL_MS;
+  const holdLast = () => camOn && hasFrame && (paused || now - videoSetAt < FACE_STALL_MS);
 
   return {
     get texels() {
-      return isLive() ? liveTexels : fallbackTexels;
+      return isLive() || holdLast() ? liveTexels : fallbackTexels;
     },
     live: isLive,
     update(at) {
@@ -134,6 +144,7 @@ export function createFace(opts: FaceOptions): FaceSource {
       stopFrames();
       video = v as FrameVideo | null;
       lastFrameAt = null;
+      videoSetAt = now;
       lastVideoTime = -1;
       lastPollAt = Number.NEGATIVE_INFINITY;
       if (video?.requestVideoFrameCallback) {
@@ -142,6 +153,9 @@ export function createFace(opts: FaceOptions): FaceSource {
     },
     setCam(on) {
       camOn = on;
+    },
+    setPaused(p) {
+      paused = p;
     },
     dispose() {
       disposed = true;

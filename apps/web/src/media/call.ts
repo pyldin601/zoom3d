@@ -3,6 +3,7 @@ import type { PeerInfo } from '@zoom3d/shared';
 import type { AudioEngine } from '../audio/engine';
 import type { Session, SessionListener } from '../net/session';
 import type { createFace as CreateFace, FaceSource } from './faces';
+import type { Want } from './interest';
 import type { LocalMediaController } from './local-media';
 import type { RemoteMedia } from './remote-media';
 import type { MediaTransport, TransportOptions } from './transport';
@@ -14,6 +15,8 @@ export interface Call {
   faceOf(peerId: string): Uint32Array | null;
   isLive(peerId: string): boolean;
   stats(peerId: string): Promise<{ bytesReceived: number; boomboxBytesReceived: number } | null>;
+  /** What to receive from a peer (the interest rule's output); kept across a recreated transport. */
+  setWanted(peerId: string, want: Want): void;
   /** Our boombox music, or null when it is off; kept across a recreated transport. */
   setBoomboxTrack(track: MediaStreamTrack | null): void;
   /** Stops or restarts the camera; resolves to whether it is on now. */
@@ -41,6 +44,7 @@ export const boomboxKey = (peerId: string) => `boombox:${peerId}`;
 export function createCall(opts: CallOptions): Call {
   const { local, remote } = opts;
   const faces = new Map<string, FaceSource>();
+  const wants = new Map<string, Want>();
   const state = { cam: local.state().cam, mic: local.state().mic };
   let session: Session | null = null;
   let transport: MediaTransport | null = null;
@@ -73,6 +77,10 @@ export function createCall(opts: CallOptions): Call {
         document: opts.document,
       });
       faces.set(peer.id, face);
+      const want = wants.get(peer.id);
+      if (want) {
+        face.setPaused(want.video === 'off');
+      }
       const pending = early.get(peer.id);
       early.delete(peer.id);
       if (pending?.stream) {
@@ -93,6 +101,7 @@ export function createCall(opts: CallOptions): Call {
     faces.get(peerId)?.dispose();
     faces.delete(peerId);
     early.delete(peerId);
+    wants.delete(peerId);
   };
 
   const teardown = () => {
@@ -159,6 +168,9 @@ export function createCall(opts: CallOptions): Call {
         transport.setBoomboxTrack(boomboxTrack);
         // The tab may already be hidden, in which case peers get the raw camera track.
         transport.setVideoTracks(framer.sendTracks());
+        for (const [id, want] of wants) {
+          transport.setWanted(id, want);
+        }
       } else {
         // A resume's fresh token: LiveKit's own reconnects outlast the first one's 6 h.
         transport.setAccess(livekit);
@@ -191,6 +203,11 @@ export function createCall(opts: CallOptions): Call {
     faceOf: (id) => faces.get(id)?.texels ?? null,
     isLive: (id) => faces.get(id)?.live() ?? false,
     stats: async (id) => (transport ? transport.stats(id) : null),
+    setWanted(peerId, want) {
+      wants.set(peerId, want);
+      transport?.setWanted(peerId, want);
+      faces.get(peerId)?.setPaused(want.video === 'off');
+    },
     setBoomboxTrack(track) {
       boomboxTrack = track;
       transport?.setBoomboxTrack(track);

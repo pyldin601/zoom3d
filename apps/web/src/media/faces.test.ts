@@ -143,6 +143,73 @@ describe('frame buffers', () => {
   });
 });
 
+describe('paused (out of sight, video unsubscribed on purpose)', () => {
+  test('keeps the last live frame past the stall', () => {
+    const { document } = fakeDocument();
+    const face = createFace({ name: 'Ada', color: '#e6194b', document });
+    const initialsTexels = face.texels;
+    face.setVideo(fakeVideo() as unknown as HTMLVideoElement);
+    face.update(0);
+    const frame = face.texels;
+    face.setPaused(true);
+    face.update(FACE_STALL_MS * 10);
+    expect(face.live()).toBe(false);
+    expect(face.texels).toBe(frame);
+    expect(face.texels).not.toBe(initialsTexels);
+    face.setPaused(false);
+    expect(face.texels).toBe(initialsTexels);
+  });
+
+  test('a peer never seen live shows the initials while paused', () => {
+    const { document } = fakeDocument();
+    const face = createFace({ name: 'Ada', color: '#e6194b', document });
+    const initialsTexels = face.texels;
+    face.setPaused(true);
+    face.update(10);
+    expect(face.texels).toBe(initialsTexels);
+  });
+
+  test('camera off shows the initials, paused or not', () => {
+    const { document } = fakeDocument();
+    const face = createFace({ name: 'Ada', color: '#e6194b', document });
+    const initialsTexels = face.texels;
+    face.setVideo(fakeVideo() as unknown as HTMLVideoElement);
+    face.update(0);
+    face.setPaused(true);
+    face.setCam(false);
+    expect(face.texels).toBe(initialsTexels);
+  });
+});
+
+describe('a new video (another face size, or the face resuming)', () => {
+  test('keeps showing the last frame until its own first frame', () => {
+    const { document } = fakeDocument();
+    const face = createFace({ name: 'Ada', color: '#e6194b', document });
+    const video = fakeVideo({ rvfc: true });
+    face.setVideo(video as unknown as HTMLVideoElement);
+    video.callback?.(10);
+    face.update(10);
+    const frame = face.texels;
+    face.setVideo(fakeVideo({ rvfc: true }) as unknown as HTMLVideoElement);
+    face.update(20);
+    expect(face.live()).toBe(false);
+    expect(face.texels).toBe(frame);
+  });
+
+  test('…but not forever: without frames it falls back after the stall', () => {
+    const { document } = fakeDocument();
+    const face = createFace({ name: 'Ada', color: '#e6194b', document });
+    const initialsTexels = face.texels;
+    const video = fakeVideo({ rvfc: true });
+    face.setVideo(video as unknown as HTMLVideoElement);
+    video.callback?.(10);
+    face.update(10);
+    face.setVideo(fakeVideo({ rvfc: true }) as unknown as HTMLVideoElement);
+    face.update(20 + FACE_STALL_MS);
+    expect(face.texels).toBe(initialsTexels);
+  });
+});
+
 describe('avatar picture', () => {
   const PIC = 'data:image/jpeg;base64,/9j/4AAQ';
   function fakeImage(width = 128, height = 128) {
