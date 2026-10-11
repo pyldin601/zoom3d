@@ -74,7 +74,11 @@
       #ui .lobby .split > .chevron { border-left: 0; border-radius: 0 0.25em 0.25em 0; font-size: 0.7em; }
       #ui .lobby .split.off > button { color: #f99; background: #3a2020; border-color: #844; }
       #ui .lobby form input { margin: 0 0 0.45em; text-align: center; }
-      #ui .lobby .invite { border-top: 0.06em solid #333; padding-top: 0.6em; margin-top: 0.2em; }
+      #ui .lobby .invite { border-top: 0.06em solid #333; padding-top: 0.6em; margin-top: 0.7em; }
+      /* The lobby's error line hangs just under the panel, only while there is one, so it leaves no gap inside. */
+      #ui .panel:has(> .lobby) { position: relative; }
+      #ui .lobby .error { position: absolute; top: calc(100% + 0.4em); left: 0; right: 0; min-height: 0; margin: 0; padding: 0.4em 0.8em; background: rgba(0, 0, 0, 0.8); }
+      #ui .lobby .error:empty { display: none; }
       #ui .lobby .invite-copy { width: 100%; padding: 0.35em; display: flex; align-items: center; justify-content: center; gap: 0.4em; }
       #ui .lobby form [type="submit"], #ui .lobby .primary { width: 100%; padding: 0.35em; color: #fff; background: #2f6fd0; border-color: #2f6fd0; font-weight: 600; }
       /* Landing: the title picture (landing-scene.ts) shows undimmed; the lobby keeps the dim. The panel sits in the
