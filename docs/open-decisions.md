@@ -202,6 +202,32 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     `.github/workflows/docker.yml`. Both values are public by design, since browsers see them anyway. Unset (dev,
     tests, forks), everything stays off. Both SDKs are lazy chunks, so the main bundle stays the same size.
 
+### D21 — Rooms of 100+ people
+- **Goal (2026-10-11):** one room holding 100+ people. Media already scales on the sender side: since 6b everyone uploads
+  once to LiveKit (~0.4 Mbps), whatever the room size. What still grows with N × (N − 1):
+  - **Media received:** every client gets everyone's face and voice at full quality (`autoSubscribe`, one 256² layer):
+    ~0.4 Mbps × (N − 1) per client, ~4 Gbps out of LiveKit for a full room of 100.
+  - **Game state:** the server relays every accepted move as its own `peer_state` (absolute pose + seq, JSON over the
+    WebSocket, no batching) to every other peer. Clients send up to 15 Hz while moving. That is ~840 messages/s for 8
+    people and ~150,000/s for 100.
+  - **Join:** `welcome` lists every peer with its avatar picture (≤ 12 KB each): ~1.2 MB for 100.
+- **Planned, in order (roadmap M7):**
+  - **6c, receive only what's near:** subscribe by visibility (line of sight, distance, a hard cap of the nearest
+    ~12 videos / ~24 voices, hysteresis) instead of `autoSubscribe`, plus simulcast (256 / 128 / 64 px) so distant
+    faces get a small layer. Shared, unit-tested rule in `media/interest.ts`.
+  - **6d, server fan-out:** replace per-move relays with **one batched update per client per server tick**, containing
+    only peers it should know about now: nearby ones at full rate (15 Hz), distant ones at 1–2 Hz. Absolute poses
+    stay (no deltas): a lost batch costs one stale frame, never a corrupt state. Also avatar pictures move out of
+    `welcome` to a cached `GET /avatar/:id`, peer colours are generated instead of 8 fixed ones, `MAX_PEERS` goes up,
+    and name labels show only for nearby people.
+  - **Then a load test:** `lk load-test` for 100 simulated media participants plus a bot swarm on the game socket,
+    measuring LiveKit CPU and egress on casa (4 cores, 1 Gbps), server CPU, and browser frame rate. casa's limits
+    (shared 4 cores, UDP buffer `net.core.rmem_max`) are the main risks; monitoring (LiveKit Prometheus + Grafana)
+    comes first.
+- **Open (product):** proximity only (you see and hear people near you; clusters are natural breakout rooms), or
+  also a room-wide "stage"/spotlight that everyone hears and sees (talks, announcements), or a webinar mode with a
+  view-only audience. Proximity-only is the smallest change; a stage needs a broadcast path on top of 6c's rules.
+
 ### Risks (to verify, not assume)
 - **R1 — Echo cancellation vs Web Audio output.** Chrome's AEC historically did not cancel audio played via `AudioContext`. If still true, speakers echo. Verify in an early throwaway audio spike (speakers vs headphones).
   - *Verdict 2026-10-08 (provisional):* user tested Chrome on both devices with the spike and reported it "sounds good", i.e. no echo problem heard. Interpreted as outcome (a): M4 uses the `webaudio` path (graph → `AudioContext.destination`). The per-mode table was not filled in and **Firefox is untested**, so re-check Firefox (and speakers at higher volume) in M5 before relying on (a) there.
