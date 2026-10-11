@@ -218,19 +218,43 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Join:** `welcome` lists every peer with its avatar picture (≤ 12 KB each): ~1.2 MB for 100.
 - **Planned, in order (roadmap M7):**
   - **6c, dynamic subscription (receive only what you can see or hear):** `autoSubscribe` off; the client decides per
-    peer, every few frames, from positions, the map and its own view. One pure, unit-tested rule in
-    `media/interest.ts`, applied with LiveKit's `setSubscribed` / `setVideoDimensions`:
-    - **Video, invisible → unsubscribed.** Not visible = behind walls (no line of sight), outside the field of view
-      (with a margin, so turning your head doesn't flicker people in), or beyond the distance where the disc is a few
-      pixels. Re-subscribing costs ~0.3–1 s (a keyframe), so: unsubscribe only after ~1 s out of sight, re-subscribe
-      at once, and show the last frame (or the avatar picture / initials) meanwhile.
-    - **Audio, beyond hearing → unsubscribed.** Voices are already silent beyond 12 tiles (`voiceGains`), so their
-      audio isn't consumed at all past that. Hysteresis: subscribe within ~14 tiles, drop beyond ~16, so a voice is
-      already flowing when it becomes audible. Boombox audio follows the same rule.
-    - **Video, visible but far → lower quality.** Senders publish simulcast layers (256 / 128 / 64 px). The receiver
-      asks for the layer matching the disc's on-screen size (`setVideoDimensions` with the projected size): a face
-      filling the view gets 256², a distant one 64² at a fraction of the bitrate.
-    - **Hard caps** as a safety net in crowds: at most ~12 videos and ~24 voices, nearest first.
+    peer about 4 times a second. Applied with LiveKit's `setSubscribed` / `setVideoDimensions`.
+    - **Facts come from the UI, decisions from one rule.** The renderer and audio engine report what is actually
+      drawn and heard; `media/interest.ts` (pure, unit-tested) turns those facts into subscriptions. This keeps what
+      you receive exactly matched to the screen and the speakers, with no second copy of the projection or audio maths.
+      - **Renderer:** during the sprite pass, per peer: whether any disc column passed the wall depth test (so
+        half-hidden faces at corners count), how many columns, and the projected size in pixels. It also does the same
+        test with a widened field of view, for look-ahead. These go into a reused array: no allocations in the frame
+        loop.
+      - **Audio engine:** per peer, the distance and wall occlusion it already computes for `voiceGains`.
+      - **Hidden tab:** the renderer stops, so the rule receives no video at all (a free saving). Audio keeps following
+        the engine's hidden-tab ticker.
+    - **Why not raw "drawn this frame":** a resumed video needs ~0.3–1 s for a keyframe, so subscribing only when a face
+      is drawn makes people pop in on every turn. The rule adds the policy the UI doesn't have:
+      - **Video:** subscribe when visible in the widened view (a field-of-view margin), within a distance margin.
+        Unsubscribe only after ~1 s out of sight; re-subscribe at once. Show the last frame (or the avatar picture /
+        initials) meanwhile.
+      - **Audio:** voices are silent beyond 12 tiles (`voiceGains`). Subscribe within ~14 tiles, drop beyond ~16, so a
+        voice is already flowing when it becomes audible. Boombox audio follows the same rule.
+      - **Hard caps** as a safety net in crowds: at most ~12 videos and ~24 voices, nearest first.
+    - **Video, visible but far → smaller layer.** Senders publish three simulcast layers. The receiver asks for the
+      layer matching the projected size (`setVideoDimensions`). Starting values, to tune on real faces:
+
+      | Layer | Size | Frame rate | Bitrate cap | For faces on screen |
+      |---|---|---|---|---|
+      | High | 256×256 | 24 fps | 350 kbps (as today) | larger than ~130 px |
+      | Medium | 128×128 | 24 fps | ~120 kbps | ~60–130 px |
+      | Low | 64×64 | 15 fps | ~35 kbps | smaller than ~60 px |
+
+      - **Sender upload:** ~505 kbps of video instead of 350 while all three layers flow. **Dynacast** (off since 6b,
+        when it tracked our hidden `<video>` elements) turns back on with explicit subscriptions: it pauses layers no
+        one receives, so usually only one or two go out.
+      - **Receiver:** e.g. 3 close + 5 mid + 4 far faces ≈ 1.8 Mbps of video, against ~4.2 Mbps for the same 12 at
+        full quality today (plus everyone out of view).
+      - **Verify first (6c spike):** Chrome has limited simulcast layers for small inputs (historically one layer below
+        ~320×180). LiveKit sends explicit `scaleResolutionDownBy` layers, which recent Chrome honours, but check that
+        Chrome and Safari really send all three. Fallbacks: a larger canvas (e.g. 320² → 320/160/80), or two separate
+        tracks (`face` 256 + a 64 px thumbnail).
     - The SFU then forwards only what each client asked for, so a full room's egress scales with what people can
       see and hear, not with N × (N − 1).
   - **6d, server fan-out:** replace per-move relays with **one batched update per client per server tick**, containing
