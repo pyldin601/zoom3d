@@ -200,3 +200,90 @@ describe('save and restore', () => {
     expect(restoreVacuum(createVacuumNav(TINY), save)).toBeNull();
   });
 });
+
+describe('bumping into people', () => {
+  const OPEN = room([
+    '11111111111',
+    '1S........1',
+    '1.........1',
+    '1.........1',
+    '1.........1',
+    '1.........1',
+    '1.........1',
+    '1.........1',
+    '1.........1',
+    '11111111111',
+  ]);
+
+  /** A robot at (2.5, 5.5) facing +x, heading for (8.5, 5.5). */
+  function driving(angle = 0) {
+    const nav = createVacuumNav(OPEN);
+    const v = createVacuum(nav, seeded(), 'v1');
+    Object.assign(v, { x: 2.5, y: 5.5, angle, waypoints: [{ x: 8.5, y: 5.5 }], deadline: 1e9, patch: null });
+    return { nav, v };
+  }
+
+  test('bumps a person ahead once, pauses, turns aside and drives round them', () => {
+    const { nav, v } = driving();
+    const person = { x: 3.5, y: 5.5 };
+    const events: { t: number; e: string }[] = [];
+    const poses: { t: number; x: number; y: number; angle: number }[] = [];
+    for (let t = 0; t < 15; t += DT) {
+      const e = stepVacuum(nav, v, DT, seeded(), [person]);
+      if (e) {
+        events.push({ t, e });
+      }
+      poses.push({ t, x: v.x, y: v.y, angle: v.angle });
+    }
+    expect(events.map((e) => e.e)).toEqual(['bump']);
+    const bumpAt = (events[0] as { t: number }).t;
+    const after = poses.filter((p) => p.t > bumpAt);
+    const still = after.findIndex((p) => p.x !== after[0]?.x || p.y !== after[0]?.y || p.angle !== after[0]?.angle);
+    expect(still * DT).toBeGreaterThanOrEqual(0.2);
+    expect(still * DT).toBeLessThanOrEqual(0.4);
+    const turned = after.find((p) => Math.abs(Math.abs(p.angle - Math.PI) - Math.PI / 2) < 1e-6);
+    expect(turned).toBeDefined();
+    expect(v.x).toBeGreaterThan(person.x + 1);
+  });
+
+  test('ignores people behind it and people beside it beyond 0.6', () => {
+    const { nav, v } = driving();
+    for (let t = 0; t < 5; t += DT) {
+      const behind = { x: v.x - 0.3, y: v.y };
+      const beside = { x: v.x + 0.1, y: v.y + 0.65 };
+      expect(stepVacuum(nav, v, DT, seeded(), [behind, beside])).toBeNull();
+    }
+    expect(v.x).toBeGreaterThan(4);
+  });
+
+  test('never bumps while turning in place', () => {
+    const { nav, v } = driving(Math.PI);
+    const person = { x: 3.0, y: 5.5 };
+    let bumps = 0;
+    for (let t = 0; t < 5; t += DT) {
+      const before = v.angle;
+      const e = stepVacuum(nav, v, DT, seeded(), [person]);
+      if (e === 'bump') {
+        bumps++;
+        expect(v.angle).toBe(before);
+      }
+    }
+    expect(bumps).toBeGreaterThanOrEqual(1);
+  });
+
+  test('a person parked on a waypoint is skipped', () => {
+    const nav = createVacuumNav(OPEN);
+    const v = createVacuum(nav, seeded(), 'v1');
+    stepVacuum(nav, v, DT, seeded(), []);
+    const parked = v.waypoints[2] as { x: number; y: number };
+    const person = { x: parked.x, y: parked.y };
+    let t = 0;
+    while (v.waypoints.includes(parked) && t < 30) {
+      stepVacuum(nav, v, DT, seeded(), [person]);
+      t += DT;
+    }
+    expect(v.waypoints.includes(parked)).toBe(false);
+    expect(t).toBeLessThan(20);
+    expect(v.skipped).toBeGreaterThanOrEqual(1);
+  });
+});

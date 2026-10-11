@@ -1,6 +1,6 @@
 // The robot vacuum (robot vacuum spec §3): cleans the map patch by patch at a real robot's pace, then searches for its
 // dock forever. Pure: the lobby steps it at 10 Hz and relays its pose.
-import { isWallAt, moveWithCollision, type ObjectEvent, type ObjectInfo } from '@zoom3d/shared';
+import { isWallAt, moveWithCollision, type ObjectEvent, type ObjectInfo, PLAYER_RADIUS } from '@zoom3d/shared';
 import { mapFingerprint, type Point, VACUUM_RADIUS, type VacuumNav } from './vacuum-nav';
 
 /** Tiles per second: a real robot's 0.3 m/s at this game's scale (walking, 3 tiles/s, is about 1.4 m/s). */
@@ -13,6 +13,16 @@ export const SCAN_TURN_SPEED = Math.PI / 4;
 export const LOST_WAIT_S = 2;
 /** A search leg heads further than this many tiles (by path). */
 export const SEARCH_MIN_TILES = 10;
+/** Seconds it stands still after bumping into someone. */
+export const BUMP_PAUSE_S = 0.3;
+/** How far it steps aside from someone it bumped, in tiles: past touching distance, so the way round is clear. */
+export const SIDESTEP = 0.7;
+/** How far it drives on beside them before heading back to its waypoint. */
+const PASS = 1.2;
+/** It bumps a person whose centre is this close, in front of it. */
+const BUMP_DISTANCE = VACUUM_RADIUS + PLAYER_RADIUS;
+/** Cosine of the widest angle off its heading at which someone counts as in front. */
+const FRONT = 0.2;
 /** Seconds of being stuck on one waypoint before giving it up, on top of the time it should take. */
 const GIVE_UP_S = 10;
 /** It drives once it faces its waypoint within this many radians. */
@@ -22,6 +32,11 @@ const ARRIVE = 0.05;
 const TWO_PI = Math.PI * 2;
 
 export type VacuumPhase = 'cleaning' | 'searching';
+
+/** A waypoint; a detour (round someone it bumped) keeps the give-up deadline of the waypoint it detours to. */
+interface Waypoint extends Point {
+  detour?: true;
+}
 
 export interface Vacuum {
   id: string;
@@ -37,7 +52,7 @@ export interface Vacuum {
   /** The patch being cleaned, while cleaning. */
   patch: number | null;
   /** Where it is going next, nearest first. */
-  waypoints: Point[];
+  waypoints: Waypoint[];
   /** Sim time past which the current waypoint is given up. */
   deadline: number;
   /** Seconds simulated since spawn or restore. */
@@ -198,12 +213,64 @@ function plan(nav: VacuumNav, v: Vacuum, rng: () => number): void {
 
 /** Drops the current waypoint (reached or given up) and starts the next, or finishes the leg. */
 function nextWaypoint(v: Vacuum): void {
-  v.waypoints.shift();
-  if (v.waypoints.length > 0) {
-    startWaypoint(v);
-  } else {
+  const done = v.waypoints.shift();
+  if (v.waypoints.length === 0) {
     finishLeg(v);
+  } else if (!done?.detour) {
+    startWaypoint(v);
   }
+}
+
+/** Gives up the current waypoint, with any detour on the way to it. */
+function skipWaypoint(v: Vacuum): void {
+  while (v.waypoints[0]?.detour) {
+    v.waypoints.shift();
+  }
+  v.skipped++;
+  nextWaypoint(v);
+}
+
+/** Whether the robot's body would fit at (x, y). */
+const fits = (nav: VacuumNav, x: number, y: number) =>
+  !isWallAt(nav.map, x - VACUUM_RADIUS, y - VACUUM_RADIUS) &&
+  !isWallAt(nav.map, x + VACUUM_RADIUS, y - VACUUM_RADIUS) &&
+  !isWallAt(nav.map, x - VACUUM_RADIUS, y + VACUUM_RADIUS) &&
+  !isWallAt(nav.map, x + VACUUM_RADIUS, y + VACUUM_RADIUS);
+
+/** The first person it would drive into: touching distance and in front. */
+function bumped(v: Vacuum, people: readonly Point[]): Point | null {
+  const fx = Math.cos(v.angle);
+  const fy = Math.sin(v.angle);
+  for (const p of people) {
+    const dx = p.x - v.x;
+    const dy = p.y - v.y;
+    const d2 = dx * dx + dy * dy;
+    // In front means within about 78° of its heading: someone exactly beside it is not in its way.
+    if (d2 < BUMP_DISTANCE * BUMP_DISTANCE && dx * fx + dy * fy > FRONT * Math.sqrt(d2)) {
+      return p;
+    }
+  }
+  return null;
+}
+
+/** Stops, then steps aside (away from the person, unless a wall is there) and drives on past them. */
+function goRound(nav: VacuumNav, v: Vacuum, person: Point): void {
+  const fx = Math.cos(v.angle);
+  const fy = Math.sin(v.angle);
+  // (-fy, fx) is the robot's right on the y-down map; the person's side is where the cross product points.
+  const personRight = fx * (person.y - v.y) - fy * (person.x - v.x) > 0;
+  const sides = personRight ? [-1, 1] : [1, -1];
+  for (const s of sides) {
+    const side = { x: v.x - fy * SIDESTEP * s, y: v.y + fx * SIDESTEP * s, detour: true as const };
+    if (!fits(nav, side.x, side.y)) {
+      continue;
+    }
+    const pass = { x: side.x + fx * PASS, y: side.y + fy * PASS, detour: true as const };
+    v.waypoints.unshift(...(fits(nav, pass.x, pass.y) ? [side, pass] : [side]));
+    break;
+  }
+  v.mode = 'pause';
+  v.left = BUMP_PAUSE_S;
 }
 
 /** Advances by dt seconds. `people` are connected persons' positions. Returns the event of this step, if any. */
@@ -212,7 +279,7 @@ export function stepVacuum(
   v: Vacuum,
   dt: number,
   rng: () => number,
-  _people: readonly Point[]
+  people: readonly Point[]
 ): ObjectEvent | null {
   v.time += dt;
   if (v.mode === 'pause') {
@@ -248,8 +315,7 @@ export function stepVacuum(
     return null;
   }
   if (v.time > v.deadline) {
-    v.skipped++;
-    nextWaypoint(v);
+    skipWaypoint(v);
     return null;
   }
   const dx = wp.x - v.x;
@@ -262,6 +328,11 @@ export function stepVacuum(
     const budget = VACUUM_TURN_SPEED * dt;
     v.angle = Math.abs(error) <= budget ? wrap(target) : wrap(v.angle + Math.sign(error) * budget);
     return null;
+  }
+  const person = bumped(v, people);
+  if (person) {
+    goRound(nav, v, person);
+    return 'bump';
   }
   const step = Math.min(VACUUM_SPEED * dt, distance);
   const to = moveWithCollision(nav.map, v.x, v.y, Math.cos(v.angle) * step, Math.sin(v.angle) * step, VACUUM_RADIUS);
