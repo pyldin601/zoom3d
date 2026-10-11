@@ -82,21 +82,35 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
   const livekit = opts.livekit ?? liveKitConfigFromEnv({});
   const log = opts.log ?? silentLogger;
   const sockets = new Map<string, { ws: WebSocket; alive: boolean }>();
-  const sendRaw = (conn: string, data: string) => {
+  const sendRaw = (conn: string, data: string): boolean => {
     const s = sockets.get(conn);
     if (s && s.ws.readyState === s.ws.OPEN) {
       s.ws.send(data);
+      return true;
+    }
+    return false;
+  };
+  /** What actually went out, counted once per message (times its deliveries) rather than once per recipient. */
+  const countSent = (type: string, data: string, deliveries: number) => {
+    if (deliveries > 0) {
+      metrics.messagesSent.inc({ type }, deliveries);
+      metrics.bytesSent.inc({ type }, Buffer.byteLength(data) * deliveries);
     }
   };
   const out: Outbox = {
     send(conn, msg) {
-      sendRaw(conn, JSON.stringify(msg));
+      const data = JSON.stringify(msg);
+      countSent(msg.type, data, sendRaw(conn, data) ? 1 : 0);
     },
     broadcast(conns, msg) {
       const data = JSON.stringify(msg);
+      let delivered = 0;
       for (const conn of conns) {
-        sendRaw(conn, data);
+        if (sendRaw(conn, data)) {
+          delivered++;
+        }
       }
+      countSent(msg.type, data, delivered);
     },
     close(conn, code, reason) {
       sockets.get(conn)?.ws.close(code, reason);

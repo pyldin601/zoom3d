@@ -94,6 +94,20 @@ function captureLog() {
   return { log, lines };
 }
 
+test('metrics count what the server sends: messages and bytes by type, each delivery once', async () => {
+  const a = await joined('Ada');
+  const b = await joined('Bob');
+  const { x, y } = a.welcome.spawn;
+  a.send({ type: 'state', x, y, angle: 1, seq: 1 });
+  await b.waitFor('peer_state');
+  const text = await metrics();
+  expect(text).toContain('zoom3d_messages_sent_total{type="welcome"} 2');
+  expect(text).toContain('zoom3d_messages_sent_total{type="peer_joined"} 1');
+  expect(text).toContain('zoom3d_messages_sent_total{type="peer_state"} 1');
+  const bytes = /zoom3d_bytes_sent_total\{type="peer_state"\} (\d+)/.exec(text)?.[1];
+  expect(Number(bytes)).toBeGreaterThan(40);
+});
+
 test('metrics count rooms, peers, joins and dropped messages', async () => {
   const a = await joined('Ada');
   await joined('Bob');
