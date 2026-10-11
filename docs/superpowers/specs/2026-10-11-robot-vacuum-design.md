@@ -213,9 +213,13 @@ The hum is synthesised in Web Audio, with no audio file.
 
 | Layer | How it's made |
 |---|---|
-| **Airflow** | Looping noise through a band-pass around 1.5–3 kHz |
-| **Motor whine** | An oscillator around 150–250 Hz with a slow, slight wobble |
-| **Brush whirr** | Low-passed noise, amplitude-modulated at about 10–15 Hz |
+| **Airflow** | Looping noise through a soft band-pass around 900 Hz |
+| **Motor** | A low triangle-wave purr around 110 Hz with a slow, slight wobble |
+| **Brush** | Low-passed noise, amplitude-modulated at about 8 Hz |
+
+The agreed character is variant **B, "soft purr"**, picked by ear from four candidates in the 2026-10-11 brainstorm
+(`.superpowers/brainstorm/*/content/hum.html`). It's darker and lower than a real vacuum, so it's easy to talk over.
+The exact values are in the plan's Task 8.
 
 ### 5.2 How it reacts
 

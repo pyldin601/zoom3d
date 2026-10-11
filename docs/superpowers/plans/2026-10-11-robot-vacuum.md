@@ -576,29 +576,30 @@ its footprint.
   export function createObjectSounds(ctx: BaseAudioContext, engine: AudioEngine): ObjectSounds;
   ```
 
-**The synth (§5), starting values to tune by ear:**
+**The synth (§5): variant B "soft purr", as picked by ear in the brainstorm's `hum.html`. Copy these values; only the
+level is tuned later:**
 
 | Part | Signal chain |
 |---|---|
 | Noise | One 2 s mono white-noise `AudioBuffer`, looped through a single `AudioBufferSourceNode` |
-| Airflow | noise → bandpass 2 kHz (Q 0.7) → gain 0.6 |
-| Brush | noise → lowpass 400 Hz → gain whose `gain` is modulated by a 12 Hz sine LFO (depth 0.5 around 0.5) |
-| Motor | sawtooth 180 Hz → lowpass 900 Hz → gain 0.3; a 0.3 Hz sine LFO adds ±3 Hz to its frequency |
+| Airflow | noise → bandpass 900 Hz (Q 0.5) → gain 0.45 |
+| Brush | noise → lowpass 250 Hz → gain whose `gain` is 0.5 ± 0.3, modulated by an 8 Hz sine LFO |
+| Motor | triangle 110 Hz → lowpass 500 Hz → gain 0.45; a 0.25 Hz sine LFO adds ±2 Hz to its frequency |
 
 - **Mixing:** all three layers go into a `motion` gain, then a master gain of `VACUUM_GAIN`, which is the `output`.
 - **`setMotion`:** glides with `setTargetAtTime` (τ 0.15 s):
 
   | Motion | Motor | Motion gain |
   |---|---|---|
-  | drive | 180 Hz | 1 |
-  | turn | 162 Hz | 0.85 |
-  | still | 150 Hz | 0.7 |
+  | drive | 110 Hz | 1 |
+  | turn | 99 Hz | 0.85 |
+  | still | 91 Hz | 0.7 |
 
 - **`bump()`:**
-  - The motor dips to 140 Hz and returns over 0.25 s.
+  - The motor dips to 86 Hz and glides back (`setTargetAtTime` τ 0.08 s, starting at +0.05 s).
   - A 70 Hz sine thud with a 4 ms attack decays to silence in 0.15 s.
   - A new oscillator is started per bump, stopped at +0.3 s and connected before the master gain.
-- **`lost()`:** two sine beeps, 880 Hz then 660 Hz, each 0.18 s with a 0.25 s gap, into the master gain.
+- **`lost()`:** two sine beeps, 880 Hz at +0 s then 660 Hz at +0.43 s, each 0.18 s long, into the master gain.
 - **Everything goes through the master gain,** so it's spatial at the same level.
 
 **`motionOf`:**
@@ -619,7 +620,7 @@ its footprint.
     - `output is the master gain at VACUUM_GAIN`.
     - `VACUUM_GAIN is at least 12 dB under unity`: `20 * Math.log10(VACUUM_GAIN) <= -12`.
     - `the noise source loops and starts`.
-    - `setMotion('turn') targets 162 Hz on the motor`.
+    - `setMotion('turn') targets 99 Hz on the motor`.
     - `bump starts and schedules the stop of a thud oscillator`.
     - `lost schedules two beeps 880 then 660`.
     - `dispose stops sources and disconnects`.
