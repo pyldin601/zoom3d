@@ -11,6 +11,7 @@ import type { TransportOptions } from './transport';
 const LK: LiveKitAccess = { url: 'ws://lk', token: 'tok' };
 const info = (id: string, cam = true): PeerInfo => ({
   id,
+  slot: 0,
   name: id,
   color: '#fff',
   x: 1,
@@ -185,13 +186,13 @@ test('a fresh welcome creates a transport and a face for every peer', () => {
   expect(call.faceOf('a')).toBe(faces.get('a')?.texels);
 });
 
-test("faces get the peer's avatar picture", () => {
+test("faces load the peer's avatar picture from the server", () => {
   const call = makeCall();
-  const pic = 'data:image/jpeg;base64,/9j/';
-  setPeers({ ...info('a'), avatar: pic });
+  const id = 'abcdefghijklmnopqrstuv';
+  setPeers({ ...info('a'), avatar: id });
   call.listener.welcome?.('me', LK, true);
   call.listener.peerJoined?.(info('b'));
-  expect(faceAvatars.get('a')).toBe(pic);
+  expect(faceAvatars.get('a')).toBe(`/avatar/${id}`);
   expect(faceAvatars.get('b')).toBeNull();
 });
 

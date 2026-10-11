@@ -3,6 +3,7 @@ import {
   type HeldItem,
   INTERP_DELAY_MS,
   LEVEL1,
+  MAX_PEERS,
   newRoomId,
   type PlayerState,
   parseMap,
@@ -32,6 +33,7 @@ import { createLiveKitTransport } from './media/livekit';
 import { createLocalMedia, type LocalMediaController } from './media/local-media';
 import { loadMediaPrefs, saveMediaPrefs } from './media/media-prefs';
 import { createRemoteMedia } from './media/remote-media';
+import { nearTier } from './net/peer-delay';
 import { createSession, objectKey, type Session } from './net/session';
 import { type AutomapPeer, drawAutomap } from './renderer/automap';
 import { type Bob, createBob } from './renderer/bob';
@@ -586,7 +588,14 @@ function statusText(s: Session): string | null {
     case 'reconnecting':
       return 'Reconnecting…';
     case 'failed':
-      return s.error() === 'room_full' ? 'This room is full (8 people)' : "Couldn't join this room";
+      switch (s.error()) {
+        case 'room_full':
+          return `This room is full (${MAX_PEERS} people)`;
+        case 'outdated':
+          return 'zoom3d was updated: reload the page';
+        default:
+          return "Couldn't join this room";
+      }
   }
 }
 
@@ -624,6 +633,7 @@ const peerBobs = new Map<string, Bob>();
 
 /** Samples every peer's and object's interpolated position into `positions` (reused objects). */
 function refreshPositions(s: Session, now: number): void {
+  // Objects come every tick; each peer is drawn as late as its updates need (6d spec §2.3).
   const renderTime = now - INTERP_DELAY_MS;
   for (const key of objectPoses.keys()) {
     if (!s.objects.has(key.slice('object:'.length))) {
@@ -652,7 +662,8 @@ function refreshPositions(s: Session, now: number): void {
     }
   }
   for (const peer of s.peers.values()) {
-    if (!peer.buffer.sample(renderTime, sample)) {
+    const delay = peer.delay.update(now, nearTier(player.x, player.y, peer.info.x, peer.info.y));
+    if (!peer.buffer.sample(now - delay, sample)) {
       continue;
     }
     const pos = positions.get(peer.info.id);

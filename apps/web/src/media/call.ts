@@ -1,5 +1,5 @@
 // Glue between the session (presence) and media: the LiveKit transport, remote elements, faces.
-import type { PeerInfo } from '@zoom3d/shared';
+import { avatarPath, type PeerInfo } from '@zoom3d/shared';
 import type { AudioEngine } from '../audio/engine';
 import type { Session, SessionListener } from '../net/session';
 import type { createFace as CreateFace, FaceSource } from './faces';
@@ -82,7 +82,7 @@ export function createCall(opts: CallOptions): Call {
       face = opts.createFace({
         name: peer.name,
         color: peer.color,
-        avatar: peer.avatar,
+        avatar: peer.avatar === null ? null : avatarPath(peer.avatar),
         document: opts.document,
       });
       faces.set(peer.id, face);
