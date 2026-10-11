@@ -221,11 +221,12 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     `autoSubscribe` off; every 250 ms the client decides per peer what to receive, and subscribes per publication
     (`setSubscribed`).
     - **Facts come from the UI, decisions from one rule.** The renderer's sprite pass writes, per peer, the disc
-      columns that passed the wall depth test and the disc's size in pixels (reused objects, no allocations);
+      columns seen (in front of the walls and not behind a nearer disc, so a crowd's back rows get no video) and the
+      disc's size in pixels (reused objects, no allocations);
       `media/interest.ts` (pure, unit-tested) turns them, positions and the audio range into wants.
     - **Why not raw "drawn this frame":** a resumed video needs ~0.3–1 s for a keyframe, so the rule adds:
-      - **Video:** wanted when drawn, or as look-ahead within 20 tiles, the view widened by 15° each side, and in line
-        of sight. Upgrades at once; downgrades and stops only after 1 s. A face out of view keeps its last frame (and
+      - **Video:** wanted when seen, or as look-ahead just outside the view (within 20 tiles, 15° beyond each edge, in
+        line of sight). Upgrades at once; downgrades and stops only after 1 s. A face out of view keeps its last frame (and
         holds it while resuming), never flashing to initials.
       - **Audio:** voices are silent beyond the audio setting `max` (24 tiles by default). Subscribed within `max + 2`,
         dropped beyond `max + 4`; the boombox follows the mic.

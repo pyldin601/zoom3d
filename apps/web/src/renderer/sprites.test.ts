@@ -282,6 +282,33 @@ describe('facts for dynamic subscription', () => {
     expect(facts.get('a')).toEqual({ drawnColumns: 0, projectedSize: 0 });
   });
 
+  test('a disc right behind a nearer one: no columns (it is not seen)', () => {
+    const facts = new Map<string, PeerFacts>();
+    renderSprites(frame(), player, [disc('near', 3.5, 4.5), disc('far', 5.5, 4.5)], facts);
+    expect(facts.get('far')?.drawnColumns).toBe(0);
+    expect(facts.get('far')?.projectedSize).toBeGreaterThan(0);
+    expect(Math.abs((facts.get('near')?.drawnColumns ?? 0) - (2 * AVATAR_RADIUS * PROJ) / 2)).toBeLessThanOrEqual(3);
+  });
+
+  test('a disc half behind a nearer one: some columns, fewer than in the open', () => {
+    const alone = new Map<string, PeerFacts>();
+    renderSprites(frame(), player, [disc('far', 5.5, 3.9)], alone);
+    const both = new Map<string, PeerFacts>();
+    renderSprites(frame(), player, [disc('near', 3.5, 4.5), disc('far', 5.5, 3.9)], both);
+    const columns = both.get('far')?.drawnColumns ?? 0;
+    expect(columns).toBeGreaterThan(0);
+    expect(columns).toBeLessThan(alone.get('far')?.drawnColumns ?? 0);
+  });
+
+  test('covering does not depend on the order sprites are listed in', () => {
+    const a = new Map<string, PeerFacts>();
+    renderSprites(frame(), player, [disc('near', 3.5, 4.5), disc('far', 5.5, 3.9)], a);
+    const b = new Map<string, PeerFacts>();
+    renderSprites(frame(), player, [disc('far', 5.5, 3.9), disc('near', 3.5, 4.5)], b);
+    expect(b.get('far')).toEqual(a.get('far'));
+    expect(b.get('near')).toEqual(a.get('near'));
+  });
+
   test('a key gets one facts object, reused every frame and zeroed when it leaves the frame', () => {
     const facts = new Map<string, PeerFacts>();
     renderSprites(frame(), player, [disc('a', 3.5, 4.5)], facts);

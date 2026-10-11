@@ -51,7 +51,9 @@ pause, and wrongly concluded that unsubscribed tracks keep sending; re-measured 
 
 ### 4.1 Facts (from the UI)
 - **Renderer (sprite pass):** per peer, written into a reused array (no allocations per frame):
-  - `drawnColumns`: disc columns that passed the wall depth test this frame (0 = not on screen, or fully hidden);
+  - `drawnColumns`: disc columns seen this frame: in front of the walls and not hidden behind a nearer disc (a
+    farther disc's column counts only where its slice is taller than every nearer disc's there; all discs sit on the
+    eye line). 0 = not on screen, or fully hidden;
   - `projectedSize`: the disc's diameter in framebuffer pixels (what the face texture is actually sampled at).
 - **Positions:** the interpolated positions the frame loop already computes (`positions`).
 - **Hidden tab:** `document.hidden`.
@@ -64,7 +66,9 @@ per peer `{ video: 'off' | 64 | 128 | 256, audio: boolean }`.
 - **Video wanted** when not hidden and either:
   - `drawnColumns > 0`; or
   - **look-ahead:** within `LOOKAHEAD_TILES = 20` tiles, within the field of view widened by `LOOKAHEAD_DEG = 15°`
-    on each side, and in line of sight (`hasLineOfSight`, the audio occlusion test).
+    on each side, and in line of sight (`hasLineOfSight`, the audio occlusion test). Inside the real field of view
+    look-ahead only covers peers the renderer hasn't reported yet: once a frame has drawn none of a peer there, they
+    are hidden (behind someone nearer) and get no video.
 - **Size**, from `projectedSize` (framebuffer px), with 20% hysteresis around each threshold:
   - ≥ 128 px → 256; ≥ 48 px → 128; otherwise → 64 (also for look-ahead peers not drawn yet).
 - **Delays:** going up (off → on, or a bigger size) happens at once; going down (smaller, or off) only after the
