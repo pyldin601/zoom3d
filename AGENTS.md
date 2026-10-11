@@ -39,7 +39,7 @@ docs/            vision, architecture, decisions, roadmap
 
 ## Commands
 
-Node ≥ 22, pnpm 9, and `brew install livekit` (local SFU for `pnpm dev` and `pnpm e2e`).
+Node ≥ 22, pnpm 12, and `brew install livekit` (local SFU for `pnpm dev` and `pnpm e2e`).
 
 ```
 pnpm install      # install workspace deps
