@@ -770,8 +770,9 @@ function frame(dt: number): void {
     updateInterest(session, performance.now(), document.hidden);
   }
   if (inRoom()) {
-    renderOwnHeld(fb, ownHeld, selfBob.itemLift, selfBob.sway, ownGesture.pose(performance.now()));
+    // The boombox first: a sip swings the drink across it, and the drink must stay in front.
     renderOwnBoombox(fb, ownBoombox, selfBob.itemLift, selfBob.sway);
+    renderOwnHeld(fb, ownHeld, selfBob.itemLift, selfBob.sway, ownGesture.pose(performance.now()));
   }
   gameCtx.putImageData(image, 0, 0);
   hudCtx.clearRect(0, 0, hud.width, hud.height);

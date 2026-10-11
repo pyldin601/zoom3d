@@ -74,7 +74,8 @@ Geometry, in units of the disc's on-screen radius `r` (constants in `renderer/bo
 - 50% of the sprite hangs below the bottom edge (`OWN_BOOMBOX_CROP`): the fist, handle and the
   top of the body show.
 - Walking: the same drop as the drink, and the opposite sway (the other hand).
-- Drawn over the scene next to `renderOwnHeld`, only in a room, only while playing.
+- Drawn over the scene just before `renderOwnHeld`, only in a room, only while playing. The drink is drawn
+  last so a sip, which swings it across the boombox, stays in front (it went behind until 2026-10-11).
 
 These numbers come from the sketch and get tuned by eye at implementation.
 
