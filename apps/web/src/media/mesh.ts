@@ -7,6 +7,7 @@
 // opened sendrecv at creation and only ever swapped with replaceTrack, so music never renegotiates.
 import type { IceServer, SignalPayload } from '@zoom3d/shared';
 import { track } from '../telemetry/analytics';
+import type { MediaTransport } from './transport';
 
 export const VIDEO_MAX_BITRATE = 350_000;
 /** Index of the boombox transceiver in getTransceivers() on both sides (boombox spec §5.1). */
@@ -17,19 +18,7 @@ export const BOOMBOX_MAX_BITRATE = 128_000;
 export const WATCHDOG_MS = 10_000;
 export const WATCHDOG_CHECK_MS = 2_000;
 
-export interface MediaTransport {
-  connect(peerId: string): void;
-  handleSignal(from: string, payload: SignalPayload): Promise<void>;
-  disconnect(peerId: string): void;
-  close(): void;
-  stats(peerId: string): Promise<{ bytesReceived: number; boomboxBytesReceived: number } | null>;
-  /** Sends `track` instead of the stream's video track, on current and future connections. */
-  setVideoTrack(track: MediaStreamTrack): void;
-  /** Swaps the mic on current connections; later ones read it from the local stream. */
-  setAudioTrack(track: MediaStreamTrack): void;
-  /** Sends `track` (or nothing) on the boombox transceiver, on current and future connections. */
-  setBoomboxTrack(track: MediaStreamTrack | null): void;
-}
+export type { MediaTransport } from './transport';
 
 export interface MeshOptions {
   selfId: string;
