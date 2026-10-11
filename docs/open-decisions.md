@@ -217,46 +217,39 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     people and ~150,000/s for 100.
   - **Join:** `welcome` lists every peer with its avatar picture (≤ 12 KB each): ~1.2 MB for 100.
 - **Planned, in order (roadmap M7):**
-  - **6c, dynamic subscription (receive only what you can see or hear):** `autoSubscribe` off; the client decides per
-    peer about 4 times a second. Applied with LiveKit's `setSubscribed` / `setVideoDimensions`.
-    - **Facts come from the UI, decisions from one rule.** The renderer and audio engine report what is actually
-      drawn and heard; `media/interest.ts` (pure, unit-tested) turns those facts into subscriptions. This keeps what
-      you receive exactly matched to the screen and the speakers, with no second copy of the projection or audio maths.
-      - **Renderer:** during the sprite pass, per peer: whether any disc column passed the wall depth test (so
-        half-hidden faces at corners count), how many columns, and the projected size in pixels. It also does the same
-        test with a widened field of view, for look-ahead. These go into a reused array: no allocations in the frame
-        loop.
-      - **Audio engine:** per peer, the distance and wall occlusion it already computes for `voiceGains`.
-      - **Hidden tab:** the renderer stops, so the rule receives no video at all (a free saving). Audio keeps following
-        the engine's hidden-tab ticker.
-    - **Why not raw "drawn this frame":** a resumed video needs ~0.3–1 s for a keyframe, so subscribing only when a face
-      is drawn makes people pop in on every turn. The rule adds the policy the UI doesn't have:
-      - **Video:** subscribe when visible in the widened view (a field-of-view margin), within a distance margin.
-        Unsubscribe only after ~1 s out of sight; re-subscribe at once. Show the last frame (or the avatar picture /
-        initials) meanwhile.
-      - **Audio:** voices are silent beyond 12 tiles (`voiceGains`). Subscribe within ~14 tiles, drop beyond ~16, so a
-        voice is already flowing when it becomes audible. Boombox audio follows the same rule.
-      - **Hard caps** as a safety net in crowds: at most ~12 videos and ~24 voices, nearest first.
-    - **Video, visible but far → smaller layer.** Senders publish three simulcast layers. The receiver asks for the
-      layer matching the projected size (`setVideoDimensions`). Starting values, to tune on real faces:
+  - **6c, dynamic subscription (receive only what you can see or hear) — built 2026-10-11** ([spec](superpowers/specs/2026-10-11-dynamic-subscription-design.md)):
+    `autoSubscribe` off; every 250 ms the client decides per peer what to receive, and subscribes per publication
+    (`setSubscribed`).
+    - **Facts come from the UI, decisions from one rule.** The renderer's sprite pass writes, per peer, the disc
+      columns that passed the wall depth test and the disc's size in pixels (reused objects, no allocations);
+      `media/interest.ts` (pure, unit-tested) turns them, positions and the audio range into wants.
+    - **Why not raw "drawn this frame":** a resumed video needs ~0.3–1 s for a keyframe, so the rule adds:
+      - **Video:** wanted when drawn, or as look-ahead within 20 tiles, the view widened by 15° each side, and in line
+        of sight. Upgrades at once; downgrades and stops only after 1 s. A face out of view keeps its last frame (and
+        holds it while resuming), never flashing to initials.
+      - **Audio:** voices are silent beyond the audio setting `max` (24 tiles by default). Subscribed within `max + 2`,
+        dropped beyond `max + 4`; the boombox follows the mic.
+      - **Caps:** at most 12 videos and 24 voices, nearest first, among peers that publish media (bots never take a
+        slot). A hidden tab receives no video at all, at once; audio is unchanged.
+    - **Three sizes as separate tracks, not simulcast.** The 6c spike (Chrome, LiveKit 1.13.9) found
+      `livekit-client` turns simulcast off below 480 px, and Chrome won't split a 256² source into VP9 SVC layers. So
+      the framer draws three canvases, each published as its own track; the receiver picks by on-screen size (≥ 128 px
+      → 256, ≥ 48 px → 128, else 64; kept until 20% below the threshold):
 
-      | Layer | Size | Frame rate | Bitrate cap | For faces on screen |
-      |---|---|---|---|---|
-      | High | 256×256 | 24 fps | 350 kbps (as today) | larger than ~130 px |
-      | Medium | 128×128 | 24 fps | ~120 kbps | ~60–130 px |
-      | Low | 64×64 | 15 fps | ~35 kbps | smaller than ~60 px |
+      | Track | Size | Frame rate | Bitrate cap |
+      |---|---|---|---|
+      | `face` | 256×256 | 24 fps | 350 kbps (as 6b) |
+      | `face-128` | 128×128 | 24 fps | 120 kbps |
+      | `face-64` | 64×64 | 15 fps | 35 kbps |
 
-      - **Sender upload:** ~505 kbps of video instead of 350 while all three layers flow. **Dynacast** (off since 6b,
-        when it tracked our hidden `<video>` elements) turns back on with explicit subscriptions: it pauses layers no
-        one receives, so usually only one or two go out.
+      - **Sender upload:** **dynacast** is on again: LiveKit pauses any face track nobody receives (spike: 0 kbps,
+        resumed on subscribe), so a sender uploads only the sizes someone wants. Quirk: alone in a room, all three send.
+      - **Hidden tab:** all three carry the raw camera; `face-128`/`face-64` scale it with `scaleResolutionDownBy`.
       - **Receiver:** e.g. 3 close + 5 mid + 4 far faces ≈ 1.8 Mbps of video, against ~4.2 Mbps for the same 12 at
-        full quality today (plus everyone out of view).
-      - **Verify first (6c spike):** Chrome has limited simulcast layers for small inputs (historically one layer below
-        ~320×180). LiveKit sends explicit `scaleResolutionDownBy` layers, which recent Chrome honours, but check that
-        Chrome and Safari really send all three. Fallbacks: a larger canvas (e.g. 320² → 320/160/80), or two separate
-        tracks (`face` 256 + a 64 px thumbnail).
+        full quality in 6b (plus everyone out of view).
+      - **Mixed versions:** an old client publishes only `face`; new clients fall back to the nearest published size.
     - The SFU then forwards only what each client asked for, so a full room's egress scales with what people can
-      see and hear, not with N × (N − 1).
+      see and hear, not with N × (N − 1). To measure on casa: LiveKit egress on the dashboard before/after.
   - **6d, server fan-out:** replace per-move relays with **one batched update per client per server tick**, containing
     only peers it should know about now: nearby ones at full rate (15 Hz), distant ones at 1–2 Hz. Absolute poses
     stay (no deltas): a lost batch costs one stale frame, never a corrupt state. Also avatar pictures move out of
@@ -272,9 +265,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     measuring LiveKit CPU and egress on casa (4 cores, 1 Gbps), server CPU, and browser frame rate. casa's limits
     (shared 4 cores, UDP buffer `net.core.rmem_max`) are the main risks; monitoring (LiveKit Prometheus + Grafana)
     comes first.
-- **Open (product):** proximity only (you see and hear people near you; clusters are natural breakout rooms), or
-  also a room-wide "stage"/spotlight that everyone hears and sees (talks, announcements), or a webinar mode with a
-  view-only audience. Proximity-only is the smallest change; a stage needs a broadcast path on top of 6c's rules.
+- **Decided (product, 2026-10-11): proximity only.** You see and hear people near you; clusters are natural breakout
+  rooms. No room-wide stage/spotlight or webinar mode in M7 (a stage would need a broadcast path on top of 6c's
+  rules).
 
 ### Risks (to verify, not assume)
 - **R1 — Echo cancellation vs Web Audio output.** Chrome's AEC historically did not cancel audio played via `AudioContext`. If still true, speakers echo. Verify in an early throwaway audio spike (speakers vs headphones).

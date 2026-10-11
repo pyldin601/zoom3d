@@ -1,6 +1,6 @@
 # Dynamic subscription (step 6c) — design spec
 
-Status: draft, 2026-10-11. Decision record: [open-decisions.md](../../open-decisions.md) D21. Builds on the
+Status: built, 2026-10-11. Decision record: [open-decisions.md](../../open-decisions.md) D21. Builds on the
 [LiveKit spec](2026-10-11-livekit-sfu-design.md) (6b). Rooms stay **proximity-only** (user's call, 2026-10-11): no
 stage or spotlight in M7.
 
@@ -68,7 +68,8 @@ per peer `{ video: 'off' | 64 | 128 | 256, audio: boolean }`.
 - **Delays:** going up (off → on, or a bigger size) happens at once; going down (smaller, or off) only after the
   lower value has been wanted continuously for `HOLD_MS = 1000`.
 - **Audio wanted** while within `max + 2` tiles; dropped beyond `max + 4` (hysteresis). Mic and boombox follow it.
-- **Caps:** at most `MAX_VIDEOS = 12` videos and `MAX_VOICES = 24` voices, nearest first; the rest are off.
+- **Caps:** at most `MAX_VIDEOS = 12` videos and `MAX_VOICES = 24` voices, nearest first; the rest are off. Only
+  peers that publish media enter the rule (`Call.publishes`), so bots never take a slot.
 - **Hidden tab:** video off for everyone at once (no hold); audio unchanged.
 
 ### 4.3 Applying it (`media/livekit.ts`)
@@ -83,7 +84,8 @@ per peer `{ video: 'off' | 64 | 128 | 256, audio: boolean }`.
 ### 4.4 Faces while paused
 When a peer's video is off on purpose (out of sight), its face keeps the **last frame** instead of falling back to
 the avatar after `FACE_STALL_MS`, so it reappears with a face the moment it comes into view, then updates when video
-resumes (`FaceSource.setPaused(true)`). A peer never seen yet shows its avatar or initials, as today.
+resumes (`FaceSource.setPaused(true)`). A peer never seen yet shows its avatar or initials, as today. A new video
+(a size switch) or a resume holds the last frame until the new frames arrive, for up to `FACE_STALL_MS`.
 
 ## 5. Expected effect
 
