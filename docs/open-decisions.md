@@ -71,6 +71,21 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   resume with the same id and keep their P2P mesh. We rejected Redis plus a per-room lease (which rolling deploys
   need, to avoid two pods serving one room) as too much machinery. With `Recreate`, the restart gap is covered by
   the 30 s grace period, and media between peers never stops. Long-term persistence stays out of scope.
+- *Resolved 2026-10-11 (TURN):* self-hosted coturn 4.18 at `turn.pyldin601.xyz`, next to the app on the home k3s
+  node (its own `coturn` app in the servers repo, so removing it is deleting that app and the server's `TURN_*` env).
+  Clients get `turn:` udp and tcp on 3478 and `turns:` on 443, where Traefik terminates TLS by SNI and forwards to
+  3478, for networks that only allow HTTPS. Credentials are the existing `use-auth-secret` scheme (`ice.ts`), signed
+  with a secret shared through a SealedSecret. coturn runs on the host network with relay ports 49160–49999 (a full
+  8-person mesh holds 168 allocations: 7 connections × 3 URLs × 8 people). The home IP is dynamic, so a wrapper
+  detects it at start and restarts coturn when it changes. Relaying to private, LAN and cluster ranges is denied,
+  and that includes the node's own IP. coturn rewrites its public IP to the node IP, so relay-to-relay between two
+  clients of this server is denied too: TURN helps whenever at least one side has a UDP path, but two peers who are
+  both on TCP-only networks can't meet. Allowing the node IP would fix that, but then anyone who joins a room could
+  send UDP to the node (flannel VXLAN included). For the same reason, a client on the home LAN, which shares
+  coturn's public IP, can't be reached through it. A guest who needs TURN can't meet someone joining from home; a
+  TURN server outside that NAT would fix it. Verified from the LAN only: relay candidates on all three URLs with the
+  `welcome`'s credentials, and direct connections unchanged. An SFU for bigger rooms (LiveKit, which has its own
+  TURN) is under consideration; if it comes, it replaces coturn.
 
 ### D12 — Input and accessibility
 - Keyboard only vs mouse-look vs touch. Colour-blind/readable names above avatars? Captions?
