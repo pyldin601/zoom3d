@@ -16,6 +16,7 @@ import { startHiddenTicker } from './audio/ticker';
 import { startLoop } from './game/loop';
 import { type Frame, layoutStage, watchLayout } from './game/stage';
 import { createInput } from './input/keyboard';
+import { mediaKey } from './input/media-keys';
 import { lockPointer } from './input/pointer-lock';
 import { createTouchInput } from './input/touch';
 import { loadAvatar, saveAvatar } from './media/avatar';
@@ -322,8 +323,17 @@ function toggleAutomap(): void {
   automapVisible = !automapVisible;
   refreshTouchControls();
 }
+// M mutes or unmutes, C turns the camera off or on: the same as pressing the room bar's toggle (feedback, a camera
+// that can't start, a missing device and all).
 window.addEventListener('keydown', (e) => {
-  if (e.code !== 'Tab' && e.code !== 'KeyM') {
+  const kind = inRoom() ? mediaKey(e) : null;
+  if (kind) {
+    ui.querySelector<HTMLButtonElement>(`button[data-control="${kind}"]`)?.click();
+  }
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'Tab') {
     return;
   }
   // Outside the room Tab keeps its keyboard-navigation meaning.

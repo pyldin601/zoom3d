@@ -115,7 +115,7 @@ glue to browser/Node APIs.
 - **HUD layer:** a separate full-resolution canvas above the scaled game canvas, for crisp
   text. It shows name labels above avatars (projected position), the self-preview (small
   mirrored circle), mic/cam state and the automap.
-- **Automap (toggle `Tab`/`M`):** top-down grid in the three zone colours, own position and
+- **Automap (toggle `Tab`):** top-down grid in the three zone colours, own position and
   heading, and other participants as coloured dots with names.
 - **Hot path:** no allocations per frame or per column; reuse typed arrays.
 
@@ -123,6 +123,8 @@ glue to browser/Node APIs.
 
 - WASD/arrows to move and strafe, arrows or pointer-lock mouse to turn. Move speed 3 tiles/s,
   turn speed 2.5 rad/s. Touch: a move pad and drag-to-turn (see the [mobile spec](2026-10-10-mobile-design.md) §4).
+- In a room, `M` mutes or unmutes the mic and `C` turns the camera off or on, exactly like the room bar's toggles
+  (ignored while typing, on key repeat and with Cmd/Ctrl/Alt). `M` toggled the map until 2026-10-11.
 - Collision: player radius 0.25 tiles against wall tiles, with axis-separated sliding.
   Avatars do not collide with each other.
 - Positions use continuous tile coordinates (`x, y` floats; `angle` in radians).
