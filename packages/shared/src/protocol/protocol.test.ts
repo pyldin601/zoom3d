@@ -8,6 +8,7 @@ import {
   isHeldItem,
   isValidAvatar,
   isValidRoomId,
+  MAX_BOTS,
   MAX_MESSAGE_BYTES,
   MAX_SERVER_MESSAGE_BYTES,
   newRoomId,
@@ -110,6 +111,16 @@ describe('parseClientMessage', () => {
       name: 'Ada',
       resumeToken: 'tok',
     });
+  });
+
+  test('a join may ask for 1 to MAX_BOTS bots; anything else is dropped (bots spec)', () => {
+    expect(MAX_BOTS).toBe(100);
+    const join = (bots: unknown) => parseClientMessage(json({ type: 'join', roomId: ROOM, name: 'Ada', bots }));
+    expect(join(100)).toEqual({ type: 'join', roomId: ROOM, name: 'Ada', bots: 100 });
+    expect(join(1)).toMatchObject({ bots: 1 });
+    for (const bad of [0, -1, 101, 2.5, '10', null]) {
+      expect(join(bad)).toEqual({ type: 'join', roomId: ROOM, name: 'Ada' });
+    }
   });
 
   test('keeps a valid join avatar and drops an invalid one', () => {

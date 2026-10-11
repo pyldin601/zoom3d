@@ -32,13 +32,14 @@ export function createMetrics(src: MetricsSources) {
   });
   new Gauge({
     name: 'zoom3d_peers',
-    help: 'Peers by state: connected, or waiting out their resume grace period.',
+    help: 'Peers by state: connected, waiting out their resume grace period, or a server-driven bot.',
     labelNames: ['state'],
     registers,
     collect() {
-      const { connected, waiting } = src.lobby();
+      const { connected, waiting, bots } = src.lobby();
       this.set({ state: 'connected' }, connected);
       this.set({ state: 'waiting' }, waiting);
+      this.set({ state: 'bot' }, bots);
     },
   });
 

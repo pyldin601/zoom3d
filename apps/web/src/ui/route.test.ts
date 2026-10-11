@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { parseRoute } from './route';
+import { botsParam, parseRoute } from './route';
 
 const ID = 'AAAAAAAAAAAAAAAAAAAAAA';
 
@@ -12,4 +12,17 @@ test.each([
   ['/x', { kind: 'invalid' }],
 ])('%s', (path, expected) => {
   expect(parseRoute(path)).toEqual(expected);
+});
+
+test.each([
+  ['?bots=100', 100],
+  ['?bots=1', 1],
+  ['?debug&bots=20', 20],
+  ['', null],
+  ['?bots=0', null],
+  ['?bots=101', null],
+  ['?bots=2.5', null],
+  ['?bots=abc', null],
+])('botsParam(%s) → %s (opt-in bots for testing large rooms)', (search, expected) => {
+  expect(botsParam(search)).toBe(expected);
 });

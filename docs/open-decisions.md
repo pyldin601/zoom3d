@@ -262,6 +262,12 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     stay (no deltas): a lost batch costs one stale frame, never a corrupt state. Also avatar pictures move out of
     `welcome` to a cached `GET /avatar/:id`, peer colours are generated instead of 8 fixed ones, `MAX_PEERS` goes up,
     and name labels show only for nearby people.
+  - **Testing aid (2026-10-11): bots.** `/?bots=N` (1–100) → "Start a party" makes a room whose creating join asks the
+    server for N bots: generic names ("Bot 001"), muted colours, no media, spawned on random floor tiles, wandering like
+    robot vacuums (straight on, a random new heading at a wall, now and then a turn) at 10 Hz through the normal
+    `peer_state` relay. Outside the people cap; gone when the last person leaves; at most 3 bot rooms per server.
+    100 bots on desktop Chrome: 60 fps, with ~1,000 position messages/s per client, which is what 6c/6d are measured
+    against.
   - **Then a load test:** `lk load-test` for 100 simulated media participants plus a bot swarm on the game socket,
     measuring LiveKit CPU and egress on casa (4 cores, 1 Gbps), server CPU, and browser frame rate. casa's limits
     (shared 4 cores, UDP buffer `net.core.rmem_max`) are the main risks; monitoring (LiveKit Prometheus + Grafana)

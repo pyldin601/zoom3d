@@ -216,6 +216,17 @@ test('the welcome hands out LiveKit access (dev defaults) and signal messages ar
   expect(raw.some((m) => m.includes('"signal"'))).toBe(false);
 });
 
+test('a room created with bots shows them, keeps them moving, and counts them on /metrics', async () => {
+  const c = await client();
+  c.send({ type: 'join', roomId: ROOM, name: 'Ada', bots: 5 });
+  const welcome = await c.waitFor('welcome');
+  const botIds = new Set(welcome.peers.map((p) => p.id));
+  expect(welcome.peers.map((p) => p.name)).toEqual(['Bot 001', 'Bot 002', 'Bot 003', 'Bot 004', 'Bot 005']);
+  const state = await c.waitFor('peer_state');
+  expect(botIds.has(state.id)).toBe(true);
+  expect(await metrics()).toContain('zoom3d_peers{state="bot"} 5');
+});
+
 test('held is relayed over real sockets', async () => {
   const a = await joined('Ada');
   const b = await joined('Bob');

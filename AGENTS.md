@@ -49,6 +49,7 @@ pnpm typecheck    # tsc --noEmit per package
 pnpm lint         # biome check
 pnpm e2e          # playwright; starts its own LiveKit :7890-7892 + server :8788 + web :5174
 pnpm bench        # renderer frame-time benchmark
+# Large rooms: open /?bots=100 and start a party: the room gets 100 server-driven bots (any server, prod included)
 docker compose up --build              # both images locally: http://localhost:8080
 scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this before pushing)
 ```
@@ -120,6 +121,10 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   camera directly or drop the canvas track when the camera is off: the face would be unpublished, and turning the
   camera on would have to republish it. `LocalMediaController` (`media/local-media.ts`) owns every local track
   from the lobby onward; the room never calls `getUserMedia` itself.
+- Bots (`?bots=N`, `Lobby.spawnBots`/`stepBots`): server-side peers with a `bot` flag, no connection and no media.
+  They never count toward `MAX_PEERS`, never expire, can't be resumed into, aren't saved in the state file, and never
+  keep a room open (it closes with its last person). At most `MAX_BOT_ROOMS` rooms have them at once. They move at
+  10 Hz through the same `peer_state` relay as players, so they exercise the real fan-out.
 - Telemetry privacy: logs, metrics labels, Sentry and Amplitude never get names, resume tokens or IPs, nor raw room
   ids: a room link is the room's only key. Server logs use `roomRef()` (a short hash), and the browser Sentry
   `beforeSend` scrubs `/r/<id>`.

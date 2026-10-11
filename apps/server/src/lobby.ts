@@ -1,4 +1,5 @@
-// Room membership, colours, resume grace and move validation. Pure: no sockets or timers.
+// Room membership, colours, resume grace and move validation, plus opt-in wandering bots. Pure: no sockets or
+// timers (the server drives tick() and stepBots()).
 import {
   type BoomboxMessage,
   DRINK_GAP_MS,
@@ -7,6 +8,7 @@ import {
   isPlausibleMove,
   isValidAvatar,
   isValidRoomId,
+  isWallAt,
   type JoinMessage,
   type LiveKitAccess,
   MAX_PEERS,
@@ -18,11 +20,22 @@ import {
   type StateMessage,
   sanitizeName,
   spawnPoint,
+  stepPlayer,
 } from '@zoom3d/shared';
 
 export const CLOSE_ROOM_FULL = 4001;
 export const CLOSE_INVALID = 4002;
 export const CLOSE_REPLACED = 4003;
+
+/** Rooms that may have bots at once on one server, so a public link can't load casa with thousands. */
+export const MAX_BOT_ROOMS = 3;
+/** Muted colours, never a player colour, so people stand out from bots. */
+export const BOT_COLORS = ['#7f8c8d', '#95a5a6', '#8d7b68', '#6c7a89', '#a09080'] as const;
+/** Bots wander slower than walking pace. */
+const BOT_SPEED = 0.6;
+/** On average, a bot that isn't blocked turns on its own about this often. */
+const BOT_TURN_EVERY_S = 8;
+const FORWARD = { forward: 1, strafe: 0, turn: 0 };
 
 export interface Outbox {
   send(connId: string, msg: ServerMessage): void;
@@ -39,7 +52,8 @@ export type LobbyEvent =
   | { type: 'joined'; roomId: string; peerId: string; resumed: boolean; replaced: boolean; peers: number }
   | { type: 'rejected'; reason: RejectReason }
   | { type: 'disconnected' | 'move_corrected'; roomId: string; peerId: string }
-  | { type: 'left'; roomId: string; peerId: string; peers: number };
+  | { type: 'left'; roomId: string; peerId: string; peers: number }
+  | { type: 'bots_spawned'; roomId: string; count: number };
 
 export interface LobbyStats {
   rooms: number;
@@ -47,6 +61,8 @@ export interface LobbyStats {
   connected: number;
   /** Peers in their resume grace period. */
   waiting: number;
+  /** Server-driven bots (never counted as people). */
+  bots: number;
 }
 
 export interface LobbyOptions {
@@ -69,9 +85,13 @@ interface Peer extends PeerInfo {
   /** When this peer's last sip or cheers was relayed (not shared: gestures are never stored). */
   lastGestureAt: number;
   disconnectedAt: number | null;
+  /** Set on a wandering bot: no connection, never expires, never resumable, never saved. */
+  bot?: { seq: number };
 }
 
 type Room = Map<string, Peer>;
+
+const isPerson = (p: Peer) => p.bot === undefined;
 
 /** A peer as written to the restart snapshot: no connection, no gesture timing. */
 export interface SnapshotPeer extends PeerInfo {
@@ -103,6 +123,8 @@ export class Lobby {
   private readonly rooms = new Map<string, Room>();
   private readonly conns = new Map<string, { roomId: string; peerId: string }>();
   private readonly graceMs: number;
+  private floor: { x: number; y: number }[] | null = null;
+  private readonly moved = { x: 0, y: 0, angle: 0 };
 
   constructor(private readonly opts: LobbyOptions) {
     this.graceMs = opts.graceMs ?? RESUME_GRACE_MS;
@@ -119,16 +141,19 @@ export class Lobby {
   stats(): LobbyStats {
     let connected = 0;
     let waiting = 0;
+    let bots = 0;
     for (const room of this.rooms.values()) {
       for (const p of room.values()) {
-        if (p.conn === null) {
+        if (p.bot) {
+          bots++;
+        } else if (p.conn === null) {
           waiting++;
         } else {
           connected++;
         }
       }
     }
-    return { rooms: this.rooms.size, connected, waiting };
+    return { rooms: this.rooms.size, connected, waiting, bots };
   }
 
   join(conn: string, msg: JoinMessage): void {
@@ -146,7 +171,7 @@ export class Lobby {
     }
 
     const room = this.rooms.get(msg.roomId) ?? new Map<string, Peer>();
-    const resumable = [...room.values()].find((p) => p.resumeToken === msg.resumeToken);
+    const resumable = [...room.values()].find((p) => isPerson(p) && p.resumeToken === msg.resumeToken);
     if (msg.resumeToken !== undefined && resumable) {
       // The client often notices a dead link before the server does: hand the slot to the new connection.
       const replaced = resumable.conn !== null;
@@ -165,16 +190,16 @@ export class Lobby {
         peerId: resumable.id,
         resumed: true,
         replaced,
-        peers: room.size,
+        peers: this.people(room),
       });
       return;
     }
-    if (room.size >= MAX_PEERS) {
+    if (this.people(room) >= MAX_PEERS) {
       this.reject(conn, 'room_full', 'This room is full', CLOSE_ROOM_FULL);
       return;
     }
 
-    const used = new Set([...room.values()].map((p) => p.color));
+    const used = new Set([...room.values()].filter(isPerson).map((p) => p.color));
     const color = PEER_COLORS.find((c) => !used.has(c)) ?? PEER_COLORS[0];
     const spawn = spawnPoint(this.opts.map, this.opts.rng);
     const peer: Peer = {
@@ -195,6 +220,10 @@ export class Lobby {
     };
     if (room.size === 0) {
       this.emit({ type: 'room_opened', roomId: msg.roomId });
+      if (msg.bots && this.botRooms() < MAX_BOT_ROOMS) {
+        this.spawnBots(room, msg.bots);
+        this.emit({ type: 'bots_spawned', roomId: msg.roomId, count: msg.bots });
+      }
     }
     room.set(peer.id, peer);
     this.rooms.set(msg.roomId, room);
@@ -207,7 +236,7 @@ export class Lobby {
       peerId: peer.id,
       resumed: false,
       replaced: false,
-      peers: room.size,
+      peers: this.people(room),
     });
   }
 
@@ -309,10 +338,11 @@ export class Lobby {
         if (peer.disconnectedAt !== null && now - peer.disconnectedAt >= this.graceMs) {
           room.delete(peer.id);
           this.broadcast(room, peer.id, { type: 'peer_left', id: peer.id });
-          this.emit({ type: 'left', roomId, peerId: peer.id, peers: room.size });
+          this.emit({ type: 'left', roomId, peerId: peer.id, peers: this.people(room) });
         }
       }
-      if (room.size === 0) {
+      // Bots never keep a room alive: it closes with its last person.
+      if (this.people(room) === 0) {
         this.rooms.delete(roomId);
         this.emit({ type: 'room_closed', roomId });
       }
@@ -324,7 +354,7 @@ export class Lobby {
       version: 1,
       rooms: [...this.rooms].map(([id, room]) => ({
         id,
-        peers: [...room.values()].map((p) => ({
+        peers: [...room.values()].filter(isPerson).map((p) => ({
           ...info(p),
           resumeToken: p.resumeToken,
           lastAcceptedAt: p.lastAcceptedAt,
@@ -344,6 +374,95 @@ export class Lobby {
       this.rooms.set(id, room);
       this.emit({ type: 'room_opened', roomId: id });
     }
+  }
+
+  /**
+   * Moves every bot of every room with someone connected, like a robot vacuum: straight on, a random new heading on
+   * hitting a wall, now and then a turn of its own. Each pose is relayed like a player's (`peer_state`).
+   */
+  stepBots(dtMs: number): void {
+    const dt = dtMs / 1000;
+    const { map, rng } = this.opts;
+    for (const room of this.rooms.values()) {
+      const conns = [...room.values()].filter((p) => p.conn !== null).map((p) => p.conn as string);
+      if (conns.length === 0) {
+        continue;
+      }
+      for (const bot of room.values()) {
+        if (!bot.bot) {
+          continue;
+        }
+        const step = dt * BOT_SPEED;
+        const to = stepPlayer(map, bot, FORWARD, step, this.moved);
+        const travelled = Math.hypot(to.x - bot.x, to.y - bot.y);
+        if (travelled < step * 0.5) {
+          bot.angle = rng() * Math.PI * 2;
+        } else {
+          bot.x = to.x;
+          bot.y = to.y;
+          if (rng() < dt / BOT_TURN_EVERY_S) {
+            bot.angle += (rng() - 0.5) * Math.PI;
+          }
+        }
+        bot.bot.seq++;
+        this.opts.out.broadcast(conns, {
+          type: 'peer_state',
+          id: bot.id,
+          x: bot.x,
+          y: bot.y,
+          angle: bot.angle,
+          seq: bot.bot.seq,
+        });
+      }
+    }
+  }
+
+  private spawnBots(room: Room, count: number): void {
+    const { map, rng, newToken, now } = this.opts;
+    this.floor ??= floorTiles(map);
+    for (let i = 0; i < count; i++) {
+      const tile = this.floor[Math.floor(rng() * this.floor.length)] as { x: number; y: number };
+      const bot: Peer = {
+        id: newToken(),
+        name: `Bot ${String(i + 1).padStart(3, '0')}`,
+        color: BOT_COLORS[i % BOT_COLORS.length] as string,
+        x: tile.x + 0.5,
+        y: tile.y + 0.5,
+        angle: rng() * Math.PI * 2,
+        cam: false,
+        mic: false,
+        avatar: null,
+        held: null,
+        boombox: false,
+        resumeToken: newToken(),
+        conn: null,
+        lastAcceptedAt: now(),
+        lastGestureAt: Number.NEGATIVE_INFINITY,
+        disconnectedAt: null,
+        bot: { seq: 0 },
+      };
+      room.set(bot.id, bot);
+    }
+  }
+
+  private people(room: Room): number {
+    let n = 0;
+    for (const p of room.values()) {
+      if (isPerson(p)) {
+        n++;
+      }
+    }
+    return n;
+  }
+
+  private botRooms(): number {
+    let n = 0;
+    for (const room of this.rooms.values()) {
+      if ([...room.values()].some((p) => p.bot)) {
+        n++;
+      }
+    }
+    return n;
   }
 
   private lookup(conn: string): { roomId: string; room: Room; peer: Peer } | null {
@@ -386,4 +505,17 @@ export class Lobby {
     this.opts.out.close(conn, close, code);
     this.emit({ type: 'rejected', reason: code });
   }
+}
+
+/** Every floor tile; the map validator guarantees each one is reachable from the spawn. */
+function floorTiles(map: GameMap): { x: number; y: number }[] {
+  const tiles: { x: number; y: number }[] = [];
+  for (let y = 0; y < map.height; y++) {
+    for (let x = 0; x < map.width; x++) {
+      if (!isWallAt(map, x + 0.5, y + 0.5)) {
+        tiles.push({ x, y });
+      }
+    }
+  }
+  return tiles;
 }

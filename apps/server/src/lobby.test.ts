@@ -617,6 +617,6 @@ describe('events and stats', () => {
     join('B');
     lobby.join('C', { type: 'join', roomId: 'BBBBBBBBBBBBBBBBBBBBBB', name: 'C' });
     lobby.disconnect('B');
-    expect(lobby.stats()).toEqual({ rooms: 2, connected: 2, waiting: 1 });
+    expect(lobby.stats()).toEqual({ rooms: 2, connected: 2, waiting: 1, bots: 0 });
   });
 });
