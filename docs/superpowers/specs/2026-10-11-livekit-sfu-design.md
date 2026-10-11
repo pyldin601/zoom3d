@@ -19,7 +19,7 @@ Move all audio and video from the peer-to-peer mesh to the LiveKit SFU already r
 ### Non-goals
 - Subscribing by distance/visibility, simulcast, raising the 8-person cap (6c, 6d).
 - Server-enforced subscriptions or per-track permissions.
-- Supporting old open tabs across the cutover: they lose media until reloaded.
+- Supporting old open tabs across the cutover: they reject the new `welcome` and show "Reconnecting…" until reloaded.
 
 ## 2. Architecture
 
@@ -29,17 +29,20 @@ browser ── ws (game: join/state/media/...) ──▶ zoom3d server ──┐
    └── LiveKit signalling + WebRTC (face, mic, boombox) ──▶ LiveKit SFU (casa, zoom3d namespace)
 ```
 
-- `MediaTransport` (`apps/web/src/media/mesh.ts`) stays the seam: `call.ts` only talks to it. 6b adds
-  `apps/web/src/media/livekit.ts`, a second implementation, then removes the mesh.
-- LiveKit room name = zoom3d room id (22-char secret). Participant identity = zoom3d peer id.
+- `MediaTransport` (`apps/web/src/media/transport.ts`) is the seam: `call.ts` only talks to it. Its one
+  implementation is `apps/web/src/media/livekit.ts`; the mesh is removed.
+- LiveKit room name = a keyed hash of the zoom3d room id (HMAC-SHA256 with the API secret, 22 chars), because the
+  room id is the room's only key and LiveKit logs room names. Participant identity = zoom3d peer id.
 
 ## 3. Server
 
 - Env: `LIVEKIT_URL` (public URL handed to clients), `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`.
   - In production (`NODE_ENV=production`) all three are required; the server refuses to start without them.
-  - Otherwise they default to LiveKit's dev values: `ws://localhost:7880`, `devkey`, `secret`.
-- Token: `livekit-server-sdk` `AccessToken`, identity = peer id, grants `{ room, roomJoin, canPublish,
-  canSubscribe }`, TTL 6 h. A fresh token is minted on every `welcome` (first join, resume, new identity).
+  - Otherwise each defaults on its own to LiveKit's dev values: `ws://localhost:7880`, `devkey`, `secret`.
+- Token: an HS256 JWT signed in-process with the claims `livekit-server-sdk` writes (`iss`, `sub`=`jti`=peer id,
+  `nbf`, `exp`, video grant `{ room, roomJoin, canPublish, canSubscribe }`), TTL 6 h. Signing is synchronous
+  because the lobby sends its `welcome` inline; tests verify tokens with the SDK's `TokenVerifier`. A fresh token
+  is minted on every `welcome` (first join, resume, new identity).
 - Protocol:
   - `welcome` gains `livekit: { url: string; token: string }` and drops `iceServers`.
   - The `signal` message (both directions), `SignalPayload`, `IceServer` and `apps/server/src/ice.ts` (STUN/TURN
@@ -61,8 +64,13 @@ browser ── ws (game: join/state/media/...) ──▶ zoom3d server ──┐
   | `mic` | Microphone | the local mic track | Opus default, DTX on |
   | `boombox` | ScreenShareAudio | the boombox track, while on | 128 kbps music, DTX and RED off |
 
-- Our own `MediaStreamTrack`s are published as user-provided tracks, so LiveKit never stops or re-acquires them:
-  `LocalMediaController` keeps owning every local track (AGENTS gotcha).
+- Our own `MediaStreamTrack`s are published as user-provided tracks and LiveKit must never stop them:
+  `stopLocalTrackOnUnpublish: false` and `disconnect(false)`. `LocalMediaController` keeps owning every local track.
+- LiveKit decides `enabled` on publish and replace, and mutes a publication whose track ended. After every publish
+  or replace the transport unmutes the publication if needed and restores the track's own `enabled`, so a muted
+  mic stays silent and a replacement mic is heard.
+- Published `LocalTrack`s are kept, not publications: a LiveKit signal restart republishes everything with new
+  publications but the same `LocalTrack`s.
 - `setVideoTrack` / `setAudioTrack` use `replaceTrack` on the existing publication, so camera on/off and hidden-tab
   swaps never republish. `setBoomboxTrack(track)` replaces the boombox track if published, publishes it if not, and
   unpublishes on `null`.
@@ -73,8 +81,12 @@ browser ── ws (game: join/state/media/...) ──▶ zoom3d server ──┐
 - `connect` / `disconnect(peerId)` become no-ops for subscription (6c uses them); `close()` disconnects the room.
 - `stats(peerId)` sums `bytesReceived` of that participant's subscribed tracks (`getRTCStatsReport`), split into
   face+mic and boombox, keeping the e2e hooks.
-- Reconnection inside a session is LiveKit's. When the game session's identity changes, `call.ts` already tears the
-  transport down and builds a new one from the new `welcome`.
+- Reconnection: LiveKit's own first. When it gives up (`disconnected`), or the first connect or the lazy
+  `livekit-client` load fails, the transport starts over with a fresh room after a backoff (1 s doubling to 30 s).
+  Every resume's `welcome` hands it the fresh token (`setAccess`) for that. A new identity tears the transport down
+  and builds a new one. Events from a closed or replaced room are ignored.
+- LiveKit can deliver a peer's tracks before the game announces the peer, and never sends them again: `call.ts`
+  keeps such early media and applies it when the face is created.
 
 ## 5. Local development and tests
 

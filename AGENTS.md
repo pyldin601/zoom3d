@@ -82,8 +82,10 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
 - Chrome only delivers remote WebRTC audio into Web Audio if the stream is also attached to a (muted) `<audio>` element.
 - Echo: use `echoCancellation` on capture and avoid playing remote audio through paths that bypass it.
 - LiveKit (`media/livekit.ts`): our tracks are published by **name** (`face`, `mic`, `boombox`) as user-provided
-  tracks, and swapped with `replaceTrack`. LiveKit must never stop or re-acquire them: `LocalMediaController` owns
-  every local track. Match remote tracks by name, never by order.
+  tracks, and swapped with `replaceTrack`. LiveKit stops local tracks on disconnect by default, which would kill the
+  controller's mic and canvas for good: keep `stopLocalTrackOnUnpublish: false` and `disconnect(false)`. It also
+  rewrites `enabled` on publish/replace (a muted mic would go live), so the transport restores it. Match remote tracks
+  by name, never by order.
 - A peer's face+mic arrive as one stream, re-emitted as a **new** `MediaStream` whenever its tracks change: the audio
   engine ignores a stream object it already has, so mutating one would leave a late mic silent.
 - LiveKit can deliver a peer's tracks before the game WebSocket announces the peer, and never sends them again:
