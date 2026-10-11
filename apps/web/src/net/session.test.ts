@@ -422,3 +422,76 @@ test('peer_boombox updates the peer and ignores unknown ids', () => {
   expect(session.peers.get('a')?.info.boombox).toBe(true);
   expect(() => ws.receive({ type: 'peer_boombox', id: 'zzz', on: true })).not.toThrow();
 });
+
+// World objects (robot vacuum spec §4): kept next to peers, with the same interpolation and stale-seq rules.
+const vacuum = { id: 'v', kind: 'vacuum', x: 3.5, y: 4.5, angle: 0 };
+const objectState = (seq: number, x = 3.5, event?: string) => ({
+  type: 'object_state',
+  id: 'v',
+  x,
+  y: 4.5,
+  angle: 0,
+  seq,
+  ...(event ? { event } : {}),
+});
+
+function withVacuum(listener: SessionListener = {}) {
+  const session = createSession({
+    url: 'ws://t/ws',
+    roomId: ROOM,
+    name: 'Ada',
+    player,
+    now: Date.now,
+    WebSocketImpl: asWebSocket,
+    listener,
+  });
+  const ws = FakeWebSocket.latest();
+  ws.open();
+  ws.receive({ ...welcome(), objects: [vacuum] });
+  return { session, ws };
+}
+
+test('welcome fills objects with a buffered pose', () => {
+  const { session } = withVacuum();
+  const v = session.objects.get('v');
+  expect(v?.info).toEqual(vacuum);
+  expect(v?.buffer.latest()).toMatchObject({ x: 3.5, y: 4.5, angle: 0 });
+  expect(session.peers.size).toBe(0);
+});
+
+test('object_state updates the pose and drops stale seq', () => {
+  const { session, ws } = withVacuum();
+  ws.receive(objectState(5, 4));
+  vi.advanceTimersByTime(10);
+  ws.receive(objectState(3, 9));
+  expect(session.objects.get('v')?.info.x).toBe(4);
+  expect(session.objects.get('v')?.buffer.latest()?.x).toBe(4);
+});
+
+test('a welcome resets object seq, so a restarted server is followed', () => {
+  const { session, ws } = withVacuum();
+  ws.receive(objectState(50, 4));
+  ws.serverClose(1006);
+  vi.advanceTimersByTime(500);
+  const ws2 = FakeWebSocket.latest();
+  ws2.open();
+  ws2.receive({ ...welcome(), objects: [vacuum] });
+  ws2.receive(objectState(1, 6));
+  expect(session.objects.get('v')?.info.x).toBe(6);
+});
+
+test('object_state with an event tells the listener once, after applying the pose', () => {
+  const seen: [string, string, number | undefined][] = [];
+  const { session, ws } = withVacuum({
+    objectEvent: (id, e) => seen.push([id, e, session.objects.get(id)?.info.x]),
+  });
+  ws.receive(objectState(1, 3.6));
+  ws.receive(objectState(2, 3.7, 'bump'));
+  expect(seen).toEqual([['v', 'bump', 3.7]]);
+});
+
+test('object_state for an unknown object is ignored', () => {
+  const { session, ws } = withVacuum();
+  ws.receive({ ...objectState(1), id: 'zz' });
+  expect([...session.objects.keys()]).toEqual(['v']);
+});

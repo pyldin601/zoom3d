@@ -1,5 +1,5 @@
-// Room membership, colours, resume grace and move validation, plus opt-in wandering bots. Pure: no sockets or
-// timers (the server drives tick() and stepBots()).
+// Room membership, colours, resume grace and move validation, plus opt-in wandering bots and each room's robot vacuum.
+// Pure: no sockets or timers (the server drives tick() and stepWorld()).
 import {
   type BoomboxMessage,
   DRINK_GAP_MS,
@@ -22,6 +22,16 @@ import {
   spawnPoint,
   stepPlayer,
 } from '@zoom3d/shared';
+import {
+  createVacuum,
+  restoreVacuum,
+  saveVacuum,
+  stepVacuum,
+  type Vacuum,
+  type VacuumSave,
+  vacuumInfo,
+} from './vacuum';
+import { createVacuumNav, type Point, type VacuumNav } from './vacuum-nav';
 
 export const CLOSE_ROOM_FULL = 4001;
 export const CLOSE_INVALID = 4002;
@@ -76,6 +86,10 @@ export interface LobbyOptions {
   /** LiveKit URL and a token for `peerId` in room `roomId` (LiveKit spec §3); minted on every welcome. */
   liveKitFor: (roomId: string, peerId: string) => LiveKitAccess;
   onEvent?: (e: LobbyEvent) => void;
+  /** Every new room gets a robot vacuum (robot vacuum spec §3.1). Off unless set, so tests opt in. */
+  vacuum?: boolean;
+  /** Dev only: new vacuums start with every patch but their own clean, to reach the dock search in a minute. */
+  vacuumNearlyDone?: boolean;
 }
 
 interface Peer extends PeerInfo {
@@ -102,7 +116,7 @@ export interface SnapshotPeer extends PeerInfo {
 /** Bump `version` when SnapshotPeer changes in a way parsePeerInfo's defaults can't absorb. */
 export interface LobbySnapshot {
   version: 1;
-  rooms: { id: string; peers: SnapshotPeer[] }[];
+  rooms: { id: string; peers: SnapshotPeer[]; vacuum?: VacuumSave }[];
 }
 
 const info = ({ id, name, color, x, y, angle, cam, mic, avatar, held, boombox }: Peer): PeerInfo => ({
@@ -124,6 +138,9 @@ export class Lobby {
   private readonly conns = new Map<string, { roomId: string; peerId: string }>();
   private readonly graceMs: number;
   private floor: { x: number; y: number }[] | null = null;
+  private nav: VacuumNav | null = null;
+  /** Each room's robot vacuum, by room id. Not a peer: it never keeps a room open. */
+  private readonly vacuums = new Map<string, Vacuum>();
   private readonly moved = { x: 0, y: 0, angle: 0 };
 
   constructor(private readonly opts: LobbyOptions) {
@@ -224,6 +241,7 @@ export class Lobby {
         this.spawnBots(room, msg.bots);
         this.emit({ type: 'bots_spawned', roomId: msg.roomId, count: msg.bots });
       }
+      this.spawnVacuum(msg.roomId);
     }
     room.set(peer.id, peer);
     this.rooms.set(msg.roomId, room);
@@ -344,6 +362,7 @@ export class Lobby {
       // Bots never keep a room alive: it closes with its last person.
       if (this.people(room) === 0) {
         this.rooms.delete(roomId);
+        this.vacuums.delete(roomId);
         this.emit({ type: 'room_closed', roomId });
       }
     }
@@ -352,35 +371,52 @@ export class Lobby {
   snapshot(): LobbySnapshot {
     return {
       version: 1,
-      rooms: [...this.rooms].map(([id, room]) => ({
-        id,
-        peers: [...room.values()].filter(isPerson).map((p) => ({
-          ...info(p),
-          resumeToken: p.resumeToken,
-          lastAcceptedAt: p.lastAcceptedAt,
-        })),
-      })),
+      rooms: [...this.rooms].map(([id, room]) => {
+        const vacuum = this.vacuums.get(id);
+        return {
+          id,
+          peers: [...room.values()].filter(isPerson).map((p) => ({
+            ...info(p),
+            resumeToken: p.resumeToken,
+            lastAcceptedAt: p.lastAcceptedAt,
+          })),
+          ...(vacuum ? { vacuum: saveVacuum(this.vacuumNav(), vacuum) } : {}),
+        };
+      }),
     };
   }
 
   /** Loads a snapshot into an empty lobby. Every slot starts a fresh grace period, waiting for its owner to resume. */
   restore(snap: LobbySnapshot): void {
     const now = this.opts.now();
-    for (const { id, peers } of snap.rooms) {
+    for (const { id, peers, vacuum } of snap.rooms) {
       const room: Room = new Map();
       for (const p of peers) {
         room.set(p.id, { ...p, conn: null, disconnectedAt: now, lastGestureAt: Number.NEGATIVE_INFINITY });
       }
       this.rooms.set(id, room);
       this.emit({ type: 'room_opened', roomId: id });
+      // A robot saved on another map (or none saved) starts afresh.
+      const restored = this.opts.vacuum && vacuum ? restoreVacuum(this.vacuumNav(), vacuum) : null;
+      if (restored) {
+        this.vacuums.set(id, restored);
+      } else {
+        this.spawnVacuum(id);
+      }
     }
   }
 
+  /** Moves every room's bots and robot vacuum; rooms with nobody connected stand still. */
+  stepWorld(dtMs: number): void {
+    this.stepBots(dtMs);
+    this.stepVacuums(dtMs);
+  }
+
   /**
-   * Moves every bot of every room with someone connected, like a robot vacuum: straight on, a random new heading on
-   * hitting a wall, now and then a turn of its own. Each pose is relayed like a player's (`peer_state`).
+   * Moves every bot of every room with someone connected: straight on, a random new heading on hitting a wall, now
+   * and then a turn of its own. Each pose is relayed like a player's (`peer_state`).
    */
-  stepBots(dtMs: number): void {
+  private stepBots(dtMs: number): void {
     const dt = dtMs / 1000;
     const { map, rng } = this.opts;
     for (const room of this.rooms.values()) {
@@ -415,6 +451,54 @@ export class Lobby {
         });
       }
     }
+  }
+
+  /** Steps each robot vacuum, bumping only connected people (never bots), and relays its pose as `object_state`. */
+  private stepVacuums(dtMs: number): void {
+    const dt = dtMs / 1000;
+    const nav = this.vacuumNav();
+    for (const [roomId, v] of this.vacuums) {
+      const room = this.rooms.get(roomId);
+      if (!room) {
+        continue;
+      }
+      const conns: string[] = [];
+      const people: Point[] = [];
+      for (const p of room.values()) {
+        if (p.conn !== null && isPerson(p)) {
+          conns.push(p.conn);
+          people.push(p);
+        }
+      }
+      if (conns.length === 0) {
+        continue;
+      }
+      const event = stepVacuum(nav, v, dt, this.opts.rng, people);
+      v.seq++;
+      this.opts.out.broadcast(conns, {
+        type: 'object_state',
+        id: v.id,
+        x: v.x,
+        y: v.y,
+        angle: v.angle,
+        seq: v.seq,
+        ...(event ? { event } : {}),
+      });
+    }
+  }
+
+  private spawnVacuum(roomId: string): void {
+    if (this.opts.vacuum) {
+      const v = createVacuum(this.vacuumNav(), this.opts.rng, this.opts.newToken(), {
+        nearlyDone: this.opts.vacuumNearlyDone,
+      });
+      this.vacuums.set(roomId, v);
+    }
+  }
+
+  private vacuumNav(): VacuumNav {
+    this.nav ??= createVacuumNav(this.opts.map);
+    return this.nav;
   }
 
   private spawnBots(room: Room, count: number): void {
@@ -477,6 +561,7 @@ export class Lobby {
   }
 
   private welcome(conn: string, roomId: string, room: Room, self: Peer): void {
+    const vacuum = this.vacuums.get(roomId);
     this.opts.out.send(conn, {
       type: 'welcome',
       selfId: self.id,
@@ -485,6 +570,7 @@ export class Lobby {
       spawn: { x: self.x, y: self.y, angle: self.angle },
       peers: [...room.values()].filter((p) => p.id !== self.id).map(info),
       livekit: this.opts.liveKitFor(roomId, self.id),
+      objects: vacuum ? [vacuumInfo(vacuum)] : [],
     });
   }
 

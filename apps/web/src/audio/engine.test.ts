@@ -210,3 +210,55 @@ describe('review fixes', () => {
     expect(px.last?.[0]).toBe(4.6);
   });
 });
+
+// Robot vacuum spec §5.3: a synthesised source goes through the same spatial path as a voice.
+describe('attachNode', () => {
+  const synth = () => ctx.createGain() as unknown as AudioNode;
+
+  test('wires node → lowpass → (dry → panner) + (send → reverb), with no analyser', () => {
+    const node = synth() as unknown as FakeNode;
+    engine().attachNode('object:v', node as unknown as AudioNode);
+    const filter = one('biquad');
+    expect(node.connections).toEqual([filter]);
+    expect(ctx.byKind('analyser')).toHaveLength(0);
+    const [dry, send] = filter.connections;
+    expect(dry?.connections).toEqual([one('panner')]);
+    expect(send?.connections).toEqual([one('convolver')]);
+  });
+
+  test('gets the same distance gains as a voice', () => {
+    const e = engine();
+    e.attachNode('b', synth());
+    e.update(0, listener, at(4.5, 1.5));
+    const [dry, send] = one('biquad').connections as (FakeNode & { gain: FakeParam })[];
+    const g = voiceGains(3, false, DEFAULT_AUDIO_SETTINGS);
+    expect(dry?.gain.value).toBeCloseTo(g.dry);
+    expect(send?.gain.value).toBeCloseTo(g.send);
+  });
+
+  test('is never speaking, however loud', () => {
+    ctx.analyserData.fill(0.5);
+    const e = engine();
+    e.attachNode('b', synth());
+    e.update(0, listener, at(4.5, 1.5));
+    e.update(16, listener, at(4.5, 1.5));
+    expect(e.speaking('b')).toBe(0);
+    expect(e.inputLevel('b')).toBe(0);
+  });
+
+  test('is muffled behind a wall', () => {
+    const e = engine(WALLED);
+    e.attachNode('b', synth());
+    e.update(0, listener, at(4.5, 1.5));
+    expect(param('biquad', 'frequency').last?.[0]).toBe(700);
+  });
+
+  test('detach disconnects it', () => {
+    const e = engine();
+    const node = synth() as unknown as FakeNode;
+    e.attachNode('b', node as unknown as AudioNode);
+    e.detach('b');
+    expect(node.disconnected).toBe(true);
+    expect(one('panner').disconnected).toBe(true);
+  });
+});

@@ -1,4 +1,5 @@
-// Spatial voice engine (spec §9): per-peer source → lowpass → (dry → HRTF panner) + (send → shared reverb).
+// Spatial voice engine (spec §9): per-peer source → lowpass → (dry → HRTF panner) + (send → shared reverb). Synthesised
+// sources, like the robot vacuum's hum, take the same path without the speaking analyser.
 // Distance comes from our own curve (the panner only gives direction); walls muffle and attenuate.
 import {
   type AudioSettings,
@@ -23,6 +24,8 @@ const OCCLUSION_SETTLE_MS = TAU_OCCLUSION * 3000;
 export interface AudioEngine {
   /** `owner` is whose position the voice plays from (default: `key`), e.g. a peer's boombox. */
   attach(key: string, stream: MediaStream, owner?: string): void;
+  /** A synthesised source played from `owner`'s position through the voice path; no analyser, never "speaking". */
+  attachNode(key: string, node: AudioNode, owner?: string): void;
   detach(peerId: string): void;
   update(now: number, listener: PlayerState, sources: ReadonlyMap<string, { x: number; y: number }>): void;
   /** 0..1 speaking indicator. */
@@ -70,11 +73,13 @@ export function speakingLevel(prev: number, rms: number, dtSeconds: number): num
 }
 
 interface Voice {
-  stream: MediaStream;
+  /** The voice's stream, or null for a synthesised node source. */
+  stream: MediaStream | null;
   /** Key of the position in update's `sources`. */
   owner: string;
   source: AudioNode;
-  analyser: AnalyserNode;
+  /** Measures speaking; null for a synthesised source. */
+  analyser: AnalyserNode | null;
   filter: BiquadFilterNode;
   dry: GainNode;
   send: GainNode;
@@ -142,9 +147,58 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
       return;
     }
     for (const node of [v.source, v.analyser, v.filter, v.dry, v.send, v.panner]) {
-      node.disconnect();
+      node?.disconnect();
     }
     voices.delete(peerId);
+  };
+
+  /** Builds the spatial chain behind `source` (plus an analyser tap for a voice) and registers it. */
+  const addVoice = (
+    key: string,
+    owner: string,
+    source: AudioNode,
+    stream: MediaStream | null,
+    analyser: AnalyserNode | null
+  ) => {
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = MUFFLE_OPEN_HZ;
+    const dry = ctx.createGain();
+    dry.gain.value = 0;
+    const send = ctx.createGain();
+    send.gain.value = 0;
+    const panner = ctx.createPanner();
+    panner.panningModel = settings.panning;
+    panner.distanceModel = 'linear';
+    panner.rolloffFactor = 0;
+
+    if (analyser) {
+      source.connect(analyser);
+    }
+    source.connect(filter);
+    filter.connect(dry);
+    dry.connect(panner);
+    panner.connect(ctx.destination);
+    filter.connect(send);
+    send.connect(reverb);
+
+    voices.set(key, {
+      stream,
+      owner,
+      source,
+      analyser,
+      filter,
+      dry,
+      send,
+      panner,
+      samples: new Float32Array(ANALYSER_SIZE),
+      occluded: false,
+      lastOcclusionAt: Number.NEGATIVE_INFINITY,
+      occlusionChangedAt: Number.NEGATIVE_INFINITY,
+      positioned: false,
+      rms: 0,
+      speaking: 0,
+    });
   };
 
   return {
@@ -161,46 +215,17 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
         return;
       }
 
-      const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = ANALYSER_SIZE;
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = MUFFLE_OPEN_HZ;
-      const dry = ctx.createGain();
-      dry.gain.value = 0;
-      const send = ctx.createGain();
-      send.gain.value = 0;
-      const panner = ctx.createPanner();
-      panner.panningModel = settings.panning;
-      panner.distanceModel = 'linear';
-      panner.rolloffFactor = 0;
+      addVoice(peerId, owner, ctx.createMediaStreamSource(stream), stream, analyser);
+    },
 
-      source.connect(analyser);
-      source.connect(filter);
-      filter.connect(dry);
-      dry.connect(panner);
-      panner.connect(ctx.destination);
-      filter.connect(send);
-      send.connect(reverb);
-
-      voices.set(peerId, {
-        stream,
-        owner,
-        source,
-        analyser,
-        filter,
-        dry,
-        send,
-        panner,
-        samples: new Float32Array(ANALYSER_SIZE),
-        occluded: false,
-        lastOcclusionAt: Number.NEGATIVE_INFINITY,
-        occlusionChangedAt: Number.NEGATIVE_INFINITY,
-        positioned: false,
-        rms: 0,
-        speaking: 0,
-      });
+    attachNode(key, node, owner = key) {
+      if (voices.get(key)?.source === node) {
+        return;
+      }
+      detach(key);
+      addVoice(key, owner, node, null, null);
     },
 
     detach,
@@ -212,13 +237,15 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
       setListener(listener, t);
 
       for (const v of voices.values()) {
-        v.analyser.getFloatTimeDomainData(v.samples);
-        let sum = 0;
-        for (let i = 0; i < v.samples.length; i++) {
-          sum += (v.samples[i] as number) ** 2;
+        if (v.analyser) {
+          v.analyser.getFloatTimeDomainData(v.samples);
+          let sum = 0;
+          for (let i = 0; i < v.samples.length; i++) {
+            sum += (v.samples[i] as number) ** 2;
+          }
+          v.rms = Math.sqrt(sum / v.samples.length);
+          v.speaking = speakingLevel(v.speaking, v.rms, dt);
         }
-        v.rms = Math.sqrt(sum / v.samples.length);
-        v.speaking = speakingLevel(v.speaking, v.rms, dt);
 
         const pos = sources.get(v.owner);
         if (!pos) {

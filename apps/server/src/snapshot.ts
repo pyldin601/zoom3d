@@ -3,6 +3,7 @@ import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { isValidRoomId, MAX_PEERS, parsePeerInfo } from '@zoom3d/shared';
 import type { LobbySnapshot, SnapshotPeer } from './lobby';
 import type { Logger } from './log';
+import type { VacuumSave } from './vacuum';
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 
@@ -12,6 +13,24 @@ function snapshotPeer(v: unknown): SnapshotPeer | null {
     return null;
   }
   return { ...info, resumeToken: v.resumeToken, lastAcceptedAt: v.lastAcceptedAt as number };
+}
+
+/** A saved robot vacuum, or null if anything about it is off (the room then gets a fresh one). */
+function snapshotVacuum(v: unknown): VacuumSave | null {
+  if (!isObj(v) || typeof v.id !== 'string' || typeof v.map !== 'string') {
+    return null;
+  }
+  const { x, y, angle, phase, clean } = v;
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(angle)) {
+    return null;
+  }
+  if ((phase !== 'cleaning' && phase !== 'searching') || !Array.isArray(clean)) {
+    return null;
+  }
+  if (!clean.every((p) => Number.isInteger(p) && p >= 0)) {
+    return null;
+  }
+  return { id: v.id, x: x as number, y: y as number, angle: angle as number, phase, clean, map: v.map };
 }
 
 /** Invalid peers are dropped, then any room left empty, oversized or with a bad id. */
@@ -32,7 +51,8 @@ export function parseSnapshot(raw: string): LobbySnapshot | null {
     }
     const peers = r.peers.map(snapshotPeer).filter((p) => p !== null);
     if (peers.length > 0 && peers.length <= MAX_PEERS) {
-      rooms.push({ id: r.id, peers });
+      const vacuum = snapshotVacuum(r.vacuum);
+      rooms.push({ id: r.id, peers, ...(vacuum ? { vacuum } : {}) });
     }
   }
   return { version: 1, rooms };

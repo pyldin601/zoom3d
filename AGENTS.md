@@ -132,10 +132,20 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   camera directly or drop the canvas track when the camera is off: the face would be unpublished, and turning the
   camera on would have to republish it. `LocalMediaController` (`media/local-media.ts`) owns every local track
   from the lobby onward; the room never calls `getUserMedia` itself.
-- Bots (`?bots=N`, `Lobby.spawnBots`/`stepBots`): server-side peers with a `bot` flag, no connection and no media.
+- Bots (`?bots=N`, `Lobby.spawnBots`/`stepWorld`): server-side peers with a `bot` flag, no connection and no media.
   They never count toward `MAX_PEERS`, never expire, can't be resumed into, aren't saved in the state file, and never
   keep a room open (it closes with its last person). At most `MAX_BOT_ROOMS` rooms have them at once. They move at
   10 Hz through the same `peer_state` relay as players, so they exercise the real fan-out.
+- World objects (decision D22, robot vacuum spec `docs/superpowers/specs/2026-10-11-robot-vacuum-design.md`):
+  - **Not peers.** `object_state`, `welcome.objects`, `session.objects` and `objectKey(id)` keep them apart from peers:
+    no labels, automap, `MAX_PEERS` or media, and they never keep a room open.
+  - **The vacuum:** the server steps it in `Lobby.stepWorld` (`apps/server/src/vacuum*.ts`, pure), bumping connected
+    people only. It is saved in the state file, keyed by `mapFingerprint`. `VACUUM_NEARLY_DONE=1` (ignored in
+    production) starts it one patch from done, so its dock search shows within a minute.
+  - **Drawing:** voxel models (`renderer/models/`) are drawn by `renderer/voxels.ts` inside `renderSprites`, far to
+    near with the discs.
+  - **Sound:** the hum goes through `AudioEngine.attachNode`, not a `MediaStream`, and stays under voices
+    (`VACUUM_GAIN`).
 - Telemetry privacy: logs, metrics labels, Sentry and Amplitude never get names, resume tokens or IPs, nor raw room
   ids: a room link is the room's only key. Server logs use `roomRef()` (a short hash), and the browser Sentry
   `beforeSend` scrubs `/r/<id>`.

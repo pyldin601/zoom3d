@@ -52,3 +52,34 @@ test('renderWalls + 7 face avatars around the player', async ({ bench }) => {
     renderSprites(fb, p, sprites, facts);
   }).run();
 });
+
+test('renderWalls + 7 face avatars + the robot vacuum', async ({ bench }) => {
+  const { renderSprites } = await import('./sprites');
+  const { VACUUM_MODEL } = await import('./models/vacuum');
+  const cx = map.spawn.x + 0.5;
+  const cy = map.spawn.y + 0.5;
+  const sprites = Array.from({ length: 7 }, (_, i) => ({
+    key: `p${i}`,
+    x: cx + Math.cos(i) * 1.5,
+    y: cy + Math.sin(i) * 1.5,
+    color: 0xff0000ff,
+    face: new Uint32Array(256 * 256).fill(0xff808080),
+    speaking: 0.5,
+    bob: 0.5,
+    itemBob: 0.5,
+    sip: 0,
+    cheers: 0,
+    wobble: 0,
+    held: 'beer' as const,
+    boombox: true,
+  }));
+  const facts = new Map();
+  const voxels = [{ model: VACUUM_MODEL, x: cx + 1.2, y: cy, angle: 0 }];
+  await bench('walls+7 sprites+vacuum', () => {
+    angle += 0.05;
+    const p = { x: cx, y: cy, angle };
+    voxels[0] = { model: VACUUM_MODEL, x: cx + 1.2, y: cy, angle: angle * 0.3 };
+    renderWalls(fb, map, p, textures);
+    renderSprites(fb, p, sprites, facts, voxels);
+  }).run();
+});

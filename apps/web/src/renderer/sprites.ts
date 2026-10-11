@@ -1,9 +1,10 @@
 // Billboard disc avatars, depth-tested per column against the wall z-buffer, each with a soft
-// shadow on the floor right under it.
+// shadow on the floor right under it; voxel objects (the robot vacuum) are drawn in the same far-to-near order.
 import type { HeldItem, PlayerState } from '@zoom3d/shared';
 import { FACE_SIZE } from '../media/faces';
 import type { PeerFacts } from '../media/interest';
 import { BOOMBOX_LEFT, BOOMBOX_SPRITE, BOOMBOX_TOP } from './boombox';
+import { EYE_HEIGHT, MIN_DEPTH } from './camera';
 import { type Framebuffer, rgb } from './framebuffer';
 import {
   CHEERS_LEFT,
@@ -17,10 +18,10 @@ import {
   sipLeft,
   sipTop,
 } from './held-items';
+import { renderVoxel, type VoxelInstance, voxelDepth } from './voxels';
 import { shade } from './walls';
 
 export const AVATAR_RADIUS = 0.35; // tiles
-const MIN_DEPTH = 0.1;
 const RING = 0.85; // fraction of the radius where the shaded edge starts
 /** Floor shadow radius (tiles) and how much it darkens the floor at its centre. */
 export const SHADOW_RADIUS = 0.3;
@@ -30,8 +31,6 @@ const SHADOW_TEXEL = 1 / 16;
 export const SHADOW_LEVELS = 3;
 /** Top of a walking step, in disc radii. */
 export const BOB_HEIGHT = 0.1;
-/** The camera (and every disc centre) sits at half wall height above the floor. */
-const EYE_HEIGHT = 0.5;
 
 export interface Sprite {
   /** Whose disc this is: the key its facts are written under. */
@@ -194,6 +193,10 @@ function lateralOf(
 }
 
 const projections: Projection[] = [];
+/** Voxel instances in front of the camera, far to near, with their centre depths. */
+const voxelOrder: number[] = [];
+const voxelDepths: number[] = [];
+const voxelsFarFirst = (a: number, b: number) => (voxelDepths[b] as number) - (voxelDepths[a] as number);
 const visible: number[] = [];
 /** Each sprite's facts object for this frame (null without a facts map). */
 const spriteFacts: (PeerFacts | null)[] = [];
@@ -206,7 +209,7 @@ function zeroFacts(f: PeerFacts): void {
 }
 
 /**
- * Draws the discs. With `facts`, also writes, per sprite key, how many of its disc's columns are seen (in front of
+ * Draws the discs, and `voxels` interleaved with them far to near. With `facts`, also writes, per sprite key, how many of its disc's columns are seen (in front of
  * the walls and not hidden behind a nearer disc) and the disc's diameter (both 0 when not drawn); every key in the
  * map is zeroed first, and objects are reused.
  */
@@ -214,7 +217,8 @@ export function renderSprites(
   fb: Framebuffer,
   p: PlayerState,
   sprites: readonly Sprite[],
-  facts?: Map<string, PeerFacts>
+  facts?: Map<string, PeerFacts>,
+  voxels: readonly VoxelInstance[] = []
 ): void {
   const { width: w, height: h, pixels, zbuffer } = fb;
   visible.length = 0;
@@ -242,6 +246,18 @@ export function renderSprites(
   visible.sort((a, b) => (projections[b] as Projection).depth - (projections[a] as Projection).depth);
   if (facts) {
     countSeenColumns(w, zbuffer);
+  }
+  voxelOrder.length = 0;
+  for (let i = 0; i < voxels.length; i++) {
+    voxelDepths[i] = voxelDepth(fb, p, voxels[i] as VoxelInstance);
+    if ((voxelDepths[i] as number) > 0) {
+      voxelOrder.push(i);
+    }
+  }
+  voxelOrder.sort(voxelsFarFirst);
+  for (const i of voxelOrder) {
+    const v = voxels[i] as VoxelInstance;
+    renderShadow(fb, p, v.x, v.y, voxelDepths[i] as number, v.model.shadowRadius, 1);
   }
 
   // Shadows lie on the floor, so every disc (drawn next) covers every shadow.
@@ -281,8 +297,12 @@ export function renderSprites(
 
   const half = h / 2;
   const faceSize = FACE_SIZE;
+  let nextVoxel = 0;
   for (const i of visible) {
     const { screenX, depth, size } = projections[i] as Projection;
+    while (nextVoxel < voxelOrder.length && (voxelDepths[voxelOrder[nextVoxel] as number] as number) > depth) {
+      renderVoxel(fb, p, voxels[voxelOrder[nextVoxel++] as number] as VoxelInstance);
+    }
     const { color, face, speaking, held, bob, itemBob, sip, cheers, wobble, boombox } = sprites[i] as Sprite;
     const ring = speaking > 0 ? mixWhite(color, Math.min(speaking, 1) * SPEAKING_GLOW) : color;
     const edge = face ? ring : shade(ring);
@@ -325,6 +345,9 @@ export function renderSprites(
       const top = h / 2 - (BOOMBOX_TOP + itemBob * BOB_HEIGHT) * r;
       blitItem(fb, BOOMBOX_SPRITE, screenX + BOOMBOX_LEFT * r, top, HELD_TEXEL * r, depth);
     }
+  }
+  while (nextVoxel < voxelOrder.length) {
+    renderVoxel(fb, p, voxels[voxelOrder[nextVoxel++] as number] as VoxelInstance);
   }
 }
 

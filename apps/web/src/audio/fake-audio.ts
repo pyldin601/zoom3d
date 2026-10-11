@@ -15,6 +15,9 @@ export class FakeParam {
     this.value = value;
     return this;
   }
+  cancelScheduledValues() {
+    return this;
+  }
   get last() {
     return this.targets.at(-1);
   }
@@ -63,7 +66,9 @@ export class FakeAudioContext {
     return this.track(Object.assign(new FakeNode('gain'), { gain: new FakeParam(1) }));
   }
   createBiquadFilter() {
-    return this.track(Object.assign(new FakeNode('biquad'), { type: 'lowpass', frequency: new FakeParam(350) }));
+    return this.track(
+      Object.assign(new FakeNode('biquad'), { type: 'lowpass', frequency: new FakeParam(350), Q: new FakeParam(1) })
+    );
   }
   createPanner() {
     return this.track(
@@ -85,6 +90,22 @@ export class FakeAudioContext {
         startedAt: null as number | null,
         stoppedAt: null as number | null,
         onended: null as (() => void) | null,
+        start(t = 0) {
+          this.startedAt = t;
+        },
+        stop(t = 0) {
+          this.stoppedAt = t;
+        },
+      })
+    );
+  }
+  createBufferSource() {
+    return this.track(
+      Object.assign(new FakeNode('buffer-source'), {
+        buffer: null as unknown,
+        loop: false,
+        startedAt: null as number | null,
+        stoppedAt: null as number | null,
         start(t = 0) {
           this.startedAt = t;
         },

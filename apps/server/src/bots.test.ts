@@ -136,7 +136,7 @@ describe('moving', () => {
     const start = new Map(welcome('A').peers.map((b) => [b.id, b]));
     const map = parseMap(LEVEL1);
     for (let i = 0; i < 50; i++) {
-      lobby.stepBots(100);
+      lobby.stepWorld(100);
     }
     const states = statesTo('A');
     expect(states).toHaveLength(10 * 50);
@@ -156,7 +156,7 @@ describe('moving', () => {
     lobby = makeLobby(parseMap(['1111111', '1S....1', '1111111'].join('\n')));
     join('A', { bots: 1 });
     for (let i = 0; i < 200; i++) {
-      lobby.stepBots(100);
+      lobby.stepWorld(100);
     }
     const angles = new Set(statesTo('A').map((s) => s.angle.toFixed(3)));
     expect(angles.size).toBeGreaterThan(2);
@@ -168,7 +168,7 @@ describe('moving', () => {
     join('A', { bots: 5 });
     lobby.disconnect('A');
     sent = [];
-    lobby.stepBots(100);
+    lobby.stepWorld(100);
     expect(sent).toEqual([]);
   });
 });
