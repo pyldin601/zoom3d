@@ -1,10 +1,13 @@
-// Multiplayer session: remote peers with interpolation buffers, corrections, and timer-driven state sync.
+// Multiplayer session: remote peers and world objects with interpolation buffers, corrections, and timer-driven state
+// sync.
 import {
   CHEERS_MS,
   type ErrorCode,
   type HeldItem,
   IDLE_INTERVAL_MS,
   type LiveKitAccess,
+  type ObjectEvent,
+  type ObjectInfo,
   type PeerInfo,
   type PlayerState,
   type ServerMessage,
@@ -25,18 +28,31 @@ export interface RemotePeer {
   gesture: { kind: 'sip' | 'cheers'; at: number } | null;
 }
 
+/** A server-driven world object, like the robot vacuum (robot vacuum spec §4). Not a peer. */
+export interface RemoteObject {
+  info: ObjectInfo;
+  buffer: SnapshotBuffer;
+  lastSeq: number;
+}
+
+/** Key of an object in shared position and audio maps, never colliding with a peer id. */
+export const objectKey = (id: string) => `object:${id}`;
+
 /** Notified after the session has applied each server event to its own state. */
 export interface SessionListener {
   welcome?(selfId: string, livekit: LiveKitAccess, identityChanged: boolean): void;
   peerJoined?(peer: PeerInfo): void;
   peerLeft?(id: string): void;
   peerMedia?(id: string, cam: boolean, mic: boolean): void;
+  /** Something an object did (a bump, a lost beep), after its pose was applied. */
+  objectEvent?(id: string, event: ObjectEvent): void;
   /** A new connection status. Timer and socket driven, so it keeps coming while the tab is hidden. */
   status?(status: ConnStatus): void;
 }
 
 export interface Session {
   peers: Map<string, RemotePeer>;
+  objects: Map<string, RemoteObject>;
   setMedia(cam: boolean, mic: boolean): void;
   setHeld(item: HeldItem | null): void;
   /** Shows or hides our boombox to the others; resent after every welcome. */
@@ -70,6 +86,7 @@ export interface SessionOptions {
 export function createSession(opts: SessionOptions): Session {
   const { player, now } = opts;
   const peers = new Map<string, RemotePeer>();
+  const objects = new Map<string, RemoteObject>();
   const playing = (g: RemotePeer['gesture']) => g !== null && now() - g.at < (g.kind === 'sip' ? SIP_MS : CHEERS_MS);
   let selfId: string | null = null;
   let color: string | null = null;
@@ -105,6 +122,13 @@ export function createSession(opts: SessionOptions): Session {
         peers.clear();
         for (const p of m.peers) {
           addPeer(p);
+        }
+        // A restarted server counts each object's seq from 1 again: start every object afresh.
+        objects.clear();
+        for (const o of m.objects) {
+          const buffer = new SnapshotBuffer();
+          buffer.push({ t: now(), x: o.x, y: o.y, angle: o.angle });
+          objects.set(o.id, { info: { ...o }, buffer, lastSeq: -1 });
         }
         Object.assign(lastSent, { x: player.x, y: player.y, angle: player.angle, at: now() });
         // The server forgets media state on a fresh identity; resending on resume is harmless.
@@ -174,6 +198,19 @@ export function createSession(opts: SessionOptions): Session {
         peer.buffer.push({ t: now(), x: m.x, y: m.y, angle: m.angle });
         break;
       }
+      case 'object_state': {
+        const obj = objects.get(m.id);
+        if (!obj || m.seq <= obj.lastSeq) {
+          return;
+        }
+        obj.lastSeq = m.seq;
+        Object.assign(obj.info, { x: m.x, y: m.y, angle: m.angle });
+        obj.buffer.push({ t: now(), x: m.x, y: m.y, angle: m.angle });
+        if (m.event) {
+          listener.objectEvent?.(m.id, m.event);
+        }
+        break;
+      }
       case 'correction':
         Object.assign(player, { x: m.x, y: m.y, angle: m.angle });
         break;
@@ -235,6 +272,7 @@ export function createSession(opts: SessionOptions): Session {
 
   return {
     peers,
+    objects,
     setMedia(cam, mic) {
       media = { cam, mic };
       if (status === 'open') {
