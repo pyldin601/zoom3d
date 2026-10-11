@@ -1,6 +1,6 @@
 // Browser error reporting. Off unless the build sets VITE_SENTRY_DSN. Errors only: no tracing, no session replay
 // (the screen shows people's names and faces).
-import { scrubRoomIds } from './scrub';
+import { scrubTelemetry } from './scrub';
 
 export function initSentry(dsn: string | undefined, release: string | undefined): void {
   if (!dsn) {
@@ -13,8 +13,8 @@ export function initSentry(dsn: string | undefined, release: string | undefined)
         dsn,
         release,
         environment: import.meta.env.MODE,
-        // Room links turn up in the page URL, breadcrumbs and messages; scrub the whole event (errors are rare).
-        beforeSend: (event) => JSON.parse(scrubRoomIds(JSON.stringify(event))),
+        // Room links and LiveKit tokens turn up in the page URL, breadcrumbs and messages; scrub the whole event.
+        beforeSend: (event) => JSON.parse(scrubTelemetry(JSON.stringify(event))),
       }),
     (err) => console.warn('error reporting unavailable', err)
   );
