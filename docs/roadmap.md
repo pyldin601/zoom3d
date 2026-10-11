@@ -11,4 +11,4 @@ Each step gets its own implementation plan in `docs/superpowers/plans/`.
 | 3 | M3 Faces ✅ | Capture, mesh WebRTC, TURN creds, face billboards |
 | 4 | M4 Spatial audio ✅ | Distance/pan/reverb, wall muffling, speaking ring, debug panel |
 | 5 | M5 Polish | Device pickers, error states, perf, Firefox |
-| 6 | M6 Deploy | VPS, HTTPS, coturn |
+| 6 | M6 Deploy ✅ | Home k3s (casa) via ArgoCD, HTTPS; TURN comes with LiveKit (D11) |

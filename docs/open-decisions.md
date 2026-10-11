@@ -71,6 +71,15 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   resume with the same id and keep their P2P mesh. We rejected Redis plus a per-room lease (which rolling deploys
   need, to avoid two pods serving one room) as too much machinery. With `Recreate`, the restart gap is covered by
   the 30 s grace period, and media between peers never stops. Long-term persistence stays out of scope.
+- *Resolved 2026-10-11 (TURN):* no TURN server of our own for now. The next step is a LiveKit SFU on casa, which has
+  its own TURN (UDP 3478 and TLS on 443), so the server hands out Google STUN only until then. A coturn deployment
+  on casa was tried and removed the same day. Lessons for LiveKit's TURN on this node:
+  - Traefik owns 443, so TURN/TLS needs an SNI `IngressRouteTCP` that routes `turn.` to it.
+  - The home IP is dynamic, so the advertised public IP has to follow it.
+  - coturn's `external-ip=public/private` form allow-lists the node IP as a relay peer, ahead of
+    `denied-peer-ip`. Anyone who joins a room could then send UDP to the node, flannel VXLAN included.
+  - A TURN server behind the home NAT can't relay to clients on the home LAN, since they share its public IP.
+  - In an SFU, clients reach the server rather than each other, so relay-to-relay doesn't come up.
 
 ### D12 — Input and accessibility
 - Keyboard only vs mouse-look vs touch. Colour-blind/readable names above avatars? Captions?
