@@ -60,7 +60,6 @@ import {
   showLanding,
   showMediaControls,
   showNotice,
-  showRoomBar,
   showSelfPreview,
   showStatus,
 } from './ui/screens';
@@ -457,7 +456,6 @@ function joinRoom(
   });
   boombox.setVolume(loadBoomboxVolume(storage()));
   const media = local.state();
-  showRoomBar(ui, location.href, { compact: TOUCH });
   showMediaControls(ui, {
     cam: media.cam,
     mic: media.mic,
@@ -555,6 +553,7 @@ function openLobby(roomId: string): void {
     defaultName: loadName(),
     defaultAvatar: loadAvatar(storage()),
     level: meter.level,
+    inviteUrl: location.href,
     onJoin(name, avatar) {
       // Resumed synchronously inside the Join click (user gesture), before anything else.
       void audioCtx.resume();

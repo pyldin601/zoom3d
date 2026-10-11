@@ -70,6 +70,7 @@ function show(opts: Partial<LobbyOptions> & { media?: LocalMediaController } = {
     media: opts.media ?? fakeMedia().controller,
     defaultName: '',
     defaultAvatar: null,
+    inviteUrl: 'http://x/r/AAAAAAAAAAAAAAAAAAAAAA',
     onJoin: () => {},
     ...opts,
   };
@@ -447,6 +448,40 @@ test('dispose stops the preview and unsubscribes', () => {
   expect(video.srcObject).toBeNull();
   set({ cam: false });
   expect(byLabel('Change picture')?.hidden).toBe(true);
+});
+
+function stubClipboard(writeText: (text: string) => Promise<void>) {
+  const spy = vi.fn(writeText);
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText: spy }, configurable: true });
+  return spy;
+}
+
+test('under Join, after a divider, a button copies the invite link and says Copied for 2 s', async () => {
+  const writeText = stubClipboard(() => Promise.resolve());
+  const onJoin = vi.fn();
+  show({ onJoin });
+  const copy = button('Copy invite link');
+  expect(copy.type).toBe('button');
+  expect(copy.closest('form')).toBeNull();
+  expect(copy.closest('.invite')?.previousElementSibling).toBe(root.querySelector('.error'));
+  expect(copy.querySelector('svg')).not.toBeNull();
+  vi.useFakeTimers();
+  copy.click();
+  expect(writeText).toHaveBeenCalledWith('http://x/r/AAAAAAAAAAAAAAAAAAAAAA');
+  expect(onJoin).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(copy.textContent).toBe('Copied');
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(copy.textContent).toBe('Copy invite link');
+  expect(copy.querySelector('svg')).not.toBeNull();
+});
+
+test('a copy that fails points to the address bar', async () => {
+  stubClipboard(() => Promise.reject(new Error('denied')));
+  show();
+  button('Copy invite link').click();
+  await flush();
+  expect(errorLine()).toBe("Couldn't copy the link. It's in the address bar.");
 });
 
 test('joinBanner explains devices unavailable at Join', () => {

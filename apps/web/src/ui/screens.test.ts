@@ -7,7 +7,6 @@ import {
   showLanding,
   showMediaControls,
   showNotice,
-  showRoomBar,
   showSelfPreview,
   showStatus,
 } from './screens';
@@ -48,14 +47,6 @@ test('notice screen shows text and a link', () => {
   expect(root.querySelector('a')?.getAttribute('href')).toBe('/');
 });
 
-test('room bar copies the invite link', async () => {
-  const writeText = vi.fn(() => Promise.resolve());
-  Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
-  showRoomBar(root, 'http://x/r/AAAAAAAAAAAAAAAAAAAAAA');
-  (root.querySelector('.roombar button') as HTMLButtonElement).click();
-  expect(writeText).toHaveBeenCalledWith('http://x/r/AAAAAAAAAAAAAAAAAAAAAA');
-});
-
 const controls = (over: Partial<MediaControls> = {}): MediaControls => ({
   cam: true,
   mic: true,
@@ -64,11 +55,6 @@ const controls = (over: Partial<MediaControls> = {}): MediaControls => ({
   onCam: async (on) => on,
   onMic: (on) => on,
   ...over,
-});
-
-test('the room bar has the invite link only', () => {
-  showRoomBar(root, 'http://x');
-  expect(root.querySelector('.roombar [data-control]')).toBeNull();
 });
 
 test('the round mic button flips aria-pressed and calls its handler', () => {
@@ -160,16 +146,4 @@ test('with the camera off the self preview shows your picture, else your initial
   expect(face.querySelector('img')).toBeNull();
   expect(face.querySelector('b')).toBeNull();
   expect(face.textContent).toBe('<L');
-});
-
-test('compact room bar has a copy-link button and no link field', async () => {
-  const writeText = vi.fn(() => Promise.resolve());
-  Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
-  showRoomBar(root, 'http://x/r/AAAAAAAAAAAAAAAAAAAAAA', { compact: true });
-  expect(root.querySelector('.roombar input')).toBeNull();
-  const copy = root.querySelector('.roombar button[aria-label="Copy invite link"]') as HTMLButtonElement;
-  copy.click();
-  expect(writeText).toHaveBeenCalledWith('http://x/r/AAAAAAAAAAAAAAAAAAAAAA');
-  await Promise.resolve();
-  expect(copy.textContent).toBe('Copied');
 });

@@ -1,6 +1,6 @@
 // DOM screens and overlays inside the stage. User-provided text only ever goes through textContent.
 import { initials } from '../media/faces';
-import { deviceIcon, touchIcon } from './icons';
+import { deviceIcon } from './icons';
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -118,45 +118,6 @@ export function showMediaControls(root: HTMLElement, controls: MediaControls): v
   makeToggle(mic, 'mic', 'Mic', controls.mic, controls.micAvailable, controls.onMic, true);
   const cam = slot(root, 'selfview', 'button');
   makeToggle(cam, 'cam', 'Cam', controls.cam, controls.camAvailable, controls.onCam, false);
-}
-
-/** How long the compact copy button says "Copied". */
-const COPIED_MS = 2000;
-
-/** The touch room bar's copy button (mobile spec §5.1): no link field, the button alone, "Copied" for a moment. */
-function copyLinkButton(inviteUrl: string): HTMLButtonElement {
-  const copy = el('button', { type: 'button', className: 'toggle copy-link' });
-  copy.setAttribute('aria-label', 'Copy invite link');
-  copy.append(touchIcon('link'));
-  copy.addEventListener('click', () => {
-    navigator.clipboard?.writeText(inviteUrl).then(() => {
-      copy.textContent = 'Copied';
-      setTimeout(() => copy.replaceChildren(touchIcon('link')), COPIED_MS);
-    });
-  });
-  return copy;
-}
-
-export function showRoomBar(
-  root: HTMLElement,
-  inviteUrl: string,
-  { compact = false }: { compact?: boolean } = {}
-): void {
-  if (compact) {
-    slot(root, 'roombar').replaceChildren(copyLinkButton(inviteUrl));
-    return;
-  }
-  const link = el('input', { readOnly: true, value: inviteUrl, ariaLabel: 'Invite link' });
-  const copy = el('button', { type: 'button', textContent: 'Copy invite link' });
-  copy.addEventListener('click', () => {
-    navigator.clipboard?.writeText(inviteUrl).then(
-      () => {
-        copy.textContent = 'Copied!';
-      },
-      () => link.select()
-    ) ?? link.select();
-  });
-  slot(root, 'roombar').replaceChildren(link, copy);
 }
 
 const BANNER_MS = 8000;
