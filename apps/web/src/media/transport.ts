@@ -1,16 +1,22 @@
-// The media seam: call.ts only talks to this. Implemented by the LiveKit SFU transport (livekit.ts).
-import type { SignalPayload } from '@zoom3d/shared';
+// The media seam: call.ts only talks to this. Implemented over the LiveKit SFU by livekit.ts (LiveKit spec §4).
+import type { LiveKitAccess } from '@zoom3d/shared';
+
+export interface TransportOptions extends LiveKitAccess {
+  localStream: MediaStream | null;
+  /** A peer's face and voice; called again with a new stream whenever its tracks change. */
+  onRemoteStream: (peerId: string, stream: MediaStream) => void;
+  onRemoteBoombox: (peerId: string, stream: MediaStream) => void;
+}
 
 export interface MediaTransport {
   connect(peerId: string): void;
-  handleSignal(from: string, payload: SignalPayload): Promise<void>;
   disconnect(peerId: string): void;
   close(): void;
   stats(peerId: string): Promise<{ bytesReceived: number; boomboxBytesReceived: number } | null>;
-  /** Sends `track` instead of the stream's video track, on current and future connections. */
+  /** Sends `track` as our face (the framer's canvas, or the raw camera while the tab is hidden). */
   setVideoTrack(track: MediaStreamTrack): void;
-  /** Swaps the mic on current connections; later ones read it from the local stream. */
+  /** Swaps the mic, e.g. after a headset was unplugged. */
   setAudioTrack(track: MediaStreamTrack): void;
-  /** Sends `track` (or nothing) on the boombox transceiver, on current and future connections. */
+  /** Sends `track` as our boombox music, or nothing. */
   setBoomboxTrack(track: MediaStreamTrack | null): void;
 }

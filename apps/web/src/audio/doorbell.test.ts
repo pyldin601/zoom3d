@@ -45,11 +45,12 @@ test('rings for whoever arrives: another peer, or us on a fresh slot, but not wh
   const listener = withDoorbell(inner, bell);
   const peer = { id: 'b' } as PeerInfo;
 
-  listener.welcome?.('a', [], true);
-  expect(inner.welcome).toHaveBeenCalledWith('a', [], true);
+  const lk = { url: 'ws://lk', token: 'tok' };
+  listener.welcome?.('a', lk, true);
+  expect(inner.welcome).toHaveBeenCalledWith('a', lk, true);
   expect(bell.ring).toHaveBeenCalledTimes(1);
 
-  listener.welcome?.('a', [], false);
+  listener.welcome?.('a', lk, false);
   expect(inner.welcome).toHaveBeenCalledTimes(2);
   expect(bell.ring).toHaveBeenCalledTimes(1);
 

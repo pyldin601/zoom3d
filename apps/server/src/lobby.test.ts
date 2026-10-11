@@ -20,6 +20,7 @@ let closed: { conn: string; code: number }[];
 let events: LobbyEvent[];
 let time: number;
 let lobby: Lobby;
+let tokens: number;
 
 const outbox: Outbox = {
   send: (conn, msg) => sent.push({ conn, msg }),
@@ -31,6 +32,7 @@ beforeEach(() => {
   closed = [];
   events = [];
   time = 0;
+  tokens = 0;
   let n = 0;
   lobby = new Lobby({
     map,
@@ -38,7 +40,7 @@ beforeEach(() => {
     now: () => time,
     rng: () => 0,
     newToken: () => `t${++n}`,
-    iceServersFor: (id) => [{ urls: [`stun:${id}`] }],
+    liveKitFor: (roomId, peerId) => ({ url: 'ws://lk', token: `${roomId}/${peerId}/${++tokens}` }),
     onEvent: (e) => events.push(e),
   });
 });
@@ -261,34 +263,21 @@ describe('disconnect and resume', () => {
   });
 });
 
-describe('media and signalling', () => {
-  const payload = { kind: 'candidate', candidate: null } as const;
-  const deliveredTo = (conn: string) => to(conn).filter((m) => m.type === 'signal');
-
-  test('the welcome carries ICE servers for the joiner', () => {
+describe('media', () => {
+  test('the welcome carries LiveKit access for the joiner, in its own room', () => {
     join('A');
-    expect(welcome('A').iceServers).toEqual([{ urls: [`stun:${welcome('A').selfId}`] }]);
+    const w = welcome('A');
+    expect(w.livekit).toEqual({ url: 'ws://lk', token: `${ROOM}/${w.selfId}/1` });
   });
 
-  test('a signal is delivered to its target in the same room', () => {
+  test('a resume gets a fresh LiveKit token for the same identity', () => {
     join('A');
-    join('B');
-    lobby.signal('A', { type: 'signal', to: welcome('B').selfId, payload });
-    expect(deliveredTo('B')).toEqual([{ type: 'signal', from: welcome('A').selfId, payload }]);
-  });
-
-  test('signals to self, unknown ids, other rooms or disconnected peers are dropped', () => {
-    join('A');
-    join('B');
-    lobby.join('X', { type: 'join', roomId: 'BBBBBBBBBBBBBBBBBBBBBB', name: 'X' });
-    const xId = welcome('X').selfId;
-    lobby.signal('A', { type: 'signal', to: welcome('A').selfId, payload });
-    lobby.signal('A', { type: 'signal', to: 'nobody', payload });
-    lobby.signal('A', { type: 'signal', to: xId, payload });
-    lobby.disconnect('B');
-    lobby.signal('A', { type: 'signal', to: welcome('B').selfId, payload });
-    lobby.signal('ghost', { type: 'signal', to: welcome('A').selfId, payload });
-    expect(sent.filter((s) => s.msg.type === 'signal')).toEqual([]);
+    const first = welcome('A');
+    lobby.disconnect('A');
+    lobby.join('A2', { type: 'join', roomId: ROOM, name: 'A', resumeToken: first.resumeToken });
+    const again = welcome('A2');
+    expect(again.selfId).toBe(first.selfId);
+    expect(again.livekit.token).toBe(`${ROOM}/${first.selfId}/2`);
   });
 
   test('media state is broadcast and shown to later joiners', () => {
@@ -463,6 +452,7 @@ describe('snapshot and restore', () => {
       now: () => time,
       rng: () => 0,
       newToken: () => `r${++m}`,
+      liveKitFor: (roomId, peerId) => ({ url: 'ws://lk', token: `${roomId}/${peerId}` }),
       onEvent: (e) => events.push(e),
     });
     next.restore(JSON.parse(JSON.stringify(lobby.snapshot())));

@@ -38,9 +38,6 @@ importers:
       '@zoom3d/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      livekit-server-sdk:
-        specifier: 2.19.1
-        version: 2.19.1
       ws:
         specifier: 8.22.0
         version: 8.22.0
@@ -51,6 +48,9 @@ importers:
       esbuild:
         specifier: 0.28.2
         version: 0.28.2
+      livekit-server-sdk:
+        specifier: 2.19.1
+        version: 2.19.1
       tsx:
         specifier: 4.23.15
         version: 4.23.15

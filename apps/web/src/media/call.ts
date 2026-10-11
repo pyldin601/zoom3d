@@ -1,11 +1,11 @@
-// Glue between the session (signalling, presence) and media: mesh connections, remote elements, faces.
+// Glue between the session (presence) and media: the LiveKit transport, remote elements, faces.
 import type { PeerInfo } from '@zoom3d/shared';
 import type { AudioEngine } from '../audio/engine';
 import type { Session, SessionListener } from '../net/session';
 import type { createFace as CreateFace, FaceSource } from './faces';
 import type { LocalMediaController } from './local-media';
-import type { createMesh as CreateMesh, MediaTransport } from './mesh';
 import type { RemoteMedia } from './remote-media';
+import type { MediaTransport, TransportOptions } from './transport';
 
 export interface Call {
   /** Pass to createSession, then call attach() with the session. */
@@ -14,7 +14,7 @@ export interface Call {
   faceOf(peerId: string): Uint32Array | null;
   isLive(peerId: string): boolean;
   stats(peerId: string): Promise<{ bytesReceived: number; boomboxBytesReceived: number } | null>;
-  /** Our boombox music, or null when it is off; kept across a recreated mesh. */
+  /** Our boombox music, or null when it is off; kept across a recreated transport. */
   setBoomboxTrack(track: MediaStreamTrack | null): void;
   /** Stops or restarts the camera; resolves to whether it is on now. */
   setCam(on: boolean): Promise<boolean>;
@@ -32,7 +32,7 @@ export interface CallOptions {
   audio: Pick<AudioEngine, 'attach' | 'detach'> | null;
   document: Document;
   createFace: typeof CreateFace;
-  createMesh: typeof CreateMesh;
+  createTransport: (opts: TransportOptions) => MediaTransport;
 }
 
 /** Engine and element key of a peer's boombox music (boombox spec §4). */
@@ -43,11 +43,25 @@ export function createCall(opts: CallOptions): Call {
   const faces = new Map<string, FaceSource>();
   const state = { cam: local.state().cam, mic: local.state().mic };
   let session: Session | null = null;
-  let mesh: MediaTransport | null = null;
+  let transport: MediaTransport | null = null;
   let boomboxTrack: MediaStreamTrack | null = null;
   const { framer } = local;
   // The canvas track is always sent, so camera on/off never renegotiates (lobby spec §4.3).
-  framer.onSendTrackChange = () => mesh?.setVideoTrack(framer.sendTrack);
+  framer.onSendTrackChange = () => transport?.setVideoTrack(framer.sendTrack);
+
+  /** Media LiveKit delivered before the game announced its peer (it is never sent again). */
+  const early = new Map<string, { stream?: MediaStream; boombox?: MediaStream }>();
+
+  const applyStream = (peerId: string, stream: MediaStream) => {
+    faces.get(peerId)?.setVideo(remote.attach(peerId, stream));
+    opts.audio?.attach(peerId, stream);
+  };
+
+  const applyBoombox = (peerId: string, stream: MediaStream) => {
+    const key = boomboxKey(peerId);
+    remote.attachAudio(key, stream);
+    opts.audio?.attach(key, stream, peerId);
+  };
 
   const ensureFace = (peer: PeerInfo) => {
     let face = faces.get(peer.id);
@@ -59,23 +73,33 @@ export function createCall(opts: CallOptions): Call {
         document: opts.document,
       });
       faces.set(peer.id, face);
+      const pending = early.get(peer.id);
+      early.delete(peer.id);
+      if (pending?.stream) {
+        applyStream(peer.id, pending.stream);
+      }
+      if (pending?.boombox) {
+        applyBoombox(peer.id, pending.boombox);
+      }
     }
     face.setCam(peer.cam);
   };
 
   const drop = (peerId: string) => {
-    mesh?.disconnect(peerId);
+    transport?.disconnect(peerId);
     remote.detach(peerId);
     remote.detach(boomboxKey(peerId));
     opts.audio?.detach(peerId);
     opts.audio?.detach(boomboxKey(peerId));
     faces.get(peerId)?.dispose();
     faces.delete(peerId);
+    early.delete(peerId);
   };
 
   const teardown = () => {
-    mesh?.close();
-    mesh = null;
+    transport?.close();
+    transport = null;
+    early.clear();
     remote.detachAll();
     for (const id of faces.keys()) {
       opts.audio?.detach(id);
@@ -97,7 +121,7 @@ export function createCall(opts: CallOptions): Call {
     if (track !== micTrack) {
       micTrack = track;
       if (track) {
-        mesh?.setAudioTrack(track);
+        transport?.setAudioTrack(track);
       }
     }
     const { cam, mic } = local.state();
@@ -110,34 +134,32 @@ export function createCall(opts: CallOptions): Call {
   const unsubscribe = local.subscribe(sync);
 
   const listener: SessionListener = {
-    welcome(selfId, iceServers, identityChanged) {
-      if (identityChanged || !mesh) {
+    welcome(_selfId, livekit, identityChanged) {
+      // A resume keeps the transport (LiveKit reconnects by itself); only a new identity needs a new one.
+      if (identityChanged || !transport) {
         teardown();
-        mesh = opts.createMesh({
-          selfId,
-          iceServers,
+        transport = opts.createTransport({
+          url: livekit.url,
+          token: livekit.token,
           localStream: local.stream,
-          sendSignal: (to, payload) => session?.sendSignal(to, payload),
           onRemoteStream: (peerId, stream) => {
-            const face = faces.get(peerId);
-            if (!face) {
-              return;
+            if (faces.has(peerId)) {
+              applyStream(peerId, stream);
+            } else {
+              early.set(peerId, { ...early.get(peerId), stream });
             }
-            face.setVideo(remote.attach(peerId, stream));
-            opts.audio?.attach(peerId, stream);
           },
           onRemoteBoombox: (peerId, stream) => {
-            if (!faces.has(peerId)) {
-              return;
+            if (faces.has(peerId)) {
+              applyBoombox(peerId, stream);
+            } else {
+              early.set(peerId, { ...early.get(peerId), boombox: stream });
             }
-            const key = boomboxKey(peerId);
-            remote.attachAudio(key, stream);
-            opts.audio?.attach(key, stream, peerId);
           },
         });
-        mesh.setBoomboxTrack(boomboxTrack);
+        transport.setBoomboxTrack(boomboxTrack);
         // The tab may already be hidden, in which case peers get the raw camera track.
-        mesh.setVideoTrack(framer.sendTrack);
+        transport.setVideoTrack(framer.sendTrack);
       }
       const present = session?.peers ?? new Map();
       for (const id of [...faces.keys()]) {
@@ -147,19 +169,16 @@ export function createCall(opts: CallOptions): Call {
       }
       for (const peer of present.values()) {
         ensureFace(peer.info);
-        mesh.connect(peer.info.id);
+        transport.connect(peer.info.id);
       }
     },
     peerJoined(peer) {
       ensureFace(peer);
-      mesh?.connect(peer.id);
+      transport?.connect(peer.id);
     },
     peerLeft: drop,
     peerMedia(id, cam) {
       faces.get(id)?.setCam(cam);
-    },
-    signal(from, payload) {
-      void mesh?.handleSignal(from, payload);
     },
   };
 
@@ -171,10 +190,10 @@ export function createCall(opts: CallOptions): Call {
     },
     faceOf: (id) => faces.get(id)?.texels ?? null,
     isLive: (id) => faces.get(id)?.live() ?? false,
-    stats: async (id) => (mesh ? mesh.stats(id) : null),
+    stats: async (id) => (transport ? transport.stats(id) : null),
     setBoomboxTrack(track) {
       boomboxTrack = track;
-      mesh?.setBoomboxTrack(track);
+      transport?.setBoomboxTrack(track);
     },
     async setCam(on) {
       await local.setCam(on);

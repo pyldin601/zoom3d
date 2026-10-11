@@ -1,14 +1,14 @@
-import type { IceServer, PeerInfo, SignalPayload } from '@zoom3d/shared';
+import type { LiveKitAccess, PeerInfo } from '@zoom3d/shared';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { AudioEngine } from '../audio/engine';
 import type { RemotePeer, Session } from '../net/session';
 import { createCall } from './call';
 import type { FaceSource } from './faces';
 import type { LocalMediaController } from './local-media';
-import type { MeshOptions } from './mesh';
 import type { RemoteMedia } from './remote-media';
+import type { TransportOptions } from './transport';
 
-const ICE: IceServer[] = [{ urls: ['stun:x'] }];
+const LK: LiveKitAccess = { url: 'ws://lk', token: 'tok' };
 const info = (id: string, cam = true): PeerInfo => ({
   id,
   name: id,
@@ -23,11 +23,10 @@ const info = (id: string, cam = true): PeerInfo => ({
   boombox: false,
 });
 
-let meshes: {
-  opts: MeshOptions;
+let transports: {
+  opts: TransportOptions;
   connect: ReturnType<typeof vi.fn>;
   disconnect: ReturnType<typeof vi.fn>;
-  handleSignal: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
   setVideoTrack: ReturnType<typeof vi.fn>;
   setAudioTrack: ReturnType<typeof vi.fn>;
@@ -123,20 +122,19 @@ function makeCall(init: Parameters<typeof fakeLocal>[0] = {}) {
       faces.set(name, face as never);
       return face;
     },
-    createMesh: (opts) => {
-      const mesh = {
+    createTransport: (opts) => {
+      const transport = {
         opts,
         connect: vi.fn(),
         disconnect: vi.fn(),
-        handleSignal: vi.fn(async () => {}),
         close: vi.fn(),
         stats: vi.fn(async () => ({ bytesReceived: 5, boomboxBytesReceived: 2 })),
         setVideoTrack: vi.fn(),
         setAudioTrack: vi.fn(),
         setBoomboxTrack: vi.fn(),
       };
-      meshes.push(mesh);
-      return mesh;
+      transports.push(transport);
+      return transport;
     },
   });
   call.attach(session);
@@ -144,7 +142,7 @@ function makeCall(init: Parameters<typeof fakeLocal>[0] = {}) {
 }
 
 beforeEach(() => {
-  meshes = [];
+  transports = [];
   faces = new Map();
   faceAvatars = new Map();
   remote = {
@@ -156,7 +154,6 @@ beforeEach(() => {
   audio = { attach: vi.fn(), detach: vi.fn() };
   session = {
     peers: new Map(),
-    sendSignal: vi.fn(),
     setMedia: vi.fn(),
   } as unknown as Session;
 });
@@ -166,13 +163,13 @@ test('attaching publishes the local media state', () => {
   expect(session.setMedia).toHaveBeenCalledWith(false, true);
 });
 
-test('a fresh welcome creates a mesh and connects every peer with a face', () => {
+test('a fresh welcome creates a transport and connects every peer with a face', () => {
   const call = makeCall();
   setPeers(info('a'), info('b', false));
-  call.listener.welcome?.('me', ICE, true);
-  expect(meshes).toHaveLength(1);
-  expect(meshes[0]?.opts).toMatchObject({ selfId: 'me', iceServers: ICE });
-  expect(meshes[0]?.connect.mock.calls.map((c) => c[0])).toEqual(['a', 'b']);
+  call.listener.welcome?.('me', LK, true);
+  expect(transports).toHaveLength(1);
+  expect(transports[0]?.opts).toMatchObject({ url: 'ws://lk', token: 'tok' });
+  expect(transports[0]?.connect.mock.calls.map((c) => c[0])).toEqual(['a', 'b']);
   expect(faces.get('b')?.setCam).toHaveBeenCalledWith(false);
   expect(call.faceOf('a')).toBe(faces.get('a')?.texels);
 });
@@ -181,69 +178,82 @@ test("faces get the peer's avatar picture", () => {
   const call = makeCall();
   const pic = 'data:image/jpeg;base64,/9j/';
   setPeers({ ...info('a'), avatar: pic });
-  call.listener.welcome?.('me', ICE, true);
+  call.listener.welcome?.('me', LK, true);
   call.listener.peerJoined?.(info('b'));
   expect(faceAvatars.get('a')).toBe(pic);
   expect(faceAvatars.get('b')).toBeNull();
 });
 
-test('a resume keeps the mesh, connects newcomers and drops peers that are gone', () => {
+test('a resume keeps the transport, connects newcomers and drops peers that are gone', () => {
   const call = makeCall();
   setPeers(info('a'), info('b'));
-  call.listener.welcome?.('me', ICE, true);
+  call.listener.welcome?.('me', LK, true);
   setPeers(info('b'), info('c'));
-  call.listener.welcome?.('me', ICE, false);
-  expect(meshes).toHaveLength(1);
-  expect(meshes[0]?.connect.mock.calls.map((c) => c[0])).toEqual(['a', 'b', 'b', 'c']);
-  expect(meshes[0]?.disconnect).toHaveBeenCalledWith('a');
+  call.listener.welcome?.('me', LK, false);
+  expect(transports).toHaveLength(1);
+  expect(transports[0]?.connect.mock.calls.map((c) => c[0])).toEqual(['a', 'b', 'b', 'c']);
+  expect(transports[0]?.disconnect).toHaveBeenCalledWith('a');
   expect(faces.get('a')?.dispose).toHaveBeenCalled();
 });
 
-test('a new identity replaces the mesh entirely', () => {
+test('a new identity replaces the transport entirely', () => {
   const call = makeCall();
   setPeers(info('a'));
-  call.listener.welcome?.('me', ICE, true);
-  call.listener.welcome?.('me2', ICE, true);
-  expect(meshes[0]?.close).toHaveBeenCalled();
+  call.listener.welcome?.('me', LK, true);
+  call.listener.welcome?.('me2', { url: 'ws://lk', token: 'tok2' }, true);
+  expect(transports[0]?.close).toHaveBeenCalled();
   expect(remote.detachAll).toHaveBeenCalled();
-  expect(meshes[1]?.opts.selfId).toBe('me2');
+  expect(transports[1]?.opts.token).toBe('tok2');
 });
 
 test('peers joining and leaving are connected and cleaned up', () => {
   const call = makeCall();
-  call.listener.welcome?.('me', ICE, true);
+  call.listener.welcome?.('me', LK, true);
   call.listener.peerJoined?.(info('a'));
-  expect(meshes[0]?.connect).toHaveBeenCalledWith('a');
+  expect(transports[0]?.connect).toHaveBeenCalledWith('a');
   call.listener.peerLeft?.('a');
-  expect(meshes[0]?.disconnect).toHaveBeenCalledWith('a');
+  expect(transports[0]?.disconnect).toHaveBeenCalledWith('a');
   expect(remote.detach).toHaveBeenCalledWith('a');
   expect(faces.get('a')?.dispose).toHaveBeenCalled();
   expect(call.faceOf('a')).toBeNull();
 });
 
-test('signals go to the mesh; outgoing signals go through the session', () => {
+test('a resume keeps the transport even though its welcome carries a fresh token', () => {
   const call = makeCall();
-  call.listener.welcome?.('me', ICE, true);
-  const payload: SignalPayload = { kind: 'candidate', candidate: null };
-  call.listener.signal?.('a', payload);
-  expect(meshes[0]?.handleSignal).toHaveBeenCalledWith('a', payload);
-  meshes[0]?.opts.sendSignal('b', payload);
-  expect(session.sendSignal).toHaveBeenCalledWith('b', payload);
+  call.listener.welcome?.('me', LK, true);
+  call.listener.welcome?.('me', { url: 'ws://lk', token: 'fresh' }, false);
+  expect(transports).toHaveLength(1);
+  expect(transports[0]?.close).not.toHaveBeenCalled();
+});
+
+test('media that arrives before the game announces the peer is applied once it does', () => {
+  const call = makeCall();
+  call.listener.welcome?.('me', LK, true);
+  const stream = { id: 'early' } as unknown as MediaStream;
+  const music = { id: 'early-music' } as unknown as MediaStream;
+  transports[0]?.opts.onRemoteStream('c', stream);
+  transports[0]?.opts.onRemoteBoombox('c', music);
+  expect(remote.attach).not.toHaveBeenCalled();
+  call.listener.peerJoined?.(info('c'));
+  expect(remote.attach).toHaveBeenCalledWith('c', stream);
+  expect(faces.get('c')?.setVideo).toHaveBeenCalledWith({ id: 'video-el' });
+  expect(audio.attach).toHaveBeenCalledWith('c', stream);
+  expect(remote.attachAudio).toHaveBeenCalledWith('boombox:c', music);
 });
 
 test('a remote stream is attached to an element that feeds the face', () => {
   const call = makeCall();
-  call.listener.welcome?.('me', ICE, true);
+  call.listener.welcome?.('me', LK, true);
   call.listener.peerJoined?.(info('b'));
   const stream = { id: 's' } as unknown as MediaStream;
-  meshes[0]?.opts.onRemoteStream('b', stream);
+  transports[0]?.opts.onRemoteStream('b', stream);
   expect(remote.attach).toHaveBeenCalledWith('b', stream);
   expect(faces.get('b')?.setVideo).toHaveBeenCalledWith({ id: 'video-el' });
 });
 
 test('remote media state toggles the face', () => {
   const call = makeCall();
-  call.listener.welcome?.('me', ICE, true);
+  call.listener.welcome?.('me', LK, true);
   call.listener.peerJoined?.(info('b'));
   call.listener.peerMedia?.('b', false, true);
   expect(faces.get('b')?.setCam).toHaveBeenLastCalledWith(false);
@@ -278,22 +288,22 @@ test("media is republished when the controller's camera comes up after joining",
   expect((session.setMedia as ReturnType<typeof vi.fn>).mock.calls.length).toBe(calls);
 });
 
-test('dispose closes the mesh and removes elements and faces', () => {
+test('dispose closes the transport and removes elements and faces', () => {
   const call = makeCall();
-  call.listener.welcome?.('me', ICE, true);
+  call.listener.welcome?.('me', LK, true);
   call.listener.peerJoined?.(info('a'));
   call.dispose();
-  expect(meshes[0]?.close).toHaveBeenCalled();
+  expect(transports[0]?.close).toHaveBeenCalled();
   expect(remote.detachAll).toHaveBeenCalled();
   expect(faces.get('a')?.dispose).toHaveBeenCalled();
 });
 
 test('remote voices go to the audio engine and are detached when the peer goes', () => {
   const call = makeCall();
-  call.listener.welcome?.('me', ICE, true);
+  call.listener.welcome?.('me', LK, true);
   call.listener.peerJoined?.(info('b'));
   const stream = { id: 's' } as unknown as MediaStream;
-  meshes[0]?.opts.onRemoteStream('b', stream);
+  transports[0]?.opts.onRemoteStream('b', stream);
   expect(audio.attach).toHaveBeenCalledWith('b', stream);
   call.listener.peerLeft?.('b');
   expect(audio.detach).toHaveBeenCalledWith('b');
@@ -302,47 +312,47 @@ test('remote voices go to the audio engine and are detached when the peer goes',
 test('a new identity detaches every voice', () => {
   const call = makeCall();
   setPeers(info('a'));
-  call.listener.welcome?.('me', ICE, true);
-  call.listener.welcome?.('me2', ICE, true);
+  call.listener.welcome?.('me', LK, true);
+  call.listener.welcome?.('me2', LK, true);
   expect(audio.detach).toHaveBeenCalledWith('a');
 });
 
-test("a new mesh starts with the framer's send track", () => {
+test("a new transport starts with the framer's send track", () => {
   const call = makeCall();
-  call.listener.welcome?.('me', ICE, true);
-  expect(meshes[0]?.setVideoTrack).toHaveBeenCalledWith({ id: 'canvas' });
-  expect(meshes[0]?.opts.localStream).toBe(local.stream);
+  call.listener.welcome?.('me', LK, true);
+  expect(transports[0]?.setVideoTrack).toHaveBeenCalledWith({ id: 'canvas' });
+  expect(transports[0]?.opts.localStream).toBe(local.stream);
 });
 
-test('a replaced mic reaches the current mesh', () => {
+test('a replaced mic reaches the current transport', () => {
   const call = makeCall();
-  call.listener.welcome?.('me', ICE, true);
+  call.listener.welcome?.('me', LK, true);
   local.setMicTrack({ id: 'mic2' });
-  expect(meshes[0]?.setAudioTrack).toHaveBeenCalledWith({ id: 'mic2' });
-  meshes[0]?.setAudioTrack.mockClear();
+  expect(transports[0]?.setAudioTrack).toHaveBeenCalledWith({ id: 'mic2' });
+  transports[0]?.setAudioTrack.mockClear();
   local.notify();
-  expect(meshes[0]?.setAudioTrack).not.toHaveBeenCalled();
+  expect(transports[0]?.setAudioTrack).not.toHaveBeenCalled();
 });
 
-test('a send-track change reaches the current mesh', () => {
+test('a send-track change reaches the current transport', () => {
   const call = makeCall();
-  call.listener.welcome?.('me', ICE, true);
+  call.listener.welcome?.('me', LK, true);
   local.framer.sendTrack = { id: 'raw' };
   local.framer.onSendTrackChange?.();
-  expect(meshes[0]?.setVideoTrack).toHaveBeenLastCalledWith({ id: 'raw' });
+  expect(transports[0]?.setVideoTrack).toHaveBeenLastCalledWith({ id: 'raw' });
 });
 
 test('a boombox stream plays through the engine at its owner', () => {
   const call = makeCall();
   setPeers(info('b'));
-  call.listener.welcome?.('me', ICE, true);
+  call.listener.welcome?.('me', LK, true);
   const music = { id: 'music' } as unknown as MediaStream;
-  meshes[0]?.opts.onRemoteBoombox('b', music);
+  transports[0]?.opts.onRemoteBoombox('b', music);
   expect(remote.attachAudio).toHaveBeenCalledWith('boombox:b', music);
   expect(audio.attach).toHaveBeenCalledWith('boombox:b', music, 'b');
   remote.attachAudio.mockClear();
   audio.attach.mockClear();
-  meshes[0]?.opts.onRemoteBoombox('stranger', music);
+  transports[0]?.opts.onRemoteBoombox('stranger', music);
   expect(remote.attachAudio).not.toHaveBeenCalled();
   expect(audio.attach).not.toHaveBeenCalled();
 });
@@ -350,7 +360,7 @@ test('a boombox stream plays through the engine at its owner', () => {
 test('dropping a peer detaches its boombox', () => {
   const call = makeCall();
   setPeers(info('b'));
-  call.listener.welcome?.('me', ICE, true);
+  call.listener.welcome?.('me', LK, true);
   call.listener.peerLeft?.('b');
   expect(remote.detach).toHaveBeenCalledWith('boombox:b');
   expect(audio.detach).toHaveBeenCalledWith('boombox:b');
@@ -359,19 +369,19 @@ test('dropping a peer detaches its boombox', () => {
 test('a new identity detaches every boombox from the engine', () => {
   const call = makeCall();
   setPeers(info('b'));
-  call.listener.welcome?.('me', ICE, true);
-  call.listener.welcome?.('me2', ICE, true);
+  call.listener.welcome?.('me', LK, true);
+  call.listener.welcome?.('me2', LK, true);
   expect(audio.detach).toHaveBeenCalledWith('boombox:b');
 });
 
-test('the boombox track reaches the mesh and survives a new identity', () => {
+test('the boombox track reaches the transport and survives a new identity', () => {
   const call = makeCall();
-  call.listener.welcome?.('me', ICE, true);
+  call.listener.welcome?.('me', LK, true);
   const track = { kind: 'audio' } as unknown as MediaStreamTrack;
   call.setBoomboxTrack(track);
-  expect(meshes[0]?.setBoomboxTrack).toHaveBeenLastCalledWith(track);
-  call.listener.welcome?.('me2', ICE, true);
-  expect(meshes[1]?.setBoomboxTrack).toHaveBeenLastCalledWith(track);
+  expect(transports[0]?.setBoomboxTrack).toHaveBeenLastCalledWith(track);
+  call.listener.welcome?.('me2', LK, true);
+  expect(transports[1]?.setBoomboxTrack).toHaveBeenLastCalledWith(track);
   call.setBoomboxTrack(null);
-  expect(meshes[1]?.setBoomboxTrack).toHaveBeenLastCalledWith(null);
+  expect(transports[1]?.setBoomboxTrack).toHaveBeenLastCalledWith(null);
 });

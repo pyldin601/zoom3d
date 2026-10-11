@@ -63,8 +63,8 @@ export function createDoorbell(ctx: BaseAudioContext): Doorbell {
 export function withDoorbell(listener: SessionListener, bell: Doorbell): SessionListener {
   return {
     ...listener,
-    welcome(selfId, iceServers, identityChanged) {
-      listener.welcome?.(selfId, iceServers, identityChanged);
+    welcome(selfId, livekit, identityChanged) {
+      listener.welcome?.(selfId, livekit, identityChanged);
       if (identityChanged) {
         bell.ring();
       }

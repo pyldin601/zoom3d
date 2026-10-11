@@ -14,9 +14,9 @@ import { type Call, createCall } from './media/call';
 import { createFace } from './media/faces';
 import { createFramer } from './media/framer';
 import { createFramingMemory } from './media/framing-memory';
+import { createLiveKitTransport } from './media/livekit';
 import { createLocalMedia, type LocalMediaController } from './media/local-media';
 import { loadMediaPrefs, saveMediaPrefs } from './media/media-prefs';
-import { createMesh } from './media/mesh';
 import { createRemoteMedia } from './media/remote-media';
 import { createSession, type Session } from './net/session';
 import { type AutomapPeer, drawAutomap } from './renderer/automap';
@@ -395,7 +395,7 @@ function joinRoom(
     audio,
     document,
     createFace,
-    createMesh,
+    createTransport: createLiveKitTransport,
   });
   const tracker = createRoomTracker(track, () => performance.now());
   roomTracker = tracker;

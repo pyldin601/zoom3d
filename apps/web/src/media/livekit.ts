@@ -3,7 +3,7 @@
 // Local tracks are user-provided: LocalMediaController owns them, so they are swapped with replaceTrack and never
 // stopped. livekit-client itself is loaded with import() on first connect, keeping it out of the lobby bundle.
 import type { RoomConnectOptions, RoomOptions, TrackPublishOptions } from 'livekit-client';
-import type { MediaTransport } from './transport';
+import type { MediaTransport, TransportOptions } from './transport';
 
 export const VIDEO_MAX_BITRATE = 350_000;
 /** Music, not speech: well above Opus's ~32 kbps default (boombox spec §5.3). */
@@ -36,12 +36,7 @@ export interface LiveKitRoomLike {
   };
 }
 
-export interface LiveKitTransportOptions {
-  url: string;
-  token: string;
-  localStream: MediaStream | null;
-  onRemoteStream: (peerId: string, stream: MediaStream) => void;
-  onRemoteBoombox: (peerId: string, stream: MediaStream) => void;
+export interface LiveKitTransportOptions extends TransportOptions {
   RoomImpl?: new (options: Partial<RoomOptions>) => LiveKitRoomLike;
   createStream?: (tracks: MediaStreamTrack[]) => MediaStream;
 }
@@ -203,7 +198,6 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
     // LiveKit forwards every participant; per-peer subscription arrives with visibility (6c).
     connect() {},
     disconnect() {},
-    async handleSignal() {},
     close() {
       closed = true;
       if (retryTimer) {

@@ -6,7 +6,8 @@ services:
       dockerfile: apps/server/Dockerfile
     image: ghcr.io/pyldin601/zoom3d-server:local
     environment:
-      # Optional: STUN_URLS, TURN_URLS, TURN_SECRET, TURN_TTL_S, RESUME_GRACE_MS, STATE_FILE (needs a volume)
+      # Optional: LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET (default: a `livekit-server --dev` on
+      # ws://localhost:7880, run it on the host), RESUME_GRACE_MS, STATE_FILE (needs a volume)
       PORT: "8787"
   web:
     build:

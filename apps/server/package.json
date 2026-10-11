@@ -11,12 +11,12 @@
     "@prometheus-io/client": "0.16.1",
     "@sentry/node": "11.6.0",
     "@zoom3d/shared": "workspace:*",
-    "livekit-server-sdk": "2.19.1",
     "ws": "8.22.0"
   },
   "devDependencies": {
     "@types/ws": "8.18.2",
     "esbuild": "0.28.2",
+    "livekit-server-sdk": "2.19.1",
     "tsx": "4.23.15"
   }
 }
