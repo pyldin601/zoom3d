@@ -4,7 +4,7 @@ set -eu
 service="$1"
 image="$2"
 name="zoom3d-smoke-$service-$$"
-cleanup() { docker rm -f "$name" >/dev/null 2>&1 || true; }
+cleanup() { docker rm -f "$name" "$name-noenv" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 wait_for() { # url
@@ -23,7 +23,12 @@ expect() { # description, command...
 
 case "$service" in
   server)
-    docker run -d --name "$name" -p 18787:8787 "$image" >/dev/null
+    # Production refuses to start without LiveKit access (it would hand out tokens nobody accepts).
+    docker run -d --name "$name-noenv" "$image" >/dev/null
+    sleep 3
+    expect "refuses to start without LiveKit env" sh -c "test \"\$(docker inspect -f '{{.State.Running}} {{.State.ExitCode}}' $name-noenv)\" = 'false 1'"
+    docker run -d --name "$name" -p 18787:8787 \
+      -e LIVEKIT_URL=wss://livekit.invalid -e LIVEKIT_API_KEY=smoke -e LIVEKIT_API_SECRET=smoke-secret "$image" >/dev/null
     wait_for http://127.0.0.1:18787/health
     expect "GET /health returns ok" sh -c 'test "$(curl -fsS http://127.0.0.1:18787/health)" = ok'
     expect "unknown path is 404" sh -c 'test "$(curl -s -o /dev/null -w %{http_code} http://127.0.0.1:18787/nope)" = 404'
