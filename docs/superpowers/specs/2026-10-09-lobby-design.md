@@ -174,7 +174,7 @@ use fakes, like `capture.ts` today.
 - The route `/r/<id>` creates the `AudioContext` and the `LocalMediaController`, then calls `showLobby`.
 - `joinRoom(roomId, name, avatar, local, audioCtx)` drops the capture step and builds the call from
   `local`.
-- The room bar's `MediaControls` read `camAvailable`/`micAvailable` from the controller; `onCam` awaits
+- The room's `MediaControls` (`showMediaControls`: the mic button and the self-view) read `camAvailable`/`micAvailable` from the controller; `onCam` awaits
   `local.setCam`.
 
 ## 5. Testing

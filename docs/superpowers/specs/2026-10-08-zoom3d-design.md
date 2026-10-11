@@ -123,7 +123,8 @@ glue to browser/Node APIs.
 
 - WASD/arrows to move and strafe, arrows or pointer-lock mouse to turn. Move speed 3 tiles/s,
   turn speed 2.5 rad/s. Touch: a move pad and drag-to-turn (see the [mobile spec](2026-10-10-mobile-design.md) §4).
-- In a room, `M` mutes or unmutes the mic and `C` turns the camera off or on, exactly like the room bar's toggles
+- In a room, `M` mutes or unmutes the mic and `C` turns the camera off or on, exactly like clicking the round mic button or
+  your own circle
   (ignored while typing, on key repeat and with Cmd/Ctrl/Alt). `M` toggled the map until 2026-10-11.
 - Collision: player radius 0.25 tiles against wall tiles, with axis-separated sliding.
   Avatars do not collide with each other.

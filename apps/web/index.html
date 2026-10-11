@@ -58,7 +58,7 @@
       #ui .lobby input:focus, #ui .roombar input:focus { border-color: #6aa8ff; }
       #ui .lobby svg, #ui .roombar svg { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
       #ui .lobby svg .meter { fill: #6c6; stroke: none; }
-      #ui .roombar .toggle.off { color: #f99; background: #3a2020; border-color: #844; }
+      #ui .mic-toggle svg, #ui .selfview .hint svg { width: 1.2em; height: 1.2em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
       #ui .roombar .toggle svg { width: 1.4em; height: 1.4em; }
       #ui .lobby-disc { position: relative; width: 7.5em; height: 7.5em; margin: 0 auto 0.6em; overflow: visible; border: 0.05em solid #555; }
       #ui .lobby-disc video, #ui .lobby-disc .face { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; overflow: hidden; display: grid; place-items: center; font-size: 1.6em; }
@@ -90,9 +90,18 @@
       #ui .landing p { margin: 0 0 0.8em; color: #bbb; font-size: 0.75em; }
       #ui .landing .privacy { color: #888; font-size: 0.6em; }
       #ui .lobby [hidden] { display: none; }
-      #ui .selfview { position: absolute; right: 0.6em; bottom: 0.6em; width: 4.5em; height: 4.5em; border-radius: 50%; overflow: hidden; border: 0.12em solid #ddd; }
+      /* Your own circle toggles the camera; the round mic button sits to its left (decided 2026-10-11). */
+      #ui .selfview { position: absolute; right: 0.6em; bottom: 0.6em; width: 4.5em; height: 4.5em; padding: 0; border-radius: 50%; overflow: hidden; border: 0.12em solid #ddd; color: #eee; background: #444; pointer-events: auto; }
+      #ui .selfview.off { border-color: #844; }
+      #ui .selfview:disabled { cursor: default; }
       #ui .selfview[hidden] { display: none; }
       #ui .selfview video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+      #ui .selfview .hint { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, 0.45); opacity: 0; transition: opacity 0.15s; }
+      #ui .selfview:not(:disabled):focus-visible .hint { opacity: 1; }
+      @media (hover: hover) { #ui .selfview:not(:disabled):hover .hint { opacity: 1; } }
+      #ui .mic-toggle { position: absolute; right: 5.6em; bottom: 0.6em; width: 2.2em; height: 2.2em; padding: 0; display: grid; place-items: center; border-radius: 50%; color: #ddd; background: #2e2e2e; border: 0.06em solid #555; pointer-events: auto; }
+      #ui .mic-toggle.off { color: #f99; background: #3a2020; border-color: #844; }
+      #ui .mic-toggle:disabled { opacity: 0.45; cursor: not-allowed; }
       #ui .selfview .face { width: 100%; height: 100%; display: grid; place-items: center; background: #444; font-weight: bold; font-size: 1.3em; }
       #ui .selfview .face img { width: 100%; height: 100%; object-fit: cover; }
       #ui .selfview .face[hidden] { display: none; }
@@ -116,6 +125,7 @@
       html.touch #ui input { font-size: max(16px, 1em); -webkit-user-select: text; user-select: text; }
       html.touch #ui .roombar { top: calc(0.5em + env(safe-area-inset-top)); right: calc(0.5em + env(safe-area-inset-right)); }
       html.touch #ui .selfview { right: calc(0.6em + env(safe-area-inset-right)); bottom: calc(0.6em + env(safe-area-inset-bottom)); }
+      html.touch #ui .mic-toggle { right: calc(5.6em + env(safe-area-inset-right)); bottom: calc(0.6em + env(safe-area-inset-bottom)); width: max(44px, 2.2em); height: max(44px, 2.2em); }
       html.touch #ui .banner { bottom: calc(0.6em + env(safe-area-inset-bottom)); }
       html.touch #ui .status, html.touch #ui .banner { max-width: calc(100% - 32px); box-sizing: border-box; text-align: center; }
       /* Touch landing and lobby (mobile spec §3): the panel spans the bottom under the centred title, tap targets are

@@ -68,8 +68,9 @@ Geometry, in units of the disc's on-screen radius `r` (constants in `renderer/bo
 - You see your boombox peeking in at the **bottom-right**, mirroring your drink at the
   bottom-left. The sprite is symmetric, so it is not mirrored.
 - Texel `OWN_TEXEL` (4.6% of the height), as the drink.
-- Its right edge is at 88% of the width, so it stays clear of the camera self-view, which covers
-  about the rightmost 9% (`index.html` `.selfview`: 0.6 em + 4.5 em at 3.2% of the height per em).
+- Its right edge is at 84% of the width, so it stays clear of the round mic button and the camera self-view,
+  which cover about the rightmost 14% at 16:9 (`index.html` `.mic-toggle` and `.selfview`: 0.6 em + 4.5 em +
+  0.5 em + 2.2 em at 3.2% of the height per em). It was 88% until 2026-10-11, when the mic button moved there.
 - 50% of the sprite hangs below the bottom edge (`OWN_BOOMBOX_CROP`): the fist, handle and the
   top of the body show.
 - Walking: the same drop as the drink, and the opposite sway (the other hand).
