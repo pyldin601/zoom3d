@@ -325,4 +325,8 @@ into apps.
 3. **M3, faces:** capture, mesh `MediaTransport`, TURN credentials, face billboards, fallbacks.
 4. **M4, spatial audio:** the full §9 graph, occlusion, speaking ring, debug panel.
 5. **M5, polish:** device pickers, error states from §10, performance pass, Firefox fixes.
-6. **M6, deploy:** VPS, HTTPS, coturn, process manager, basic logging.
+6. **M6, deploy:** the home k3s cluster "casa" via ArgoCD (servers repo) instead of a VPS; HTTPS through Traefik;
+   Kubernetes Deployments with health checks as the process manager; JSON logs, Sentry, and Prometheus + Grafana
+   dashboards (D20). TURN comes from LiveKit's built-in server instead of coturn (D11).
+7. **M7, 100+ person rooms:** media through a LiveKit SFU on casa (6a, 6b; [LiveKit spec](2026-10-11-livekit-sfu-design.md)),
+   then dynamic subscription (6c) and server fan-out (6d), and a load test (D21).

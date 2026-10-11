@@ -87,8 +87,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - In an SFU, clients reach the server rather than each other, so relay-to-relay doesn't come up.
 - *Resolved 2026-10-11 (LiveKit on casa):* LiveKit v1.13 runs in the `zoom3d` namespace (servers repo
   `k8s/casa/apps/zoom3d/livekit.yaml`), host network, `wss://lk.pyldin601.xyz`. Media uses UDP 49160-49163 and ICE/TCP
-  7881, TURN uses UDP 3478 and TLS on 443 through Traefik. The router doesn't hairpin UDP, so TURN-only clients can't
-  reach the SFU; UDP-blocked clients use ICE/TCP 7881. Only 443-only networks are left out.
+  7881, TURN uses UDP 3478 and TLS on 443 through Traefik. TURN relays to the SFU through the public IP, so it needs
+  the router to hairpin UDP: it didn't at first (TURN-only clients failed), and does since the router's ports were
+  reconfigured the same day (a relay-only client works). Node: `net.core.rmem_max = 5000000` in
+  `/etc/sysctl.d/90-livekit.conf`, for LiveKit's UDP receive buffer.
 
 ### D12 — Input and accessibility
 - Keyboard only vs mouse-look vs touch. Colour-blind/readable names above avatars? Captions?
@@ -177,7 +179,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Server metrics:** Prometheus text at `GET /metrics` on the server port (`metrics.ts`), using
     `@prometheus-io/client` (`prom-client` is deprecated in its favour): rooms, peers (connected / waiting), joins by
     result, messages by type, drops by reason, server-cut connections, plus Node process metrics. Not public: Traefik
-    and the web nginx route only `/ws` to the server. casa's Prometheus is currently disabled, so nothing scrapes it yet.
+    and the web nginx route only `/ws` to the server. Since 2026-10-11 casa's Prometheus (namespace `monitoring`)
+    scrapes it and LiveKit (`:6789`) through pod annotations, plus the node; Grafana at `grafana.pyldin601.xyz` (login
+    required) has a provisioned `zoom3d` dashboard: rooms and people, joins and messages, LiveKit rooms, participants,
+    tracks, quality, bandwidth and loss, node CPU, uplink and disk. Dashboards only, no alerts (user's choice).
   - **Sentry, both sides, errors only:** no tracing, no session replay (the screen shows names and faces). The server
     turns on when `SENTRY_DSN` is set at runtime and reads `SENTRY_RELEASE`, which CI bakes into the image. The web DSN
     is a build arg. Projects `zoom3d-server` and `zoom3d-web` are in the `myownradio` org. The browser `beforeSend`
