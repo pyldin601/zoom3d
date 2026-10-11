@@ -12,6 +12,8 @@ export interface MediaTransport {
   connect(peerId: string): void;
   disconnect(peerId: string): void;
   close(): void;
+  /** The latest LiveKit access from the game (a fresh token on every welcome), used for the next connect. */
+  setAccess(access: LiveKitAccess): void;
   stats(peerId: string): Promise<{ bytesReceived: number; boomboxBytesReceived: number } | null>;
   /** Sends `track` as our face (the framer's canvas, or the raw camera while the tab is hidden). */
   setVideoTrack(track: MediaStreamTrack): void;

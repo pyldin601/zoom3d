@@ -1,7 +1,11 @@
 // MediaTransport over the LiveKit SFU (LiveKit spec §4): our face, mic and boombox are published once, by name,
 // and LiveKit forwards everyone's tracks to everyone (autoSubscribe; selective subscription is 6c).
-// Local tracks are user-provided: LocalMediaController owns them, so they are swapped with replaceTrack and never
-// stopped. livekit-client itself is loaded with import() on first connect, keeping it out of the lobby bundle.
+// Local tracks are user-provided: LocalMediaController owns them, so they are swapped with replaceTrack and LiveKit
+// must never stop them (stopLocalTrackOnUnpublish: false, disconnect(false)), nor decide whether they are enabled:
+// it rewrites `enabled` on publish and replace, and mutes a publication whose track ended, so both are undone.
+// livekit-client itself is loaded with import() on first connect, keeping it out of the lobby bundle.
+
+import type { LiveKitAccess } from '@zoom3d/shared';
 import type { RoomConnectOptions, RoomOptions, TrackPublishOptions } from 'livekit-client';
 import type { MediaTransport, TransportOptions } from './transport';
 
@@ -13,11 +17,12 @@ const RETRY_MAX_MS = 30_000;
 
 type TrackName = 'face' | 'mic' | 'boombox';
 
-interface LocalPublicationLike {
-  track?: {
-    mediaStreamTrack: MediaStreamTrack;
-    replaceTrack(track: MediaStreamTrack, options: { userProvidedTrack: boolean }): Promise<unknown>;
-  };
+/** livekit-client's LocalTrack: unlike its publication, it survives a republish (signal restart). */
+interface LocalTrackLike {
+  mediaStreamTrack: MediaStreamTrack;
+  isMuted: boolean;
+  replaceTrack(track: MediaStreamTrack, options: { userProvidedTrack: boolean }): Promise<unknown>;
+  unmute(): Promise<unknown>;
 }
 
 interface RemoteTrackLike {
@@ -28,16 +33,18 @@ interface RemoteTrackLike {
 /** The part of livekit-client's Room this transport uses; tests pass a fake. */
 export interface LiveKitRoomLike {
   connect(url: string, token: string, options?: RoomConnectOptions): Promise<void>;
-  disconnect(): Promise<void>;
+  disconnect(stopTracks?: boolean): Promise<void>;
   on(event: string, listener: (...args: never[]) => void): unknown;
   localParticipant: {
-    publishTrack(track: MediaStreamTrack, options: TrackPublishOptions): Promise<LocalPublicationLike>;
-    unpublishTrack(track: MediaStreamTrack, stopOnUnpublish?: boolean): Promise<unknown>;
+    publishTrack(track: MediaStreamTrack, options: TrackPublishOptions): Promise<{ track?: LocalTrackLike }>;
+    unpublishTrack(track: LocalTrackLike, stopOnUnpublish?: boolean): Promise<unknown>;
   };
 }
 
 export interface LiveKitTransportOptions extends TransportOptions {
   RoomImpl?: new (options: Partial<RoomOptions>) => LiveKitRoomLike;
+  /** Loads livekit-client's Room; defaults to a dynamic import (a lazy chunk). */
+  loadRoom?: () => Promise<NonNullable<LiveKitTransportOptions['RoomImpl']>>;
   createStream?: (tracks: MediaStreamTrack[]) => MediaStream;
 }
 
@@ -60,6 +67,9 @@ const PUBLISH: Record<TrackName, TrackPublishOptions> = {
 };
 const NAMES: TrackName[] = ['face', 'mic', 'boombox'];
 
+const defaultLoadRoom = async () =>
+  (await import('livekit-client')).Room as unknown as NonNullable<LiveKitTransportOptions['RoomImpl']>;
+
 export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTransport {
   const createStream = opts.createStream ?? ((tracks: MediaStreamTrack[]) => new MediaStream(tracks));
   const local = opts.localStream;
@@ -68,7 +78,8 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
     mic: local?.getAudioTracks()[0] ?? null,
     boombox: null,
   };
-  let published: Record<TrackName, LocalPublicationLike | null> = { face: null, mic: null, boombox: null };
+  let access: LiveKitAccess = { url: opts.url, token: opts.token };
+  let published: Record<TrackName, LocalTrackLike | null> = { face: null, mic: null, boombox: null };
   /** identity → track name → subscribed track. */
   const remotes = new Map<string, Map<string, RemoteTrackLike>>();
   let room: LiveKitRoomLike | null = null;
@@ -85,18 +96,30 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
         return;
       }
       const want = wanted[name];
-      const pub = published[name];
-      const current = pub?.track?.mediaStreamTrack ?? null;
+      let lt = published[name];
       if (!want) {
-        if (current) {
-          await r.localParticipant.unpublishTrack(current, false);
+        if (lt) {
+          await r.localParticipant.unpublishTrack(lt, false);
         }
         published[name] = null;
-      } else if (!pub) {
-        published[name] = await r.localParticipant.publishTrack(want, PUBLISH[name]);
-      } else if (current !== want) {
-        await pub.track?.replaceTrack(want, { userProvidedTrack: true });
+        continue;
       }
+      if (lt?.mediaStreamTrack === want) {
+        continue;
+      }
+      const enabled = want.enabled;
+      if (lt) {
+        await lt.replaceTrack(want, { userProvidedTrack: true });
+      } else {
+        lt = (await r.localParticipant.publishTrack(want, PUBLISH[name])).track ?? null;
+        published[name] = lt;
+      }
+      // Undo LiveKit's say over the track: unmute a publication it muted (its old track ended), and keep the
+      // controller's mute (a muted mic must stay silent).
+      if (lt?.isMuted) {
+        await lt.unmute();
+      }
+      want.enabled = enabled;
     }
   }
 
@@ -149,20 +172,37 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
     if (closed) {
       return;
     }
-    const Impl =
-      opts.RoomImpl ?? ((await import('livekit-client')).Room as unknown as LiveKitTransportOptions['RoomImpl']);
+    let Impl: LiveKitTransportOptions['RoomImpl'];
+    try {
+      Impl = opts.RoomImpl ?? (await (opts.loadRoom ?? defaultLoadRoom)());
+    } catch (err) {
+      // E.g. a tab older than a deploy asks for a chunk that's gone: retrying beats a silent room.
+      console.warn('livekit-client failed to load', err);
+      retry();
+      return;
+    }
     if (!Impl || closed) {
       return;
     }
-    const r = new Impl({ adaptiveStream: false, dynacast: false });
+    const r = new Impl({ adaptiveStream: false, dynacast: false, stopLocalTrackOnUnpublish: false });
     room = r;
     connected = false;
     published = { face: null, mic: null, boombox: null };
-    r.on('trackSubscribed', onSubscribed as (...args: never[]) => void);
-    r.on('trackUnsubscribed', onUnsubscribed as (...args: never[]) => void);
-    r.on('participantDisconnected', ((participant: { identity: string }) => {
-      remotes.delete(participant.identity);
-    }) as (...args: never[]) => void);
+    /** Events from a room that was closed or replaced must not touch the current one's media. */
+    const live = <A extends unknown[]>(fn: (...args: A) => void) =>
+      ((...args: A) => {
+        if (r === room && !closed) {
+          fn(...args);
+        }
+      }) as unknown as (...args: never[]) => void;
+    r.on('trackSubscribed', live(onSubscribed));
+    r.on('trackUnsubscribed', live(onUnsubscribed));
+    r.on(
+      'participantDisconnected',
+      live((participant: { identity: string }) => {
+        remotes.delete(participant.identity);
+      })
+    );
     // LiveKit gave up reconnecting (or the server went away): start over with a fresh room.
     r.on('disconnected', () => {
       if (r !== room || closed) {
@@ -174,7 +214,7 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
       retry();
     });
     try {
-      await r.connect(opts.url, opts.token, { autoSubscribe: true });
+      await r.connect(access.url, access.token, { autoSubscribe: true });
     } catch (err) {
       console.warn('livekit connect failed', err);
       if (r === room) {
@@ -184,7 +224,7 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
       return;
     }
     if (r !== room || closed) {
-      void r.disconnect();
+      void r.disconnect(false);
       return;
     }
     connected = true;
@@ -207,7 +247,10 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
       room = null;
       connected = false;
       remotes.clear();
-      void r?.disconnect();
+      void r?.disconnect(false);
+    },
+    setAccess(next) {
+      access = next;
     },
     async stats(peerId) {
       const tracks = remotes.get(peerId);
