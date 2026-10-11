@@ -1,6 +1,8 @@
 # Server fan-out (step 6d) — design spec
 
-Status: draft, 2026-10-11. Decision record: [open-decisions.md](../../open-decisions.md) D21. Follows
+Status: built, 2026-10-11 ([plan](../plans/2026-10-11-server-fan-out.md)).
+Built differently from the draft: §2.3's delay follows the distance tier, not a measured rate, and §3's routing needs
+no Traefik change (both noted in place). Decision record: [open-decisions.md](../../open-decisions.md) D21. Follows
 [6c, dynamic subscription](2026-10-11-dynamic-subscription-design.md). The user skipped the design questions and
 asked for this document directly, so every choice below is the author's call unless D21 already fixed it.
 
@@ -32,8 +34,9 @@ scale the same way media now does, so a room can hold 100+ people.
 ## 2. State fan-out
 
 ### 2.1 Server tick
-- One timer, `FANOUT_TICK_MS = 66` (15 Hz, the clients' own send rate), replaces per-move relays. Bots move on it too
-  (today's separate 10 Hz bot timer goes: bots step every fan-out tick, at the same speed per second).
+- One timer, `FANOUT_TICK_MS = 66` (15 Hz, the clients' own send rate), replaces per-move relays. Bots and the robot
+  vacuum move on it too (the separate 10 Hz world timer goes: they step every fan-out tick, at the same speed per
+  second; the vacuum's `object_state` is unchanged, now at 15 Hz).
 - `Lobby.state()` still validates each move (plausibility, corrections unchanged) and stores the pose, but sends
   nothing. Each peer gets a `poseVersion` counter, bumped on every accepted move and every bot step.
 - On each tick, for every connected person P in a room, the server collects every other peer Q (people and bots)
@@ -60,10 +63,18 @@ scale the same way media now does, so a room can hold 100+ people.
 ### 2.3 Client
 - The session applies each entry like a `peer_state` today: it updates the peer's pose and pushes a snapshot into its
   interpolation buffer. Unknown slots are ignored. There is no per-entry `seq`: the socket is ordered.
-- **Interpolation follows each peer's update rate.** Today every peer is drawn `INTERP_DELAY_MS = 100` in the past.
-  A far peer updated every 500 ms would then sit still and jump. So each peer gets its own delay: about 1.5× the
-  interval between its recent updates, clamped to 100–750 ms, and eased over ~0.5 s when it changes so someone
-  crossing the 16-tile line doesn't visibly jump. Near peers stay at 100 ms, exactly as smooth as today.
+- **Interpolation follows each peer's tier.** Before 6d every peer was drawn `INTERP_DELAY_MS = 100` in the past. A
+  far peer updated every 500 ms would then sit still and jump. So each peer gets its own delay by distance: 100 ms
+  within `NEAR_TILES - 1` tiles, `FAR_DELAY_MS = 750` beyond (`net/peer-delay.ts`). The client judges a tile inside the
+  server's line, because near the line the two views differ, and drawing a near peer late is smooth while drawing a
+  far peer early is choppy. The delay moves at most 0.5 ms per ms, so crossing the line slows drawn time to half
+  speed (or runs it 1.5×) for about a second, never backwards or jumping. Near peers stay at 100 ms, as smooth as before.
+  - *Why not the draft's measured rate (1.5× the recent update interval):* nothing is sent while a peer stands still,
+    so a near peer's first move after a pause looks like a slow rate, and it would be drawn late for seconds after
+    every stop.
+- **Pauses:** since an unchanged pose is never resent, the update after a pause follows a long gap. Interpolating
+  across it would draw the peer already most of the way to its new pose. So before applying an entry, the client
+  holds the last pose until one tier interval before now (`holdBefore`).
 
 ## 3. Avatars over HTTP
 - **Join is unchanged:** the client still sends its picture once, as a JPEG data URL (≤ 12 KB), in `join`.
@@ -75,8 +86,10 @@ scale the same way media now does, so a room can hold 100+ people.
 - **`GET /avatar/<avatarId>`** on the game server returns the JPEG (`image/jpeg`, `Cache-Control: public,
   max-age=31536000, immutable`), or 404 for an unknown id. Content-addressed: the URL only exists for a picture
   someone in a room is using, never reveals who, and can be cached forever.
-- **Routing:** `/avatar/` is routed to the game server like `/ws`: a Traefik route in the servers repo, plus the same
-  location in the web image's nginx template as a fallback. Not logged with room ids (the URL has none).
+- **Routing:** the web image's nginx proxies `/avatar/` to the game server (`location ^~ /avatar/`), and Vite does in
+  development. On casa, Traefik sends everything but `/ws` to the web nginx, so no Traefik change is needed; a direct
+  route could be added later to save the hop, though browsers cache each picture forever anyway. Not logged with room
+  ids (the URL has none).
 - The client loads `/avatar/<id>` as an `<img>` where it loads the data URL today (`createFace`'s `avatar`); until it
   decodes the face shows initials, as today. Same-origin, so drawing it on the face canvas stays untainted.
 - **Restart snapshot:** peers keep their picture as a data URL in the snapshot, as today, so `LobbySnapshot` stays at
