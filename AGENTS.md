@@ -69,7 +69,8 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   token per peer and needs `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`. In production (`NODE_ENV=production`,
   as in the image) it refuses to start without all three; elsewhere each defaults to `livekit-server --dev`
   (`ws://localhost:7880`, `devkey`, `secret`). On casa they come from the `livekit-keys` SealedSecret.
-- `.github/workflows/docker.yml`: PRs build + smoke-test only; `main`/`v*` also push to GHCR.
+- `.github/workflows/docker.yml`: every PR builds + smoke-tests; PRs from this repo also push a moving `pr-<N>` preview
+  tag (forks never push); `main`/`v*` push `latest`/`sha-<commit>`/semver to GHCR.
 - Observability (decision D20): the server logs JSON lines (`LOG_LEVEL`), serves Prometheus metrics at `/metrics`
   (not routed publicly), and reports to Sentry when `SENTRY_DSN` is set. The web image takes `VITE_SENTRY_DSN`,
   `VITE_AMPLITUDE_API_KEY` and `VITE_RELEASE` as build args; CI passes them, and unset leaves both off.
