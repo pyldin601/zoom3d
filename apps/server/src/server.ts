@@ -15,7 +15,7 @@ export const CLOSE_RATE_LIMIT = 4008;
 const MAX_CONSECUTIVE_DROPS = 200;
 const TICK_MS = 1000;
 /** Bots move at 10 Hz: smooth enough with client interpolation, and the load large rooms will really see. */
-const BOT_TICK_MS = 100;
+const WORLD_TICK_MS = 100;
 
 export interface ServerOptions {
   port: number;
@@ -29,6 +29,10 @@ export interface ServerOptions {
   rateLimitClock?: () => number;
   /** Defaults to silent, so tests stay quiet. */
   log?: Logger;
+  /** Every new room gets a robot vacuum; on unless set to false. */
+  vacuum?: boolean;
+  /** Dev only: new vacuums start one patch from done (`VACUUM_NEARLY_DONE=1`). */
+  vacuumNearlyDone?: boolean;
 }
 
 export interface RunningServer {
@@ -127,6 +131,8 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     graceMs: opts.graceMs,
     liveKitFor: (roomId, peerId) => ({ url: livekit.url, token: liveKitTokenFor(livekit, roomId, peerId) }),
     onEvent: (e) => observe(e, log, metrics),
+    vacuum: opts.vacuum ?? true,
+    vacuumNearlyDone: opts.vacuumNearlyDone,
   });
   const restored = opts.stateFile ? loadSnapshot(opts.stateFile, log) : null;
   if (restored) {
@@ -227,7 +233,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     }
   }, opts.heartbeatMs ?? 10_000);
   const ticker = setInterval(() => lobby.tick(), TICK_MS);
-  const botTicker = setInterval(() => lobby.stepBots(BOT_TICK_MS), BOT_TICK_MS);
+  const worldTicker = setInterval(() => lobby.stepWorld(WORLD_TICK_MS), WORLD_TICK_MS);
 
   await new Promise<void>((resolve) => http.listen(opts.port, resolve));
   return {
@@ -235,7 +241,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     async close() {
       clearInterval(heartbeat);
       clearInterval(ticker);
-      clearInterval(botTicker);
+      clearInterval(worldTicker);
       if (opts.stateFile) {
         saveSnapshot(opts.stateFile, lobby.snapshot(), log);
       }

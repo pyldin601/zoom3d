@@ -83,3 +83,23 @@ test('a failed save is logged, not thrown', () => {
   expect(() => saveSnapshot(join(dir, 'missing', 'lobby.json'), { version: 1, rooms: [] }, log)).not.toThrow();
   expect(errors).toEqual(['snapshot_write_failed']);
 });
+
+test('a valid vacuum is kept and an invalid one dropped, keeping the room', () => {
+  const vacuum = { id: 'v', x: 2.5, y: 3.5, angle: 1, phase: 'cleaning', clean: [0, 4], map: '0badc0de' };
+  const withVacuum = (v: unknown) =>
+    JSON.stringify({ version: 1, rooms: [{ id: ROOM, peers: [peer('a')], vacuum: v }] });
+  expect(parseSnapshot(withVacuum(vacuum))?.rooms[0]?.vacuum).toEqual(vacuum);
+  for (const bad of [
+    { ...vacuum, x: 'no' },
+    { ...vacuum, phase: 'docking' },
+    { ...vacuum, clean: [-1] },
+    { ...vacuum, clean: [1.5] },
+    { ...vacuum, map: 5 },
+    { ...vacuum, id: undefined },
+    'junk',
+  ]) {
+    const room = parseSnapshot(withVacuum(bad))?.rooms[0];
+    expect(room?.peers).toHaveLength(1);
+    expect(room && 'vacuum' in room).toBe(false);
+  }
+});

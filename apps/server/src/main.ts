@@ -42,7 +42,9 @@ const stateFile = process.env.STATE_FILE || undefined;
 
 // Throws in production when the LiveKit env is missing: a broken rollout should crash, not hand out dev tokens.
 const livekit = liveKitConfigFromEnv(process.env);
-const server = await startServer({ port, graceMs, livekit, stateFile, log });
+// Dev only: a new room's vacuum starts one patch from done, to see its dock search without waiting an hour.
+const vacuumNearlyDone = process.env.NODE_ENV !== 'production' && process.env.VACUUM_NEARLY_DONE === '1';
+const server = await startServer({ port, graceMs, livekit, stateFile, log, vacuumNearlyDone });
 log.info('server_listening', { port: server.port, stateFile: stateFile ?? null, sentry });
 
 // Containers send SIGTERM on stop; PID 1 gets no default handler, so close explicitly.
