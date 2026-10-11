@@ -184,6 +184,9 @@ server keeps the peer slot for 30 s, so others see the avatar freeze, not disapp
 
 ## 8. Media (`apps/web/src/media`)
 
+> Transport superseded on 2026-10-11: media goes through a LiveKit SFU, not a mesh. See the
+> [LiveKit spec](2026-10-11-livekit-sfu-design.md); the negotiation, ICE and bandwidth notes below describe the old mesh.
+
 - **Capture:** `getUserMedia({ video: { width: 256, height: 256, aspectRatio: 1,
   frameRate: 24, resizeMode: 'crop-and-scale' }, audio: { echoCancellation: true,
   noiseSuppression: true, autoGainControl: true } })`. No `canvas.captureStream()`, because

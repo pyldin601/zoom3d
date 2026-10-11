@@ -10,6 +10,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 - **Rec:** start with mesh behind a thin `MediaTransport` interface; swap to LiveKit if we outgrow it.
 - *Partially resolved 2026-10-08:* target group size is 2–8 participants for v1, so mesh is viable. Final call pending design approval.
 - *Resolved 2026-10-08 (M3):* mesh implemented behind `MediaTransport` (`apps/web/src/media/mesh.ts`). Single initiator (greater id offers), perfect negotiation for renegotiation, 150 kbps video cap.
+- *Resolved 2026-10-11 (SFU):* media goes through a self-hosted **LiveKit** SFU on casa; the mesh is removed. Rooms of 100+
+  people (the new target) need every participant to upload once and the server to choose what each one receives, which a
+  mesh can't do. LiveKit over mediasoup: built-in TURN, simulcast and selective subscription, with a maintained client
+  SDK, so the client stays a thin `MediaTransport` (`media/livekit.ts`). Spec: `docs/superpowers/specs/2026-10-11-livekit-sfu-design.md`.
 
 ### D2 — Renderer
 - **Canvas2D software raycaster** (ImageData): authentic, fully controllable, CPU-bound at higher res.
@@ -80,6 +84,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     `denied-peer-ip`. Anyone who joins a room could then send UDP to the node, flannel VXLAN included.
   - A TURN server behind the home NAT can't relay to clients on the home LAN, since they share its public IP.
   - In an SFU, clients reach the server rather than each other, so relay-to-relay doesn't come up.
+- *Resolved 2026-10-11 (LiveKit on casa):* LiveKit v1.13 runs in the `zoom3d` namespace (servers repo
+  `k8s/casa/apps/zoom3d/livekit.yaml`), host network, `wss://lk.pyldin601.xyz`. Media uses UDP 49160-49163 and ICE/TCP
+  7881, TURN uses UDP 3478 and TLS on 443 through Traefik. The router doesn't hairpin UDP, so TURN-only clients can't
+  reach the SFU; UDP-blocked clients use ICE/TCP 7881. Only 443-only networks are left out.
 
 ### D12 — Input and accessibility
 - Keyboard only vs mouse-look vs touch. Colour-blind/readable names above avatars? Captions?

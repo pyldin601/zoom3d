@@ -5,7 +5,7 @@ Guidance for AI coding agents (and humans) working in this repo.
 ## Project
 
 zoom3d: browser retro ray-casting multiplayer meeting room. Participants are avatars whose
-"sprite" is their live camera face (WebRTC). Audio is spatialised with Web Audio (distance
+"sprite" is their live camera face (WebRTC through a LiveKit SFU). Audio is spatialised with Web Audio (distance
 gain, pan, reverb). Read [docs/vision.md](docs/vision.md) first.
 
 ## Status
@@ -39,15 +39,15 @@ docs/            vision, architecture, decisions, roadmap
 
 ## Commands
 
-Node ≥ 22, pnpm 9.
+Node ≥ 22, pnpm 9, and `brew install livekit` (local SFU for `pnpm dev` and `pnpm e2e`).
 
 ```
 pnpm install      # install workspace deps
-pnpm dev          # server :8787 + web app http://localhost:5173 (Vite proxies /ws)
+pnpm dev          # livekit-server --dev :7880 + server :8787 + web app http://localhost:5173 (Vite proxies /ws)
 pnpm test         # vitest, all projects
 pnpm typecheck    # tsc --noEmit per package
 pnpm lint         # biome check
-pnpm e2e          # playwright; starts its own server :8788 + web :5174
+pnpm e2e          # playwright; starts its own LiveKit :7890-7892 + server :8788 + web :5174
 pnpm bench        # renderer frame-time benchmark
 docker compose up --build              # both images locally: http://localhost:8080
 scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this before pushing)
@@ -65,6 +65,10 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   volume at the file's directory and `fsGroup: 1000` (the image runs as `node`). The snapshot format is
   versioned (`LobbySnapshot` in `apps/server/src/lobby.ts`): bump it when `Peer` changes in a way
   `parsePeerInfo` defaults can't absorb.
+- Media goes through LiveKit (spec `docs/superpowers/specs/2026-10-11-livekit-sfu-design.md`). The server signs a
+  token per peer and needs `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`. In production (`NODE_ENV=production`,
+  as in the image) it refuses to start without all three; elsewhere each defaults to `livekit-server --dev`
+  (`ws://localhost:7880`, `devkey`, `secret`). On casa they come from the `livekit-keys` SealedSecret.
 - `.github/workflows/docker.yml`: PRs build + smoke-test only; `main`/`v*` also push to GHCR.
 - Observability (decision D20): the server logs JSON lines (`LOG_LEVEL`), serves Prometheus metrics at `/metrics`
   (not routed publicly), and reports to Sentry when `SENTRY_DSN` is set. The web image takes `VITE_SENTRY_DSN`,
@@ -77,8 +81,15 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
 - Browsers require a user gesture before `AudioContext` starts; `getUserMedia` needs HTTPS (or localhost).
 - Chrome only delivers remote WebRTC audio into Web Audio if the stream is also attached to a (muted) `<audio>` element.
 - Echo: use `echoCancellation` on capture and avoid playing remote audio through paths that bypass it.
-- WebRTC: only the greater peer id initiates (see spec §8). Don't add initiators on both sides:
-  rollback during ICE gathering silently kills candidate gathering in Chrome.
+- LiveKit (`media/livekit.ts`): our tracks are published by **name** (`face`, `mic`, `boombox`) as user-provided
+  tracks, and swapped with `replaceTrack`. LiveKit must never stop or re-acquire them: `LocalMediaController` owns
+  every local track. Match remote tracks by name, never by order.
+- A peer's face+mic arrive as one stream, re-emitted as a **new** `MediaStream` whenever its tracks change: the audio
+  engine ignores a stream object it already has, so mutating one would leave a late mic silent.
+- LiveKit can deliver a peer's tracks before the game WebSocket announces the peer, and never sends them again:
+  `call.ts` keeps such early media until the face exists. Don't drop it.
+- k8s: a pod next to a Service named `livekit` gets `LIVEKIT_PORT=tcp://…` and LiveKit reads every `LIVEKIT_*` env as
+  a setting. The casa Deployment sets `enableServiceLinks: false`.
 - Browsers allow one CONNECTING WebSocket per host, so a single hung handshake blocks every retry in every
   tab. In prod, while the server restarts, Traefik drops the `/ws` route and it falls through to the web nginx,
   whose connect to the endpoint-less Service hangs. Keep nginx's `proxy_connect_timeout` short and the client's
@@ -100,16 +111,12 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   is the only thing that should be audible. The `AudioContext` is created when the lobby opens
   (for the mic meter) and `resume()`d synchronously in the Join submit, before anything else, to satisfy autoplay policy.
 - Face framing: the sent video is a canvas track drawn on `requestVideoFrameCallback`, which stops in hidden
-  tabs. `framer.sendTrack` flips to the raw camera track while hidden and the call pushes it to the mesh;
+  tabs. `framer.sendTrack` flips to the raw camera track while hidden and the call pushes it to the transport;
   don't remove that swap, or peers freeze on tab switch.
 - Camera off stops the camera, but the framer's canvas track is always sent (lobby spec §4.3). Don't send the raw
-  camera directly or drop the canvas track when the camera is off: the video m-line would go recvonly, and turning
-  the camera on would need a renegotiation. `LocalMediaController` (`media/local-media.ts`) owns every local track
+  camera directly or drop the canvas track when the camera is off: the face would be unpublished, and turning the
+  camera on would have to republish it. `LocalMediaController` (`media/local-media.ts`) owns every local track
   from the lobby onward; the room never calls `getUserMedia` itself.
-- Mesh m-line order is fixed: video, mic, boombox (`BOOMBOX_INDEX = 2`). The boombox transceiver is added after
-  the mic's `addTrack` (which would otherwise take it) and is only ever swapped with `replaceTrack`; don't add
-  transceivers before it or renegotiate to toggle it. Its 128 kbps cap must be set again after the answer:
-  Chrome drops parameters set on a trackless sender before then.
 - Telemetry privacy: logs, metrics labels, Sentry and Amplitude never get names, resume tokens or IPs, nor raw room
   ids: a room link is the room's only key. Server logs use `roomRef()` (a short hash), and the browser Sentry
   `beforeSend` scrubs `/r/<id>`.

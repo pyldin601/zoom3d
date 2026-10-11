@@ -8,7 +8,7 @@ panning and room reverb depend on distance and position, so voices sound like th
 come from people standing in the room.
 
 **Status:** M4 done. Create a room, share the link, and walk the level together. Avatars show
-live camera faces (peer-to-peer WebRTC), or a picture you pick on the join screen while
+live camera faces (WebRTC through a self-hosted LiveKit SFU), or a picture you pick on the join screen while
 your camera is off, and voices are spatial: they get quieter with
 distance (silent beyond 12 tiles), come from the speaker's direction (HRTF, best on
 headphones), get roomier further away, and sound muffled through walls. A ring lights up
@@ -39,7 +39,8 @@ Each service has its own image, published to GHCR by CI on every push to `main` 
 `sha-<commit>`) and on `v*` tags (semver):
 
 - `ghcr.io/pyldin601/zoom3d-server`: WebSocket server on port 8787 (`GET /health`).
-  Env: `PORT`, `RESUME_GRACE_MS`, `STUN_URLS`, `TURN_URLS`, `TURN_SECRET`, `TURN_TTL_S`.
+  Env: `PORT`, `RESUME_GRACE_MS`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (required in
+  production; they point at the LiveKit SFU that carries audio and video).
 - `ghcr.io/pyldin601/zoom3d-web`: static app on nginx, port 8080 (`GET /healthz`). It
   proxies `/ws` to `SERVER_URL` (default `http://server:8787`).
 
