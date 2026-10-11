@@ -2,19 +2,27 @@ import { describe, expect, test } from 'vitest';
 import {
   AVATAR_MAX_CHARS,
   AVATAR_SIZE,
+  avatarPath,
   CHEERS_MS,
   DRINK_GAP_MS,
+  FANOUT_TICK_MS,
+  FAR_INTERVAL_MS,
   HELD_ITEMS,
+  isAvatarId,
   isHeldItem,
   isValidAvatar,
   isValidRoomId,
   MAX_BOTS,
   MAX_MESSAGE_BYTES,
+  MAX_PEERS,
   MAX_SERVER_MESSAGE_BYTES,
+  NEAR_TILES,
   newRoomId,
   type PeerInfo,
+  PROTOCOL_VERSION,
   parseClientMessage,
   parseServerMessage,
+  peerEntry,
   type ServerMessage,
   SIP_MS,
   sanitizeName,
@@ -23,6 +31,7 @@ import {
 const ROOM = 'AAAAAAAAAAAAAAAAAAAAAA';
 const json = (v: unknown) => JSON.stringify(v);
 const AVATAR = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==';
+const AVATAR_ID = 'abcdefghijklmnopqrstu-';
 
 describe('avatars', () => {
   test('constants', () => {
@@ -178,6 +187,7 @@ describe('parseClientMessage', () => {
 
 const peer: PeerInfo = {
   id: 'p1',
+  slot: 0,
   name: 'Ada',
   color: '#e6194b',
   x: 1,
@@ -205,13 +215,14 @@ describe('parseServerMessage', () => {
     { type: 'object_state', id: 'v', x: 1, y: 2, angle: 3, seq: 4, event: 'lost' },
     { type: 'peer_media', id: 'p1', cam: false, mic: true },
     { type: 'peer_joined', peer },
-    { type: 'peer_joined', peer: { ...peer, avatar: AVATAR } },
+    { type: 'peer_joined', peer: { ...peer, avatar: AVATAR_ID } },
     { type: 'peer_joined', peer: { ...peer, held: 'wine' } },
     { type: 'peer_held', id: 'p1', item: 'beer' },
     { type: 'peer_held', id: 'p1', item: null },
     { type: 'peer_drink', id: 'p1' },
     { type: 'peer_left', id: 'p1' },
-    { type: 'peer_state', id: 'p1', x: 1, y: 2, angle: 3, seq: 4 },
+    { type: 'peers', s: [[0, 1, 2, 3]] },
+    { type: 'error', code: 'outdated', message: 'zoom3d was updated: reload the page' },
     { type: 'correction', x: 1, y: 2, angle: 3, seq: 4 },
     { type: 'error', code: 'room_full', message: 'full' },
   ];
@@ -441,5 +452,72 @@ describe('world objects', () => {
     const state = { type: 'object_state', id: 'v', x: 1, y: 2, angle: 0.5, seq: 3 };
     expect(parseServerMessage(json({ ...state, x: '1' }))).toBeNull();
     expect(parseServerMessage(json({ ...state, seq: -1 }))).toBeNull();
+  });
+});
+
+describe('server fan-out (6d)', () => {
+  test('constants', () => {
+    expect(FANOUT_TICK_MS).toBe(66);
+    expect(NEAR_TILES).toBe(16);
+    expect(FAR_INTERVAL_MS).toBe(500);
+    expect(MAX_PEERS).toBe(128);
+    expect(PROTOCOL_VERSION).toBe(2);
+  });
+
+  test('peerEntry rounds positions to 0.01 tile and the angle to 0.001 rad', () => {
+    expect(peerEntry(3, 1.23456, 2.5, 0.12345)).toEqual([3, 1.23, 2.5, 0.123]);
+    expect(peerEntry(0, 7.006, 0.004, 6.2834)).toEqual([0, 7.01, 0, 6.283]);
+  });
+
+  test('peers keeps good entries and drops malformed ones', () => {
+    const raw =
+      '{"type":"peers","s":[[1,2,3,0.5],[1.5,2,3,0],[-1,2,3,0],[2,"2",3,0],[3,2,3],[4,2,3,0,9],5,[5,1e999,3,0],[6,0,0,0]]}';
+    expect(parseServerMessage(raw)).toEqual({
+      type: 'peers',
+      s: [
+        [1, 2, 3, 0.5],
+        [6, 0, 0, 0],
+      ],
+    });
+  });
+
+  test('peers without an entry array is rejected', () => {
+    expect(parseServerMessage(json({ type: 'peers' }))).toBeNull();
+    expect(parseServerMessage(json({ type: 'peers', s: {} }))).toBeNull();
+  });
+
+  test('peer_state is gone from the protocol', () => {
+    expect(parseServerMessage(json({ type: 'peer_state', id: 'p1', x: 1, y: 2, angle: 3, seq: 4 }))).toBeNull();
+  });
+
+  test('a peer needs a whole, non-negative slot', () => {
+    for (const slot of [undefined, -1, 1.5, '1']) {
+      expect(parseServerMessage(json({ type: 'peer_joined', peer: { ...peer, slot } }))).toBeNull();
+    }
+    expect(parseServerMessage(json({ type: 'peer_joined', peer: { ...peer, slot: 41 } }))).toEqual({
+      type: 'peer_joined',
+      peer: { ...peer, slot: 41 },
+    });
+  });
+
+  test('a peer avatar is an avatar id; a data URL (older server) reads as null', () => {
+    expect(isAvatarId(AVATAR_ID)).toBe(true);
+    for (const bad of [AVATAR, 'short', `${AVATAR_ID}x`, 'abcdefghijklmnopqrstu/', 5, null]) {
+      expect(isAvatarId(bad)).toBe(false);
+    }
+    expect(parseServerMessage(json({ type: 'peer_joined', peer: { ...peer, avatar: AVATAR } }))).toEqual({
+      type: 'peer_joined',
+      peer: { ...peer, avatar: null },
+    });
+    expect(avatarPath(AVATAR_ID)).toBe(`/avatar/${AVATAR_ID}`);
+  });
+
+  test('a join keeps a whole protocol version of at least 1 and drops anything else', () => {
+    const join = (v: unknown) => parseClientMessage(json({ type: 'join', roomId: ROOM, name: 'Ada', v }));
+    expect(join(2)).toEqual({ type: 'join', roomId: ROOM, name: 'Ada', v: 2 });
+    expect(join(1)).toMatchObject({ v: 1 });
+    for (const bad of [0, -2, 1.5, '2', null]) {
+      expect(join(bad)).toEqual({ type: 'join', roomId: ROOM, name: 'Ada' });
+    }
   });
 });
