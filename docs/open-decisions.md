@@ -179,7 +179,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Server metrics:** Prometheus text at `GET /metrics` on the server port (`metrics.ts`), using
     `@prometheus-io/client` (`prom-client` is deprecated in its favour): rooms, peers (connected / waiting), joins by
     result, messages by type, drops by reason, server-cut connections, plus Node process metrics. Not public: Traefik
-    and the web nginx route only `/ws` to the server. casa's Prometheus is currently disabled, so nothing scrapes it yet.
+    and the web nginx route only `/ws` to the server. Since 2026-10-11 casa's Prometheus (namespace `monitoring`)
+    scrapes it and LiveKit (`:6789`) through pod annotations, plus the node; Grafana at `grafana.pyldin601.xyz` (login
+    required) has a provisioned `zoom3d` dashboard: rooms and people, joins and messages, LiveKit rooms, participants,
+    tracks, quality, bandwidth and loss, node CPU, uplink and disk. Dashboards only, no alerts (user's choice).
   - **Sentry, both sides, errors only:** no tracing, no session replay (the screen shows names and faces). The server
     turns on when `SENTRY_DSN` is set at runtime and reads `SENTRY_RELEASE`, which CI bakes into the image. The web DSN
     is a build arg. Projects `zoom3d-server` and `zoom3d-web` are in the `myownradio` org. The browser `beforeSend`
