@@ -202,13 +202,18 @@ test('a vanished client is announced as left after the grace period', async () =
   expect((await a.waitFor('peer_left')).id).toBe(b.welcome.selfId);
 });
 
-test('signals are relayed over real sockets and the welcome has ICE servers', async () => {
+test('the welcome hands out LiveKit access (dev defaults) and signal messages are not relayed', async () => {
   const a = await joined('Ada');
   const b = await joined('Bob');
-  expect(b.welcome.iceServers.length).toBeGreaterThan(0);
-  const payload = { kind: 'description', description: { type: 'offer', sdp: 'v=0' } };
-  a.send({ type: 'signal', to: b.welcome.selfId, payload });
-  expect(await b.waitFor('signal')).toEqual({ type: 'signal', from: a.welcome.selfId, payload });
+  const raw: string[] = [];
+  b.ws.on('message', (data) => raw.push(String(data)));
+  expect(b.welcome.livekit.url).toBe('ws://localhost:7880');
+  expect(b.welcome.livekit.token.split('.')).toHaveLength(3);
+  a.send({ type: 'signal', to: b.welcome.selfId, payload: { kind: 'candidate', candidate: null } });
+  a.send({ type: 'held', item: null });
+  // Messages are handled in order: once the held relay arrives, a relayed signal would already have.
+  await b.waitFor('peer_held');
+  expect(raw.some((m) => m.includes('"signal"'))).toBe(false);
 });
 
 test('held is relayed over real sockets', async () => {

@@ -94,6 +94,9 @@ export function createBoombox(opts: BoomboxOptions): Boombox {
     volume = ctx.createGain();
     volume.gain.value = level;
     const stream = ctx.createMediaStreamDestination();
+    // One point in the room, panned again by every listener: send mono (spec §5.3).
+    stream.channelCount = 1;
+    stream.channelCountMode = 'explicit';
     const self = ctx.createGain();
     self.gain.value = BOOMBOX_SELF_GAIN;
     source.connect(volume);

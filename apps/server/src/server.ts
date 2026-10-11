@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { LEVEL1, MAX_MESSAGE_BYTES, parseClientMessage, parseMap, RATE_BURST, RATE_PER_SEC } from '@zoom3d/shared';
 import { type WebSocket, WebSocketServer } from 'ws';
-import { type IceConfig, iceConfigFromEnv, iceServersFor } from './ice';
+import { type LiveKitConfig, liveKitConfigFromEnv, liveKitTokenFor } from './livekit';
 import { Lobby, type LobbyEvent, type Outbox } from './lobby';
 import { type Logger, silentLogger } from './log';
 import { createMetrics, type Metrics } from './metrics';
@@ -19,7 +19,8 @@ export interface ServerOptions {
   port: number;
   graceMs?: number;
   heartbeatMs?: number;
-  ice?: IceConfig;
+  /** LiveKit SFU access handed out in every welcome; defaults to the local dev server. */
+  livekit?: LiveKitConfig;
   /** Where the lobby is saved on close and restored from on start; unset keeps it in memory only. */
   stateFile?: string;
   /** Clock for the per-socket rate limit; defaults to `Date.now`. Tests freeze it. */
@@ -73,7 +74,7 @@ function observe(e: LobbyEvent, log: Logger, metrics: Metrics): void {
 }
 
 export async function startServer(opts: ServerOptions): Promise<RunningServer> {
-  const ice = opts.ice ?? iceConfigFromEnv({});
+  const livekit = opts.livekit ?? liveKitConfigFromEnv({});
   const log = opts.log ?? silentLogger;
   const sockets = new Map<string, { ws: WebSocket; alive: boolean }>();
   const out: Outbox = {
@@ -96,7 +97,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     rng: Math.random,
     newToken: () => randomBytes(12).toString('base64url'),
     graceMs: opts.graceMs,
-    iceServersFor: (peerId) => iceServersFor(ice, peerId, Date.now()),
+    liveKitFor: (roomId, peerId) => ({ url: livekit.url, token: liveKitTokenFor(livekit, roomId, peerId) }),
     onEvent: (e) => observe(e, log, metrics),
   });
   const restored = opts.stateFile ? loadSnapshot(opts.stateFile, log) : null;
@@ -172,8 +173,6 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         lobby.cheers(conn);
       } else if (msg.type === 'boombox') {
         lobby.boombox(conn, msg);
-      } else if (msg.type === 'signal') {
-        lobby.signal(conn, msg);
       }
     });
     // The close reason is client-chosen text, so only the code is logged.

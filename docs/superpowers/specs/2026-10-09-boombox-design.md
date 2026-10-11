@@ -188,7 +188,9 @@ sends `null`, so nothing waits for the flag.
 
 The music must sound good (decided 2026-10-09). Chrome's default Opus for an audio track is
 about 32 kbps, tuned for speech, which audibly smears music. So the boombox sender asks for
-**mono Opus at 128 kbps** (`BOOMBOX_MAX_BITRATE = 128_000`):
+**mono Opus at 64 kbps** (`BOOMBOX_MAX_BITRATE = 64_000`; 128 kbps until 2026-10-11, halved with the move to
+LiveKit because mono Opus is already transparent for music at 64). Over LiveKit (`media/livekit.ts`) it is the
+`boombox` track's `audioPreset.maxBitrate`, with `forceStereo: false`; the mesh mechanics below are historical:
 - Initiator: `sendEncodings: [{ maxBitrate: BOOMBOX_MAX_BITRATE }]` on the boombox transceiver.
 - Answerer: `setParameters` with `encodings[0].maxBitrate` in `attachTracks`, as for the video cap,
   and **again after its answer is set**. Chrome drops parameters set on a trackless sender before the
@@ -198,15 +200,17 @@ about 32 kbps, tuned for speech, which audibly smears music. So the boombox send
   within the negotiated envelope (`setParameters` never renegotiates).
 
 It stays **mono**: the boombox is one point in the room, and the HRTF panner places it as a single
-source, so a stereo mix would be folded down anyway. 128 kbps mono Opus is close to transparent for
-music. The voice path's open low-pass at `MUFFLE_OPEN_HZ` (16 kHz) is kept.
+source, so a stereo mix would be folded down anyway. The stream node is set to one channel
+(`channelCount = 1`, `explicit`), so every browser sends mono (Safari would otherwise report stereo and
+LiveKit would send stereo Opus). 64 kbps mono Opus is transparent for music, more so after distance,
+reverb and wall muffling. The voice path's open low-pass at `MUFFLE_OPEN_HZ` (16 kHz) is kept.
 
 The track bypasses the mic's echo cancellation, noise suppression and gain control: it comes from
 Web Audio, not `getUserMedia`.
 
 The bitrate is verified, not assumed: the e2e test measures the receiver's bitrate on the boombox
 m-line (§10). If Chrome ignores `maxBitrate` as the target, the fallback is
-`maxaveragebitrate=128000` in that m-line's Opus `fmtp`.
+`maxaveragebitrate=64000` in that m-line's Opus `fmtp`. The e2e check expects 40–75 kbps.
 
 ## 6. Protocol (extends design spec §7.2)
 
@@ -250,8 +254,8 @@ Same pattern as `held` (held items spec §4):
   (old `attachTracks`), so a new peer would hear that peer's voice twice, once as "boombox". Rooms
   are ephemeral and the web image ships as one unit, so this lasts until the stale tab reloads.
   Accepted.
-- **Upload.** One more audio stream per peer while playing, 128 kbps × (N−1): about 0.9 Mbps
-  with 8 people, against 350 kbps × 7 ≈ 2.5 Mbps of video already. Accepted. Only while playing;
+- **Upload.** One more audio stream while playing: 64 kbps, once (LiveKit forwards it), against the 350 kbps
+  face already sent. Accepted. Only while playing;
   a null track sends nothing.
 - **Copyright.** The music is streamed live peer to peer and never stored, like a voice.
 

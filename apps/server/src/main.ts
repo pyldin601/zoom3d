@@ -1,6 +1,6 @@
 import * as Sentry from '@sentry/node';
 import { RESUME_GRACE_MS } from '@zoom3d/shared';
-import { iceConfigFromEnv } from './ice';
+import { liveKitConfigFromEnv } from './livekit';
 import { createLogger, type Logger, parseLogLevel } from './log';
 import { startServer } from './server';
 
@@ -40,7 +40,9 @@ const graceMs = Number(process.env.RESUME_GRACE_MS ?? RESUME_GRACE_MS);
 // With Recreate deploys, a file on a persistent volume carries the rooms across a restart.
 const stateFile = process.env.STATE_FILE || undefined;
 
-const server = await startServer({ port, graceMs, ice: iceConfigFromEnv(process.env), stateFile, log });
+// Throws in production when the LiveKit env is missing: a broken rollout should crash, not hand out dev tokens.
+const livekit = liveKitConfigFromEnv(process.env);
+const server = await startServer({ port, graceMs, livekit, stateFile, log });
 log.info('server_listening', { port: server.port, stateFile: stateFile ?? null, sentry });
 
 // Containers send SIGTERM on stop; PID 1 gets no default handler, so close explicitly.

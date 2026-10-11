@@ -3,13 +3,12 @@ import {
   CHEERS_MS,
   type ErrorCode,
   type HeldItem,
-  type IceServer,
   IDLE_INTERVAL_MS,
+  type LiveKitAccess,
   type PeerInfo,
   type PlayerState,
   type ServerMessage,
   SIP_MS,
-  type SignalPayload,
   SnapshotBuffer,
   STATE_INTERVAL_MS,
 } from '@zoom3d/shared';
@@ -28,19 +27,16 @@ export interface RemotePeer {
 
 /** Notified after the session has applied each server event to its own state. */
 export interface SessionListener {
-  welcome?(selfId: string, iceServers: IceServer[], identityChanged: boolean): void;
+  welcome?(selfId: string, livekit: LiveKitAccess, identityChanged: boolean): void;
   peerJoined?(peer: PeerInfo): void;
   peerLeft?(id: string): void;
   peerMedia?(id: string, cam: boolean, mic: boolean): void;
-  signal?(from: string, payload: SignalPayload): void;
   /** A new connection status. Timer and socket driven, so it keeps coming while the tab is hidden. */
   status?(status: ConnStatus): void;
 }
 
 export interface Session {
   peers: Map<string, RemotePeer>;
-  iceServers(): IceServer[];
-  sendSignal(to: string, payload: SignalPayload): void;
   setMedia(cam: boolean, mic: boolean): void;
   setHeld(item: HeldItem | null): void;
   /** Shows or hides our boombox to the others; resent after every welcome. */
@@ -79,7 +75,6 @@ export function createSession(opts: SessionOptions): Session {
   let status: ConnStatus = 'connecting';
   let error: ErrorCode | null = null;
   let seq = 0;
-  let iceServers: IceServer[] = [];
   let media: { cam: boolean; mic: boolean } | null = null;
   /** undefined until setHeld: null is a real choice that must reach a resumed slot. */
   let held: HeldItem | null | undefined;
@@ -105,7 +100,6 @@ export function createSession(opts: SessionOptions): Session {
         selfId = m.selfId;
         color = m.color;
         resumeToken = m.resumeToken;
-        iceServers = m.iceServers;
         peers.clear();
         for (const p of m.peers) {
           addPeer(p);
@@ -121,7 +115,7 @@ export function createSession(opts: SessionOptions): Session {
         if (boombox !== undefined) {
           conn.send({ type: 'boombox', on: boombox });
         }
-        listener.welcome?.(m.selfId, m.iceServers, identityChanged);
+        listener.welcome?.(m.selfId, m.livekit, identityChanged);
         break;
       }
       case 'peer_joined':
@@ -168,9 +162,6 @@ export function createSession(opts: SessionOptions): Session {
         }
         break;
       }
-      case 'signal':
-        listener.signal?.(m.from, m.payload);
-        break;
       case 'peer_state': {
         const peer = peers.get(m.id);
         if (!peer || m.seq <= peer.lastSeq) {
@@ -241,10 +232,6 @@ export function createSession(opts: SessionOptions): Session {
 
   return {
     peers,
-    iceServers: () => iceServers,
-    sendSignal(to, payload) {
-      conn.send({ type: 'signal', to, payload });
-    },
     setMedia(cam, mic) {
       media = { cam, mic };
       if (status === 'open') {

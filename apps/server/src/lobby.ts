@@ -4,18 +4,17 @@ import {
   DRINK_GAP_MS,
   type GameMap,
   type HeldMessage,
-  type IceServer,
   isPlausibleMove,
   isValidAvatar,
   isValidRoomId,
   type JoinMessage,
+  type LiveKitAccess,
   MAX_PEERS,
   type MediaMessage,
   PEER_COLORS,
   type PeerInfo,
   RESUME_GRACE_MS,
   type ServerMessage,
-  type SignalMessage,
   type StateMessage,
   sanitizeName,
   spawnPoint,
@@ -56,7 +55,8 @@ export interface LobbyOptions {
   /** Creates peer ids and resume tokens. */
   newToken: () => string;
   graceMs?: number;
-  iceServersFor?: (peerId: string) => IceServer[];
+  /** LiveKit URL and a token for `peerId` in room `roomId` (LiveKit spec §3); minted on every welcome. */
+  liveKitFor: (roomId: string, peerId: string) => LiveKitAccess;
   onEvent?: (e: LobbyEvent) => void;
 }
 
@@ -156,7 +156,7 @@ export class Lobby {
       resumable.conn = conn;
       resumable.disconnectedAt = null;
       this.conns.set(conn, { roomId: msg.roomId, peerId: resumable.id });
-      this.welcome(conn, room, resumable);
+      this.welcome(conn, msg.roomId, room, resumable);
       this.emit({
         type: 'joined',
         roomId: msg.roomId,
@@ -197,7 +197,7 @@ export class Lobby {
     room.set(peer.id, peer);
     this.rooms.set(msg.roomId, room);
     this.conns.set(conn, { roomId: msg.roomId, peerId: peer.id });
-    this.welcome(conn, room, peer);
+    this.welcome(conn, msg.roomId, room, peer);
     this.broadcast(room, peer.id, { type: 'peer_joined', peer: info(peer) });
     this.emit({
       type: 'joined',
@@ -288,16 +288,6 @@ export class Lobby {
     this.broadcast(found.room, found.peer.id, { type, id: found.peer.id });
   }
 
-  /** Relays WebRTC signalling only to another live peer of the sender's room. */
-  signal(conn: string, msg: SignalMessage): void {
-    const found = this.lookup(conn);
-    const target = found?.room.get(msg.to);
-    if (!found || !target || target.id === found.peer.id || target.conn === null) {
-      return;
-    }
-    this.opts.out.send(target.conn, { type: 'signal', from: found.peer.id, payload: msg.payload });
-  }
-
   disconnect(conn: string): void {
     const found = this.lookup(conn);
     this.conns.delete(conn);
@@ -365,7 +355,7 @@ export class Lobby {
     this.opts.onEvent?.(e);
   }
 
-  private welcome(conn: string, room: Room, self: Peer): void {
+  private welcome(conn: string, roomId: string, room: Room, self: Peer): void {
     this.opts.out.send(conn, {
       type: 'welcome',
       selfId: self.id,
@@ -373,7 +363,7 @@ export class Lobby {
       color: self.color,
       spawn: { x: self.x, y: self.y, angle: self.angle },
       peers: [...room.values()].filter((p) => p.id !== self.id).map(info),
-      iceServers: this.opts.iceServersFor?.(self.id) ?? [],
+      livekit: this.opts.liveKitFor(roomId, self.id),
     });
   }
 

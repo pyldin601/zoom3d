@@ -24,7 +24,7 @@ const welcome = (peers: PeerInfo[] = [], spawn = { x: 5.5, y: 6.5, angle: 1 }) =
   color: '#e6194b',
   spawn,
   peers,
-  iceServers: [{ urls: ['stun:test'] }],
+  livekit: { url: 'ws://lk', token: 'tok' },
 });
 
 let player: PlayerState;
@@ -179,16 +179,15 @@ test('the listener hears welcomes with identity changes, after the session updat
   const calls: unknown[][] = [];
   let session: Session | null = null;
   const result = joinedSession([peer('a')], {
-    welcome: (id, ice, changed) => calls.push([id, ice, changed, session?.peers.size ?? 'unset']),
+    welcome: (id, livekit, changed) => calls.push([id, livekit, changed, session?.peers.size ?? 'unset']),
   });
   session = result.session;
-  expect(calls).toEqual([['me', [{ urls: ['stun:test'] }], true, 'unset']]);
-  expect(session.iceServers()).toEqual([{ urls: ['stun:test'] }]);
+  expect(calls).toEqual([['me', { url: 'ws://lk', token: 'tok' }, true, 'unset']]);
   result.ws.serverClose(1006);
   vi.advanceTimersByTime(500);
   FakeWebSocket.latest().open();
   FakeWebSocket.latest().receive(welcome([peer('a')]));
-  expect(calls[1]).toEqual(['me', [{ urls: ['stun:test'] }], false, 1]);
+  expect(calls[1]).toEqual(['me', { url: 'ws://lk', token: 'tok' }, false, 1]);
   FakeWebSocket.latest().serverClose(1006);
   vi.advanceTimersByTime(500);
   FakeWebSocket.latest().open();
@@ -196,19 +195,14 @@ test('the listener hears welcomes with identity changes, after the session updat
   expect(calls[2]?.[2]).toBe(true);
 });
 
-test('peer media and signals reach the listener', () => {
+test('peer media reaches the listener', () => {
   const media: unknown[] = [];
-  const signals: unknown[] = [];
   const { session, ws } = joinedSession([peer('a')], {
     peerMedia: (...args) => media.push(args),
-    signal: (...args) => signals.push(args),
   });
   ws.receive({ type: 'peer_media', id: 'a', cam: false, mic: true });
   expect(session.peers.get('a')?.info.cam).toBe(false);
   expect(media).toEqual([['a', false, true]]);
-  const payload = { kind: 'candidate', candidate: null };
-  ws.receive({ type: 'signal', from: 'a', payload });
-  expect(signals).toEqual([['a', payload]]);
 });
 
 test('peer joins and leaves reach the listener', () => {
@@ -220,13 +214,6 @@ test('peer joins and leaves reach the listener', () => {
   ws.receive({ type: 'peer_joined', peer: peer('c') });
   ws.receive({ type: 'peer_left', id: 'c' });
   expect(events).toEqual(['+c', '-c']);
-});
-
-test('sendSignal sends to the server', () => {
-  const { session, ws } = joinedSession();
-  const payload = { kind: 'candidate', candidate: null } as const;
-  session.sendSignal('a', payload);
-  expect(ws.sent.at(-1)).toEqual({ type: 'signal', to: 'a', payload });
 });
 
 test('media state is sent once open and re-sent after every welcome', () => {
