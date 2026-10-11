@@ -87,8 +87,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - In an SFU, clients reach the server rather than each other, so relay-to-relay doesn't come up.
 - *Resolved 2026-10-11 (LiveKit on casa):* LiveKit v1.13 runs in the `zoom3d` namespace (servers repo
   `k8s/casa/apps/zoom3d/livekit.yaml`), host network, `wss://lk.pyldin601.xyz`. Media uses UDP 49160-49163 and ICE/TCP
-  7881, TURN uses UDP 3478 and TLS on 443 through Traefik. The router doesn't hairpin UDP, so TURN-only clients can't
-  reach the SFU; UDP-blocked clients use ICE/TCP 7881. Only 443-only networks are left out.
+  7881, TURN uses UDP 3478 and TLS on 443 through Traefik. TURN relays to the SFU through the public IP, so it needs
+  the router to hairpin UDP: it didn't at first (TURN-only clients failed), and does since the router's ports were
+  reconfigured the same day (a relay-only client works). Node: `net.core.rmem_max = 5000000` in
+  `/etc/sysctl.d/90-livekit.conf`, for LiveKit's UDP receive buffer.
 
 ### D12 — Input and accessibility
 - Keyboard only vs mouse-look vs touch. Colour-blind/readable names above avatars? Captions?
