@@ -243,7 +243,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
       | `face-64` | 64×64 | 15 fps | 35 kbps |
 
       - **Sender upload:** **dynacast** is on again: LiveKit pauses any face track nobody receives (spike: 0 kbps,
-        resumed on subscribe), so a sender uploads only the sizes someone wants. Quirk: alone in a room, all three send.
+        resumed on subscribe), so a sender uploads only the sizes someone wants. A new track sends for its first ~10 s
+        before LiveKit pauses it; alone in a room, only the mic is uploaded after that.
       - **Hidden tab:** all three carry the raw camera; `face-128`/`face-64` scale it with `scaleResolutionDownBy`.
       - **Receiver:** e.g. 3 close + 5 mid + 4 far faces ≈ 1.8 Mbps of video, against ~4.2 Mbps for the same 12 at
         full quality in 6b (plus everyone out of view).
