@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { joinAs } from './join';
+import { joinAs, lookAt } from './join';
 
 type GameWindow = {
   __game: {
@@ -63,6 +63,7 @@ test('a picked picture replaces initials while the camera is off, and is remembe
   const b = await (await browser.newContext()).newPage();
   await b.goto(url);
   await joinAs(b, 'Bob');
+  await lookAt(b, 'Ada');
   await expect.poll(async () => (await faceCentre(b, 'Ada'))?.live, { timeout: 15_000 }).toBe(true);
 
   await a.getByRole('button', { name: 'Cam on' }).click();

@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { createAndJoin, joinAs } from './join';
+import { createAndJoin, joinAs, lookAt } from './join';
 
 type GameWindow = {
   __game: {
@@ -34,6 +34,8 @@ test('faces stream both ways, cam off falls back to initials, leaving cleans up'
   const url = await createAndJoin(a, 'Ada');
   await b.goto(url);
   await joinAs(b, 'Bob');
+  await lookAt(a, 'Bob');
+  await lookAt(b, 'Ada');
 
   const liveAndFlowing = { live: true, hasFace: true, bytes: expect.any(Number) };
   await expect.poll(() => faceOf(a, 'Bob'), { timeout: 15_000 }).toEqual(liveAndFlowing);

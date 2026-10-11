@@ -15,6 +15,8 @@ export interface Call {
   faceOf(peerId: string): Uint32Array | null;
   isLive(peerId: string): boolean;
   stats(peerId: string): Promise<{ bytesReceived: number; boomboxBytesReceived: number } | null>;
+  /** Whether the peer publishes media at all (people do, bots don't). */
+  publishes(peerId: string): boolean;
   /** What to receive from a peer (the interest rule's output); kept across a recreated transport. */
   setWanted(peerId: string, want: Want): void;
   /** Our boombox music, or null when it is off; kept across a recreated transport. */
@@ -203,6 +205,7 @@ export function createCall(opts: CallOptions): Call {
     faceOf: (id) => faces.get(id)?.texels ?? null,
     isLive: (id) => faces.get(id)?.live() ?? false,
     stats: async (id) => (transport ? transport.stats(id) : null),
+    publishes: (id) => transport?.publishes(id) ?? false,
     setWanted(peerId, want) {
       wants.set(peerId, want);
       transport?.setWanted(peerId, want);

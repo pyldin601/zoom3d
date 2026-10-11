@@ -155,6 +155,10 @@ export function createFace(opts: FaceOptions): FaceSource {
       camOn = on;
     },
     setPaused(p) {
+      // Resuming: the video comes back a moment later, so hold the last frame as for a new video.
+      if (paused && !p) {
+        videoSetAt = now;
+      }
       paused = p;
     },
     dispose() {

@@ -434,6 +434,7 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
       wanted['face-64'] = tracks[64];
       update();
     },
+    publishes: (peerId) => (remotes.get(peerId)?.pubs.size ?? 0) > 0,
     setWanted(peerId, want) {
       wants.set(peerId, want);
       apply(peerId);

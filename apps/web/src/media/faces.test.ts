@@ -156,7 +156,21 @@ describe('paused (out of sight, video unsubscribed on purpose)', () => {
     expect(face.live()).toBe(false);
     expect(face.texels).toBe(frame);
     expect(face.texels).not.toBe(initialsTexels);
+  });
+
+  test('unpausing holds the last frame until the resumed video arrives (up to the stall)', () => {
+    const { document } = fakeDocument();
+    const face = createFace({ name: 'Ada', color: '#e6194b', document });
+    const initialsTexels = face.texels;
+    face.setVideo(fakeVideo() as unknown as HTMLVideoElement);
+    face.update(0);
+    const frame = face.texels;
+    face.setPaused(true);
+    face.update(10_000);
     face.setPaused(false);
+    face.update(10_100);
+    expect(face.texels).toBe(frame);
+    face.update(10_000 + FACE_STALL_MS);
     expect(face.texels).toBe(initialsTexels);
   });
 

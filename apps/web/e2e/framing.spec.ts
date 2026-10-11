@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { createAndJoin, joinAs } from './join';
+import { createAndJoin, joinAs, lookAt } from './join';
 
 const remoteSize = (page: Page) =>
   page.evaluate(() => {
@@ -12,17 +12,27 @@ const setHidden = (page: Page, hidden: boolean) =>
     document.dispatchEvent(new Event('visibilitychange'));
   }, hidden);
 
-test('peers receive the framed 256² video; a hidden tab sends the raw frame until visible', async ({ browser }) => {
+test('peers receive a framed square face; a hidden tab sends the raw frame at that size until visible', async ({
+  browser,
+}) => {
   const a = await (await browser.newContext()).newPage();
   const b = await (await browser.newContext()).newPage();
   const url = await createAndJoin(a, 'Ada');
   await b.goto(url);
   await joinAs(b, 'Bob');
-  await expect.poll(() => remoteSize(b), { timeout: 15_000 }).toEqual([256, 256]);
+  await lookAt(b, 'Ada');
+  // Bob gets the 256, 128 or 64 face, depending on how big Ada is on his screen (6c).
+  await expect.poll(async () => (await remoteSize(b))?.[0] ?? 0, { timeout: 15_000 }).toBeGreaterThan(0);
+  const [size, height] = (await remoteSize(b)) as [number, number];
+  expect([64, 128, 256]).toContain(size);
+  expect(height).toBe(size);
+  // Hidden, Ada sends her raw 640×480 camera; the small faces scale it down to their size.
   await setHidden(a, true);
-  await expect.poll(() => remoteSize(b), { timeout: 10_000 }).toEqual([640, 480]);
+  const [rawW, rawH] = size === 256 ? [640, 480] : [(size * 4) / 3, size];
+  const isRaw = (s: number[] | null) => s !== null && Math.abs((s[0] ?? 0) - rawW) <= 1 && s[1] === rawH;
+  await expect.poll(async () => isRaw(await remoteSize(b)), { timeout: 10_000 }).toBe(true);
   await setHidden(a, false);
-  await expect.poll(() => remoteSize(b), { timeout: 10_000 }).toEqual([256, 256]);
+  await expect.poll(() => remoteSize(b), { timeout: 10_000 }).toEqual([size, size]);
 });
 
 test('turning the camera off stops the camera', async ({ page }) => {

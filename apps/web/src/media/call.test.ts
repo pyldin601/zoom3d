@@ -28,6 +28,7 @@ let transports: {
   close: ReturnType<typeof vi.fn>;
   setVideoTracks: ReturnType<typeof vi.fn>;
   setWanted: ReturnType<typeof vi.fn>;
+  publishes: ReturnType<typeof vi.fn>;
   setAudioTrack: ReturnType<typeof vi.fn>;
   setBoomboxTrack: ReturnType<typeof vi.fn>;
   setAccess: ReturnType<typeof vi.fn>;
@@ -138,6 +139,7 @@ function makeCall(init: Parameters<typeof fakeLocal>[0] = {}) {
         stats: vi.fn(async () => ({ bytesReceived: 5, boomboxBytesReceived: 2 })),
         setVideoTracks: vi.fn(),
         setWanted: vi.fn(),
+        publishes: vi.fn((id: string) => id === 'a'),
         setAudioTrack: vi.fn(),
         setBoomboxTrack: vi.fn(),
         setAccess: vi.fn(),
@@ -355,6 +357,14 @@ test('wants made before a face or a transport exists are applied when they do', 
   expect(faces.get('a')?.setPaused).toHaveBeenCalledWith(true);
   call.listener.welcome?.('me2', LK, true);
   expect(transports[1]?.setWanted).toHaveBeenCalledWith('a', { video: 'off', audio: false });
+});
+
+test('publishes asks the transport (false without one)', () => {
+  const call = makeCall();
+  expect(call.publishes('a')).toBe(false);
+  call.listener.welcome?.('me', LK, true);
+  expect(call.publishes('a')).toBe(true);
+  expect(call.publishes('bot')).toBe(false);
 });
 
 test('a peer that leaves is forgotten', () => {

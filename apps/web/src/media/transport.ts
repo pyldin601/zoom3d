@@ -23,6 +23,8 @@ export interface MediaTransport {
   stats(peerId: string): Promise<{ bytesReceived: number; boomboxBytesReceived: number } | null>;
   /** Sends our face in its three sizes (the framer's canvases, or the raw camera while the tab is hidden). */
   setVideoTracks(tracks: FaceTracks): void;
+  /** Whether the peer publishes anything in the media room (bots never do). */
+  publishes(peerId: string): boolean;
   /** Subscribes to a peer's face (at that size) and voice as wanted; nothing is received until asked for. */
   setWanted(peerId: string, want: Want): void;
   /** Swaps the mic, e.g. after a headset was unplugged. */

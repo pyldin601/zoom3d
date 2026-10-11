@@ -566,6 +566,19 @@ describe('remote media', () => {
     expect(await t.stats('p1')).toBeNull();
   });
 
+  test('publishes: only participants with tracks in LiveKit (bots never join it)', async () => {
+    const t = transport();
+    await flush();
+    expect(t.publishes('p1')).toBe(false);
+    room().publishRemote('p1', ['face']);
+    expect(t.publishes('p1')).toBe(true);
+    room().emit('trackUnpublished', room().pub('p1', 'face'), { identity: 'p1' });
+    expect(t.publishes('p1')).toBe(false);
+    room().publishRemote('p1', ['face']);
+    room().emit('participantDisconnected', { identity: 'p1' });
+    expect(t.publishes('p1')).toBe(false);
+  });
+
   test('wants survive a reconnect: the new room subscribes the same', async () => {
     const t = transport();
     await flush();
