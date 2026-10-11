@@ -134,10 +134,12 @@ describe('framing memory', () => {
 });
 
 describe('createFramer', () => {
-  const canvasTrack = () => ({ kind: 'video', id: 'canvas', enabled: true }) as unknown as MediaStreamTrack;
+  const canvasTrack = (size: number) =>
+    ({ kind: 'video', id: size === 256 ? 'canvas' : `canvas-${size}`, enabled: true }) as unknown as MediaStreamTrack;
   const raw = (id: string) =>
     ({ kind: 'video', id, enabled: true, getSettings: () => ({ deviceId: id }) }) as unknown as MediaStreamTrack;
   let visibility: DocumentVisibilityState;
+  const draws: { canvas: HTMLCanvasElement; source: unknown; args: number[] }[] = [];
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -153,10 +155,17 @@ describe('createFramer', () => {
     );
     visibility = 'visible';
     vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
-    const track = canvasTrack();
-    vi.spyOn(HTMLCanvasElement.prototype, 'captureStream').mockImplementation(
-      () => ({ getVideoTracks: () => [track] }) as unknown as MediaStream
-    );
+    vi.spyOn(HTMLCanvasElement.prototype, 'captureStream').mockImplementation(function (this: HTMLCanvasElement) {
+      const track = canvasTrack(this.width);
+      return { getVideoTracks: () => [track] } as unknown as MediaStream;
+    });
+    draws.length = 0;
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (this: HTMLCanvasElement) {
+      const canvas = this;
+      return {
+        drawImage: (source: unknown, ...args: number[]) => draws.push({ canvas, source, args }),
+      } as unknown as RenderingContext;
+    });
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(async () => {});
   });
 
@@ -173,7 +182,7 @@ describe('createFramer', () => {
     expect(f.track.id).toBe('canvas');
     expect(f.camera).toBeNull();
     expect(f.track.enabled).toBe(false);
-    expect(f.sendTrack).toBe(f.track);
+    expect(f.sendTracks()).toBe(f.tracks);
   });
 
   test('setCamera swaps the video source and fires onSendTrackChange', () => {
@@ -194,16 +203,63 @@ describe('createFramer', () => {
     expect(changed).toHaveBeenCalledTimes(2);
   });
 
-  test('while hidden, sendTrack is the camera; with no camera it is the canvas', () => {
+  test('while hidden, sendTracks are the camera; with no camera the canvases', () => {
     const f = make();
     const changed = vi.fn();
     f.onSendTrackChange = changed;
     const a = raw('a');
     f.setCamera(a);
     visibility = 'hidden';
-    expect(f.sendTrack).toBe(a);
+    expect(f.sendTracks()).toEqual({ 256: a, 128: a, 64: a });
     f.setCamera(null);
-    expect(f.sendTrack).toBe(f.track);
+    expect(f.sendTracks()).toBe(f.tracks);
     expect(changed).toHaveBeenCalledTimes(2);
+  });
+
+  test('three face tracks: 256, 128 and 64, all disabled without a camera', () => {
+    const f = make();
+    expect(f.tracks[256]).toBe(f.track);
+    expect(f.tracks[128].id).toBe('canvas-128');
+    expect(f.tracks[64].id).toBe('canvas-64');
+    expect([f.tracks[256], f.tracks[128], f.tracks[64]].map((t) => t.enabled)).toEqual([false, false, false]);
+    f.setCamera(raw('a'));
+    expect([f.tracks[256], f.tracks[128], f.tracks[64]].map((t) => t.enabled)).toEqual([true, true, true]);
+    f.setCamera(null);
+    expect([f.tracks[256], f.tracks[128], f.tracks[64]].map((t) => t.enabled)).toEqual([false, false, false]);
+  });
+
+  test('each frame step draws the 256 crop, then the 128 and 64 canvases from it', () => {
+    make().setCamera(raw('a'));
+    const video = document.body.querySelector('video') as HTMLVideoElement;
+    Object.defineProperties(video, { videoWidth: { value: 640 }, videoHeight: { value: 480 } });
+    vi.advanceTimersByTime(42);
+    const sizes = draws.map((d) => [d.canvas.width, d.canvas.height]);
+    expect(sizes).toEqual([
+      [256, 256],
+      [128, 128],
+      [64, 64],
+    ]);
+    const big = draws[0]?.canvas;
+    expect(draws[1]?.source).toBe(big);
+    expect(draws[1]?.args).toEqual([0, 0, 128, 128]);
+    expect(draws[2]?.source).toBe(big);
+    expect(draws[2]?.args).toEqual([0, 0, 64, 64]);
+  });
+
+  test('sendTracks: the canvases while visible, the camera for all three while hidden', () => {
+    const f = make();
+    const a = raw('a');
+    f.setCamera(a);
+    expect(f.sendTracks()).toEqual(f.tracks);
+    visibility = 'hidden';
+    expect(f.sendTracks()).toEqual({ 256: a, 128: a, 64: a });
+    visibility = 'visible';
+    expect(f.sendTracks()).toEqual(f.tracks);
+  });
+
+  test('sendTracks while hidden without a camera: the canvases', () => {
+    const f = make();
+    visibility = 'hidden';
+    expect(f.sendTracks()).toEqual(f.tracks);
   });
 });

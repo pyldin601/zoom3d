@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { joinAs } from './join';
+import { joinAs, lookAt } from './join';
 
 type GameWindow = {
   __game: {
@@ -68,6 +68,7 @@ test('camera off in the lobby stops it; turning it on in the room sends live vid
   const b = await (await browser.newContext()).newPage();
   await b.goto(url);
   await joinAs(b, 'Bob');
+  await lookAt(b, 'Ada');
   await expect.poll(() => isLive(b, 'Ada'), { timeout: 15_000 }).toBe(false);
 
   await a.getByRole('button', { name: 'Cam off' }).click();

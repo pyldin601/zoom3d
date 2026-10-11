@@ -52,6 +52,12 @@ browser ── ws (game: join/state/media/...) ──▶ zoom3d server ──┐
 
 ## 4. Client transport (`media/livekit.ts`, `livekit-client`)
 
+> **Since 6c** ([dynamic subscription spec](2026-10-11-dynamic-subscription-design.md)): `autoSubscribe: false` and
+> `dynacast: true`; the face is published as three tracks (`face`, `face-128`, `face-64`, set with `setVideoTracks`);
+> `connect`/`disconnect` are gone and the call subscribes per peer with `setWanted`. A peer's face and mic are now
+> separate streams (`onRemoteStream`, `onRemoteVoice`), so face changes never rebuild the voice. The rest below
+> still holds.
+
 - `createLiveKitTransport(opts)` implements `MediaTransport`. Options: `url`, `token`, `localStream`,
   `onRemoteStream`, `onRemoteBoombox`, and an injectable `Room` constructor for tests.
 - Connect on creation with `autoSubscribe: true` (6b receives everyone, like the mesh) and `adaptiveStream: false`,

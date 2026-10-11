@@ -40,9 +40,10 @@ test('voices flow into the spatial engine and remote elements stay muted', async
   await expect.poll(async () => (await peakAudio(a, 'Bob', 1500)).input, { timeout: 20_000 }).toBeGreaterThan(0.005);
   await expect.poll(async () => (await peakAudio(a, 'Bob', 1500)).speaking, { timeout: 10_000 }).toBeGreaterThan(0);
 
-  const videos = a.locator('#media video');
-  await expect(videos).toHaveCount(1);
-  expect(await videos.evaluateAll((els) => els.every((el) => (el as HTMLVideoElement).muted))).toBe(true);
+  // Bob's voice plays from its own element (separate from his face), muted like every remote element.
+  await expect(a.locator('#media audio[data-peer^="voice:"]')).toHaveCount(1);
+  const elements = a.locator('#media video, #media audio');
+  expect(await elements.evaluateAll((els) => els.every((el) => (el as HTMLMediaElement).muted))).toBe(true);
 });
 
 test('the backquote key toggles the audio tuning panel in a room', async ({ page }) => {

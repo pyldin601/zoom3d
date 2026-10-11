@@ -170,7 +170,8 @@ export function faceTexels(person: LandingPerson): Uint32Array {
 export function renderLandingScene(fb: Framebuffer, { logo = true }: { logo?: boolean } = {}): void {
   const camera = landingCamera(fb);
   renderWalls(fb, LANDING_MAP, camera, makeTextures(1));
-  const sprites: Sprite[] = LANDING_PEOPLE.map((p) => ({
+  const sprites: Sprite[] = LANDING_PEOPLE.map((p, i) => ({
+    key: String(i),
     x: p.x,
     y: p.y,
     color: hexToRgb(p.color),

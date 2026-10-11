@@ -1,5 +1,6 @@
-// MediaTransport over the LiveKit SFU (LiveKit spec §4): our face, mic and boombox are published once, by name,
-// and LiveKit forwards everyone's tracks to everyone (autoSubscribe; selective subscription is 6c).
+// MediaTransport over the LiveKit SFU (LiveKit spec §4): our face (in three sizes), mic and boombox are published
+// once, by name. We subscribe to others' tracks ourselves, per peer, as the interest rule wants them (6c spec §4.3),
+// and dynacast pauses any of our face sizes nobody receives.
 // Local tracks are user-provided: LocalMediaController owns them, so they are swapped with replaceTrack and LiveKit
 // must never stop them (stopLocalTrackOnUnpublish: false, disconnect(false)), nor decide whether they are enabled:
 // it rewrites `enabled` on publish and replace, and mutes a publication whose track ended, so both are undone.
@@ -7,20 +8,25 @@
 
 import type { LiveKitAccess } from '@zoom3d/shared';
 import type { RoomConnectOptions, RoomOptions, TrackPublishOptions } from 'livekit-client';
-import type { MediaTransport, TransportOptions } from './transport';
+import type { VideoWant, Want } from './interest';
+import type { FaceTracks, MediaTransport, TransportOptions } from './transport';
 
 export const VIDEO_MAX_BITRATE = 350_000;
+export const FACE_128_MAX_BITRATE = 120_000;
+export const FACE_64_MAX_BITRATE = 35_000;
 /** Mono music: transparent at this rate, well above Opus's ~32 kbps speech default (boombox spec §5.3). */
 export const BOOMBOX_MAX_BITRATE = 64_000;
 const RETRY_MIN_MS = 1000;
 const RETRY_MAX_MS = 30_000;
 
-type TrackName = 'face' | 'mic' | 'boombox';
+type FaceName = 'face' | 'face-128' | 'face-64';
+type TrackName = FaceName | 'mic' | 'boombox';
 
 /** livekit-client's LocalTrack: unlike its publication, it survives a republish (signal restart). */
 interface LocalTrackLike {
   mediaStreamTrack: MediaStreamTrack;
   isMuted: boolean;
+  sender?: Pick<RTCRtpSender, 'getParameters' | 'setParameters'>;
   replaceTrack(track: MediaStreamTrack, options: { userProvidedTrack: boolean }): Promise<unknown>;
   unmute(): Promise<unknown>;
 }
@@ -30,8 +36,19 @@ interface RemoteTrackLike {
   getRTCStatsReport(): Promise<RTCStatsReport | undefined>;
 }
 
+interface RemotePublicationLike {
+  trackName: string;
+  setSubscribed(subscribed: boolean): void;
+}
+
+interface RemoteParticipantLike {
+  identity: string;
+  trackPublications: Map<string, RemotePublicationLike>;
+}
+
 /** The part of livekit-client's Room this transport uses; tests pass a fake. */
 export interface LiveKitRoomLike {
+  remoteParticipants: Map<string, RemoteParticipantLike>;
   connect(url: string, token: string, options?: RoomConnectOptions): Promise<void>;
   disconnect(stopTracks?: boolean): Promise<void>;
   on(event: string, listener: (...args: never[]) => void): unknown;
@@ -54,7 +71,20 @@ const PUBLISH: Record<TrackName, TrackPublishOptions> = {
     name: 'face',
     source: 'camera' as TrackPublishOptions['source'],
     simulcast: false,
-    videoEncoding: { maxBitrate: VIDEO_MAX_BITRATE },
+    videoEncoding: { maxBitrate: VIDEO_MAX_BITRATE, maxFramerate: 24 },
+  },
+  // Separate tracks, not simulcast layers: livekit-client turns simulcast off below 480 px (6c spec §2).
+  'face-128': {
+    name: 'face-128',
+    source: 'unknown' as TrackPublishOptions['source'],
+    simulcast: false,
+    videoEncoding: { maxBitrate: FACE_128_MAX_BITRATE, maxFramerate: 24 },
+  },
+  'face-64': {
+    name: 'face-64',
+    source: 'unknown' as TrackPublishOptions['source'],
+    simulcast: false,
+    videoEncoding: { maxBitrate: FACE_64_MAX_BITRATE, maxFramerate: 15 },
   },
   mic: { name: 'mic', source: 'microphone' as TrackPublishOptions['source'], dtx: true },
   boombox: {
@@ -67,7 +97,32 @@ const PUBLISH: Record<TrackName, TrackPublishOptions> = {
     red: false,
   },
 };
-const NAMES: TrackName[] = ['face', 'mic', 'boombox'];
+const NAMES: TrackName[] = ['face', 'face-128', 'face-64', 'mic', 'boombox'];
+const FACE_NAMES: FaceName[] = ['face', 'face-128', 'face-64'];
+/** Per wanted size, the face tracks to try, nearest first (bigger before smaller on a tie). */
+const FACE_ORDER: Record<Exclude<VideoWant, 'off'>, FaceName[]> = {
+  256: ['face', 'face-128', 'face-64'],
+  128: ['face-128', 'face', 'face-64'],
+  64: ['face-64', 'face-128', 'face'],
+};
+/** The small faces' target sizes: fed the raw camera (hidden tab), their encoder scales it down. */
+const SMALL_SIZE: Partial<Record<TrackName, number>> = { 'face-128': 128, 'face-64': 64 };
+const OFF: Want = { video: 'off', audio: false };
+
+/** One remote participant in the current room. */
+interface Remote {
+  /** Their publications, by track name. */
+  pubs: Map<string, RemotePublicationLike>;
+  /** Subscribed tracks, by track name. */
+  tracks: Map<string, RemoteTrackLike>;
+  /** What we asked LiveKit for, by track name. */
+  asked: Map<string, boolean>;
+  /** The face track we show (emitted in their stream). */
+  face: FaceName | null;
+  /** The face and mic tracks last emitted, so unchanged streams aren't re-emitted. */
+  emittedFace: MediaStreamTrack | null;
+  emittedMic: MediaStreamTrack | null;
+}
 
 const defaultLoadRoom = async () =>
   (await import('livekit-client')).Room as unknown as NonNullable<LiveKitTransportOptions['RoomImpl']>;
@@ -77,13 +132,23 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
   const local = opts.localStream;
   const wanted: Record<TrackName, MediaStreamTrack | null> = {
     face: local?.getVideoTracks()[0] ?? null,
+    'face-128': null,
+    'face-64': null,
     mic: local?.getAudioTracks()[0] ?? null,
     boombox: null,
   };
+  const nonePublished = (): Record<TrackName, LocalTrackLike | null> => ({
+    face: null,
+    'face-128': null,
+    'face-64': null,
+    mic: null,
+    boombox: null,
+  });
   let access: LiveKitAccess = { url: opts.url, token: opts.token };
-  let published: Record<TrackName, LocalTrackLike | null> = { face: null, mic: null, boombox: null };
-  /** identity → track name → subscribed track. */
-  const remotes = new Map<string, Map<string, RemoteTrackLike>>();
+  let published = nonePublished();
+  /** What the interest rule wants from each peer; kept across rooms. */
+  const wants = new Map<string, Want>();
+  const remotes = new Map<string, Remote>();
   let room: LiveKitRoomLike | null = null;
   let connected = false;
   let closed = false;
@@ -122,7 +187,29 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
         await lt.unmute();
       }
       want.enabled = enabled;
+      const size = SMALL_SIZE[name];
+      if (lt && size) {
+        await scaleTo(lt, want, size);
+      }
     }
+  }
+
+  /** A small face fed a bigger track (the raw camera) scales it down to `size` on its shortest side. */
+  async function scaleTo(lt: LocalTrackLike, track: MediaStreamTrack, size: number) {
+    const sender = lt.sender;
+    if (!sender) {
+      return;
+    }
+    const settings = track.getSettings?.() ?? {};
+    const side = Math.min(settings.width ?? size, settings.height ?? size);
+    const scale = Math.max(1, side / size);
+    const params = sender.getParameters();
+    const encoding = params.encodings?.[0];
+    if (!encoding || (encoding.scaleResolutionDownBy ?? 1) === scale) {
+      return;
+    }
+    encoding.scaleResolutionDownBy = scale;
+    await sender.setParameters(params);
   }
 
   const update = () => {
@@ -131,34 +218,104 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
       .catch((err) => console.warn('livekit publish failed', err));
   };
 
-  /** Face and mic of one participant as a new stream: the audio engine ignores a stream object it already has. */
-  const emitStream = (identity: string) => {
-    const tracks = remotes.get(identity);
-    const list = (['face', 'mic'] as const)
-      .map((name) => tracks?.get(name)?.mediaStreamTrack)
-      .filter((t): t is MediaStreamTrack => t !== undefined);
-    if (list.length > 0) {
-      opts.onRemoteStream(identity, createStream(list));
+  const remoteOf = (identity: string): Remote => {
+    let r = remotes.get(identity);
+    if (!r) {
+      r = {
+        pubs: new Map(),
+        tracks: new Map(),
+        asked: new Map(),
+        face: null,
+        emittedFace: null,
+        emittedMic: null,
+      };
+      remotes.set(identity, r);
+    }
+    return r;
+  };
+
+  /**
+   * The shown face and the mic, each as its own new stream when its track changed (empty when gone): the audio
+   * engine rebuilds a voice for every new stream object, so a face change must never re-emit the voice.
+   */
+  const emitStreams = (identity: string, r: Remote) => {
+    const face = r.face ? (r.tracks.get(r.face)?.mediaStreamTrack ?? null) : null;
+    const mic = r.tracks.get('mic')?.mediaStreamTrack ?? null;
+    if (face !== r.emittedFace) {
+      r.emittedFace = face;
+      opts.onRemoteStream(identity, createStream(face ? [face] : []));
+    }
+    if (mic !== r.emittedMic) {
+      r.emittedMic = mic;
+      opts.onRemoteVoice(identity, createStream(mic ? [mic] : []));
     }
   };
 
-  const onSubscribed = (track: RemoteTrackLike, pub: { trackName: string }, participant: { identity: string }) => {
+  const ask = (r: Remote, name: string, on: boolean) => {
+    const pub = r.pubs.get(name);
+    if (pub && (r.asked.get(name) ?? false) !== on) {
+      r.asked.set(name, on);
+      pub.setSubscribed(on);
+    }
+  };
+
+  /**
+   * Subscribes to what the peer's want asks for. A size switch is make-before-break: the shown face stays
+   * subscribed until the new size's track has arrived, then the stream swaps and the old one is dropped.
+   */
+  const apply = (identity: string) => {
+    const r = remotes.get(identity);
+    if (!r) {
+      return;
+    }
+    const want = wants.get(identity) ?? OFF;
+    const target = want.video === 'off' ? null : (FACE_ORDER[want.video].find((n) => r.pubs.has(n)) ?? null);
+    if (target === null || r.tracks.has(target)) {
+      r.face = target;
+    }
+    for (const name of FACE_NAMES) {
+      ask(r, name, name === target || name === r.face);
+    }
+    ask(r, 'mic', want.audio);
+    ask(r, 'boombox', want.audio);
+    emitStreams(identity, r);
+  };
+
+  const onPublished = (pub: RemotePublicationLike, participant: { identity: string }) => {
+    remoteOf(participant.identity).pubs.set(pub.trackName, pub);
+    apply(participant.identity);
+  };
+
+  const onUnpublished = (pub: RemotePublicationLike, participant: { identity: string }) => {
+    const r = remotes.get(participant.identity);
+    r?.pubs.delete(pub.trackName);
+    r?.asked.delete(pub.trackName);
+    apply(participant.identity);
+  };
+
+  const onSubscribed = (track: RemoteTrackLike, pub: RemotePublicationLike, participant: { identity: string }) => {
     const { identity } = participant;
-    const tracks = remotes.get(identity) ?? new Map<string, RemoteTrackLike>();
-    remotes.set(identity, tracks);
-    tracks.set(pub.trackName, track);
+    const r = remoteOf(identity);
+    r.tracks.set(pub.trackName, track);
+    // It is subscribed now, whatever we asked last: apply() drops it again if it's no longer wanted.
+    r.asked.set(pub.trackName, true);
     if (pub.trackName === 'boombox') {
       opts.onRemoteBoombox(identity, createStream([track.mediaStreamTrack]));
-    } else if (pub.trackName === 'face' || pub.trackName === 'mic') {
-      emitStream(identity);
     }
+    apply(identity);
   };
 
-  const onUnsubscribed = (_track: RemoteTrackLike, pub: { trackName: string }, participant: { identity: string }) => {
-    remotes.get(participant.identity)?.delete(pub.trackName);
-    if (pub.trackName === 'face' || pub.trackName === 'mic') {
-      emitStream(participant.identity);
+  const onUnsubscribed = (_track: RemoteTrackLike, pub: RemotePublicationLike, participant: { identity: string }) => {
+    const r = remotes.get(participant.identity);
+    if (!r) {
+      return;
     }
+    r.tracks.delete(pub.trackName);
+    r.asked.delete(pub.trackName);
+    if (r.face === pub.trackName) {
+      r.face = null;
+    }
+    apply(participant.identity);
   };
 
   const retry = () => {
@@ -186,10 +343,11 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
     if (!Impl || closed) {
       return;
     }
-    const r = new Impl({ adaptiveStream: false, dynacast: false, stopLocalTrackOnUnpublish: false });
+    const r = new Impl({ adaptiveStream: false, dynacast: true, stopLocalTrackOnUnpublish: false });
     room = r;
     connected = false;
-    published = { face: null, mic: null, boombox: null };
+    published = nonePublished();
+    remotes.clear();
     /** Events from a room that was closed or replaced must not touch the current one's media. */
     const live = <A extends unknown[]>(fn: (...args: A) => void) =>
       ((...args: A) => {
@@ -197,6 +355,8 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
           fn(...args);
         }
       }) as unknown as (...args: never[]) => void;
+    r.on('trackPublished', live(onPublished));
+    r.on('trackUnpublished', live(onUnpublished));
     r.on('trackSubscribed', live(onSubscribed));
     r.on('trackUnsubscribed', live(onUnsubscribed));
     r.on(
@@ -216,7 +376,7 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
       retry();
     });
     try {
-      await r.connect(access.url, access.token, { autoSubscribe: true });
+      await r.connect(access.url, access.token, { autoSubscribe: false });
     } catch (err) {
       console.warn('livekit connect failed', err);
       if (r === room) {
@@ -231,15 +391,18 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
     }
     connected = true;
     retryMs = RETRY_MIN_MS;
+    // Participants already here when we joined: no trackPublished for them.
+    for (const participant of r.remoteParticipants.values()) {
+      for (const pub of participant.trackPublications.values()) {
+        onPublished(pub, participant);
+      }
+    }
     update();
   }
 
   void start();
 
   return {
-    // LiveKit forwards every participant; per-peer subscription arrives with visibility (6c).
-    connect() {},
-    disconnect() {},
     close() {
       closed = true;
       if (retryTimer) {
@@ -261,7 +424,7 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
       }
       let bytesReceived = 0;
       let boomboxBytesReceived = 0;
-      for (const [name, track] of tracks) {
+      for (const [name, track] of tracks.tracks) {
         const report = await track.getRTCStatsReport();
         report?.forEach((s: { type: string; bytesReceived?: number }) => {
           if (s.type !== 'inbound-rtp') {
@@ -276,9 +439,16 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
       }
       return { bytesReceived, boomboxBytesReceived };
     },
-    setVideoTrack(track) {
-      wanted.face = track;
+    setVideoTracks(tracks: FaceTracks) {
+      wanted.face = tracks[256];
+      wanted['face-128'] = tracks[128];
+      wanted['face-64'] = tracks[64];
       update();
+    },
+    publishes: (peerId) => (remotes.get(peerId)?.pubs.size ?? 0) > 0,
+    setWanted(peerId, want) {
+      wants.set(peerId, want);
+      apply(peerId);
     },
     setAudioTrack(track) {
       wanted.mic = track;

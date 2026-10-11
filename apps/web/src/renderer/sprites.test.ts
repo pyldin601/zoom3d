@@ -2,6 +2,7 @@ import { type PlayerState, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { FACE_SIZE } from '../media/faces';
 import { MOUTH_Y_IN_CROP } from '../media/framing';
+import type { PeerFacts } from '../media/interest';
 import { BOOMBOX_LEFT, BOOMBOX_SPRITE, BOOMBOX_TOP } from './boombox';
 import { createFramebuffer, DEFAULT_FOV, rgb } from './framebuffer';
 import {
@@ -64,6 +65,7 @@ describe('renderSprites', () => {
       {
         x: 3.5,
         y: 4.5,
+        key: 's',
         color: RED,
         face: null,
         speaking: 0,
@@ -93,6 +95,7 @@ describe('renderSprites', () => {
       {
         x: 3.5,
         y: 4.5,
+        key: 's',
         color: RED,
         face: null,
         speaking: 0,
@@ -116,6 +119,7 @@ describe('renderSprites', () => {
       {
         x: 0.5,
         y: 4.5,
+        key: 's',
         color: RED,
         face: null,
         speaking: 0,
@@ -151,6 +155,7 @@ describe('renderSprites', () => {
       {
         x: 5.5,
         y: 4.5,
+        key: 's',
         color: RED,
         face: null,
         speaking: 0,
@@ -172,6 +177,7 @@ describe('renderSprites', () => {
       {
         x: 3.5,
         y: 4.5,
+        key: 's',
         color: RED,
         face: null,
         speaking: 0,
@@ -186,6 +192,7 @@ describe('renderSprites', () => {
       {
         x: 5.5,
         y: 4.5,
+        key: 's',
         color: BLUE,
         face: null,
         speaking: 0,
@@ -199,6 +206,90 @@ describe('renderSprites', () => {
       },
     ]);
     expect(px(fb, 320, 180)).toBe(RED);
+  });
+});
+
+describe('facts for dynamic subscription', () => {
+  const disc = (key: string, x: number, y: number) => ({
+    key,
+    x,
+    y,
+    color: RED,
+    face: null,
+    speaking: 0,
+    bob: 0,
+    itemBob: 0,
+    sip: 0,
+    cheers: 0,
+    wobble: 0,
+    held: null,
+    boombox: false,
+  });
+  const CORNER = parseMap(
+    [
+      '111111111',
+      '1.......1',
+      '1.......1',
+      '1..1....1',
+      '1S......1',
+      '1.......1',
+      '1.......1',
+      '1.......1',
+      '111111111',
+    ].join('\n')
+  );
+  const WALLED = parseMap(
+    [
+      '111111111',
+      '1.......1',
+      '1.......1',
+      '1.......1',
+      '1S.1....1',
+      '1.......1',
+      '1.......1',
+      '1.......1',
+      '111111111',
+    ].join('\n')
+  );
+
+  test('in open view: drawn columns and the projected size', () => {
+    const facts = new Map<string, PeerFacts>();
+    renderSprites(frame(), player, [disc('a', 3.5, 4.5)], facts);
+    const size = (2 * AVATAR_RADIUS * PROJ) / 2;
+    expect(facts.get('a')?.projectedSize).toBeCloseTo(size);
+    expect(Math.abs((facts.get('a')?.drawnColumns ?? 0) - size)).toBeLessThanOrEqual(3);
+  });
+
+  test('behind a wall: no columns', () => {
+    const facts = new Map<string, PeerFacts>();
+    renderSprites(frame(WALLED), player, [disc('a', 5.5, 4.5)], facts);
+    expect(facts.get('a')?.drawnColumns).toBe(0);
+  });
+
+  test('half behind a corner: some columns', () => {
+    const open = new Map<string, PeerFacts>();
+    renderSprites(frame(), player, [disc('a', 5.5, 3.6)], open);
+    const corner = new Map<string, PeerFacts>();
+    renderSprites(frame(CORNER), player, [disc('a', 5.5, 3.6)], corner);
+    const columns = corner.get('a')?.drawnColumns ?? 0;
+    expect(columns).toBeGreaterThan(0);
+    expect(columns).toBeLessThan(open.get('a')?.drawnColumns ?? 0);
+  });
+
+  test('behind the camera: 0 columns and 0 size', () => {
+    const facts = new Map<string, PeerFacts>();
+    renderSprites(frame(), player, [disc('a', 0.5, 4.5)], facts);
+    expect(facts.get('a')).toEqual({ drawnColumns: 0, projectedSize: 0 });
+  });
+
+  test('a key gets one facts object, reused every frame and zeroed when it leaves the frame', () => {
+    const facts = new Map<string, PeerFacts>();
+    renderSprites(frame(), player, [disc('a', 3.5, 4.5)], facts);
+    const first = facts.get('a');
+    renderSprites(frame(), player, [disc('a', 4.5, 4.5)], facts);
+    expect(facts.get('a')).toBe(first);
+    renderSprites(frame(), player, [], facts);
+    expect(facts.get('a')).toEqual({ drawnColumns: 0, projectedSize: 0 });
   });
 });
 
@@ -237,6 +328,7 @@ describe('face sprites', () => {
       {
         x: 3.5,
         y: 4.5,
+        key: 's',
         color: RED,
         face,
         speaking: 0,
@@ -260,6 +352,7 @@ describe('face sprites', () => {
       {
         x: 3.5,
         y: 4.5,
+        key: 's',
         color: RED,
         face,
         speaking: 0,
@@ -282,6 +375,7 @@ describe('face sprites', () => {
       {
         x: 3.5,
         y: 4.5,
+        key: 's',
         color: RED,
         face,
         speaking: 0,
@@ -313,6 +407,7 @@ describe('speaking ring', () => {
       {
         x: 3.5,
         y: 4.5,
+        key: 's',
         color: RED,
         face,
         speaking: 0,
@@ -331,6 +426,7 @@ describe('speaking ring', () => {
       {
         x: 3.5,
         y: 4.5,
+        key: 's',
         color: RED,
         face,
         speaking: 1,
@@ -352,6 +448,7 @@ describe('floor shadows', () => {
   /** Floor row under a point `depth` tiles straight ahead (camera at half wall height). */
   const floorRow = (depth: number) => Math.floor(180 + (0.5 * PROJ) / depth);
   const sprite = (x: number, y = 4.5, color = RED) => ({
+    key: `${x},${y}`,
     x,
     y,
     color,
@@ -467,6 +564,7 @@ describe('held items', () => {
   const beer = (x: number, y = 4.5) => ({
     x,
     y,
+    key: 's',
     color: RED,
     face: null,
     speaking: 0,
@@ -641,6 +739,7 @@ describe('held item shadows', () => {
   const holding = (held: 'beer' | 'wine' | null) => ({
     x: 3.5,
     y: 4.5,
+    key: 's',
     color: RED,
     face: null,
     speaking: 0,
@@ -757,6 +856,7 @@ describe('boombox', () => {
   const carrier = (x: number) => ({
     x,
     y: 4.5,
+    key: 's',
     color: RED,
     face: null,
     speaking: 0,

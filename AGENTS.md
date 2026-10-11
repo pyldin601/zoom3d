@@ -83,13 +83,23 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
 - Browsers require a user gesture before `AudioContext` starts; `getUserMedia` needs HTTPS (or localhost).
 - Chrome only delivers remote WebRTC audio into Web Audio if the stream is also attached to a (muted) `<audio>` element.
 - Echo: use `echoCancellation` on capture and avoid playing remote audio through paths that bypass it.
-- LiveKit (`media/livekit.ts`): our tracks are published by **name** (`face`, `mic`, `boombox`) as user-provided
-  tracks, and swapped with `replaceTrack`. LiveKit stops local tracks on disconnect by default, which would kill the
-  controller's mic and canvas for good: keep `stopLocalTrackOnUnpublish: false` and `disconnect(false)`. It also
-  rewrites `enabled` on publish/replace (a muted mic would go live), so the transport restores it. Match remote tracks
-  by name, never by order.
-- A peer's face+mic arrive as one stream, re-emitted as a **new** `MediaStream` whenever its tracks change: the audio
-  engine ignores a stream object it already has, so mutating one would leave a late mic silent.
+- LiveKit (`media/livekit.ts`): our tracks are published by **name** (`face`, `face-128`, `face-64`, `mic`,
+  `boombox`) as user-provided tracks, and swapped with `replaceTrack`. LiveKit stops local tracks on disconnect by
+  default, which would kill the controller's mic and canvas for good: keep `stopLocalTrackOnUnpublish: false` and
+  `disconnect(false)`. It also rewrites `enabled` on publish/replace (a muted mic would go live), so the transport
+  restores it. Match remote tracks by name, never by order.
+- Dynamic subscription (6c spec `docs/superpowers/specs/2026-10-11-dynamic-subscription-design.md`): nothing is
+  received until asked for (`autoSubscribe: false`). Every 250 ms `main.ts` runs `media/interest.ts` on what
+  `renderSprites` drew (its `facts` map) and hands changed wants to `call.setWanted`. The face's three sizes are
+  **separate tracks**, not simulcast (livekit-client disables simulcast below 480 px); dynacast pauses the ones nobody
+  receives. Size switches are make-before-break, and faces hold their last frame while paused or resuming. An e2e
+  spec that expects someone's face must turn toward them first (`lookAt` in `e2e/join.ts`): players spawn facing a
+  random direction.
+- A peer's face and voice arrive as **separate** streams (`onRemoteStream` with the shown face, `onRemoteVoice` with
+  the mic, played from its own muted `<audio>` like the boombox), each re-emitted as a **new** `MediaStream` when its
+  track changes (empty when it goes). The audio engine ignores a stream object it already has (mutating one would
+  leave a late mic silent) and rebuilds a voice for a new one, so face changes, which 6c makes constant, must never
+  re-emit the voice.
 - LiveKit can deliver a peer's tracks before the game WebSocket announces the peer, and never sends them again:
   `call.ts` keeps such early media until the face exists. Don't drop it.
 - k8s: a pod next to a Service named `livekit` gets `LIVEKIT_PORT=tcp://…` and LiveKit reads every `LIVEKIT_*` env as
@@ -115,7 +125,8 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   is the only thing that should be audible. The `AudioContext` is created when the lobby opens
   (for the mic meter) and `resume()`d synchronously in the Join submit, before anything else, to satisfy autoplay policy.
 - Face framing: the sent video is a canvas track drawn on `requestVideoFrameCallback`, which stops in hidden
-  tabs. `framer.sendTrack` flips to the raw camera track while hidden and the call pushes it to the transport;
+  tabs. `framer.sendTracks()` flips all three face tracks to the raw camera while hidden (the small ones scale it
+  down) and the call pushes them to the transport;
   don't remove that swap, or peers freeze on tab switch.
 - Camera off stops the camera, but the framer's canvas track is always sent (lobby spec §4.3). Don't send the raw
   camera directly or drop the canvas track when the camera is off: the face would be unpublished, and turning the

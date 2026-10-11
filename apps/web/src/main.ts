@@ -1,4 +1,13 @@
-import { type HeldItem, INTERP_DELAY_MS, LEVEL1, newRoomId, parseMap, spawnPoint, stepPlayer } from '@zoom3d/shared';
+import {
+  DEFAULT_AUDIO_SETTINGS,
+  type HeldItem,
+  INTERP_DELAY_MS,
+  LEVEL1,
+  newRoomId,
+  parseMap,
+  spawnPoint,
+  stepPlayer,
+} from '@zoom3d/shared';
 import { preferPlayAndRecord } from './audio/audio-session';
 import { createDoorbell, withDoorbell } from './audio/doorbell';
 import { type AudioEngine, createAudioEngine } from './audio/engine';
@@ -14,6 +23,7 @@ import { type Call, createCall } from './media/call';
 import { createFace } from './media/faces';
 import { createFramer } from './media/framer';
 import { createFramingMemory } from './media/framing-memory';
+import { createInterest, INTEREST_MS, type PeerFacts, type Want } from './media/interest';
 import { createLiveKitTransport } from './media/livekit';
 import { createLocalMedia, type LocalMediaController } from './media/local-media';
 import { loadMediaPrefs, saveMediaPrefs } from './media/media-prefs';
@@ -612,15 +622,71 @@ function refreshPositions(s: Session, now: number): void {
   }
 }
 
+/** Per peer, what the last frame drew of them (written by renderSprites into reused objects). */
+const facts = new Map<string, PeerFacts>();
+const interest = createInterest();
+/** The wants last handed to `wantsCall`, so only changes are sent. */
+const sentWants = new Map<string, Want>();
+let wantsCall: Call | null = null;
+let interestAt = Number.NEGATIVE_INFINITY;
+
+/** Dynamic subscription (6c spec §4): every INTEREST_MS, decides whose face and voice to receive. */
+function updateInterest(s: Session, now: number, hidden: boolean): void {
+  if (!call || now - interestAt < INTEREST_MS) {
+    return;
+  }
+  interestAt = now;
+  if (call !== wantsCall) {
+    wantsCall = call;
+    sentWants.clear();
+  }
+  const media = call;
+  for (const id of facts.keys()) {
+    if (!positions.has(id)) {
+      facts.delete(id);
+    }
+  }
+  const peers: { id: string; x: number; y: number }[] = [];
+  for (const [id, pos] of positions) {
+    // Bots publish nothing: they must not take anyone's video or voice slot.
+    if (s.peers.has(id) && media.publishes(id)) {
+      peers.push({ id, x: pos.x, y: pos.y });
+    }
+  }
+  const wants = interest.update({
+    now,
+    hidden,
+    player,
+    fov: fb.fov,
+    map,
+    maxDistance: audio?.settings().max ?? DEFAULT_AUDIO_SETTINGS.max,
+    peers,
+    facts: (id) => facts.get(id),
+  });
+  for (const [id, want] of wants) {
+    const sent = sentWants.get(id);
+    if (!sent || sent.video !== want.video || sent.audio !== want.audio) {
+      sentWants.set(id, want);
+      media.setWanted(id, want);
+    }
+  }
+  for (const id of sentWants.keys()) {
+    if (!wants.has(id)) {
+      sentWants.delete(id);
+    }
+  }
+}
+
 // rAF stops while the tab is hidden: keep voices (and newcomers) audible from a timer meanwhile.
 startHiddenTicker(
   () => {
-    if (!session || !audio) {
+    if (!session) {
       return;
     }
     const now = performance.now();
     refreshPositions(session, now);
-    audio.update(now, player, positions);
+    audio?.update(now, player, positions);
+    updateInterest(session, now, true);
   },
   () => document.hidden
 );
@@ -664,6 +730,7 @@ function frame(dt: number): void {
       // cheersPose returns a reused object: read it before the next call.
       const raised = gesture?.kind === 'cheers' ? cheersPose(now - gesture.at) : null;
       sprites.push({
+        key: peer.info.id,
         x: pos.x,
         y: pos.y,
         color,
@@ -690,7 +757,10 @@ function frame(dt: number): void {
   }
 
   renderWalls(fb, map, player, textures);
-  renderSprites(fb, player, sprites);
+  renderSprites(fb, player, sprites, facts);
+  if (session) {
+    updateInterest(session, performance.now(), document.hidden);
+  }
   if (inRoom()) {
     renderOwnHeld(fb, ownHeld, selfBob.itemLift, selfBob.sway, ownGesture.pose(performance.now()));
     renderOwnBoombox(fb, ownBoombox, selfBob.itemLift, selfBob.sway);
