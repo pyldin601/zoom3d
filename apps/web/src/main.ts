@@ -41,7 +41,7 @@ import { heldForKey, heldKeyAction, loadHeld, saveHeld } from './ui/held-store';
 import { renderLandingScene } from './ui/landing-scene';
 import { joinBanner, PROBLEM_TEXT, showLobby } from './ui/lobby';
 import { createMicLevel } from './ui/mic-level';
-import { parseRoute } from './ui/route';
+import { botsParam, parseRoute } from './ui/route';
 import {
   clearScreen,
   showBanner,
@@ -404,6 +404,7 @@ function joinRoom(
     roomId,
     name,
     avatar,
+    bots: botsParam(location.search),
     player,
     now: () => performance.now(),
     listener: withRoomTracker(withDoorbell(call.listener, createDoorbell(audioCtx)), tracker, () => session),
@@ -493,7 +494,9 @@ if (route.kind === 'landing') {
     const roomId = newRoomId(crypto.getRandomValues(new Uint8Array(16)));
     hostedRoom = roomId;
     track({ name: 'party_started' });
-    history.pushState(null, '', `/r/${roomId}`);
+    // `/?bots=N` carries into the room link, so the join that creates the room asks for bots.
+    const bots = botsParam(location.search);
+    history.pushState(null, '', `/r/${roomId}${bots ? `?bots=${bots}` : ''}`);
     showStill(false);
     openLobby(roomId);
   });

@@ -97,6 +97,21 @@ test('peer_state for unknown or departed peers creates no ghosts, and stale seqs
   expect(session.peers.size).toBe(0);
 });
 
+test('join asks for bots when given (only matters for the join that creates the room)', () => {
+  createSession({
+    url: 'ws://t/ws',
+    roomId: ROOM,
+    name: 'Ada',
+    bots: 100,
+    player,
+    now: Date.now,
+    WebSocketImpl: asWebSocket,
+  });
+  const ws = FakeWebSocket.latest();
+  ws.open();
+  expect(ws.sent[0]).toEqual({ type: 'join', roomId: ROOM, name: 'Ada', bots: 100 });
+});
+
 test('join carries the avatar picture, also when resuming', () => {
   const pic = 'data:image/jpeg;base64,/9j/';
   const { ws } = joinedSession([], {}, pic);

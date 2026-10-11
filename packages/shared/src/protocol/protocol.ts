@@ -1,6 +1,8 @@
 // Multiplayer wire protocol: message types, constants and strict validators.
 
 export const MAX_PEERS = 8;
+/** Bots a room may be created with (opt-in via the room link's `?bots=N`), outside MAX_PEERS. */
+export const MAX_BOTS = 100;
 export const NAME_MAX = 24;
 /** Client → server. A join carrying a full-size avatar is ≈ 12 KB. */
 export const MAX_MESSAGE_BYTES = 16384;
@@ -54,6 +56,8 @@ export type JoinMessage = {
   name: string;
   resumeToken?: string;
   avatar?: string;
+  /** Asks for this many wandering bots if the join creates the room (testing large rooms). */
+  bots?: number;
 };
 export type StateMessage = { type: 'state'; x: number; y: number; angle: number; seq: number };
 export type MediaMessage = { type: 'media'; cam: boolean; mic: boolean };
@@ -210,6 +214,9 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     // A bad picture is not worth refusing the join over: the peer just shows initials.
     if (isValidAvatar(m.avatar)) {
       join.avatar = m.avatar;
+    }
+    if (Number.isInteger(m.bots) && (m.bots as number) >= 1 && (m.bots as number) <= MAX_BOTS) {
+      join.bots = m.bots as number;
     }
     return join;
   }

@@ -14,6 +14,8 @@ import { loadSnapshot, saveSnapshot } from './snapshot';
 export const CLOSE_RATE_LIMIT = 4008;
 const MAX_CONSECUTIVE_DROPS = 200;
 const TICK_MS = 1000;
+/** Bots move at 10 Hz: smooth enough with client interpolation, and the load large rooms will really see. */
+const BOT_TICK_MS = 100;
 
 export interface ServerOptions {
   port: number;
@@ -65,6 +67,9 @@ function observe(e: LobbyEvent, log: Logger, metrics: Metrics): void {
     case 'left':
       log.info('peer_left', { room: roomRef(e.roomId), peerId: e.peerId, peers: e.peers });
       metrics.peersLeft.inc();
+      break;
+    case 'bots_spawned':
+      log.info('bots_spawned', { room: roomRef(e.roomId), count: e.count });
       break;
     case 'move_corrected':
       log.debug('move_corrected', { room: roomRef(e.roomId), peerId: e.peerId });
@@ -208,6 +213,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     }
   }, opts.heartbeatMs ?? 10_000);
   const ticker = setInterval(() => lobby.tick(), TICK_MS);
+  const botTicker = setInterval(() => lobby.stepBots(BOT_TICK_MS), BOT_TICK_MS);
 
   await new Promise<void>((resolve) => http.listen(opts.port, resolve));
   return {
@@ -215,6 +221,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     async close() {
       clearInterval(heartbeat);
       clearInterval(ticker);
+      clearInterval(botTicker);
       if (opts.stateFile) {
         saveSnapshot(opts.stateFile, lobby.snapshot(), log);
       }

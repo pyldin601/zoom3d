@@ -58,6 +58,8 @@ export interface SessionOptions {
   name: string;
   /** Avatar picture (validated JPEG data URL) shown to others while the camera is off. */
   avatar?: string | null;
+  /** Wandering bots to ask for if this join creates the room (`?bots=N`). */
+  bots?: number | null;
   /** Mutated in place by spawn and corrections; read by the state sender. */
   player: PlayerState;
   now: () => number;
@@ -197,6 +199,7 @@ export function createSession(opts: SessionOptions): Session {
       name: opts.name,
       ...(resumeToken ? { resumeToken } : {}),
       ...(opts.avatar ? { avatar: opts.avatar } : {}),
+      ...(opts.bots ? { bots: opts.bots } : {}),
     }),
     // 'open' and 'failed' arrive with the welcome or error that caused them: tell the listener once that is applied.
     onMessage: (msg) => {
