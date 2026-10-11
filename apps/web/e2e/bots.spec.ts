@@ -21,7 +21,9 @@ test('a party started from /?bots=20 has 20 wandering bots; a normal party has n
   await joinAs(page, 'Ada');
   await expect.poll(async () => (await botPositions(page)).length, { timeout: 10_000 }).toBe(20);
   const before = await botPositions(page);
-  await expect.poll(async () => (await botPositions(page)).filter((p, i) => p !== before[i]).length).toBeGreaterThan(10);
+  await expect
+    .poll(async () => (await botPositions(page)).filter((p, i) => p !== before[i]).length)
+    .toBeGreaterThan(10);
 
   await page.goto('/');
   await page.getByRole('button', { name: 'Start a party' }).click();
