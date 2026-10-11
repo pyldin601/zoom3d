@@ -485,6 +485,7 @@ export class Lobby {
       spawn: { x: self.x, y: self.y, angle: self.angle },
       peers: [...room.values()].filter((p) => p.id !== self.id).map(info),
       livekit: this.opts.liveKitFor(roomId, self.id),
+      objects: [],
     });
   }
 

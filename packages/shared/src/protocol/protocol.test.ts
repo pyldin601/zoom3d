@@ -200,7 +200,9 @@ describe('parseServerMessage', () => {
       spawn: { x: 1, y: 2, angle: 0 },
       peers: [peer],
       livekit: { url: 'wss://lk.example', token: 'jwt' },
+      objects: [{ id: 'v', kind: 'vacuum', x: 3, y: 4, angle: 1 }],
     },
+    { type: 'object_state', id: 'v', x: 1, y: 2, angle: 3, seq: 4, event: 'lost' },
     { type: 'peer_media', id: 'p1', cam: false, mic: true },
     { type: 'peer_joined', peer },
     { type: 'peer_joined', peer: { ...peer, avatar: AVATAR } },
@@ -400,5 +402,44 @@ describe('boombox', () => {
     expect(parsed(older).boombox).toBe(false);
     expect(parsed({ ...peer, boombox: 'yes' }).boombox).toBe(false);
     expect(parsed({ ...peer, boombox: true }).boombox).toBe(true);
+  });
+});
+
+describe('world objects', () => {
+  const welcome = {
+    type: 'welcome',
+    selfId: 'p2',
+    resumeToken: 't',
+    color: '#3cb44b',
+    spawn: { x: 1, y: 2, angle: 0 },
+    peers: [],
+    livekit: { url: 'wss://lk.example', token: 'jwt' },
+  };
+  const vacuum = { id: 'v', kind: 'vacuum', x: 1, y: 2, angle: 0 };
+
+  test('welcome without objects parses with objects: []', () => {
+    expect(parseServerMessage(json(welcome))).toEqual({ ...welcome, objects: [] });
+  });
+
+  test('welcome keeps valid objects and drops invalid ones', () => {
+    const objects = [vacuum, { ...vacuum, id: 'w', kind: 'toaster' }, { id: 3 }];
+    expect(parseServerMessage(json({ ...welcome, objects }))).toEqual({ ...welcome, objects: [vacuum] });
+  });
+
+  test('object_state parses with and without event', () => {
+    const state = { type: 'object_state', id: 'v', x: 1, y: 2, angle: 0.5, seq: 3 };
+    expect(parseServerMessage(json(state))).toEqual(state);
+    expect(parseServerMessage(json({ ...state, event: 'bump' }))).toEqual({ ...state, event: 'bump' });
+  });
+
+  test('object_state with an unknown event keeps the pose', () => {
+    const state = { type: 'object_state', id: 'v', x: 1, y: 2, angle: 0.5, seq: 3 };
+    expect(parseServerMessage(json({ ...state, event: 'dance' }))).toEqual(state);
+  });
+
+  test('object_state rejects a bad pose or seq', () => {
+    const state = { type: 'object_state', id: 'v', x: 1, y: 2, angle: 0.5, seq: 3 };
+    expect(parseServerMessage(json({ ...state, x: '1' }))).toBeNull();
+    expect(parseServerMessage(json({ ...state, seq: -1 }))).toBeNull();
   });
 });

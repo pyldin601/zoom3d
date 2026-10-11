@@ -44,6 +44,21 @@ export interface PeerInfo {
   boombox: boolean;
 }
 
+/** A server-driven thing in the room that isn't a person, like the robot vacuum (robot vacuum spec §4). */
+export type ObjectKind = 'vacuum';
+/** Something an object did on one step, for its sound (robot vacuum spec §5.2). */
+export type ObjectEvent = 'bump' | 'lost';
+const OBJECT_KINDS: readonly ObjectKind[] = ['vacuum'];
+const OBJECT_EVENTS: readonly ObjectEvent[] = ['bump', 'lost'];
+
+export interface ObjectInfo {
+  id: string;
+  kind: ObjectKind;
+  x: number;
+  y: number;
+  angle: number;
+}
+
 /** Where and how a peer joins the room's LiveKit SFU (LiveKit spec §3). */
 export interface LiveKitAccess {
   url: string;
@@ -86,6 +101,7 @@ export type ServerMessage =
       spawn: { x: number; y: number; angle: number };
       peers: PeerInfo[];
       livekit: LiveKitAccess;
+      objects: ObjectInfo[];
     }
   | { type: 'peer_joined'; peer: PeerInfo }
   | { type: 'peer_media'; id: string; cam: boolean; mic: boolean }
@@ -95,6 +111,7 @@ export type ServerMessage =
   | { type: 'peer_boombox'; id: string; on: boolean }
   | { type: 'peer_left'; id: string }
   | { type: 'peer_state'; id: string; x: number; y: number; angle: number; seq: number }
+  | { type: 'object_state'; id: string; x: number; y: number; angle: number; seq: number; event?: ObjectEvent }
   | { type: 'correction'; x: number; y: number; angle: number; seq: number }
   | { type: 'error'; code: ErrorCode; message: string };
 
@@ -263,6 +280,15 @@ export function parsePeerInfo(v: unknown): PeerInfo | null {
   return p && { id: v.id, name: v.name, color: v.color, ...p, cam: v.cam, mic: v.mic, avatar, held, boombox };
 }
 
+/** Validates an object from a welcome; an unknown kind (a newer server's) reads as null. */
+export function parseObjectInfo(v: unknown): ObjectInfo | null {
+  if (!isObj(v) || !isStr(v.id) || !OBJECT_KINDS.includes(v.kind as ObjectKind)) {
+    return null;
+  }
+  const p = pose(v);
+  return p && { id: v.id, kind: v.kind as ObjectKind, ...p };
+}
+
 export function parseServerMessage(raw: string): ServerMessage | null {
   const m = parseJson(raw, MAX_SERVER_MESSAGE_BYTES);
   if (!m) {
@@ -287,6 +313,10 @@ export function parseServerMessage(raw: string): ServerMessage | null {
         spawn,
         peers: peers as PeerInfo[],
         livekit,
+        // Missing from an older server: no objects. Ones this client doesn't know are left out.
+        objects: Array.isArray(m.objects)
+          ? m.objects.map(parseObjectInfo).filter((o): o is ObjectInfo => o !== null)
+          : [],
       };
     }
     case 'peer_joined': {
@@ -310,6 +340,14 @@ export function parseServerMessage(raw: string): ServerMessage | null {
     case 'peer_state': {
       const p = pose(m);
       return p && isStr(m.id) && isSeq(m.seq) ? { type: 'peer_state', id: m.id, ...p, seq: m.seq } : null;
+    }
+    case 'object_state': {
+      const p = pose(m);
+      if (!p || !isStr(m.id) || !isSeq(m.seq)) {
+        return null;
+      }
+      const event = OBJECT_EVENTS.includes(m.event as ObjectEvent) ? { event: m.event as ObjectEvent } : {};
+      return { type: 'object_state', id: m.id, ...p, seq: m.seq, ...event };
     }
     case 'correction': {
       const p = pose(m);
