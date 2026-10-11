@@ -26,7 +26,15 @@ export function liveKitConfigFromEnv(env: Record<string, string | undefined>): L
 const b64url = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64url');
 
 /**
- * A token that lets `peerId` join, publish and subscribe in LiveKit room `roomId` (the zoom3d room id).
+ * LiveKit's name for a zoom3d room. The room id is the room's only key, and LiveKit logs room names, so it gets a
+ * keyed hash instead (stable per room and secret). Clients never need it: their token names the room.
+ */
+export function liveKitRoomName(cfg: LiveKitConfig, roomId: string): string {
+  return createHmac('sha256', cfg.apiSecret).update(`room:${roomId}`).digest('base64url').slice(0, 22);
+}
+
+/**
+ * A token that lets `peerId` join, publish and subscribe in the LiveKit room of zoom3d room `roomId`.
  * Signed here (HS256, the claims livekit-server-sdk writes) because it must be synchronous: the lobby sends its
  * welcome inline. Tests verify it with the SDK's TokenVerifier.
  */
@@ -38,7 +46,7 @@ export function liveKitTokenFor(cfg: LiveKitConfig, roomId: string, peerId: stri
     jti: peerId,
     nbf: now,
     exp: now + TOKEN_TTL_S,
-    video: { room: roomId, roomJoin: true, canPublish: true, canSubscribe: true },
+    video: { room: liveKitRoomName(cfg, roomId), roomJoin: true, canPublish: true, canSubscribe: true },
   })}`;
   return `${body}.${createHmac('sha256', cfg.apiSecret).update(body).digest('base64url')}`;
 }

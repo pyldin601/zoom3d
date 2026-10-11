@@ -1,6 +1,6 @@
 import { TokenVerifier } from 'livekit-server-sdk';
 import { describe, expect, test } from 'vitest';
-import { liveKitConfigFromEnv, liveKitTokenFor } from './livekit';
+import { liveKitConfigFromEnv, liveKitRoomName, liveKitTokenFor } from './livekit';
 
 describe('liveKitConfigFromEnv', () => {
   test('defaults to the LiveKit dev server outside production', () => {
@@ -43,7 +43,7 @@ describe('liveKitTokenFor', () => {
     const claims = await new TokenVerifier(cfg.apiKey, cfg.apiSecret).verify(token);
     expect(claims.sub).toBe('peer-1');
     expect(claims.video).toMatchObject({
-      room: 'AAAAAAAAAAAAAAAAAAAAAA',
+      room: liveKitRoomName(cfg, 'AAAAAAAAAAAAAAAAAAAAAA'),
       roomJoin: true,
       canPublish: true,
       canSubscribe: true,
@@ -53,6 +53,16 @@ describe('liveKitTokenFor', () => {
 
   test('signing is synchronous, so the lobby can send its welcome inline', () => {
     expect(typeof liveKitTokenFor(cfg, 'AAAAAAAAAAAAAAAAAAAAAA', 'peer-1')).toBe('string');
+  });
+
+  test("the LiveKit room name hides the room id (the room's only key) from LiveKit's logs", () => {
+    const room = 'AAAAAAAAAAAAAAAAAAAAAA';
+    const name = liveKitRoomName(cfg, room);
+    expect(name).not.toContain(room);
+    expect(name).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(liveKitRoomName(cfg, room)).toBe(name);
+    expect(liveKitRoomName(cfg, 'BBBBBBBBBBBBBBBBBBBBBB')).not.toBe(name);
+    expect(liveKitRoomName({ ...cfg, apiSecret: 'another-secret' }, room)).not.toBe(name);
   });
 
   test('a token signed with another secret does not verify', async () => {
