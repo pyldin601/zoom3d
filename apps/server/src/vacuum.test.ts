@@ -287,3 +287,31 @@ describe('bumping into people', () => {
     expect(v.skipped).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe('blocked with no room to go round', () => {
+  /** Two rooms joined by a one-tile door at (6, 3). */
+  const DOOR = room([
+    '1111111111111',
+    '1S....1.....1',
+    '1.....1.....1',
+    '1...........1',
+    '1.....1.....1',
+    '1.....1.....1',
+    '1111111111111',
+  ]);
+
+  test('a person just past a doorway gets one thud, not one every half second', () => {
+    const nav = createVacuumNav(DOOR);
+    const v = createVacuum(nav, seeded(), 'v1');
+    Object.assign(v, { x: 5.5, y: 3.5, angle: 0, waypoints: [{ x: 10.5, y: 3.5 }], deadline: 1e9, patch: null });
+    const person = { x: 6.95, y: 3.5 };
+    let bumps = 0;
+    for (let t = 0; t < 120; t += DT) {
+      if (stepVacuum(nav, v, DT, seeded(), [person]) === 'bump') {
+        bumps++;
+      }
+    }
+    expect(bumps).toBeGreaterThanOrEqual(1);
+    expect(bumps).toBeLessThanOrEqual(3);
+  });
+});

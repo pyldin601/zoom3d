@@ -17,6 +17,10 @@ export const SEARCH_MIN_TILES = 10;
 export const BUMP_PAUSE_S = 0.3;
 /** How far it steps aside from someone it bumped, in tiles: past touching distance, so the way round is clear. */
 export const SIDESTEP = 0.7;
+/** Seconds it waits, quietly, when someone blocks it with no room to go round (a doorway, a corridor). */
+export const BLOCKED_WAIT_S = 2;
+/** It only thuds again once it has moved this far (tiles) since its last bump. */
+const REBUMP_DISTANCE = 0.1;
 /** How far it drives on beside them before heading back to its waypoint. */
 const PASS = 1.2;
 /** It bumps a person whose centre is this close, in front of it. */
@@ -61,6 +65,9 @@ export interface Vacuum {
   mode: 'move' | 'scan' | 'pause';
   /** Radians of circle left in `scan`, seconds left in `pause`. */
   left: number;
+  /** Where it last bumped someone (NaN before any): it stays quiet bumping again without having moved. */
+  bumpX: number;
+  bumpY: number;
 }
 
 /** The robot as written to the restart snapshot. */
@@ -98,6 +105,8 @@ function fresh(id: string, x: number, y: number, angle: number, phase: VacuumPha
     time: 0,
     mode: 'move',
     left: 0,
+    bumpX: Number.NaN,
+    bumpY: Number.NaN,
   };
 }
 
@@ -253,7 +262,10 @@ function bumped(v: Vacuum, people: readonly Point[]): Point | null {
   return null;
 }
 
-/** Stops, then steps aside (away from the person, unless a wall is there) and drives on past them. */
+/**
+ * Stops, then steps aside (away from the person, unless a wall is there) and drives on past them. With no room on
+ * either side it just waits; the waypoint deadline gives up a way that stays blocked.
+ */
 function goRound(nav: VacuumNav, v: Vacuum, person: Point): void {
   const fx = Math.cos(v.angle);
   const fy = Math.sin(v.angle);
@@ -267,10 +279,12 @@ function goRound(nav: VacuumNav, v: Vacuum, person: Point): void {
     }
     const pass = { x: side.x + fx * PASS, y: side.y + fy * PASS, detour: true as const };
     v.waypoints.unshift(...(fits(nav, pass.x, pass.y) ? [side, pass] : [side]));
-    break;
+    v.mode = 'pause';
+    v.left = BUMP_PAUSE_S;
+    return;
   }
   v.mode = 'pause';
-  v.left = BUMP_PAUSE_S;
+  v.left = BLOCKED_WAIT_S;
 }
 
 /** Advances by dt seconds. `people` are connected persons' positions. Returns the event of this step, if any. */
@@ -332,7 +346,11 @@ export function stepVacuum(
   const person = bumped(v, people);
   if (person) {
     goRound(nav, v, person);
-    return 'bump';
+    // Pressed up against someone it can't get round, it doesn't keep thudding into them.
+    const moved = Number.isNaN(v.bumpX) || Math.hypot(v.x - v.bumpX, v.y - v.bumpY) > REBUMP_DISTANCE;
+    v.bumpX = v.x;
+    v.bumpY = v.y;
+    return moved ? 'bump' : null;
   }
   const step = Math.min(VACUUM_SPEED * dt, distance);
   const to = moveWithCollision(nav.map, v.x, v.y, Math.cos(v.angle) * step, Math.sin(v.angle) * step, VACUUM_RADIUS);
