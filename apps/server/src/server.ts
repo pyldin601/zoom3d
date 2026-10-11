@@ -77,11 +77,20 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
   const livekit = opts.livekit ?? liveKitConfigFromEnv({});
   const log = opts.log ?? silentLogger;
   const sockets = new Map<string, { ws: WebSocket; alive: boolean }>();
+  const sendRaw = (conn: string, data: string) => {
+    const s = sockets.get(conn);
+    if (s && s.ws.readyState === s.ws.OPEN) {
+      s.ws.send(data);
+    }
+  };
   const out: Outbox = {
     send(conn, msg) {
-      const s = sockets.get(conn);
-      if (s && s.ws.readyState === s.ws.OPEN) {
-        s.ws.send(JSON.stringify(msg));
+      sendRaw(conn, JSON.stringify(msg));
+    },
+    broadcast(conns, msg) {
+      const data = JSON.stringify(msg);
+      for (const conn of conns) {
+        sendRaw(conn, data);
       }
     },
     close(conn, code, reason) {
