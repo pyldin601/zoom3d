@@ -16,6 +16,7 @@ import { startHiddenTicker } from './audio/ticker';
 import { startLoop } from './game/loop';
 import { type Frame, layoutStage, watchLayout } from './game/stage';
 import { createInput } from './input/keyboard';
+import { lockPointer } from './input/pointer-lock';
 import { createTouchInput } from './input/touch';
 import { loadAvatar, saveAvatar } from './media/avatar';
 import { type Boombox, createBoombox } from './media/boombox';
@@ -170,7 +171,7 @@ const inRoom = () => session?.status() === 'open';
 // Mouse-look only: iOS has no pointer lock, and a finger on the view turns by dragging instead (mobile spec §4.1).
 game.addEventListener('pointerdown', (e) => {
   if (inRoom() && e.pointerType === 'mouse' && e.button === 0) {
-    game.requestPointerLock();
+    lockPointer(game);
   }
 });
 
