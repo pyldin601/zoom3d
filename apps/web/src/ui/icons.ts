@@ -1,4 +1,4 @@
-// Line icons shared by the lobby, the room bar and the touch controls, drawn as inline SVG (styled by CSS through currentColor).
+// Line icons shared by the lobby, the room's mic button and the touch controls, drawn as inline SVG (styled by CSS through currentColor).
 
 const SVG = 'http://www.w3.org/2000/svg';
 
@@ -40,7 +40,7 @@ const TOUCH_ICONS = {
   link: ['M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1', 'M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1'],
 } as const;
 
-/** Icons for the touch controls (mobile spec §5): drinks, boombox, map, the ⋯ button and the copy-link button. */
+/** Icons for the touch controls (mobile spec §5): drinks, boombox, map and the ⋯ button; also the lobby's invite link. */
 export function touchIcon(kind: keyof typeof TOUCH_ICONS): SVGSVGElement {
   return icon(TOUCH_ICONS[kind]);
 }

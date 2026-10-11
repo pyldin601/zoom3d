@@ -5,7 +5,7 @@ import { makeAvatar } from '../media/avatar';
 import type { Device, DeviceProblem } from '../media/devices';
 import { initials } from '../media/faces';
 import type { LocalMediaController, MediaState } from '../media/local-media';
-import { addMeter, deviceIcon, setMeter } from './icons';
+import { addMeter, deviceIcon, setMeter, touchIcon } from './icons';
 import { meterHeight } from './mic-level';
 import { el, setScreen } from './screens';
 
@@ -62,8 +62,14 @@ export interface LobbyOptions {
   pickAvatar?: (file: File) => Promise<string>;
   /** Mic level 0..1, sampled once a frame. */
   level?: () => number;
+  /** This room's link, copied by the button under Join. */
+  inviteUrl: string;
   onJoin(name: string, avatar: string | null): void;
 }
+
+/** How long the invite button says "Copied". */
+const COPIED_MS = 2000;
+const COPY_FAILED = "Couldn't copy the link. It's in the address bar.";
 
 const AVATAR_ERRORS: Record<string, string> = {
   too_big: 'That picture is too detailed — try another',
@@ -218,6 +224,26 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
   const join = el('button', { type: 'submit', textContent: 'Join' });
   const error = el('p', { className: 'error' });
   const form = el('form', {}, input, join);
+  // Under Join, after a divider: the lobby is where a host shares the room before joining. The room has no link.
+  const copy = el('button', { type: 'button', className: 'invite-copy' });
+  const showCopy = () => copy.replaceChildren(touchIcon('link'), 'Copy invite link');
+  showCopy();
+  let copyError = '';
+  copy.addEventListener('click', () => {
+    const copied = navigator.clipboard?.writeText(opts.inviteUrl) ?? Promise.reject();
+    copied.then(
+      () => {
+        copyError = '';
+        render();
+        copy.textContent = 'Copied';
+        setTimeout(showCopy, COPIED_MS);
+      },
+      () => {
+        copyError = COPY_FAILED;
+        render();
+      }
+    );
+  });
 
   // Set once a request has been pending for WAITING_DELAY_MS.
   let stalled = false;
@@ -261,7 +287,7 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
     cam.render(state);
     mic.render(state);
     join.disabled = encoding || state.pending;
-    error.textContent = avatarError || problemLine(state) || (stalled ? WAITING : '');
+    error.textContent = avatarError || copyError || problemLine(state) || (stalled ? WAITING : '');
   }
 
   input.addEventListener('input', render);
@@ -328,7 +354,16 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
   render();
   setScreen(
     root,
-    el('div', { className: 'lobby' }, disc, file, el('div', { className: 'devices' }, cam.root, mic.root), form, error)
+    el(
+      'div',
+      { className: 'lobby' },
+      disc,
+      file,
+      el('div', { className: 'devices' }, cam.root, mic.root),
+      form,
+      error,
+      el('div', { className: 'invite' }, copy)
+    )
   );
   input.focus();
 

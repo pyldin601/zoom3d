@@ -41,25 +41,20 @@
       #ui a { color: #8cf; display: inline-block; margin-top: 0.6em; }
       #ui .error { color: #f88; min-height: 1.2em; margin: 0.5em 0 0; }
       #ui .status { position: absolute; top: 40%; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.75); padding: 0.4em 1em; }
-      #ui .roombar { position: absolute; top: 0.5em; right: 0.5em; display: flex; gap: 0.3em; font-size: 0.6em; pointer-events: auto; }
-      #ui .roombar input { width: 18em; margin: 0; }
-      #ui .roombar .toggle { padding: 0.25em 0.45em; display: grid; place-items: center; }
       #ui .banner { position: absolute; bottom: 0.6em; left: 50%; transform: translateX(-50%); background: rgba(80, 40, 0, 0.85); padding: 0.4em 1em; font-size: 0.75em; }
       #ui .avatar { flex: none; width: 3.5em; height: 3.5em; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: #444; font-weight: bold; font-size: 1.2em; }
       #ui .avatar img { width: 100%; height: 100%; object-fit: cover; }
       /* Lobby (lobby spec §2): 7.5em is the 176 px disc on a 720 px stage. Three shades: sunken dark fields,
          mid-grey secondary buttons, one blue primary (Join). */
       #ui .lobby { width: 11em; margin: 0 auto; }
-      /* Shared by the lobby and the room bar. */
-      #ui .lobby button, #ui .roombar button { color: #ddd; background: #2e2e2e; border: 0.06em solid #555; border-radius: 0.25em; }
-      #ui .lobby button:disabled, #ui .roombar button:disabled { opacity: 0.45; cursor: not-allowed; }
-      #ui .lobby input, #ui .roombar input { padding: 0.35em; color: #eee; background: #0f0f0f; border: 0.06em solid #555; border-radius: 0.25em; outline: none; }
+      #ui .lobby button { color: #ddd; background: #2e2e2e; border: 0.06em solid #555; border-radius: 0.25em; }
+      #ui .lobby button:disabled { opacity: 0.45; cursor: not-allowed; }
+      #ui .lobby input { padding: 0.35em; color: #eee; background: #0f0f0f; border: 0.06em solid #555; border-radius: 0.25em; outline: none; }
       #ui .lobby input::placeholder { color: #777; }
-      #ui .lobby input:focus, #ui .roombar input:focus { border-color: #6aa8ff; }
-      #ui .lobby svg, #ui .roombar svg { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+      #ui .lobby input:focus { border-color: #6aa8ff; }
+      #ui .lobby svg { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
       #ui .lobby svg .meter { fill: #6c6; stroke: none; }
       #ui .mic-toggle svg, #ui .selfview .hint svg { width: 1.2em; height: 1.2em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
-      #ui .roombar .toggle svg { width: 1.4em; height: 1.4em; }
       #ui .lobby-disc { position: relative; width: 7.5em; height: 7.5em; margin: 0 auto 0.6em; overflow: visible; border: 0.05em solid #555; }
       #ui .lobby-disc video, #ui .lobby-disc .face { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; overflow: hidden; display: grid; place-items: center; font-size: 1.6em; }
       #ui .lobby-disc video { object-fit: cover; transform: scaleX(-1); font-size: inherit; }
@@ -79,6 +74,12 @@
       #ui .lobby .split > .chevron { border-left: 0; border-radius: 0 0.25em 0.25em 0; font-size: 0.7em; }
       #ui .lobby .split.off > button { color: #f99; background: #3a2020; border-color: #844; }
       #ui .lobby form input { margin: 0 0 0.45em; text-align: center; }
+      #ui .lobby .invite { border-top: 0.06em solid #333; padding-top: 0.6em; margin-top: 0.7em; }
+      /* The lobby's error line hangs just under the panel, only while there is one, so it leaves no gap inside. */
+      #ui .panel:has(> .lobby) { position: relative; }
+      #ui .lobby .error { position: absolute; top: calc(100% + 0.4em); left: 0; right: 0; min-height: 0; margin: 0; padding: 0.4em 0.8em; background: rgba(0, 0, 0, 0.8); }
+      #ui .lobby .error:empty { display: none; }
+      #ui .lobby .invite-copy { width: 100%; padding: 0.35em; display: flex; align-items: center; justify-content: center; gap: 0.4em; }
       #ui .lobby form [type="submit"], #ui .lobby .primary { width: 100%; padding: 0.35em; color: #fff; background: #2f6fd0; border-color: #2f6fd0; font-weight: 600; }
       /* Landing: the title picture (landing-scene.ts) shows undimmed; the lobby keeps the dim. The panel sits in the
          bottom-right corner, inset like the logo above it (28 of 640 px). Percentage padding is relative to the width
@@ -123,7 +124,6 @@
          overlays kept clear of the notch and home bar. */
       html.touch #stage { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
       html.touch #ui input { font-size: max(16px, 1em); -webkit-user-select: text; user-select: text; }
-      html.touch #ui .roombar { top: calc(0.5em + env(safe-area-inset-top)); right: calc(0.5em + env(safe-area-inset-right)); }
       html.touch #ui .selfview { right: calc(0.6em + env(safe-area-inset-right)); bottom: calc(0.6em + env(safe-area-inset-bottom)); }
       html.touch #ui .mic-toggle { right: calc(5.6em + env(safe-area-inset-right)); bottom: calc(0.6em + env(safe-area-inset-bottom)); width: max(44px, 2.2em); height: max(44px, 2.2em); }
       html.touch #ui .banner { bottom: calc(0.6em + env(safe-area-inset-bottom)); }

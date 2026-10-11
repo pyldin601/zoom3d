@@ -88,7 +88,7 @@ ceiling. That's expected.
 
 ### 2.4 Safe areas and the browser chrome
 - Add `viewport-fit=cover` to the viewport meta. The 3D frame fills the whole screen, under the notch and home
-  bar. UI elements (top bar, pad, tray, self-view) are inset with `env(safe-area-inset-*)`.
+  bar. UI elements (pad, tray, self-view) are inset with `env(safe-area-inset-*)`.
 - Size from `visualViewport` (falling back to `innerWidth`/`innerHeight`) and also re-lay out on
   `visualViewport` `resize`. Today a `ResizeObserver` on `<html>` (`stage.ts` `watchLayout`) may not fire
   when the iOS toolbar shows or hides.
@@ -155,7 +155,7 @@ Keyboard and touch can be active together: combine them by OR-ing the held actio
 
 ```
 ┌────────────────────────┐
-│                   [🔗] │  top bar, safe-area inset; link → "copy link" button
+│                        │  no top bar (the invite link is in the lobby since 2026-10-11)
 │                        │
 │     3D view, full      │  drag anywhere here to turn
 │     screen, faces      │
@@ -169,9 +169,9 @@ Keyboard and touch can be active together: combine them by OR-ing the held actio
 ```
 
 ### 5.1 Top bar
-*Changed 2026-10-11:* the mic and cam toggles left the top bar (see §5.2), so it holds only the invite link. In
-touch mode the invite-link text field (18em) is replaced by a
-single **copy link** button with a short "Copied" confirmation. Desktop keeps the field.
+*Removed 2026-10-11:* the room has no top bar. The mic and cam toggles moved to the self-view (§5.2) and the
+invite link to the lobby (lobby spec §2), on every device. Before, touch mode showed a single **copy link**
+button here, and desktop the link field.
 
 ### 5.2 Self-view
 It stays a small round tile in the bottom-right corner (as today), inset by the safe area, with the drink

@@ -36,8 +36,10 @@ The sketch was agreed in chat on 2026-10-09 ("ours", minimal, pencil only with t
 │                          │   the mic's capsule fills green with the mic level
 │  [       Roman        ]  │   name, centred, placeholder "Your name"
 │  [         Join        ] │
-│  Camera blocked: allow…  │   one error line, only when there is one
+│  ──────────────────────  │
+│  [ 🔗 Copy invite link ] │   copies this room's link (added 2026-10-11)
 └──────────────────────────┘
+ [ Camera blocked: allow… ]    one error line under the panel, only when there is one
 ```
 
 - **Disc.** Camera on: the live framed crop (the framer's canvas, the exact picture peers receive).
@@ -53,6 +55,14 @@ The sketch was agreed in chat on 2026-10-09 ("ours", minimal, pencil only with t
   unavailable (blocked, none present, insecure context) shows as off with its menu empty and its
   toggle disabled.
 - The "Headphones recommended." hint and the field labels are gone.
+- **Copy invite link** (added 2026-10-11). A full-width grey button under Join, after a thin divider, with
+  the link icon. It copies the room's URL and reads "Copied" for 2 s; if the clipboard
+  refuses, the error line says "Couldn't copy the link. It's in the address bar." It replaced the room's
+  top bar: a host shares the link in the lobby, before joining, and the room shows no link at all (the
+  address bar still has it). Under Join rather than beside it, so Join stays the one obvious action and a
+  phone tap can't hit the wrong one.
+- **Error line** (moved 2026-10-11). It hangs just under the panel on a dark strip, shown only while there is
+  an error. Inside the panel its reserved height left a gap above the invite divider.
 
 ## 3. Behaviour
 
