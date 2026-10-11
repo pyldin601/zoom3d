@@ -8,11 +8,13 @@ import type { VacuumSave } from './vacuum';
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 
 function snapshotPeer(v: unknown): SnapshotPeer | null {
-  const info = parsePeerInfo(v);
+  // Saved peers have no slot (restore hands out fresh ones): give the wire validator a placeholder.
+  const info = isObj(v) ? parsePeerInfo({ ...v, slot: 0 }) : null;
   if (!info || !isObj(v) || typeof v.resumeToken !== 'string' || !Number.isFinite(v.lastAcceptedAt)) {
     return null;
   }
-  return { ...info, resumeToken: v.resumeToken, lastAcceptedAt: v.lastAcceptedAt as number };
+  const { slot: _, ...saved } = info;
+  return { ...saved, resumeToken: v.resumeToken, lastAcceptedAt: v.lastAcceptedAt as number };
 }
 
 /** A saved robot vacuum, or null if anything about it is off (the room then gets a fresh one). */

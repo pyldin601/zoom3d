@@ -1,10 +1,13 @@
 import {
   DRINK_GAP_MS,
+  FAR_INTERVAL_MS,
   isWallAt,
   type JoinMessage,
   LEVEL1,
   MAX_PEERS,
+  NEAR_TILES,
   PEER_COLORS,
+  PROTOCOL_VERSION,
   parseMap,
   RESUME_GRACE_MS,
   type ServerMessage,
@@ -54,7 +57,7 @@ beforeEach(() => {
 });
 
 const join = (conn: string, name = conn, extra: Partial<JoinMessage> = {}) =>
-  lobby.join(conn, { type: 'join', roomId: ROOM, name, ...extra });
+  lobby.join(conn, { type: 'join', v: PROTOCOL_VERSION, roomId: ROOM, name, ...extra });
 const to = (conn: string) => sent.filter((s) => s.conn === conn).map((s) => s.msg);
 const last = (conn: string) => to(conn).at(-1);
 function welcome(conn: string) {
@@ -63,6 +66,18 @@ function welcome(conn: string) {
     throw new Error(`no welcome for ${conn}`);
   }
   return msg;
+}
+
+function floorTiles() {
+  const tiles: { x: number; y: number }[] = [];
+  for (let y = 0; y < map.height; y++) {
+    for (let x = 0; x < map.width; x++) {
+      if (!isWallAt(map, x + 0.5, y + 0.5)) {
+        tiles.push({ x: x + 0.5, y: y + 0.5 });
+      }
+    }
+  }
+  return tiles;
 }
 
 describe('join', () => {
@@ -100,7 +115,32 @@ describe('join', () => {
     expect(lobby.roomCount()).toBe(0);
   });
 
-  test('the ninth joiner gets room_full and close 4001, also while a slot is in grace', () => {
+  test('a join without a protocol version (a tab from before 6d) gets invalid_room and close 4002', () => {
+    lobby.join('old', { type: 'join', roomId: ROOM, name: 'Old' });
+    expect(last('old')).toMatchObject({ type: 'error', code: 'invalid_room' });
+    expect(closed).toEqual([{ conn: 'old', code: 4002 }]);
+    expect(events).toContainEqual({ type: 'rejected', reason: 'outdated' });
+    expect(lobby.roomCount()).toBe(0);
+  });
+
+  test('a join with an older protocol version gets outdated and close 4002', () => {
+    join('old', 'Old', { v: PROTOCOL_VERSION - 1 });
+    expect(last('old')).toEqual({ type: 'error', code: 'outdated', message: 'zoom3d was updated: reload the page' });
+    expect(closed).toEqual([{ conn: 'old', code: 4002 }]);
+  });
+
+  test('people after the eighth get generated colours, distinct from everyone present', () => {
+    for (let i = 0; i < 20; i++) {
+      join(`c${i}`);
+    }
+    const colors = welcome('c19')
+      .peers.map((p) => p.color)
+      .concat(welcome('c19').color);
+    expect(new Set(colors).size).toBe(20);
+    expect(colors.slice(0, 8)).toEqual([...PEER_COLORS]);
+  });
+
+  test('the joiner after MAX_PEERS gets room_full and close 4001, also while a slot is in grace', () => {
     for (let i = 0; i < MAX_PEERS; i++) {
       join(`c${i}`);
     }
@@ -141,42 +181,177 @@ describe('avatars', () => {
     join('A', 'A', { avatar: PIC });
     const token = welcome('A').resumeToken;
     lobby.disconnect('A');
-    lobby.join('A2', { type: 'join', roomId: ROOM, name: 'A', resumeToken: token });
+    lobby.join('A2', { type: 'join', v: PROTOCOL_VERSION, roomId: ROOM, name: 'A', resumeToken: token });
     join('B');
     expect(welcome('B').peers[0]?.avatar).toBe(PIC);
   });
 });
 
 describe('state', () => {
-  test('a plausible state is relayed to others with the same seq', () => {
+  const batches = (conn: string) =>
+    to(conn).flatMap((m) => (m.type === 'peers' ? [m.s] : ([] as Extract<ServerMessage, { type: 'peers' }>['s'][])));
+
+  test('a plausible state is stored but not sent until the next fan-out', () => {
     join('A');
     join('B');
     const { spawn } = welcome('A');
-    const before = to('A').length;
+    const before = sent.length;
     time += 100;
     lobby.state('A', { type: 'state', x: spawn.x, y: spawn.y, angle: 1, seq: 7 });
-    expect(last('B')).toEqual({
-      type: 'peer_state',
-      id: welcome('A').selfId,
-      x: spawn.x,
-      y: spawn.y,
-      angle: 1,
-      seq: 7,
-    });
-    expect(to('A')).toHaveLength(before);
+    expect(sent).toHaveLength(before);
+    lobby.fanOut();
+    expect(batches('B')).toEqual([[[welcome('B').peers[0]?.slot, spawn.x, spawn.y, 1]]]);
+    expect(batches('A')).toEqual([]);
   });
 
-  test('a relay goes to the outbox once, addressed to every connected peer but the sender', () => {
+  test('moves from several peers reach a recipient in one batch per fan-out', () => {
     join('A');
     join('B');
     join('C');
-    join('D');
-    lobby.disconnect('D');
-    const { spawn } = welcome('A');
-    broadcasts = [];
     time += 100;
-    lobby.state('A', { type: 'state', x: spawn.x, y: spawn.y, angle: 1, seq: 7 });
-    expect(broadcasts).toEqual([{ conns: ['B', 'C'], msg: expect.objectContaining({ type: 'peer_state', seq: 7 }) }]);
+    for (const c of ['A', 'B']) {
+      const { spawn } = welcome(c);
+      lobby.state(c, { type: 'state', x: spawn.x, y: spawn.y, angle: 2, seq: 1 });
+    }
+    lobby.fanOut();
+    expect(batches('C')).toHaveLength(1);
+    expect(
+      batches('C')[0]
+        ?.map((e) => e[0])
+        .sort()
+    ).toEqual(
+      welcome('C')
+        .peers.map((p) => p.slot)
+        .sort()
+    );
+  });
+
+  test('a pose that did not change (an idle heartbeat) is not resent', () => {
+    join('A');
+    join('B');
+    const { spawn } = welcome('A');
+    time += 100;
+    lobby.state('A', { type: 'state', ...spawn, angle: 1, seq: 1 });
+    lobby.fanOut();
+    time += 1000;
+    lobby.state('A', { type: 'state', ...spawn, angle: 1, seq: 2 });
+    lobby.fanOut();
+    expect(batches('B')).toHaveLength(1);
+  });
+
+  test('a far peer reaches a recipient at most every FAR_INTERVAL_MS, a near one every tick', () => {
+    // Restore three slots where moves can't put them: A, C next to A, B more than NEAR_TILES away.
+    const sx = map.spawn.x + 0.5;
+    const sy = map.spawn.y + 0.5;
+    const farTile = floorTiles().find((t) => Math.hypot(t.x - sx, t.y - sy) > NEAR_TILES + 2);
+    const nearTile = floorTiles().find((t) => Math.hypot(t.x - sx, t.y - sy) === 1);
+    if (!farTile || !nearTile) {
+      throw new Error('LEVEL1 has no such tiles');
+    }
+    const slotPeer = (name: string, x: number, y: number) => ({
+      id: name,
+      name,
+      color: '#ffffff',
+      x,
+      y,
+      angle: 0,
+      cam: false,
+      mic: false,
+      avatar: null,
+      held: null,
+      boombox: false,
+      resumeToken: `tok-${name}`,
+      lastAcceptedAt: 0,
+    });
+    lobby.restore({
+      version: 1,
+      rooms: [
+        {
+          id: ROOM,
+          peers: [slotPeer('A', sx, sy), slotPeer('B', farTile.x, farTile.y), slotPeer('C', nearTile.x, nearTile.y)],
+        },
+      ],
+    });
+    for (const n of ['A', 'B', 'C']) {
+      join(n, n, { resumeToken: `tok-${n}` });
+    }
+    const slotOf = (name: string) => welcome('A').peers.find((p) => p.name === name)?.slot;
+    let ticks = 0;
+    let angle = 0;
+    for (; time < FAR_INTERVAL_MS * 2; ticks++) {
+      time += 66;
+      angle += 0.1;
+      lobby.state('B', { type: 'state', x: farTile.x, y: farTile.y, angle, seq: ticks });
+      lobby.state('C', { type: 'state', x: nearTile.x, y: nearTile.y, angle, seq: ticks });
+      lobby.fanOut();
+    }
+    const batchesWith = (slot: number | undefined) => batches('A').filter((b) => b.some((e) => e[0] === slot)).length;
+    expect(batchesWith(slotOf('C'))).toBe(ticks);
+    expect(batchesWith(slotOf('B'))).toBe(2);
+  });
+
+  test('slots are unique in a room, never reused, and kept on resume', () => {
+    join('A');
+    join('B');
+    const joinedSlot = (conn: string, name: string) => {
+      const m = to(conn).find((x) => x.type === 'peer_joined' && x.peer.name === name);
+      return m?.type === 'peer_joined' ? m.peer.slot : undefined;
+    };
+    const aSlot = welcome('B').peers[0]?.slot;
+    const first = joinedSlot('A', 'B');
+    lobby.disconnect('B');
+    time += RESUME_GRACE_MS + 1;
+    lobby.tick();
+    join('C');
+    const third = joinedSlot('A', 'C');
+    expect(new Set([aSlot, first, third]).size).toBe(3);
+
+    const token = welcome('C').resumeToken;
+    lobby.disconnect('C');
+    join('C2', 'C', { resumeToken: token });
+    expect(welcome('C2').peers.find((p) => p.name === 'A')?.slot).toBe(aSlot);
+    join('D');
+    expect(welcome('D').peers.find((p) => p.name === 'C')?.slot).toBe(third);
+  });
+
+  test('a welcome counts as sent: nothing stale follows a join or a resume', () => {
+    join('A');
+    join('B');
+    const { spawn } = welcome('A');
+    time += 100;
+    lobby.state('A', { type: 'state', ...spawn, angle: 1, seq: 1 });
+    join('C');
+    lobby.fanOut();
+    // C's welcome already had A's new pose; B still needs it.
+    expect(batches('C')).toEqual([]);
+    expect(batches('B')).toHaveLength(1);
+    // A resumed B gets everyone in its welcome, so no batch repeats them.
+    const token = welcome('B').resumeToken;
+    lobby.disconnect('B');
+    time += 100;
+    lobby.state('A', { type: 'state', ...spawn, angle: 2, seq: 2 });
+    join('B2', 'B', { resumeToken: token });
+    lobby.fanOut();
+    expect(batches('B2')).toEqual([]);
+  });
+
+  test('a newcomer is not resent to those who just got its peer_joined', () => {
+    join('A');
+    join('B');
+    lobby.fanOut();
+    expect(batches('A')).toEqual([]);
+  });
+
+  test('a disconnected peer gets no batches', () => {
+    join('A');
+    join('B');
+    lobby.disconnect('B');
+    const { spawn } = welcome('A');
+    time += 100;
+    sent = [];
+    lobby.state('A', { type: 'state', ...spawn, angle: 1, seq: 1 });
+    lobby.fanOut();
+    expect(sent).toEqual([]);
   });
 
   test('an implausible state is corrected for the sender only', () => {
@@ -241,15 +416,21 @@ describe('disconnect and resume', () => {
     expect(lobby.peerCount(ROOM)).toBe(2);
   });
 
-  test('a resumed peer keeps relaying state through its new connection', () => {
+  test('a resumed peer keeps sending state through its new connection', () => {
     join('A');
     join('B');
     const first = welcome('B');
+    const bSlot = to('A').find((m) => m.type === 'peer_joined');
     lobby.disconnect('B');
     join('B2', 'B', { resumeToken: first.resumeToken });
     time += 100;
     lobby.state('B2', { type: 'state', x: first.spawn.x, y: first.spawn.y, angle: 2, seq: 3 });
-    expect(last('A')).toMatchObject({ type: 'peer_state', id: first.selfId, angle: 2 });
+    lobby.fanOut();
+    expect(bSlot?.type).toBe('peer_joined');
+    expect(last('A')).toEqual({
+      type: 'peers',
+      s: [[bSlot?.type === 'peer_joined' ? bSlot.peer.slot : -1, first.spawn.x, first.spawn.y, 2]],
+    });
   });
 
   test('resuming after grace is a fresh join', () => {
@@ -295,7 +476,7 @@ describe('media', () => {
     join('A');
     const first = welcome('A');
     lobby.disconnect('A');
-    lobby.join('A2', { type: 'join', roomId: ROOM, name: 'A', resumeToken: first.resumeToken });
+    lobby.join('A2', { type: 'join', v: PROTOCOL_VERSION, roomId: ROOM, name: 'A', resumeToken: first.resumeToken });
     const again = welcome('A2');
     expect(again.selfId).toBe(first.selfId);
     expect(again.livekit.token).toBe(`${ROOM}/${first.selfId}/2`);
@@ -576,7 +757,7 @@ describe('events and stats', () => {
 
   test('rejections carry the reason', () => {
     join('A', '');
-    lobby.join('B', { type: 'join', roomId: 'bad', name: 'B' });
+    lobby.join('B', { type: 'join', v: PROTOCOL_VERSION, roomId: 'bad', name: 'B' });
     for (let i = 0; i < MAX_PEERS + 1; i++) {
       join(`P${i}`);
     }
@@ -615,7 +796,7 @@ describe('events and stats', () => {
   test('stats count rooms and connected and waiting peers', () => {
     join('A');
     join('B');
-    lobby.join('C', { type: 'join', roomId: 'BBBBBBBBBBBBBBBBBBBBBB', name: 'C' });
+    lobby.join('C', { type: 'join', v: PROTOCOL_VERSION, roomId: 'BBBBBBBBBBBBBBBBBBBBBB', name: 'C' });
     lobby.disconnect('B');
     expect(lobby.stats()).toEqual({ rooms: 2, connected: 2, waiting: 1, bots: 0 });
   });
