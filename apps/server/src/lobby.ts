@@ -22,6 +22,7 @@ import {
   spawnPoint,
   stepPlayer,
 } from '@zoom3d/shared';
+import { AvatarStore } from './avatars';
 import { pickColor } from './colors';
 import { type SentLog, selectBatch } from './fanout';
 import {
@@ -102,6 +103,8 @@ interface Peer extends PeerInfo {
   /** When this peer's last sip or cheers was relayed (not shared: gestures are never stored). */
   lastGestureAt: number;
   disconnectedAt: number | null;
+  /** The picture itself (a JPEG data URL) behind `avatar`, its id in the avatar store. */
+  picture: string | null;
   /** Bumped whenever the pose changes, so fan-out sends only what moved. */
   poseVersion: number;
   /** What this peer, as a recipient, was last sent of each other peer (6d spec §2.1). */
@@ -114,7 +117,10 @@ type Room = Map<string, Peer>;
 
 const isPerson = (p: Peer) => p.bot === undefined;
 
-/** A peer as written to the restart snapshot: no connection, gesture timing or slot (restore hands out new ones). */
+/**
+ * A peer as written to the restart snapshot: no connection, gesture timing or slot (restore hands out new ones), and
+ * `avatar` is the picture's data URL, not its id.
+ */
 export interface SnapshotPeer extends Omit<PeerInfo, 'slot'> {
   resumeToken: string;
   lastAcceptedAt: number;
@@ -151,6 +157,7 @@ export class Lobby {
   private readonly vacuums = new Map<string, Vacuum>();
   /** Each room's next peer slot: a counter, so a late batch can never move the wrong peer. */
   private readonly nextSlot = new Map<string, number>();
+  private readonly avatars = new AvatarStore();
   private readonly moved = { x: 0, y: 0, angle: 0 };
 
   constructor(private readonly opts: LobbyOptions) {
@@ -246,7 +253,7 @@ export class Lobby {
       ...spawn,
       cam: false,
       mic: false,
-      avatar: isValidAvatar(msg.avatar) ? msg.avatar : null,
+      ...this.picture(isValidAvatar(msg.avatar) ? msg.avatar : null),
       held: null,
       boombox: false,
       lastGestureAt: Number.NEGATIVE_INFINITY,
@@ -399,6 +406,9 @@ export class Lobby {
       for (const peer of [...room.values()]) {
         if (peer.disconnectedAt !== null && now - peer.disconnectedAt >= this.graceMs) {
           room.delete(peer.id);
+          if (peer.avatar !== null) {
+            this.avatars.release(peer.avatar);
+          }
           for (const p of room.values()) {
             p.sent.delete(peer.id);
           }
@@ -424,8 +434,9 @@ export class Lobby {
         return {
           id,
           peers: [...room.values()].filter(isPerson).map((p) => {
+            // The picture itself, as before 6d: avatar ids mean nothing to the next process.
             const { slot: _, ...saved } = info(p);
-            return { ...saved, resumeToken: p.resumeToken, lastAcceptedAt: p.lastAcceptedAt };
+            return { ...saved, avatar: p.picture, resumeToken: p.resumeToken, lastAcceptedAt: p.lastAcceptedAt };
           }),
           ...(vacuum ? { vacuum: saveVacuum(this.vacuumNav(), vacuum) } : {}),
         };
@@ -441,6 +452,7 @@ export class Lobby {
       for (const p of peers) {
         room.set(p.id, {
           ...p,
+          ...this.picture(p.avatar),
           slot: this.takeSlot(id),
           conn: null,
           disconnectedAt: now,
@@ -547,6 +559,16 @@ export class Lobby {
     return this.nav;
   }
 
+  /** The JPEG served at `GET /avatar/<id>`, while someone in any room uses it. */
+  avatar(id: string): Buffer | null {
+    return this.avatars.get(id);
+  }
+
+  /** Stores a peer's picture: its id goes on the wire, the picture into the snapshot. */
+  private picture(dataUrl: string | null): { avatar: string | null; picture: string | null } {
+    return { avatar: dataUrl === null ? null : this.avatars.add(dataUrl), picture: dataUrl };
+  }
+
   private takeSlot(roomId: string): number {
     const slot = this.nextSlot.get(roomId) ?? 0;
     this.nextSlot.set(roomId, slot + 1);
@@ -569,6 +591,7 @@ export class Lobby {
         cam: false,
         mic: false,
         avatar: null,
+        picture: null,
         held: null,
         boombox: false,
         resumeToken: newToken(),

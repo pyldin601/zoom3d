@@ -22,6 +22,14 @@ server {
         proxy_send_timeout 1h;
     }
 
+    # People's pictures (6d spec §3), content-addressed on the game server: cacheable forever.
+    location ^~ /avatar/ {
+        set $zoom3d_server ${SERVER_URL};
+        proxy_pass $zoom3d_server;
+        proxy_set_header Host $host;
+        proxy_connect_timeout 3s;
+    }
+
     location = /healthz {
         default_type text/plain;
         return 200 "ok";

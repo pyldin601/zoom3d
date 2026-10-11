@@ -1,5 +1,5 @@
 // Prometheus metrics, served at /metrics. Each server gets its own registry, so tests don't share counters.
-import { Counter, collectDefaultMetrics, Gauge, Registry } from '@prometheus-io/client';
+import { Counter, collectDefaultMetrics, Gauge, Histogram, Registry } from '@prometheus-io/client';
 import type { LobbyStats } from './lobby';
 
 export interface MetricsSources {
@@ -89,6 +89,12 @@ export function createMetrics(src: MetricsSources) {
       name: 'zoom3d_messages_dropped_total',
       help: 'Client messages dropped: over the rate limit, binary, or failing validation.',
       labelNames: ['reason'],
+      registers,
+    }),
+    peersBatchEntries: new Histogram({
+      name: 'zoom3d_peers_batch_entries',
+      help: 'Poses per peers batch sent to a client (6d fan-out): how much the near/far tiers save.',
+      buckets: [1, 2, 5, 10, 20, 50, 100, 200],
       registers,
     }),
     moveCorrections: new Counter({

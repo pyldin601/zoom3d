@@ -13,6 +13,7 @@ import {
   type ServerMessage,
 } from '@zoom3d/shared';
 import { beforeEach, describe, expect, test } from 'vitest';
+import { avatarId } from './avatars';
 import { Lobby, type LobbyEvent, type Outbox } from './lobby';
 
 const ROOM = 'AAAAAAAAAAAAAAAAAAAAAA';
@@ -158,16 +159,18 @@ describe('join', () => {
 
 describe('avatars', () => {
   const PIC = 'data:image/jpeg;base64,/9j/4AAQ';
+  const PIC_ID = avatarId(PIC);
 
-  test('an avatar is relayed to others and to later joiners', () => {
+  test('an avatar goes to others and to later joiners as an id the lobby serves', () => {
     join('A', 'A', { avatar: PIC });
     join('B');
     const announced = to('A').find((m) => m.type === 'peer_joined');
     expect(announced?.type === 'peer_joined' && announced.peer.avatar).toBeNull();
-    expect(welcome('B').peers[0]?.avatar).toBe(PIC);
+    expect(welcome('B').peers[0]?.avatar).toBe(PIC_ID);
     join('C', 'C', { avatar: PIC });
     const toB = last('B');
-    expect(toB?.type === 'peer_joined' && toB.peer.avatar).toBe(PIC);
+    expect(toB?.type === 'peer_joined' && toB.peer.avatar).toBe(PIC_ID);
+    expect(lobby.avatar(PIC_ID)).toEqual(Buffer.from('/9j/4AAQ', 'base64'));
   });
 
   test('an invalid avatar is dropped, not rejected', () => {
@@ -183,7 +186,36 @@ describe('avatars', () => {
     lobby.disconnect('A');
     lobby.join('A2', { type: 'join', v: PROTOCOL_VERSION, roomId: ROOM, name: 'A', resumeToken: token });
     join('B');
-    expect(welcome('B').peers[0]?.avatar).toBe(PIC);
+    expect(welcome('B').peers[0]?.avatar).toBe(PIC_ID);
+  });
+
+  test('a picture is served while anyone in any room uses it, and gone after the last one leaves', () => {
+    join('A', 'A', { avatar: PIC });
+    lobby.join('B', { type: 'join', v: PROTOCOL_VERSION, roomId: 'BBBBBBBBBBBBBBBBBBBBBB', name: 'B', avatar: PIC });
+    lobby.disconnect('A');
+    time += RESUME_GRACE_MS + 1;
+    lobby.tick();
+    expect(lobby.avatar(PIC_ID)).not.toBeNull();
+    lobby.disconnect('B');
+    time += RESUME_GRACE_MS + 1;
+    lobby.tick();
+    expect(lobby.avatar(PIC_ID)).toBeNull();
+  });
+
+  test('the snapshot keeps the picture itself, and a restore serves it again', () => {
+    join('A', 'A', { avatar: PIC });
+    const snap = lobby.snapshot();
+    expect(snap.rooms[0]?.peers[0]?.avatar).toBe(PIC);
+    const fresh = new Lobby({
+      map,
+      out: outbox,
+      now: () => time,
+      rng: () => 0,
+      newToken: () => 'x',
+      liveKitFor: () => ({ url: 'ws://lk', token: 't' }),
+    });
+    fresh.restore(snap);
+    expect(fresh.avatar(PIC_ID)).toEqual(Buffer.from('/9j/4AAQ', 'base64'));
   });
 });
 

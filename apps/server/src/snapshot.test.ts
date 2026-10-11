@@ -37,6 +37,12 @@ test('a valid snapshot parses unchanged', () => {
   expect(parseSnapshot(JSON.stringify(s))).toEqual(s);
 });
 
+test('a saved picture stays a data URL, as before 6d; anything else reads as none', () => {
+  const PIC = 'data:image/jpeg;base64,/9j/4AAQ';
+  const kept = parseSnapshot(snap([peer('a', { avatar: PIC }), { ...peer('b'), avatar: 'abcdefghijklmnopqrstuv' }]));
+  expect(kept?.rooms[0]?.peers.map((p) => p.avatar)).toEqual([PIC, null]);
+});
+
 test('garbage and other versions are rejected', () => {
   expect(parseSnapshot('not json')).toBeNull();
   expect(parseSnapshot('null')).toBeNull();
