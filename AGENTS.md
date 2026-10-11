@@ -95,8 +95,11 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   receives. Size switches are make-before-break, and faces hold their last frame while paused or resuming. An e2e
   spec that expects someone's face must turn toward them first (`lookAt` in `e2e/join.ts`): players spawn facing a
   random direction.
-- A peer's face+mic arrive as one stream, re-emitted as a **new** `MediaStream` whenever its tracks change: the audio
-  engine ignores a stream object it already has, so mutating one would leave a late mic silent.
+- A peer's face and voice arrive as **separate** streams (`onRemoteStream` with the shown face, `onRemoteVoice` with
+  the mic, played from its own muted `<audio>` like the boombox), each re-emitted as a **new** `MediaStream` when its
+  track changes (empty when it goes). The audio engine ignores a stream object it already has (mutating one would
+  leave a late mic silent) and rebuilds a voice for a new one, so face changes, which 6c makes constant, must never
+  re-emit the voice.
 - LiveKit can deliver a peer's tracks before the game WebSocket announces the peer, and never sends them again:
   `call.ts` keeps such early media until the face exists. Don't drop it.
 - k8s: a pod next to a Service named `livekit` gets `LIVEKIT_PORT=tcp://…` and LiveKit reads every `LIVEKIT_*` env as

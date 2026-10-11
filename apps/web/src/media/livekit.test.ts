@@ -200,6 +200,7 @@ class FakeRoom {
 
 const flush = () => vi.advanceTimersByTimeAsync(0);
 let remote: { peerId: string; tracks: Track[] }[];
+let voices: { peerId: string; tracks: Track[] }[];
 let boomboxes: { peerId: string; tracks: Track[] }[];
 let camera: Track;
 let mic: Track;
@@ -210,6 +211,7 @@ beforeEach(() => {
   FakeRoom.failConnects = 0;
   FakeRoom.onConnect = null;
   remote = [];
+  voices = [];
   boomboxes = [];
   camera = track('video', 'camera');
   mic = track('audio', 'mic');
@@ -222,6 +224,7 @@ function transport(over: Partial<LiveKitTransportOptions> = {}) {
     token: 'tok',
     localStream: { getVideoTracks: () => [camera], getAudioTracks: () => [mic] } as unknown as MediaStream,
     onRemoteStream: (peerId, s) => remote.push({ peerId, tracks: (s as unknown as { tracks: Track[] }).tracks }),
+    onRemoteVoice: (peerId, s) => voices.push({ peerId, tracks: (s as unknown as { tracks: Track[] }).tracks }),
     onRemoteBoombox: (peerId, s) => boomboxes.push({ peerId, tracks: (s as unknown as { tracks: Track[] }).tracks }),
     createStream: (tracks) => ({ tracks }) as unknown as MediaStream,
     loadRoom: async () => FakeRoom as unknown as NonNullable<LiveKitTransportOptions['RoomImpl']>,
@@ -419,7 +422,7 @@ describe('remote media', () => {
     expect(room().asked('p1')).toEqual([]);
   });
 
-  test("a participant's face and mic become one stream, re-emitted as a new stream when the mic arrives", async () => {
+  test("a participant's face and voice arrive as separate streams", async () => {
     const t = transport();
     await flush();
     room().publishRemote('p1', ALL);
@@ -429,10 +432,24 @@ describe('remote media', () => {
     const voice = track('audio', 'p1-mic');
     room().deliver('p1', 'face', face);
     room().deliver('p1', 'mic', voice);
-    expect(remote).toEqual([
-      { peerId: 'p1', tracks: [face] },
-      { peerId: 'p1', tracks: [face, voice] },
-    ]);
+    expect(remote).toEqual([{ peerId: 'p1', tracks: [face] }]);
+    expect(voices).toEqual([{ peerId: 'p1', tracks: [voice] }]);
+  });
+
+  test('face changes (off, on, another size) never re-emit the voice', async () => {
+    const t = transport();
+    await flush();
+    room().publishRemote('p1', ALL);
+    t.setWanted('p1', { video: 64, audio: true });
+    room().deliver('p1', 'mic', track('audio', 'v'));
+    room().deliver('p1', 'face-64', track('video', 'small'));
+    t.setWanted('p1', { video: 256, audio: true });
+    room().deliver('p1', 'face', track('video', 'big'));
+    t.setWanted('p1', { video: 'off', audio: true });
+    t.setWanted('p1', { video: 128, audio: true });
+    room().deliver('p1', 'face-128', track('video', 'mid'));
+    expect(remote.map((r) => r.tracks.map((x) => x.id))).toEqual([['small'], ['big'], [], ['mid']]);
+    expect(voices).toHaveLength(1);
   });
 
   test('participants already in the room when we connect are found too', async () => {
@@ -502,9 +519,11 @@ describe('remote media', () => {
     room().deliver('p1', 'boombox', track('audio', 'b'));
     t.setWanted('p1', { video: 'off', audio: true });
     expect(room().asked('p1').sort()).toEqual(['boombox', 'mic']);
-    expect(remote.at(-1)).toEqual({ peerId: 'p1', tracks: [voice] });
+    expect(remote.at(-1)).toEqual({ peerId: 'p1', tracks: [] });
+    expect(voices.at(-1)).toEqual({ peerId: 'p1', tracks: [voice] });
     t.setWanted('p1', { video: 'off', audio: false });
     expect(room().asked('p1')).toEqual([]);
+    expect(voices.at(-1)).toEqual({ peerId: 'p1', tracks: [] });
     expect(room().pub('p1', 'mic').subscribed).toBe(false);
     expect(room().pub('p1', 'boombox').subscribed).toBe(false);
   });
@@ -527,7 +546,7 @@ describe('remote media', () => {
     expect(room().asked('p1')).toEqual(['face-128']);
   });
 
-  test('a mic without a face still makes a stream; the boombox gets its own', async () => {
+  test('a mic without a face makes a voice; the boombox gets its own stream', async () => {
     const t = transport();
     await flush();
     room().publishRemote('p2', ALL);
@@ -536,11 +555,12 @@ describe('remote media', () => {
     const music = track('audio', 'p2-music');
     room().deliver('p2', 'mic', voice);
     room().deliver('p2', 'boombox', music);
-    expect(remote).toEqual([{ peerId: 'p2', tracks: [voice] }]);
+    expect(remote).toEqual([]);
+    expect(voices).toEqual([{ peerId: 'p2', tracks: [voice] }]);
     expect(boomboxes).toEqual([{ peerId: 'p2', tracks: [music] }]);
   });
 
-  test('an unsubscribed mic is dropped from the re-emitted stream', async () => {
+  test('an unsubscribed mic empties the voice and leaves the face alone', async () => {
     const t = transport();
     await flush();
     room().publishRemote('p1', ALL);
@@ -549,7 +569,8 @@ describe('remote media', () => {
     const voice = room().deliver('p1', 'mic', track('audio', 'm'));
     room().deliver('p1', 'face', face);
     room().emit('trackUnsubscribed', voice, room().pub('p1', 'mic'), { identity: 'p1' });
-    expect(remote.at(-1)).toEqual({ peerId: 'p1', tracks: [face] });
+    expect(voices.at(-1)).toEqual({ peerId: 'p1', tracks: [] });
+    expect(remote).toEqual([{ peerId: 'p1', tracks: [face] }]);
   });
 
   test('stats split face+mic bytes from boombox bytes', async () => {
@@ -598,6 +619,7 @@ describe('remote media', () => {
     await vi.advanceTimersByTimeAsync(1000);
     room(0).deliver('p1', 'face', track('video', 'stale'));
     expect(remote).toEqual([]);
+    expect(voices).toEqual([]);
     t.close();
     room(1).publishRemote('p1', ALL);
     room(1).deliver('p1', 'face', track('video', 'late'));

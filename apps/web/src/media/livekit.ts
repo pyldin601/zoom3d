@@ -119,8 +119,9 @@ interface Remote {
   asked: Map<string, boolean>;
   /** The face track we show (emitted in their stream). */
   face: FaceName | null;
-  /** The face and mic last emitted, so unchanged streams aren't re-emitted. */
-  emitted: [MediaStreamTrack | null, MediaStreamTrack | null];
+  /** The face and mic tracks last emitted, so unchanged streams aren't re-emitted. */
+  emittedFace: MediaStreamTrack | null;
+  emittedMic: MediaStreamTrack | null;
 }
 
 const defaultLoadRoom = async () =>
@@ -220,23 +221,33 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
   const remoteOf = (identity: string): Remote => {
     let r = remotes.get(identity);
     if (!r) {
-      r = { pubs: new Map(), tracks: new Map(), asked: new Map(), face: null, emitted: [null, null] };
+      r = {
+        pubs: new Map(),
+        tracks: new Map(),
+        asked: new Map(),
+        face: null,
+        emittedFace: null,
+        emittedMic: null,
+      };
       remotes.set(identity, r);
     }
     return r;
   };
 
-  /** Shown face and mic of one participant as a new stream: the audio engine ignores a stream object it already has. */
-  const emitStream = (identity: string, r: Remote) => {
+  /**
+   * The shown face and the mic, each as its own new stream when its track changed (empty when gone): the audio
+   * engine rebuilds a voice for every new stream object, so a face change must never re-emit the voice.
+   */
+  const emitStreams = (identity: string, r: Remote) => {
     const face = r.face ? (r.tracks.get(r.face)?.mediaStreamTrack ?? null) : null;
     const mic = r.tracks.get('mic')?.mediaStreamTrack ?? null;
-    if (face === r.emitted[0] && mic === r.emitted[1]) {
-      return;
+    if (face !== r.emittedFace) {
+      r.emittedFace = face;
+      opts.onRemoteStream(identity, createStream(face ? [face] : []));
     }
-    r.emitted = [face, mic];
-    const list = [face, mic].filter((t): t is MediaStreamTrack => t !== null);
-    if (list.length > 0) {
-      opts.onRemoteStream(identity, createStream(list));
+    if (mic !== r.emittedMic) {
+      r.emittedMic = mic;
+      opts.onRemoteVoice(identity, createStream(mic ? [mic] : []));
     }
   };
 
@@ -267,7 +278,7 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
     }
     ask(r, 'mic', want.audio);
     ask(r, 'boombox', want.audio);
-    emitStream(identity, r);
+    emitStreams(identity, r);
   };
 
   const onPublished = (pub: RemotePublicationLike, participant: { identity: string }) => {

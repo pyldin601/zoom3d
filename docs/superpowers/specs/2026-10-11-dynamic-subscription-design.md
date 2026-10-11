@@ -79,6 +79,9 @@ per peer `{ video: 'off' | 64 | 128 | 256, audio: boolean }`.
   - audio: `mic` and `boombox` together.
 - **Make-before-break size switches:** subscribe the new size; once its track arrives, emit the peer's stream with
   it and unsubscribe the old one. The face never goes blank during a switch.
+- **Face and voice are separate streams** (`onRemoteStream` carries only the shown face, `onRemoteVoice` the mic,
+  each re-emitted only when its own track changes). The audio engine rebuilds a voice for every new stream object, so
+  with one combined stream every turn, size switch and tab switch would dip the voice.
 - `stats(peerId)` keeps summing whatever is subscribed.
 
 ### 4.4 Faces while paused

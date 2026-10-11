@@ -1,7 +1,7 @@
 // One hidden-but-playing <video> per remote peer. Kept in the DOM so Chrome decodes it and feeds
 // the WebRTC audio into Web Audio; muted because the spatial engine plays the voice. The container
 // must use visibility:hidden (see index.html): a visible playing video drops the page to 30 fps.
-// Audio-only streams (a peer's boombox) get a muted <audio> for the same reason.
+// Audio-only streams (a peer's voice, their boombox) get a muted <audio> for the same reason.
 export interface RemoteMedia {
   attach(peerId: string, stream: MediaStream): HTMLVideoElement;
   attachAudio(key: string, stream: MediaStream): void;

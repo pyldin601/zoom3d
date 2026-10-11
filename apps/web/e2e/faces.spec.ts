@@ -25,7 +25,8 @@ const faceOf = (page: Page, name: string) =>
     return { live: g.call.isLive(id), hasFace: g.call.faceOf(id) !== null, bytes: stats?.bytesReceived ?? 0 };
   }, name);
 
-const remoteVideos = (page: Page) => page.locator('#media video').count();
+/** Remote voices: one per person in hearing range, whether or not their face is in view. */
+const remoteVoices = (page: Page) => page.locator('#media audio[data-peer^="voice:"]').count();
 
 test('faces stream both ways, cam off falls back to initials, leaving cleans up', async ({ browser }) => {
   const a = await (await browser.newContext()).newPage();
@@ -59,7 +60,7 @@ test('faces stream both ways, cam off falls back to initials, leaving cleans up'
   await expect(c.getByText('Camera unavailable')).toBeVisible();
   await expect.poll(() => faceOf(a, 'Cy'), { timeout: 15_000 }).toMatchObject({ live: false, hasFace: true });
 
-  await expect.poll(() => remoteVideos(a), { timeout: 15_000 }).toBe(2);
+  await expect.poll(() => remoteVoices(a), { timeout: 15_000 }).toBe(2);
   await bContext.close();
-  await expect.poll(() => remoteVideos(a), { timeout: 6000 }).toBe(1);
+  await expect.poll(() => remoteVoices(a), { timeout: 6000 }).toBe(1);
 });

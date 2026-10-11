@@ -42,6 +42,8 @@ export interface CallOptions {
 
 /** Engine and element key of a peer's boombox music (boombox spec §4). */
 export const boomboxKey = (peerId: string) => `boombox:${peerId}`;
+/** Element key of a peer's voice; the engine keys it by the peer id itself. */
+export const voiceKey = (peerId: string) => `voice:${peerId}`;
 
 export function createCall(opts: CallOptions): Call {
   const { local, remote } = opts;
@@ -56,10 +58,15 @@ export function createCall(opts: CallOptions): Call {
   framer.onSendTrackChange = () => transport?.setVideoTracks(framer.sendTracks());
 
   /** Media LiveKit delivered before the game announced its peer (it is never sent again). */
-  const early = new Map<string, { stream?: MediaStream; boombox?: MediaStream }>();
+  const early = new Map<string, { stream?: MediaStream; voice?: MediaStream; boombox?: MediaStream }>();
 
   const applyStream = (peerId: string, stream: MediaStream) => {
     faces.get(peerId)?.setVideo(remote.attach(peerId, stream));
+  };
+
+  /** The voice has its own element and stream, so face changes (6c) never rebuild it in the engine. */
+  const applyVoice = (peerId: string, stream: MediaStream) => {
+    remote.attachAudio(voiceKey(peerId), stream);
     opts.audio?.attach(peerId, stream);
   };
 
@@ -88,6 +95,9 @@ export function createCall(opts: CallOptions): Call {
       if (pending?.stream) {
         applyStream(peer.id, pending.stream);
       }
+      if (pending?.voice) {
+        applyVoice(peer.id, pending.voice);
+      }
       if (pending?.boombox) {
         applyBoombox(peer.id, pending.boombox);
       }
@@ -97,6 +107,7 @@ export function createCall(opts: CallOptions): Call {
 
   const drop = (peerId: string) => {
     remote.detach(peerId);
+    remote.detach(voiceKey(peerId));
     remote.detach(boomboxKey(peerId));
     opts.audio?.detach(peerId);
     opts.audio?.detach(boomboxKey(peerId));
@@ -157,6 +168,13 @@ export function createCall(opts: CallOptions): Call {
               applyStream(peerId, stream);
             } else {
               early.set(peerId, { ...early.get(peerId), stream });
+            }
+          },
+          onRemoteVoice: (peerId, stream) => {
+            if (faces.has(peerId)) {
+              applyVoice(peerId, stream);
+            } else {
+              early.set(peerId, { ...early.get(peerId), voice: stream });
             }
           },
           onRemoteBoombox: (peerId, stream) => {

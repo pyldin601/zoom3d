@@ -242,18 +242,22 @@ test('media that arrives before the game announces the peer is applied once it d
   const call = makeCall();
   call.listener.welcome?.('me', LK, true);
   const stream = { id: 'early' } as unknown as MediaStream;
+  const voice = { id: 'early-voice' } as unknown as MediaStream;
   const music = { id: 'early-music' } as unknown as MediaStream;
   transports[0]?.opts.onRemoteStream('c', stream);
+  transports[0]?.opts.onRemoteVoice('c', voice);
   transports[0]?.opts.onRemoteBoombox('c', music);
   expect(remote.attach).not.toHaveBeenCalled();
+  expect(audio.attach).not.toHaveBeenCalled();
   call.listener.peerJoined?.(info('c'));
   expect(remote.attach).toHaveBeenCalledWith('c', stream);
   expect(faces.get('c')?.setVideo).toHaveBeenCalledWith({ id: 'video-el' });
-  expect(audio.attach).toHaveBeenCalledWith('c', stream);
+  expect(remote.attachAudio).toHaveBeenCalledWith('voice:c', voice);
+  expect(audio.attach).toHaveBeenCalledWith('c', voice);
   expect(remote.attachAudio).toHaveBeenCalledWith('boombox:c', music);
 });
 
-test('a remote stream is attached to an element that feeds the face', () => {
+test('a remote face stream is attached to an element that feeds the face, never to the engine', () => {
   const call = makeCall();
   call.listener.welcome?.('me', LK, true);
   call.listener.peerJoined?.(info('b'));
@@ -261,6 +265,7 @@ test('a remote stream is attached to an element that feeds the face', () => {
   transports[0]?.opts.onRemoteStream('b', stream);
   expect(remote.attach).toHaveBeenCalledWith('b', stream);
   expect(faces.get('b')?.setVideo).toHaveBeenCalledWith({ id: 'video-el' });
+  expect(audio.attach).not.toHaveBeenCalled();
 });
 
 test('remote media state toggles the face', () => {
@@ -310,15 +315,17 @@ test('dispose closes the transport and removes elements and faces', () => {
   expect(faces.get('a')?.dispose).toHaveBeenCalled();
 });
 
-test('remote voices go to the audio engine and are detached when the peer goes', () => {
+test('remote voices play from their own muted element into the engine, and are detached when the peer goes', () => {
   const call = makeCall();
   call.listener.welcome?.('me', LK, true);
   call.listener.peerJoined?.(info('b'));
-  const stream = { id: 's' } as unknown as MediaStream;
-  transports[0]?.opts.onRemoteStream('b', stream);
-  expect(audio.attach).toHaveBeenCalledWith('b', stream);
+  const voice = { id: 'v' } as unknown as MediaStream;
+  transports[0]?.opts.onRemoteVoice('b', voice);
+  expect(remote.attachAudio).toHaveBeenCalledWith('voice:b', voice);
+  expect(audio.attach).toHaveBeenCalledWith('b', voice);
   call.listener.peerLeft?.('b');
   expect(audio.detach).toHaveBeenCalledWith('b');
+  expect(remote.detach).toHaveBeenCalledWith('voice:b');
 });
 
 test('a new identity detaches every voice', () => {

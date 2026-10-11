@@ -11,8 +11,11 @@ export interface FaceTracks {
 
 export interface TransportOptions extends LiveKitAccess {
   localStream: MediaStream | null;
-  /** A peer's face and voice; called again with a new stream whenever its tracks change. */
+  /** A peer's shown face (video only); a new stream whenever it changes (another size), empty when off. */
   onRemoteStream: (peerId: string, stream: MediaStream) => void;
+  /** A peer's voice (mic only), separate so face changes never touch it; a new stream when the mic changes, empty
+   * when it goes. */
+  onRemoteVoice: (peerId: string, stream: MediaStream) => void;
   onRemoteBoombox: (peerId: string, stream: MediaStream) => void;
 }
 

@@ -42,6 +42,8 @@ const growth = async (page: Page, name: string, ms: number) => {
 test('a face out of view stops arriving and comes back, never as initials, when looked at again', async ({
   browser,
 }) => {
+  // About 8 s of it is deliberate waiting (holds, stalls, byte counts).
+  test.setTimeout(60_000);
   const a = await (await browser.newContext()).newPage();
   const b = await (await browser.newContext()).newPage();
   const url = await createAndJoin(a, 'Ada');
