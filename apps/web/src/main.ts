@@ -664,6 +664,7 @@ function frame(dt: number): void {
       // cheersPose returns a reused object: read it before the next call.
       const raised = gesture?.kind === 'cheers' ? cheersPose(now - gesture.at) : null;
       sprites.push({
+        key: peer.info.id,
         x: pos.x,
         y: pos.y,
         color,

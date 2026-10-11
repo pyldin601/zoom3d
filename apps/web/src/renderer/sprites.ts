@@ -2,6 +2,7 @@
 // shadow on the floor right under it.
 import type { HeldItem, PlayerState } from '@zoom3d/shared';
 import { FACE_SIZE } from '../media/faces';
+import type { PeerFacts } from '../media/interest';
 import { BOOMBOX_LEFT, BOOMBOX_SPRITE, BOOMBOX_TOP } from './boombox';
 import { type Framebuffer, rgb } from './framebuffer';
 import {
@@ -33,6 +34,8 @@ export const BOB_HEIGHT = 0.1;
 const EYE_HEIGHT = 0.5;
 
 export interface Sprite {
+  /** Whose disc this is: the key its facts are written under. */
+  key: string;
   x: number;
   y: number;
   /** Packed like rgb(). */
@@ -192,12 +195,39 @@ function lateralOf(
 
 const projections: Projection[] = [];
 const visible: number[] = [];
+/** Each sprite's facts object for this frame (null without a facts map). */
+const spriteFacts: (PeerFacts | null)[] = [];
 
-export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly Sprite[]): void {
+function zeroFacts(f: PeerFacts): void {
+  f.drawnColumns = 0;
+  f.projectedSize = 0;
+}
+
+/**
+ * Draws the discs. With `facts`, also writes, per sprite key, how many disc columns passed the wall depth test and
+ * the disc's diameter (both 0 when not drawn); every key in the map is zeroed first, and objects are reused.
+ */
+export function renderSprites(
+  fb: Framebuffer,
+  p: PlayerState,
+  sprites: readonly Sprite[],
+  facts?: Map<string, PeerFacts>
+): void {
   const { width: w, height: h, pixels, zbuffer } = fb;
   visible.length = 0;
+  facts?.forEach(zeroFacts);
+  spriteFacts.length = sprites.length;
   for (let i = 0; i < sprites.length; i++) {
     const s = sprites[i] as Sprite;
+    let f: PeerFacts | null = null;
+    if (facts) {
+      f = facts.get(s.key) ?? null;
+      if (!f) {
+        f = { drawnColumns: 0, projectedSize: 0 };
+        facts.set(s.key, f);
+      }
+    }
+    spriteFacts[i] = f;
     if (!projections[i]) {
       projections[i] = { screenX: 0, depth: 0, size: 0 };
     }
@@ -259,9 +289,16 @@ export function renderSprites(fb: Framebuffer, p: PlayerState, sprites: readonly
     const cy = half - bob * BOB_HEIGHT * r;
     const y0 = Math.max(0, Math.floor(cy - r));
     const y1 = Math.min(h - 1, Math.ceil(cy + r));
+    const f = spriteFacts[i] as PeerFacts | null;
+    if (f) {
+      f.projectedSize = size;
+    }
     for (let col = x0; col <= x1; col++) {
       if (depth >= (zbuffer[col] as number)) {
         continue;
+      }
+      if (f) {
+        f.drawnColumns++;
       }
       const dx = col + 0.5 - screenX;
       for (let row = y0; row <= y1; row++) {
