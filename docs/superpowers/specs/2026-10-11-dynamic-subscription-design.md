@@ -26,8 +26,10 @@ download grow with what is near, not with people × people.
 | VP9 SVC (`L3T3_KEY`) | Configured, but the subscriber got 256² at every requested size: Chrome won't split a source this small into spatial layers. |
 | **Separate tracks** (`face` 256, `face-64` 64) + dynacast | ✅ Unsubscribed tracks pause (0 kbps) and resume on subscribe. Each sender uploads only the sizes someone receives. |
 
-So the face is published as **three separate tracks**. Quirk: with no subscription at all (alone in a room) every
-track keeps sending until the first subscription.
+So the face is published as **three separate tracks**. A new track sends for its first ~10 s even if nobody
+subscribes: LiveKit waits that long (`initialQualityUpdateWait`) before telling the sender that no one is subscribed.
+Then it pauses, so someone alone in a room uploads only their mic. (The first spike measured at 4 s, before the
+pause, and wrongly concluded that unsubscribed tracks keep sending; re-measured 2026-10-11: 0 kbps from ~12 s.)
 
 ## 3. Publishing (sender)
 
