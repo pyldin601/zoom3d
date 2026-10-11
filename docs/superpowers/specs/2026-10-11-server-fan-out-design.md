@@ -68,13 +68,18 @@ scale the same way media now does, so a room can hold 100+ people.
   within `NEAR_TILES - 1` tiles, `FAR_DELAY_MS = 750` beyond (`net/peer-delay.ts`). The client judges a tile inside the
   server's line, because near the line the two views differ, and drawing a near peer late is smooth while drawing a
   far peer early is choppy. The delay moves at most 0.5 ms per ms, so crossing the line slows drawn time to half
-  speed (or runs it 1.5×) for about a second, never backwards or jumping. Near peers stay at 100 ms, as smooth as before.
+  speed (or runs it 1.5×) for about a second, never backwards. Near peers stay at 100 ms, as smooth as before.
+  - *Known gap:* two people walking apart fast cross the one-tile band in ~170 ms, before the delay has grown, so the
+    distant one can freeze for a few frames and then step ~0.15 tile. Server-side hysteresis (keep sending at the
+    near rate ~1.3 s after someone leaves the tier) would close it; not built.
   - *Why not the draft's measured rate (1.5× the recent update interval):* nothing is sent while a peer stands still,
     so a near peer's first move after a pause looks like a slow rate, and it would be drawn late for seconds after
     every stop.
 - **Pauses:** since an unchanged pose is never resent, the update after a pause follows a long gap. Interpolating
   across it would draw the peer already most of the way to its new pose. So before applying an entry, the client
-  holds the last pose until one tier interval before now (`holdBefore`).
+  holds the last pose until one tier interval before now (`holdBefore`): 66 ms near, 528 ms far (the first tick at
+  least 500 ms after the last send). Only a gap longer than the interval plus one tick counts as a pause; anything
+  shorter is timer drift or jitter, and holding then would stutter.
 
 ## 3. Avatars over HTTP
 - **Join is unchanged:** the client still sends its picture once, as a JPEG data URL (≤ 12 KB), in `join`.
@@ -110,7 +115,8 @@ scale the same way media now does, so a room can hold 100+ people.
   tab asks for a reload instead of showing frozen people.
 - For future bumps, a new error code `outdated` with the text "zoom3d was updated: reload the page" is sent to clients
   that do send a `v` lower than the server's; it is fatal in new clients.
-- One rollout updates both images and the servers repo's `/avatar/` route together.
+- One rollout updates both images together (no route change: `/avatar/` reaches the server through the web nginx,
+  §3).
 
 ## 6. Observability
 - `zoom3d_messages_sent_total{type="peers"}` and `zoom3d_bytes_sent_total{type="peers"}` replace `peer_state`. The

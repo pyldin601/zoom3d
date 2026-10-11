@@ -1,6 +1,6 @@
-import { INTERP_DELAY_MS, NEAR_TILES, SnapshotBuffer } from '@zoom3d/shared';
+import { FANOUT_TICK_MS, INTERP_DELAY_MS, NEAR_TILES, SnapshotBuffer } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
-import { FAR_DELAY_MS, holdBefore, nearTier, PeerDelay } from './peer-delay';
+import { FAR_DELAY_MS, holdBefore, nearTier, PeerDelay, tierInterval } from './peer-delay';
 
 describe('nearTier', () => {
   test('a tile inside the server line counts as near, anything beyond as far', () => {
@@ -59,6 +59,29 @@ describe('holdBefore', () => {
     b.push({ t: 66, x: 2, y: 1, angle: 0 });
     const out = { x: 0, y: 0, angle: 0 };
     b.sample(33, out);
+    expect(out.x).toBeCloseTo(1.5, 5);
+  });
+
+  test('steady far updates (every 528 ms: the server skips at 462 and sends at 528) are never held', () => {
+    expect(tierInterval(false)).toBe(528);
+    const b = new SnapshotBuffer();
+    for (let i = 0; i < 4; i++) {
+      holdBefore(b, i * 528, tierInterval(false));
+      b.push({ t: i * 528, x: i, y: 1, angle: 0 });
+    }
+    const out = { x: 0, y: 0, angle: 0 };
+    b.sample(528 + 264, out);
+    expect(out.x).toBeCloseTo(1.5, 5);
+  });
+
+  test('a near update a little late (jitter) is not held', () => {
+    expect(tierInterval(true)).toBe(FANOUT_TICK_MS);
+    const b = new SnapshotBuffer();
+    b.push({ t: 0, x: 1, y: 1, angle: 0 });
+    holdBefore(b, 110, tierInterval(true));
+    b.push({ t: 110, x: 2, y: 1, angle: 0 });
+    const out = { x: 0, y: 0, angle: 0 };
+    b.sample(55, out);
     expect(out.x).toBeCloseTo(1.5, 5);
   });
 

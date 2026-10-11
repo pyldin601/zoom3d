@@ -1,6 +1,8 @@
-import { FAR_INTERVAL_MS, type PeerInfo, type PlayerState, PROTOCOL_VERSION } from '@zoom3d/shared';
+import type { PeerInfo, PlayerState } from '@zoom3d/shared';
+import { PROTOCOL_VERSION } from '@zoom3d/shared';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { asWebSocket, FakeWebSocket } from './fake-websocket';
+import { tierInterval } from './peer-delay';
 import { createSession, type Session, type SessionListener } from './session';
 
 const ROOM = 'AAAAAAAAAAAAAAAAAAAAAA';
@@ -144,7 +146,7 @@ test('a far peer moving after standing still starts from where it stood, not mid
   const t = Date.now();
   ws.receive({ type: 'peers', s: [[3, 41, 2, 0]] });
   const out = { x: 0, y: 0, angle: 0 };
-  session.peers.get('far')?.buffer.sample(t - FAR_INTERVAL_MS, out);
+  session.peers.get('far')?.buffer.sample(t - tierInterval(false), out);
   expect(out.x).toBe(40);
 });
 

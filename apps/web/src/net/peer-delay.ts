@@ -16,9 +16,9 @@ export function nearTier(px: number, py: number, x: number, y: number): boolean 
   return Math.hypot(x - px, y - py) <= NEAR_TILES - 1;
 }
 
-/** How often the server sends a peer of this tier. */
+/** How often the server sends a moving peer of this tier: far ones go out on the first tick FAR_INTERVAL_MS after. */
 export function tierInterval(near: boolean): number {
-  return near ? FANOUT_TICK_MS : FAR_INTERVAL_MS;
+  return near ? FANOUT_TICK_MS : Math.ceil(FAR_INTERVAL_MS / FANOUT_TICK_MS) * FANOUT_TICK_MS;
 }
 
 export class PeerDelay {
@@ -41,11 +41,12 @@ export class PeerDelay {
 
 /**
  * The server sends nothing while a peer stands still, so its next update follows a long gap. Interpolating across that
- * gap would draw it already most of the way to the new pose: hold the last pose until one interval before `t`.
+ * gap would draw it already most of the way to the new pose: hold the last pose until one interval before `t`. A gap
+ * up to a tick longer than the interval is timer drift or jitter, not a pause, and holding then would stutter.
  */
 export function holdBefore(buffer: SnapshotBuffer, t: number, intervalMs: number): void {
   const last = buffer.latest();
-  if (last && last.t < t - intervalMs) {
+  if (last && last.t < t - intervalMs - FANOUT_TICK_MS) {
     buffer.push({ t: t - intervalMs, x: last.x, y: last.y, angle: last.angle });
   }
 }
