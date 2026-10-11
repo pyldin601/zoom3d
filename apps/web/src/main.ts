@@ -58,6 +58,7 @@ import {
   clearScreen,
   showBanner,
   showLanding,
+  showMediaControls,
   showNotice,
   showRoomBar,
   showSelfPreview,
@@ -323,8 +324,8 @@ function toggleAutomap(): void {
   automapVisible = !automapVisible;
   refreshTouchControls();
 }
-// M mutes or unmutes, C turns the camera off or on: the same as pressing the room bar's toggle (feedback, a camera
-// that can't start, a missing device and all).
+// M mutes or unmutes, C turns the camera off or on: the same as pressing the mic button or your own circle (feedback,
+// a camera that can't start, a missing device and all).
 window.addEventListener('keydown', (e) => {
   const kind = inRoom() ? mediaKey(e) : null;
   if (kind) {
@@ -456,27 +457,23 @@ function joinRoom(
   });
   boombox.setVolume(loadBoomboxVolume(storage()));
   const media = local.state();
-  showRoomBar(
-    ui,
-    location.href,
-    {
-      cam: media.cam,
-      mic: media.mic,
-      camAvailable: media.camAvailable,
-      micAvailable: media.micAvailable,
-      async onCam(on) {
-        const now = await activeCall.setCam(on);
-        showSelfPreview(ui, local.stream, { cam: now, name, avatar });
-        const problem = local.state().camProblem;
-        if (on && !now && problem) {
-          showBanner(ui, PROBLEM_TEXT.cam[problem]);
-        }
-        return now;
-      },
-      onMic: (on) => activeCall.setMic(on),
+  showRoomBar(ui, location.href, { compact: TOUCH });
+  showMediaControls(ui, {
+    cam: media.cam,
+    mic: media.mic,
+    camAvailable: media.camAvailable,
+    micAvailable: media.micAvailable,
+    async onCam(on) {
+      const now = await activeCall.setCam(on);
+      showSelfPreview(ui, local.stream, { cam: now, name, avatar });
+      const problem = local.state().camProblem;
+      if (on && !now && problem) {
+        showBanner(ui, PROBLEM_TEXT.cam[problem]);
+      }
+      return now;
     },
-    { compact: TOUCH }
-  );
+    onMic: (on) => activeCall.setMic(on),
+  });
   showSelfPreview(ui, local.stream, { cam: media.cam, name, avatar });
   if (TOUCH) {
     showTouch();
@@ -773,8 +770,9 @@ function frame(dt: number): void {
     updateInterest(session, performance.now(), document.hidden);
   }
   if (inRoom()) {
-    renderOwnHeld(fb, ownHeld, selfBob.itemLift, selfBob.sway, ownGesture.pose(performance.now()));
+    // The boombox first: a sip swings the drink across it, and the drink must stay in front.
     renderOwnBoombox(fb, ownBoombox, selfBob.itemLift, selfBob.sway);
+    renderOwnHeld(fb, ownHeld, selfBob.itemLift, selfBob.sway, ownGesture.pose(performance.now()));
   }
   gameCtx.putImageData(image, 0, 0);
   hudCtx.clearRect(0, 0, hud.width, hud.height);

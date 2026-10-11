@@ -28,7 +28,7 @@ const drawnColumns = (pixels: Uint32Array) => {
 
 describe('renderOwnBoombox', () => {
   test('constants from the spec', () => {
-    expect(OWN_BOOMBOX_RIGHT).toBe(0.88);
+    expect(OWN_BOOMBOX_RIGHT).toBe(0.84);
     expect(OWN_BOOMBOX_CROP).toBe(0.5);
   });
 

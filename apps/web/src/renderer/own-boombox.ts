@@ -4,8 +4,8 @@ import { BOOMBOX_SPRITE } from './boombox';
 import type { Framebuffer } from './framebuffer';
 import { drawOverlay, OWN_BOB, OWN_SWAY, ownTexel } from './own-held';
 
-/** Right edge as a fraction of the width: clear of the camera self-view (~0.908 onward). */
-export const OWN_BOOMBOX_RIGHT = 0.88;
+/** Right edge as a fraction of the width: clear of the mic button and self-view (~0.86 onward at 16:9). */
+export const OWN_BOOMBOX_RIGHT = 0.84;
 /** Fraction of the sprite's height hidden below the bottom edge: the fist, handle and body top show. */
 export const OWN_BOOMBOX_CROP = 0.5;
 

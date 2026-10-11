@@ -1,6 +1,16 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { clearScreen, showBanner, showLanding, showNotice, showRoomBar, showSelfPreview, showStatus } from './screens';
+import {
+  clearScreen,
+  type MediaControls,
+  showBanner,
+  showLanding,
+  showMediaControls,
+  showNotice,
+  showRoomBar,
+  showSelfPreview,
+  showStatus,
+} from './screens';
 
 let root: HTMLElement;
 beforeEach(() => {
@@ -46,18 +56,25 @@ test('room bar copies the invite link', async () => {
   expect(writeText).toHaveBeenCalledWith('http://x/r/AAAAAAAAAAAAAAAAAAAAAA');
 });
 
-test('room bar mic/cam toggles flip aria-pressed and call handlers', () => {
-  const onCam = vi.fn(async (on: boolean) => on);
+const controls = (over: Partial<MediaControls> = {}): MediaControls => ({
+  cam: true,
+  mic: true,
+  camAvailable: true,
+  micAvailable: true,
+  onCam: async (on) => on,
+  onMic: (on) => on,
+  ...over,
+});
+
+test('the room bar has the invite link only', () => {
+  showRoomBar(root, 'http://x');
+  expect(root.querySelector('.roombar [data-control]')).toBeNull();
+});
+
+test('the round mic button flips aria-pressed and calls its handler', () => {
   const onMic = vi.fn((on: boolean) => on);
-  showRoomBar(root, 'http://x', {
-    cam: true,
-    mic: true,
-    camAvailable: true,
-    micAvailable: true,
-    onCam,
-    onMic,
-  });
-  const mic = root.querySelector('button[data-control="mic"]') as HTMLButtonElement;
+  showMediaControls(root, controls({ onMic }));
+  const mic = root.querySelector(':scope > button.mic-toggle[data-control="mic"]') as HTMLButtonElement;
   expect(mic.getAttribute('aria-pressed')).toBe('true');
   mic.click();
   expect(onMic).toHaveBeenCalledWith(false);
@@ -70,30 +87,32 @@ test('room bar mic/cam toggles flip aria-pressed and call handlers', () => {
   expect(onMic).toHaveBeenLastCalledWith(true);
 });
 
+test('your own circle is the camera toggle and keeps showing your face', () => {
+  const onCam = vi.fn(async (on: boolean) => on);
+  showMediaControls(root, controls({ onCam }));
+  showSelfPreview(root, new MediaStream(), { cam: true, name: 'Ada Lovelace', avatar: null });
+  const cam = root.querySelector(':scope > button.selfview[data-control="cam"]') as HTMLButtonElement;
+  expect(cam.getAttribute('aria-label')).toBe('Cam on');
+  expect(cam.querySelectorAll('.hint svg path')).toHaveLength(3); // the hint offers to turn it off
+  cam.click();
+  expect(onCam).toHaveBeenCalledWith(false);
+  expect(cam.getAttribute('aria-label')).toBe('Cam off');
+  expect(cam.classList.contains('off')).toBe(true);
+  expect(cam.querySelectorAll('.hint svg path')).toHaveLength(2); // the hint offers the camera back
+  expect(cam.querySelector('video')).not.toBeNull();
+});
+
 test('unavailable devices disable their toggle', () => {
-  showRoomBar(root, 'http://x', {
-    cam: false,
-    mic: true,
-    camAvailable: false,
-    micAvailable: true,
-    onCam: async () => false,
-    onMic: () => true,
-  });
+  showMediaControls(root, controls({ cam: false, camAvailable: false, micAvailable: false }));
   const cam = root.querySelector('button[data-control="cam"]') as HTMLButtonElement;
   expect(cam.disabled).toBe(true);
   expect(cam.getAttribute('aria-label')).toBe('No cam');
+  expect((root.querySelector('button[data-control="mic"]') as HTMLButtonElement).disabled).toBe(true);
 });
 
 test('a cam toggle whose handler resolves false goes back to Cam off', async () => {
   let resolve: (on: boolean) => void = () => {};
-  showRoomBar(root, 'http://x', {
-    cam: false,
-    mic: true,
-    camAvailable: true,
-    micAvailable: true,
-    onCam: () => new Promise<boolean>((r) => (resolve = r)),
-    onMic: (on) => on,
-  });
+  showMediaControls(root, controls({ cam: false, onCam: () => new Promise<boolean>((r) => (resolve = r)) }));
   const cam = root.querySelector('button[data-control="cam"]') as HTMLButtonElement;
   cam.click();
   expect(cam.getAttribute('aria-label')).toBe('Cam on');
@@ -146,7 +165,7 @@ test('with the camera off the self preview shows your picture, else your initial
 test('compact room bar has a copy-link button and no link field', async () => {
   const writeText = vi.fn(() => Promise.resolve());
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
-  showRoomBar(root, 'http://x/r/AAAAAAAAAAAAAAAAAAAAAA', undefined, { compact: true });
+  showRoomBar(root, 'http://x/r/AAAAAAAAAAAAAAAAAAAAAA', { compact: true });
   expect(root.querySelector('.roombar input')).toBeNull();
   const copy = root.querySelector('.roombar button[aria-label="Copy invite link"]') as HTMLButtonElement;
   copy.click();

@@ -13,12 +13,17 @@ export function el<K extends keyof HTMLElementTagNameMap>(
 }
 
 /** The single child of `root` with class `cls`, created on demand. */
-function slot(root: HTMLElement, cls: string): HTMLElement {
-  const existing = root.querySelector<HTMLElement>(`:scope > .${cls}`);
+function slot<K extends keyof HTMLElementTagNameMap = 'div'>(
+  root: HTMLElement,
+  cls: string,
+  tag = 'div' as K
+): HTMLElementTagNameMap[K] {
+  const existing = root.querySelector<HTMLElementTagNameMap[K]>(`:scope > .${cls}`);
   if (existing) {
     return existing;
   }
-  const node = el('div', { className: cls });
+  const node = el(tag);
+  node.className = cls;
   root.append(node);
   return node;
 }
@@ -70,21 +75,32 @@ export interface MediaControls {
   onMic(on: boolean): boolean;
 }
 
-function toggle(
+/**
+ * Makes `button` a mic or cam toggle. `icon` draws the device icon in it; the self-view shows your face instead, and
+ * a hover hint with what a click will do.
+ */
+function makeToggle(
+  button: HTMLButtonElement,
   kind: 'cam' | 'mic',
   label: string,
   on: boolean,
   available: boolean,
-  onChange: (on: boolean) => boolean | Promise<boolean>
-) {
-  const button = el('button', { type: 'button', disabled: !available, className: 'toggle' });
+  onChange: (on: boolean) => boolean | Promise<boolean>,
+  icon: boolean
+): void {
+  button.type = 'button';
+  button.disabled = !available;
   button.dataset.control = kind;
   const render = () => {
-    // The same icons as the lobby; the state is in the accessible name.
+    // The state is in the accessible name.
     button.setAttribute('aria-label', available ? `${label} ${on ? 'on' : 'off'}` : `No ${label.toLowerCase()}`);
     button.setAttribute('aria-pressed', String(on));
     button.classList.toggle('off', !on);
-    button.replaceChildren(deviceIcon(kind, !on));
+    if (icon) {
+      button.replaceChildren(deviceIcon(kind, !on));
+    } else {
+      slot(button, 'hint', 'span').replaceChildren(deviceIcon(kind, on));
+    }
   };
   button.addEventListener('click', async () => {
     on = !on;
@@ -94,7 +110,14 @@ function toggle(
     render();
   });
   render();
-  return button;
+}
+
+/** Bottom right: a round mic button, and your own circle, which turns the camera off and on when clicked. */
+export function showMediaControls(root: HTMLElement, controls: MediaControls): void {
+  const mic = slot(root, 'mic-toggle', 'button');
+  makeToggle(mic, 'mic', 'Mic', controls.mic, controls.micAvailable, controls.onMic, true);
+  const cam = slot(root, 'selfview', 'button');
+  makeToggle(cam, 'cam', 'Cam', controls.cam, controls.camAvailable, controls.onCam, false);
 }
 
 /** How long the compact copy button says "Copied". */
@@ -117,17 +140,10 @@ function copyLinkButton(inviteUrl: string): HTMLButtonElement {
 export function showRoomBar(
   root: HTMLElement,
   inviteUrl: string,
-  controls?: MediaControls,
   { compact = false }: { compact?: boolean } = {}
 ): void {
-  const toggles = controls
-    ? [
-        toggle('mic', 'Mic', controls.mic, controls.micAvailable, controls.onMic),
-        toggle('cam', 'Cam', controls.cam, controls.camAvailable, controls.onCam),
-      ]
-    : [];
   if (compact) {
-    slot(root, 'roombar').replaceChildren(...toggles, copyLinkButton(inviteUrl));
+    slot(root, 'roombar').replaceChildren(copyLinkButton(inviteUrl));
     return;
   }
   const link = el('input', { readOnly: true, value: inviteUrl, ariaLabel: 'Invite link' });
@@ -140,7 +156,7 @@ export function showRoomBar(
       () => link.select()
     ) ?? link.select();
   });
-  slot(root, 'roombar').replaceChildren(...toggles, link, copy);
+  slot(root, 'roombar').replaceChildren(link, copy);
 }
 
 const BANNER_MS = 8000;
@@ -172,13 +188,14 @@ export interface SelfView {
 
 /** Your own circle: the camera while it is on, else your picture or initials, as others see you. */
 export function showSelfPreview(root: HTMLElement, stream: MediaStream | null, self: SelfView): void {
-  const box = slot(root, 'selfview');
+  const box = slot(root, 'selfview', 'button');
   let video = box.querySelector('video');
   let face = box.querySelector<HTMLElement>('.face');
   if (!video || !face) {
     video = el('video', { muted: true, autoplay: true, playsInline: true });
     face = el('div', { className: 'face' });
-    box.replaceChildren(video, face);
+    // Prepended: the camera toggle's hint stays on top.
+    box.prepend(video, face);
   }
   if (video.srcObject !== stream) {
     video.srcObject = stream;

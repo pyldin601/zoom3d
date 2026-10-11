@@ -155,7 +155,7 @@ Keyboard and touch can be active together: combine them by OR-ing the held actio
 
 ```
 ┌────────────────────────┐
-│            [🎤][📷][🔗] │  top bar, safe-area inset; link → "copy link" button
+│                   [🔗] │  top bar, safe-area inset; link → "copy link" button
 │                        │
 │     3D view, full      │  drag anywhere here to turn
 │     screen, faces      │
@@ -163,19 +163,21 @@ Keyboard and touch can be active together: combine them by OR-ing the held actio
 │                        │
 │                  [🍺]  │  drink button, only while holding a drink
 │  ┌───┐           [⋯]   │  "more" button opens the tray
-│ ◀ ▲ ▶ (pad)       (me) │  pad bottom-left (fades); self-view tile bottom-right
+│ ◀ ▲ ▶ (pad)   [🎤](me) │  pad bottom-left (fades); mic button and self-view bottom-right
 │   ▼                    │
 └────────────────────────┘
 ```
 
 ### 5.1 Top bar
-The mic and cam toggles stay as they are. In touch mode the invite-link text field (18em) is replaced by a
+*Changed 2026-10-11:* the mic and cam toggles left the top bar (see §5.2), so it holds only the invite link. In
+touch mode the invite-link text field (18em) is replaced by a
 single **copy link** button with a short "Copied" confirmation. Desktop keeps the field.
 
 ### 5.2 Self-view
 It stays a small round tile in the bottom-right corner (as today), inset by the safe area, with the drink
 button and "more" button stacked above it. Builder places them so the pad and these never overlap at 320 px
-wide.
+wide. *Since 2026-10-11* (all devices): tapping the self-view turns the camera off and on, and a round mic button
+(at least 44 px) sits to its left.
 
 ### 5.3 "More" tray (*my call*)
 The occasional actions sit behind one **⋯** button. It opens a small tray:
