@@ -188,6 +188,16 @@ test('the graph goes through the volume, then splits to the stream and to the sp
   expect(toSelf?.connections).toEqual([ctx.destination]);
 });
 
+test('the sent track is mono on every browser: one point in the room, panned again by each listener', async () => {
+  await pickAndPlay();
+  const [stream] = ctx.byKind('stream-destination') as (FakeNode & {
+    channelCount?: number;
+    channelCountMode?: string;
+  })[];
+  expect(stream?.channelCount).toBe(1);
+  expect(stream?.channelCountMode).toBe('explicit');
+});
+
 for (const [name, end] of [
   ['B while playing stops it', () => box.toggle(true)],
   ['the track ending stops it', () => audio.dispatch('ended')],

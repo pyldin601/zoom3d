@@ -62,7 +62,7 @@ browser ── ws (game: join/state/media/...) ──▶ zoom3d server ──┐
   |---|---|---|---|
   | `face` | Camera | the framer's send track (canvas, or raw camera while hidden) | 350 kbps max, no simulcast |
   | `mic` | Microphone | the local mic track | Opus default, DTX on |
-  | `boombox` | ScreenShareAudio | the boombox track, while on | 128 kbps music, DTX and RED off |
+  | `boombox` | ScreenShareAudio | the boombox track (mono), while on | 64 kbps music, mono (`forceStereo: false`), DTX and RED off |
 
 - Our own `MediaStreamTrack`s are published as user-provided tracks and LiveKit must never stop them:
   `stopLocalTrackOnUnpublish: false` and `disconnect(false)`. `LocalMediaController` keeps owning every local track.

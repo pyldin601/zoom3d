@@ -95,8 +95,10 @@ test('a boombox plays to the room at music quality and shows on the carrier', as
   await play(a, 8);
   await expect.poll(() => boomboxOf(b, 'Ada'), { timeout: 10_000 }).toBe(true);
   await expect.poll(() => peakLevel(b, `boombox:${ada}`, 1500), { timeout: 20_000 }).toBeGreaterThan(0.005);
-  // Spec §5.3: 128 kbps mono Opus, against the ~32 kbps speech default.
-  expect(await boomboxBitrate(b, ada)).toBeGreaterThan(80_000);
+  // Spec §5.3: 64 kbps mono Opus: above the ~32 kbps speech default, and capped.
+  const bitrate = await boomboxBitrate(b, ada);
+  expect(bitrate).toBeGreaterThan(40_000);
+  expect(bitrate).toBeLessThan(75_000);
 
   await a.keyboard.press('KeyB');
   await expect.poll(() => boomboxOf(b, 'Ada'), { timeout: 10_000 }).toBe(false);

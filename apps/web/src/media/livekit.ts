@@ -10,8 +10,8 @@ import type { RoomConnectOptions, RoomOptions, TrackPublishOptions } from 'livek
 import type { MediaTransport, TransportOptions } from './transport';
 
 export const VIDEO_MAX_BITRATE = 350_000;
-/** Music, not speech: well above Opus's ~32 kbps default (boombox spec §5.3). */
-export const BOOMBOX_MAX_BITRATE = 128_000;
+/** Mono music: transparent at this rate, well above Opus's ~32 kbps speech default (boombox spec §5.3). */
+export const BOOMBOX_MAX_BITRATE = 64_000;
 const RETRY_MIN_MS = 1000;
 const RETRY_MAX_MS = 30_000;
 
@@ -61,6 +61,8 @@ const PUBLISH: Record<TrackName, TrackPublishOptions> = {
     name: 'boombox',
     source: 'screen_share_audio' as TrackPublishOptions['source'],
     audioPreset: { maxBitrate: BOOMBOX_MAX_BITRATE },
+    // Mono everywhere: Safari reports a stereo channelCount, which would make LiveKit send stereo Opus.
+    forceStereo: false,
     dtx: false,
     red: false,
   },

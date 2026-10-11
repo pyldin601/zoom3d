@@ -243,11 +243,12 @@ describe('swapping tracks', () => {
         name: 'boombox',
         source: 'screen_share_audio',
         audioPreset: { maxBitrate: BOOMBOX_MAX_BITRATE },
+        forceStereo: false,
         dtx: false,
         red: false,
       },
     });
-    expect(BOOMBOX_MAX_BITRATE).toBe(128_000);
+    expect(BOOMBOX_MAX_BITRATE).toBe(64_000);
     const next = track('audio', 'next');
     t.setBoomboxTrack(asTrack(next));
     await flush();
