@@ -160,6 +160,9 @@ export function createCall(opts: CallOptions): Call {
         transport.setBoomboxTrack(boomboxTrack);
         // The tab may already be hidden, in which case peers get the raw camera track.
         transport.setVideoTrack(framer.sendTrack);
+      } else {
+        // A resume's fresh token: LiveKit's own reconnects outlast the first one's 6 h.
+        transport.setAccess(livekit);
       }
       const present = session?.peers ?? new Map();
       for (const id of [...faces.keys()]) {

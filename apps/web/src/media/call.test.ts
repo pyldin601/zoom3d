@@ -31,6 +31,7 @@ let transports: {
   setVideoTrack: ReturnType<typeof vi.fn>;
   setAudioTrack: ReturnType<typeof vi.fn>;
   setBoomboxTrack: ReturnType<typeof vi.fn>;
+  setAccess: ReturnType<typeof vi.fn>;
 }[];
 let faces: Map<string, FaceSource & { [k: string]: unknown }>;
 let faceAvatars: Map<string, string | null | undefined>;
@@ -132,6 +133,7 @@ function makeCall(init: Parameters<typeof fakeLocal>[0] = {}) {
         setVideoTrack: vi.fn(),
         setAudioTrack: vi.fn(),
         setBoomboxTrack: vi.fn(),
+        setAccess: vi.fn(),
       };
       transports.push(transport);
       return transport;
@@ -224,6 +226,8 @@ test('a resume keeps the transport even though its welcome carries a fresh token
   call.listener.welcome?.('me', { url: 'ws://lk', token: 'fresh' }, false);
   expect(transports).toHaveLength(1);
   expect(transports[0]?.close).not.toHaveBeenCalled();
+  // Tokens expire: the transport keeps the latest for its next reconnect.
+  expect(transports[0]?.setAccess).toHaveBeenCalledWith({ url: 'ws://lk', token: 'fresh' });
 });
 
 test('media that arrives before the game announces the peer is applied once it does', () => {
