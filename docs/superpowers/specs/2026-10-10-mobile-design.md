@@ -181,7 +181,7 @@ wide.
 The occasional actions sit behind one **⋯** button. It opens a small tray:
 - **Drinks:** beer, coffee, wine, nothing (the same as keys `1`–`3`, `0`, through the same `chooseHeld`).
 - **Boombox:** start (opens the file picker, as `B` does) / stop while playing.
-- **Map:** on/off (as Tab/M).
+- **Map:** on/off (as Tab).
 
 The tray closes on picking, on tapping outside it, or on ⋯ again.
 
