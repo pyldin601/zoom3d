@@ -1,11 +1,14 @@
 // Face framing glue (face-framing spec §5): plays the raw camera in a hidden <video>, detects the face once a
-// second, and draws a smoothed square crop into a 256² canvas whose captureStream is what peers get.
+// second, and draws a smoothed square crop into a 256² canvas whose captureStream is what peers get. 128² and 64²
+// canvases are drawn from it for peers who see us small (6c spec §3).
 import { type Detector, loadFaceDetector } from './face-detector';
 import { type Box, createFraming, type Framing, type Rect } from './framing';
 import type { FramingMemory } from './framing-memory';
+import type { FaceTracks } from './transport';
 
 export const OUTPUT_SIZE = 256;
 export const OUTPUT_FPS = 24;
+export const FACE_64_FPS = 15;
 export const DETECT_MS = 1000;
 
 export interface FrameStep {
@@ -72,10 +75,14 @@ export function createFrameStep(
 export interface Framer {
   /** The framed OUTPUT_SIZE² canvas track; exists with or without a camera, disabled without one. */
   readonly track: MediaStreamTrack;
+  /** `track` plus its 128² and 64² copies; all three enabled only with a camera. */
+  readonly tracks: FaceTracks;
   /** The camera track feeding the canvas, or null. The framer never stops it; its owner does. */
   readonly camera: MediaStreamTrack | null;
   /** What senders should carry now: the camera while the tab is hidden (the canvas freezes), else `track`. */
   readonly sendTrack: MediaStreamTrack;
+  /** What the three face senders should carry now: the camera for all three while hidden, else `tracks`. */
+  sendTracks(): FaceTracks;
   /** Set by the call; fired whenever `sendTrack` may have changed. */
   onSendTrackChange: (() => void) | null;
   /** Swaps the camera behind the canvas (lobby spec §4.2); null stops drawing. */
@@ -111,9 +118,28 @@ export function createFramer(opts: FramerOptions): Framer {
   canvas.height = OUTPUT_SIZE;
   const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
   const track = canvas.captureStream(OUTPUT_FPS).getVideoTracks()[0] as MediaStreamTrack;
-  track.enabled = false;
+  const small = (size: number, fps: number) => {
+    const c = doc.createElement('canvas');
+    c.width = size;
+    c.height = size;
+    return {
+      ctx: c.getContext('2d') as CanvasRenderingContext2D,
+      track: c.captureStream(fps).getVideoTracks()[0] as MediaStreamTrack,
+    };
+  };
+  const face128 = small(128, OUTPUT_FPS);
+  const face64 = small(64, FACE_64_FPS);
+  const tracks: FaceTracks = { 256: track, 128: face128.track, 64: face64.track };
+  const setEnabled = (on: boolean) => {
+    track.enabled = on;
+    face128.track.enabled = on;
+    face64.track.enabled = on;
+  };
+  setEnabled(false);
   const frameStep = createFrameStep((v, r) => {
     ctx.drawImage(v, r.x, r.y, r.size, r.size, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+    face128.ctx.drawImage(canvas, 0, 0, 128, 128);
+    face64.ctx.drawImage(canvas, 0, 0, 64, 64);
   }, opts.memory);
 
   if (video.requestVideoFrameCallback) {
@@ -133,8 +159,12 @@ export function createFramer(opts: FramerOptions): Framer {
     get camera() {
       return camera;
     },
+    tracks,
     get sendTrack() {
       return doc.visibilityState === 'hidden' && camera ? camera : track;
+    },
+    sendTracks() {
+      return doc.visibilityState === 'hidden' && camera ? { 256: camera, 128: camera, 64: camera } : tracks;
     },
     onSendTrackChange: null,
     setCamera(raw) {
@@ -144,7 +174,7 @@ export function createFramer(opts: FramerOptions): Framer {
       if (raw) {
         void video.play().catch(() => {});
       }
-      track.enabled = raw !== null;
+      setEnabled(raw !== null);
       framer.onSendTrackChange?.();
     },
   };

@@ -1,6 +1,13 @@
 // The media seam: call.ts only talks to this. Implemented over the LiveKit SFU by livekit.ts (LiveKit spec §4).
 import type { LiveKitAccess } from '@zoom3d/shared';
 
+/** Our face in three sizes (6c spec §3), each its own track: the framer's canvases, or the raw camera while hidden. */
+export interface FaceTracks {
+  256: MediaStreamTrack;
+  128: MediaStreamTrack;
+  64: MediaStreamTrack;
+}
+
 export interface TransportOptions extends LiveKitAccess {
   localStream: MediaStream | null;
   /** A peer's face and voice; called again with a new stream whenever its tracks change. */
