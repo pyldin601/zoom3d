@@ -26,6 +26,8 @@ export const CLOSE_REPLACED = 4003;
 
 export interface Outbox {
   send(connId: string, msg: ServerMessage): void;
+  /** One message to many connections, so the transport can encode it once. */
+  broadcast(connIds: readonly string[], msg: ServerMessage): void;
   close(connId: string, code: number, reason: string): void;
 }
 
@@ -368,10 +370,14 @@ export class Lobby {
   }
 
   private broadcast(room: Room, exceptId: string, msg: ServerMessage): void {
+    const conns: string[] = [];
     for (const p of room.values()) {
       if (p.id !== exceptId && p.conn !== null) {
-        this.opts.out.send(p.conn, msg);
+        conns.push(p.conn);
       }
+    }
+    if (conns.length > 0) {
+      this.opts.out.broadcast(conns, msg);
     }
   }
 

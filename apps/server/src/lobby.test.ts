@@ -16,6 +16,7 @@ const ROOM = 'AAAAAAAAAAAAAAAAAAAAAA';
 const map = parseMap(LEVEL1);
 
 let sent: { conn: string; msg: ServerMessage }[];
+let broadcasts: { conns: string[]; msg: ServerMessage }[];
 let closed: { conn: string; code: number }[];
 let events: LobbyEvent[];
 let time: number;
@@ -24,11 +25,18 @@ let tokens: number;
 
 const outbox: Outbox = {
   send: (conn, msg) => sent.push({ conn, msg }),
+  broadcast: (conns, msg) => {
+    broadcasts.push({ conns: [...conns], msg });
+    for (const conn of conns) {
+      sent.push({ conn, msg });
+    }
+  },
   close: (conn, code) => closed.push({ conn, code }),
 };
 
 beforeEach(() => {
   sent = [];
+  broadcasts = [];
   closed = [];
   events = [];
   time = 0;
@@ -156,6 +164,19 @@ describe('state', () => {
       seq: 7,
     });
     expect(to('A')).toHaveLength(before);
+  });
+
+  test('a relay goes to the outbox once, addressed to every connected peer but the sender', () => {
+    join('A');
+    join('B');
+    join('C');
+    join('D');
+    lobby.disconnect('D');
+    const { spawn } = welcome('A');
+    broadcasts = [];
+    time += 100;
+    lobby.state('A', { type: 'state', x: spawn.x, y: spawn.y, angle: 1, seq: 7 });
+    expect(broadcasts).toEqual([{ conns: ['B', 'C'], msg: expect.objectContaining({ type: 'peer_state', seq: 7 }) }]);
   });
 
   test('an implausible state is corrected for the sender only', () => {
