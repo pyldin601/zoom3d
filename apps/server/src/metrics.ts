@@ -73,6 +73,18 @@ export function createMetrics(src: MetricsSources) {
       labelNames: ['type'],
       registers,
     }),
+    messagesSent: new Counter({
+      name: 'zoom3d_messages_sent_total',
+      help: 'Server messages delivered to clients by type (a broadcast counts once per recipient).',
+      labelNames: ['type'],
+      registers,
+    }),
+    bytesSent: new Counter({
+      name: 'zoom3d_bytes_sent_total',
+      help: 'Bytes of server messages delivered to clients by type (WebSocket payload, before framing).',
+      labelNames: ['type'],
+      registers,
+    }),
     messagesDropped: new Counter({
       name: 'zoom3d_messages_dropped_total',
       help: 'Client messages dropped: over the rate limit, binary, or failing validation.',

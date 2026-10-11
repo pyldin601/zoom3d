@@ -178,7 +178,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     names, resume tokens, IPs or client close reasons.
   - **Server metrics:** Prometheus text at `GET /metrics` on the server port (`metrics.ts`), using
     `@prometheus-io/client` (`prom-client` is deprecated in its favour): rooms, peers (connected / waiting), joins by
-    result, messages by type, drops by reason, server-cut connections, plus Node process metrics. Not public: Traefik
+    result, messages received by type, messages and bytes sent by type (`zoom3d_messages_sent_total`, `zoom3d_bytes_sent_total`; a broadcast counts once per recipient), drops by reason, server-cut connections, plus Node process metrics. Not public: Traefik
     and the web nginx route only `/ws` to the server. Since 2026-10-11 casa's Prometheus (namespace `monitoring`)
     scrapes it and LiveKit (`:6789`) through pod annotations, plus the node; Grafana at `grafana.pyldin601.xyz` (login
     required) has a provisioned `zoom3d` dashboard: rooms and people, joins and messages, LiveKit rooms, participants,
