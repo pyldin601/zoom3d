@@ -1,12 +1,15 @@
 // Multiplayer wire protocol: message types, constants and strict validators.
 
-export const MAX_PEERS = 8;
+/** People per room (bots don't count). To revisit after the 100-person load test (D21). */
+export const MAX_PEERS = 128;
+/** Sent in every join; a join without it, or with an older one, comes from a tab opened before an update. */
+export const PROTOCOL_VERSION = 2;
 /** Bots a room may be created with (opt-in via the room link's `?bots=N`), outside MAX_PEERS. */
 export const MAX_BOTS = 100;
 export const NAME_MAX = 24;
 /** Client → server. A join carrying a full-size avatar is ≈ 12 KB. */
 export const MAX_MESSAGE_BYTES = 16384;
-/** Server → client: a welcome listing 7 avatars is ≈ 85 KB. */
+/** Server → client: avatars travel over HTTP, so a welcome listing 128 people and 100 bots is ≈ 50 KB. */
 export const MAX_SERVER_MESSAGE_BYTES = 131072;
 export const AVATAR_SIZE = 128;
 export const AVATAR_MAX_CHARS = 12_000;
@@ -14,6 +17,12 @@ export const RESUME_GRACE_MS = 30000;
 export const STATE_INTERVAL_MS = 66;
 export const IDLE_INTERVAL_MS = 1000;
 export const INTERP_DELAY_MS = 100;
+/** The server sends each client one batch of poses per tick (6d spec §2.1): the clients' own send rate. */
+export const FANOUT_TICK_MS = 66;
+/** Peers within this many tiles (straight line) are sent every tick... */
+export const NEAR_TILES = 16;
+/** ...and farther ones at most this often. */
+export const FAR_INTERVAL_MS = 500;
 export const RATE_PER_SEC = 60;
 export const RATE_BURST = 200;
 export const PEER_COLORS = [
@@ -29,6 +38,8 @@ export const PEER_COLORS = [
 
 export interface PeerInfo {
   id: string;
+  /** Small per-room number that names this peer in `peers` batches; never reused within a room's life. */
+  slot: number;
   name: string;
   color: string;
   x: number;
@@ -36,7 +47,7 @@ export interface PeerInfo {
   angle: number;
   cam: boolean;
   mic: boolean;
-  /** JPEG data URL (see isValidAvatar), shown while the camera is off. */
+  /** Avatar id (see isAvatarId): the picture at avatarPath(id), shown while the camera is off. */
   avatar: string | null;
   /** What the peer holds in its hand, if anything. */
   held: HeldItem | null;
@@ -73,6 +84,8 @@ export type JoinMessage = {
   avatar?: string;
   /** Asks for this many wandering bots if the join creates the room (testing large rooms). */
   bots?: number;
+  /** PROTOCOL_VERSION of the client; missing from tabs opened before 6d. */
+  v?: number;
 };
 export type StateMessage = { type: 'state'; x: number; y: number; angle: number; seq: number };
 export type MediaMessage = { type: 'media'; cam: boolean; mic: boolean };
@@ -89,8 +102,11 @@ export type ClientMessage =
   | CheersMessage
   | BoomboxMessage;
 
-export type ErrorCode = 'room_full' | 'invalid_room' | 'invalid_name' | 'not_joined';
-const ERROR_CODES: readonly ErrorCode[] = ['room_full', 'invalid_room', 'invalid_name', 'not_joined'];
+export type ErrorCode = 'room_full' | 'invalid_room' | 'invalid_name' | 'not_joined' | 'outdated';
+const ERROR_CODES: readonly ErrorCode[] = ['room_full', 'invalid_room', 'invalid_name', 'not_joined', 'outdated'];
+
+/** One peer's pose in a `peers` batch: slot, then x and y (0.01 tile) and angle (0.001 rad). */
+export type PeerEntry = [slot: number, x: number, y: number, angle: number];
 
 export type ServerMessage =
   | {
@@ -110,7 +126,7 @@ export type ServerMessage =
   | { type: 'peer_cheers'; id: string }
   | { type: 'peer_boombox'; id: string; on: boolean }
   | { type: 'peer_left'; id: string }
-  | { type: 'peer_state'; id: string; x: number; y: number; angle: number; seq: number }
+  | { type: 'peers'; s: PeerEntry[] }
   | { type: 'object_state'; id: string; x: number; y: number; angle: number; seq: number; event?: ObjectEvent }
   | { type: 'correction'; x: number; y: number; angle: number; seq: number }
   | { type: 'error'; code: ErrorCode; message: string };
@@ -139,6 +155,21 @@ export function newRoomId(bytes: Uint8Array): string {
 }
 
 const AVATAR = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/;
+const AVATAR_ID = /^[A-Za-z0-9_-]{22}$/;
+
+/** Names a picture on the server (a hash prefix of its data URL), fetched from avatarPath(id). */
+export function isAvatarId(v: unknown): v is string {
+  return typeof v === 'string' && AVATAR_ID.test(v);
+}
+
+export function avatarPath(id: string): string {
+  return `/avatar/${id}`;
+}
+
+/** A pose as it goes on the wire, rounded so a batch stays small. */
+export function peerEntry(slot: number, x: number, y: number, angle: number): PeerEntry {
+  return [slot, Math.round(x * 100) / 100, Math.round(y * 100) / 100, Math.round(angle * 1000) / 1000];
+}
 
 /** A JPEG data URL of at most AVATAR_MAX_CHARS. Receivers only ever draw it onto a canvas. */
 export function isValidAvatar(v: unknown): v is string {
@@ -195,6 +226,10 @@ function liveKitAccess(v: unknown): LiveKitAccess | null {
     : null;
 }
 
+function isPeerEntry(v: unknown): v is PeerEntry {
+  return Array.isArray(v) && v.length === 4 && isSeq(v[0]) && isNum(v[1]) && isNum(v[2]) && isNum(v[3]);
+}
+
 function parseJson(raw: string, limit: number): Obj | null {
   if (raw.length > limit) {
     return null;
@@ -235,6 +270,9 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     if (Number.isInteger(m.bots) && (m.bots as number) >= 1 && (m.bots as number) <= MAX_BOTS) {
       join.bots = m.bots as number;
     }
+    if (Number.isInteger(m.v) && (m.v as number) >= 1) {
+      join.v = m.v as number;
+    }
     return join;
   }
   if (m.type === 'state') {
@@ -261,7 +299,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
 
 /** Validates a PeerInfo from the wire or a snapshot; missing newer fields read as their defaults. */
 export function parsePeerInfo(v: unknown): PeerInfo | null {
-  if (!isObj(v) || !isStr(v.id) || !isStr(v.name) || !isStr(v.color)) {
+  if (!isObj(v) || !isStr(v.id) || !isSeq(v.slot) || !isStr(v.name) || !isStr(v.color)) {
     return null;
   }
   if (!isBool(v.cam) || !isBool(v.mic)) {
@@ -272,12 +310,14 @@ export function parsePeerInfo(v: unknown): PeerInfo | null {
     return null;
   }
   const p = pose(v);
-  const avatar = isValidAvatar(v.avatar) ? v.avatar : null;
+  const avatar = isAvatarId(v.avatar) ? v.avatar : null;
   // Missing (older server) or unknown (newer server's item) means empty-handed.
   const held = isHeldItem(v.held) ? v.held : null;
   // Missing (older server) or malformed reads as off: it only decides whether a sprite is drawn.
   const boombox = v.boombox === true;
-  return p && { id: v.id, name: v.name, color: v.color, ...p, cam: v.cam, mic: v.mic, avatar, held, boombox };
+  return (
+    p && { id: v.id, slot: v.slot, name: v.name, color: v.color, ...p, cam: v.cam, mic: v.mic, avatar, held, boombox }
+  );
 }
 
 /** Validates an object from a welcome; an unknown kind (a newer server's) reads as null. */
@@ -337,10 +377,9 @@ export function parseServerMessage(raw: string): ServerMessage | null {
       return isStr(m.id) ? { type: 'peer_boombox', id: m.id, on: m.on === true } : null;
     case 'peer_left':
       return isStr(m.id) ? { type: 'peer_left', id: m.id } : null;
-    case 'peer_state': {
-      const p = pose(m);
-      return p && isStr(m.id) && isSeq(m.seq) ? { type: 'peer_state', id: m.id, ...p, seq: m.seq } : null;
-    }
+    case 'peers':
+      // A bad entry costs only that peer one update: keep the rest.
+      return Array.isArray(m.s) ? { type: 'peers', s: m.s.filter(isPeerEntry) } : null;
     case 'object_state': {
       const p = pose(m);
       if (!p || !isStr(m.id) || !isSeq(m.seq)) {

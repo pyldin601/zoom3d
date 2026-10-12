@@ -1,4 +1,4 @@
-import { type JoinMessage, LEVEL1, parseMap, type ServerMessage } from '@zoom3d/shared';
+import { type JoinMessage, LEVEL1, PROTOCOL_VERSION, parseMap, type ServerMessage } from '@zoom3d/shared';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { Lobby, type LobbySnapshot, type Outbox } from './lobby';
 import { VACUUM_RADIUS } from './vacuum-nav';
@@ -50,7 +50,7 @@ beforeEach(() => {
 });
 
 const join = (conn: string, extra: Partial<JoinMessage> = {}, roomId = ROOM) =>
-  lobby.join(conn, { type: 'join', roomId, name: conn, ...extra });
+  lobby.join(conn, { type: 'join', v: PROTOCOL_VERSION, roomId, name: conn, ...extra });
 const welcome = (conn: string) => {
   const w = sent.filter((s) => s.conn === conn && s.msg.type === 'welcome').at(-1)?.msg;
   if (w?.type !== 'welcome') {

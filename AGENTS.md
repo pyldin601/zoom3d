@@ -134,8 +134,18 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   from the lobby onward; the room never calls `getUserMedia` itself.
 - Bots (`?bots=N`, `Lobby.spawnBots`/`stepWorld`): server-side peers with a `bot` flag, no connection and no media.
   They never count toward `MAX_PEERS`, never expire, can't be resumed into, aren't saved in the state file, and never
-  keep a room open (it closes with its last person). At most `MAX_BOT_ROOMS` rooms have them at once. They move at
-  10 Hz through the same `peer_state` relay as players, so they exercise the real fan-out.
+  keep a room open (it closes with its last person). At most `MAX_BOT_ROOMS` rooms have them at once. They move every
+  fan-out tick and go out in the same `peers` batches as players, so they exercise the real fan-out.
+- State fan-out (6d spec `docs/superpowers/specs/2026-10-11-server-fan-out-design.md`): `Lobby.state()` only stores
+  and validates. One 66 ms timer runs `stepWorld` then `fanOut`, which sends each person one `peers` batch of changed
+  poses (`fanout.ts`: near ≤ 16 tiles every tick, far every 500 ms), keyed by per-room `slot`s that are never reused. A
+  welcome or `peer_joined` counts as sent, so tracking resets there. Clients draw each peer at its tier's delay
+  (`net/peer-delay.ts`) and hold the last pose before an update that follows a pause; never go back to one global
+  `INTERP_DELAY_MS` for peers.
+- Avatars travel as ids (`isAvatarId`) and load from `/avatar/<id>` (server `AvatarStore`, ref-counted; nginx and Vite
+  proxy the path). The snapshot keeps the data URL, so `LobbySnapshot` is still version 1.
+- Protocol version: joins carry `v: PROTOCOL_VERSION`. Bump it on a breaking wire change: older tabs then get the fatal
+  `outdated` error and are told to reload (a join with no `v` at all gets `invalid_room`).
 - World objects (decision D22, robot vacuum spec `docs/superpowers/specs/2026-10-11-robot-vacuum-design.md`):
   - **Not peers.** `object_state`, `welcome.objects`, `session.objects` and `objectKey(id)` keep them apart from peers:
     no labels, automap, `MAX_PEERS` or media, and they never keep a room open.

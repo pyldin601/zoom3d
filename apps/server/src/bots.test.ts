@@ -1,9 +1,11 @@
 import {
+  FANOUT_TICK_MS,
   isWallAt,
   type JoinMessage,
   LEVEL1,
   MAX_PEERS,
   PEER_COLORS,
+  PROTOCOL_VERSION,
   parseMap,
   type ServerMessage,
 } from '@zoom3d/shared';
@@ -59,7 +61,7 @@ beforeEach(() => {
 });
 
 const join = (conn: string, extra: Partial<JoinMessage> = {}, roomId = ROOM) =>
-  lobby.join(conn, { type: 'join', roomId, name: conn, ...extra });
+  lobby.join(conn, { type: 'join', v: PROTOCOL_VERSION, roomId, name: conn, ...extra });
 const welcome = (conn: string) => {
   const w = sent.find((s) => s.conn === conn && s.msg.type === 'welcome')?.msg;
   if (w?.type !== 'welcome') {
@@ -67,10 +69,16 @@ const welcome = (conn: string) => {
   }
   return w;
 };
-const statesTo = (conn: string) =>
-  sent
-    .filter((s) => s.conn === conn && s.msg.type === 'peer_state')
-    .map((s) => s.msg as Extract<ServerMessage, { type: 'peer_state' }>);
+/** Every pose entry batched to `conn`, in order. */
+const posesTo = (conn: string) => sent.flatMap((s) => (s.conn === conn && s.msg.type === 'peers' ? s.msg.s : []));
+/** Moves the world one fan-out tick and sends the batches, like the server's timer. */
+const tick = (n = 1) => {
+  for (let i = 0; i < n; i++) {
+    time += FANOUT_TICK_MS;
+    lobby.stepWorld(FANOUT_TICK_MS);
+    lobby.fanOut();
+  }
+};
 
 describe('spawning', () => {
   test('the join that creates a room spawns its bots on floor tiles, spread out, with generic names', () => {
@@ -131,36 +139,32 @@ describe('spawning', () => {
 });
 
 describe('moving', () => {
-  test('stepping moves every bot, never into a wall, and relays each pose with a growing seq', () => {
+  test("stepping moves every bot, never into a wall, and batches their poses like a player's", () => {
     join('A', { bots: 10 });
-    const start = new Map(welcome('A').peers.map((b) => [b.id, b]));
+    const start = new Map(welcome('A').peers.map((b) => [b.slot, b]));
     const map = parseMap(LEVEL1);
-    for (let i = 0; i < 50; i++) {
-      lobby.stepWorld(100);
+    tick(50);
+    const poses = posesTo('A');
+    for (const [slot, x, y] of poses) {
+      expect(start.has(slot)).toBe(true);
+      expect(isWallAt(map, x, y)).toBe(false);
     }
-    const states = statesTo('A');
-    expect(states).toHaveLength(10 * 50);
-    for (const s of states) {
-      expect(start.has(s.id)).toBe(true);
-      expect(isWallAt(map, s.x, s.y)).toBe(false);
+    for (const [slot, b] of start) {
+      const end = poses.filter((p) => p[0] === slot).at(-1);
+      expect(end).toBeDefined();
+      expect(Math.hypot((end?.[1] ?? 0) - b.x, (end?.[2] ?? 0) - b.y)).toBeGreaterThan(0.5);
     }
-    for (const [id, b] of start) {
-      const mine = states.filter((s) => s.id === id);
-      expect(mine.map((s) => s.seq)).toEqual(Array.from({ length: 50 }, (_, k) => k + 1));
-      const end = mine.at(-1);
-      expect(Math.hypot((end?.x ?? 0) - b.x, (end?.y ?? 0) - b.y)).toBeGreaterThan(0.5);
-    }
+    // One batch per tick at most, never one message per bot.
+    expect(sent.filter((s) => s.conn === 'A' && s.msg.type === 'peers').length).toBeLessThanOrEqual(50);
   });
 
   test('a bot that runs into a wall turns away, like a robot vacuum', () => {
     lobby = makeLobby(parseMap(['1111111', '1S....1', '1111111'].join('\n')));
     join('A', { bots: 1 });
-    for (let i = 0; i < 200; i++) {
-      lobby.stepWorld(100);
-    }
-    const angles = new Set(statesTo('A').map((s) => s.angle.toFixed(3)));
+    tick(300);
+    const angles = new Set(posesTo('A').map((p) => p[3].toFixed(3)));
     expect(angles.size).toBeGreaterThan(2);
-    const xs = statesTo('A').map((s) => s.x);
+    const xs = posesTo('A').map((p) => p[1]);
     expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(2);
   });
 
@@ -168,7 +172,7 @@ describe('moving', () => {
     join('A', { bots: 5 });
     lobby.disconnect('A');
     sent = [];
-    lobby.stepWorld(100);
+    tick();
     expect(sent).toEqual([]);
   });
 });

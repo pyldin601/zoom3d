@@ -2,7 +2,16 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { LEVEL1, MAX_MESSAGE_BYTES, parseClientMessage, parseMap, RATE_BURST, RATE_PER_SEC } from '@zoom3d/shared';
+import {
+  FANOUT_TICK_MS,
+  isAvatarId,
+  LEVEL1,
+  MAX_MESSAGE_BYTES,
+  parseClientMessage,
+  parseMap,
+  RATE_BURST,
+  RATE_PER_SEC,
+} from '@zoom3d/shared';
 import { type WebSocket, WebSocketServer } from 'ws';
 import { type LiveKitConfig, liveKitConfigFromEnv, liveKitTokenFor } from './livekit';
 import { Lobby, type LobbyEvent, type Outbox } from './lobby';
@@ -14,8 +23,7 @@ import { loadSnapshot, saveSnapshot } from './snapshot';
 export const CLOSE_RATE_LIMIT = 4008;
 const MAX_CONSECUTIVE_DROPS = 200;
 const TICK_MS = 1000;
-/** Bots move at 10 Hz: smooth enough with client interpolation, and the load large rooms will really see. */
-const WORLD_TICK_MS = 100;
+const AVATAR_PATH = /^\/avatar\/([^/]+)$/;
 
 export interface ServerOptions {
   port: number;
@@ -104,7 +112,11 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
   const out: Outbox = {
     send(conn, msg) {
       const data = JSON.stringify(msg);
-      countSent(msg.type, data, sendRaw(conn, data) ? 1 : 0);
+      const delivered = sendRaw(conn, data);
+      countSent(msg.type, data, delivered ? 1 : 0);
+      if (delivered && msg.type === 'peers') {
+        metrics.peersBatchEntries.observe(msg.s.length);
+      }
     },
     broadcast(conns, msg) {
       const data = JSON.stringify(msg);
@@ -141,9 +153,19 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     log.info('snapshot_restored', { rooms: restored.rooms.length, peers });
   }
 
-  // Not routed publicly: Traefik and the web nginx only forward /ws to this server.
+  // Only /ws and /avatar/ are routed publicly (Traefik and the web nginx); /health and /metrics stay internal.
   const http = createServer((req, res) => {
-    if (req.method === 'GET' && req.url === '/health') {
+    const avatar = req.method === 'GET' ? AVATAR_PATH.exec(req.url ?? '')?.[1] : undefined;
+    const jpeg = avatar !== undefined && isAvatarId(avatar) ? lobby.avatar(avatar) : null;
+    if (avatar !== undefined) {
+      if (jpeg) {
+        // Content-addressed: an id always names the same picture.
+        res.writeHead(200, { 'content-type': 'image/jpeg', 'cache-control': 'public, max-age=31536000, immutable' });
+        res.end(jpeg);
+      } else {
+        res.writeHead(404).end();
+      }
+    } else if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200, { 'content-type': 'text/plain' }).end('ok');
     } else if (req.method === 'GET' && req.url === '/metrics') {
       metrics.registry.metrics().then(
@@ -233,7 +255,11 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     }
   }, opts.heartbeatMs ?? 10_000);
   const ticker = setInterval(() => lobby.tick(), TICK_MS);
-  const worldTicker = setInterval(() => lobby.stepWorld(WORLD_TICK_MS), WORLD_TICK_MS);
+  // One world tick (6d spec §2.1): bots and robots move, then everyone gets one batch of what changed.
+  const worldTicker = setInterval(() => {
+    lobby.stepWorld(FANOUT_TICK_MS);
+    lobby.fanOut();
+  }, FANOUT_TICK_MS);
 
   await new Promise<void>((resolve) => http.listen(opts.port, resolve));
   return {

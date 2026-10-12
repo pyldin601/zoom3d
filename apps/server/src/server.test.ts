@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseServerMessage, RATE_BURST, type ServerMessage } from '@zoom3d/shared';
+import { avatarPath, PROTOCOL_VERSION, parseServerMessage, type ServerMessage } from '@zoom3d/shared';
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import WebSocket from 'ws';
 import type { Logger } from './log';
@@ -67,7 +67,7 @@ async function client(): Promise<TestClient> {
 
 async function joined(name: string) {
   const c = await client();
-  c.send({ type: 'join', roomId: ROOM, name });
+  c.send({ type: 'join', v: PROTOCOL_VERSION, roomId: ROOM, name });
   const welcome = await c.waitFor('welcome');
   return { ...c, welcome };
 }
@@ -99,13 +99,15 @@ test('metrics count what the server sends: messages and bytes by type, each deli
   const b = await joined('Bob');
   const { x, y } = a.welcome.spawn;
   a.send({ type: 'state', x, y, angle: 1, seq: 1 });
-  await b.waitFor('peer_state');
+  await b.waitFor('peers');
   const text = await metrics();
   expect(text).toContain('zoom3d_messages_sent_total{type="welcome"} 2');
   expect(text).toContain('zoom3d_messages_sent_total{type="peer_joined"} 1');
-  expect(text).toContain('zoom3d_messages_sent_total{type="peer_state"} 1');
-  const bytes = /zoom3d_bytes_sent_total\{type="peer_state"\} (\d+)/.exec(text)?.[1];
-  expect(Number(bytes)).toBeGreaterThan(40);
+  expect(text).toContain('zoom3d_messages_sent_total{type="peers"} 1');
+  const bytes = /zoom3d_bytes_sent_total\{type="peers"\} (\d+)/.exec(text)?.[1];
+  expect(Number(bytes)).toBeGreaterThan(20);
+  expect(text).toContain('zoom3d_peers_batch_entries_bucket{le="1"} 1');
+  expect(text).toContain('zoom3d_peers_batch_entries_count 1');
 });
 
 test('metrics count rooms, peers, joins and dropped messages', async () => {
@@ -149,14 +151,39 @@ test('lobby events and connection ends are logged without names, tokens or room 
   expect(all).not.toContain(a.welcome.resumeToken);
 });
 
-test('two clients see each other and state is relayed', async () => {
+test('two clients see each other and state arrives in batches', async () => {
   const a = await joined('Ada');
   const b = await joined('Bob');
   expect((await a.waitFor('peer_joined')).peer.name).toBe('Bob');
   expect(b.welcome.peers.map((p) => p.name)).toEqual(['Ada']);
   const { x, y } = a.welcome.spawn;
   a.send({ type: 'state', x, y, angle: 1, seq: 1 });
-  expect(await b.waitFor('peer_state')).toMatchObject({ id: a.welcome.selfId, angle: 1, seq: 1 });
+  const slot = b.welcome.peers[0]?.slot;
+  expect((await b.waitFor('peers')).s).toEqual([[slot, Math.round(x * 100) / 100, Math.round(y * 100) / 100, 1]]);
+});
+
+test('a join without a protocol version (a tab from before 6d) is refused as invalid_room', async () => {
+  const c = await client();
+  c.send({ type: 'join', roomId: ROOM, name: 'Old' });
+  expect(await c.waitFor('error')).toMatchObject({ code: 'invalid_room' });
+  expect(await c.closed).toBe(4002);
+});
+
+test('avatars are served by id, cacheable forever, and unknown ones are 404', async () => {
+  const pic = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==';
+  const c = await client();
+  c.send({ type: 'join', v: PROTOCOL_VERSION, roomId: ROOM, name: 'Ada', avatar: pic });
+  await c.waitFor('welcome');
+  const b = await joined('Bob');
+  const id = b.welcome.peers[0]?.avatar;
+  expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
+  const res = await fetch(`http://localhost:${server.port}${avatarPath(id as string)}`);
+  expect(res.status).toBe(200);
+  expect(res.headers.get('content-type')).toBe('image/jpeg');
+  expect(res.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+  expect(Buffer.from(await res.arrayBuffer())).toEqual(Buffer.from('/9j/4AAQSkZJRgABAQ==', 'base64'));
+  expect((await fetch(`http://localhost:${server.port}/avatar/AAAAAAAAAAAAAAAAAAAAAA`)).status).toBe(404);
+  expect((await fetch(`http://localhost:${server.port}/avatar/a/b`)).status).toBe(404);
 });
 
 test('garbage from one client is dropped and the room keeps working', async () => {
@@ -167,7 +194,7 @@ test('garbage from one client is dropped and the room keeps working', async () =
   a.send({ type: 'state', x: '1', y: 2, angle: 0, seq: 0 });
   const { x, y } = a.welcome.spawn;
   a.send({ type: 'state', x, y, angle: 2, seq: 2 });
-  expect(await b.waitFor('peer_state')).toMatchObject({ angle: 2, seq: 2 });
+  expect((await b.waitFor('peers')).s[0]?.[3]).toBe(2);
 });
 
 test('an oversized message closes only the offender', async () => {
@@ -178,7 +205,7 @@ test('an oversized message closes only the offender', async () => {
   expect(await c.closed).toBe(1009);
   const { x, y } = a.welcome.spawn;
   a.send({ type: 'state', x, y, angle: 3, seq: 3 });
-  expect(await b.waitFor('peer_state')).toMatchObject({ seq: 3 });
+  expect((await b.waitFor('peers')).s[0]?.[3]).toBe(3);
 });
 
 test('a flood is rate limited and finally closed with 4008', async () => {
@@ -197,11 +224,10 @@ test('a flood is rate limited and finally closed with 4008', async () => {
     a.send({ type: 'state', x, y, angle: 0, seq: 10 + i });
   }
   expect(await a.closed).toBe(4008);
-  // Cy's arrival reaches Bob after every relay of Ada's flood, on the same socket.
+  // The flood never reaches Bob as a flood: at most one batch per tick, and only when Ada's pose changed.
   await joined('Cy');
   await b.waitFor('peer_joined');
-  const relayed = b.messages.filter((m) => m.type === 'peer_state').length;
-  expect(relayed).toBe(RATE_BURST - 1); // the burst, less Ada's join
+  expect(b.messages.filter((m) => m.type === 'peers').length).toBeLessThanOrEqual(2);
   expect(b.ws.readyState).toBe(WebSocket.OPEN);
   expect(lines.find((l) => l.msg === 'rate_limited')?.level).toBe('warn');
   const text = await metrics();
@@ -232,12 +258,12 @@ test('the welcome hands out LiveKit access (dev defaults) and signal messages ar
 
 test('a room created with bots shows them, keeps them moving, and counts them on /metrics', async () => {
   const c = await client();
-  c.send({ type: 'join', roomId: ROOM, name: 'Ada', bots: 5 });
+  c.send({ type: 'join', v: PROTOCOL_VERSION, roomId: ROOM, name: 'Ada', bots: 5 });
   const welcome = await c.waitFor('welcome');
-  const botIds = new Set(welcome.peers.map((p) => p.id));
+  const botSlots = new Set(welcome.peers.map((p) => p.slot));
   expect(welcome.peers.map((p) => p.name)).toEqual(['Bot 001', 'Bot 002', 'Bot 003', 'Bot 004', 'Bot 005']);
-  const state = await c.waitFor('peer_state');
-  expect(botIds.has(state.id)).toBe(true);
+  const batch = await c.waitFor('peers');
+  expect(batch.s.every(([slot]) => botSlots.has(slot))).toBe(true);
   expect(await metrics()).toContain('zoom3d_peers{state="bot"} 5');
 });
 
@@ -287,7 +313,7 @@ test('rooms survive a restart through the state file', async () => {
   server = await startServer({ port: 0, graceMs: 200, heartbeatMs: 100, stateFile });
   expect(existsSync(stateFile)).toBe(false);
   const a2 = await client();
-  a2.send({ type: 'join', roomId: ROOM, name: 'Ada', resumeToken: a.welcome.resumeToken });
+  a2.send({ type: 'join', v: PROTOCOL_VERSION, roomId: ROOM, name: 'Ada', resumeToken: a.welcome.resumeToken });
   const welcome = await a2.waitFor('welcome');
   expect(welcome.selfId).toBe(a.welcome.selfId);
   expect(welcome.color).toBe(a.welcome.color);

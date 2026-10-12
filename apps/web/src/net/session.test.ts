@@ -1,11 +1,15 @@
 import type { PeerInfo, PlayerState } from '@zoom3d/shared';
+import { PROTOCOL_VERSION } from '@zoom3d/shared';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { asWebSocket, FakeWebSocket } from './fake-websocket';
+import { tierInterval } from './peer-delay';
 import { createSession, type Session, type SessionListener } from './session';
 
 const ROOM = 'AAAAAAAAAAAAAAAAAAAAAA';
-const peer = (id: string, x = 2): PeerInfo => ({
+let slots = 0;
+const peer = (id: string, x = 2, slot = slots++): PeerInfo => ({
   id,
+  slot,
   name: id,
   color: '#3cb44b',
   x,
@@ -84,17 +88,71 @@ test('a welcome with a new identity (slot expired or server restarted) applies t
   expect(player).toEqual({ x: 2.5, y: 3.5, angle: 0 });
 });
 
-test('peer_state for unknown or departed peers creates no ghosts, and stale seqs are ignored', () => {
-  const { session, ws } = joinedSession([peer('a')]);
-  ws.receive({ type: 'peer_state', id: 'zz', x: 3, y: 3, angle: 0, seq: 1 });
-  expect(session.peers.has('zz')).toBe(false);
-  ws.receive({ type: 'peer_state', id: 'a', x: 3, y: 2, angle: 0, seq: 5 });
-  vi.advanceTimersByTime(10);
-  ws.receive({ type: 'peer_state', id: 'a', x: 9, y: 2, angle: 0, seq: 3 });
-  expect(session.peers.get('a')?.buffer.latest()?.x).toBe(3);
+test('a peers batch moves each listed peer, found by slot', () => {
+  const { session, ws } = joinedSession([peer('a', 2, 4), peer('b', 3, 7)]);
+  vi.advanceTimersByTime(66);
+  ws.receive({ type: 'peers', s: [[7, 3.5, 2, 1]] });
+  expect(session.peers.get('b')?.info).toMatchObject({ x: 3.5, y: 2, angle: 1 });
+  expect(session.peers.get('b')?.buffer.latest()).toMatchObject({ x: 3.5, y: 2, angle: 1 });
+  expect(session.peers.get('a')?.info.x).toBe(2);
+  ws.receive({
+    type: 'peers',
+    s: [
+      [4, 2.5, 2, 0],
+      [7, 4, 2, 1],
+    ],
+  });
+  expect(session.peers.get('a')?.info.x).toBe(2.5);
+  expect(session.peers.get('b')?.info.x).toBe(4);
+});
+
+test('entries for unknown or departed slots create no ghosts', () => {
+  const { session, ws } = joinedSession([peer('a', 2, 1)]);
+  ws.receive({ type: 'peers', s: [[9, 3, 3, 0]] });
+  expect([...session.peers.keys()]).toEqual(['a']);
   ws.receive({ type: 'peer_left', id: 'a' });
-  ws.receive({ type: 'peer_state', id: 'a', x: 4, y: 2, angle: 0, seq: 6 });
+  ws.receive({ type: 'peers', s: [[1, 4, 2, 0]] });
   expect(session.peers.size).toBe(0);
+});
+
+test('a peer joining later is found by its slot', () => {
+  const { session, ws } = joinedSession();
+  ws.receive({ type: 'peer_joined', peer: peer('c', 7, 12) });
+  ws.receive({ type: 'peers', s: [[12, 7.5, 2, 0]] });
+  expect(session.peers.get('c')?.info.x).toBe(7.5);
+});
+
+test('a welcome after reconnect rebuilds the slots', () => {
+  const { session, ws } = joinedSession([peer('a', 2, 1)]);
+  ws.serverClose(1006);
+  vi.advanceTimersByTime(500);
+  const ws2 = FakeWebSocket.latest();
+  ws2.open();
+  ws2.receive(welcome([peer('b', 3, 2)]));
+  ws2.receive({
+    type: 'peers',
+    s: [
+      [1, 9, 9, 0],
+      [2, 3.5, 2, 0],
+    ],
+  });
+  expect([...session.peers.keys()]).toEqual(['b']);
+  expect(session.peers.get('b')?.info.x).toBe(3.5);
+});
+
+test('a far peer moving after standing still starts from where it stood, not mid-way', () => {
+  const { session, ws } = joinedSession([peer('far', 40, 3)]);
+  vi.advanceTimersByTime(5000);
+  const t = Date.now();
+  ws.receive({ type: 'peers', s: [[3, 41, 2, 0]] });
+  const out = { x: 0, y: 0, angle: 0 };
+  session.peers.get('far')?.buffer.sample(t - tierInterval(false), out);
+  expect(out.x).toBe(40);
+});
+
+test('join carries the protocol version', () => {
+  joinedSession();
+  expect(FakeWebSocket.latest().sent[0]).toMatchObject({ type: 'join', v: PROTOCOL_VERSION });
 });
 
 test('join asks for bots when given (only matters for the join that creates the room)', () => {
@@ -109,13 +167,13 @@ test('join asks for bots when given (only matters for the join that creates the 
   });
   const ws = FakeWebSocket.latest();
   ws.open();
-  expect(ws.sent[0]).toEqual({ type: 'join', roomId: ROOM, name: 'Ada', bots: 100 });
+  expect(ws.sent[0]).toEqual({ type: 'join', v: PROTOCOL_VERSION, roomId: ROOM, name: 'Ada', bots: 100 });
 });
 
 test('join carries the avatar picture, also when resuming', () => {
   const pic = 'data:image/jpeg;base64,/9j/';
   const { ws } = joinedSession([], {}, pic);
-  expect(ws.sent[0]).toEqual({ type: 'join', roomId: ROOM, name: 'Ada', avatar: pic });
+  expect(ws.sent[0]).toEqual({ type: 'join', v: PROTOCOL_VERSION, roomId: ROOM, name: 'Ada', avatar: pic });
   ws.serverClose(1006);
   vi.advanceTimersByTime(500);
   const ws2 = FakeWebSocket.latest();

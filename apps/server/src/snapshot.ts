@@ -1,6 +1,6 @@
 // The lobby written on shutdown and read back on the next start, so a deploy doesn't drop the rooms.
 import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { isValidRoomId, MAX_PEERS, parsePeerInfo } from '@zoom3d/shared';
+import { isValidAvatar, isValidRoomId, MAX_PEERS, parsePeerInfo } from '@zoom3d/shared';
 import type { LobbySnapshot, SnapshotPeer } from './lobby';
 import type { Logger } from './log';
 import type { VacuumSave } from './vacuum';
@@ -8,11 +8,15 @@ import type { VacuumSave } from './vacuum';
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 
 function snapshotPeer(v: unknown): SnapshotPeer | null {
-  const info = parsePeerInfo(v);
+  // Saved peers have no slot (restore hands out fresh ones): give the wire validator a placeholder.
+  const info = isObj(v) ? parsePeerInfo({ ...v, slot: 0 }) : null;
   if (!info || !isObj(v) || typeof v.resumeToken !== 'string' || !Number.isFinite(v.lastAcceptedAt)) {
     return null;
   }
-  return { ...info, resumeToken: v.resumeToken, lastAcceptedAt: v.lastAcceptedAt as number };
+  // Saved pictures are data URLs (the wire's avatar ids mean nothing to the next process).
+  const { slot: _, ...saved } = info;
+  const avatar = isValidAvatar(v.avatar) ? v.avatar : null;
+  return { ...saved, avatar, resumeToken: v.resumeToken, lastAcceptedAt: v.lastAcceptedAt as number };
 }
 
 /** A saved robot vacuum, or null if anything about it is off (the room then gets a fresh one). */

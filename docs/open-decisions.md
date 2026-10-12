@@ -252,15 +252,24 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
       - **Mixed versions:** an old client publishes only `face`; new clients fall back to the nearest published size.
     - The SFU then forwards only what each client asked for, so a full room's egress scales with what people can
       see and hear, not with N × (N − 1). To measure on casa: LiveKit egress on the dashboard before/after.
-  - **6d, server fan-out:** replace per-move relays with **one batched update per client per server tick**, containing
-    only peers it should know about now: nearby ones at full rate (15 Hz), distant ones at 1–2 Hz. Absolute poses
-    stay (no deltas): a lost batch costs one stale frame, never a corrupt state. Also avatar pictures move out of
-    `welcome` to a cached `GET /avatar/:id`, peer colours are generated instead of 8 fixed ones, `MAX_PEERS` goes up,
-    and name labels show only for nearby people.
+  - **6d, server fan-out — built 2026-10-11** ([spec](superpowers/specs/2026-10-11-server-fan-out-design.md)):
+    per-move `peer_state` relays are gone. Every 66 ms the server steps bots and robots, then sends each person **one
+    `peers` batch** of the poses that changed: peers within 16 tiles every tick, farther ones at most every 500 ms.
+    - **Wire:** entries are `[slot, x, y, angle]`, rounded to 0.01 tile and 0.001 rad. Slots are small per-room
+      numbers that are never reused. Absolute poses (no deltas): a lost batch costs one stale frame, never a corrupt
+      state.
+    - **Client:** each peer is drawn 100 ms late when near and 750 ms when far, changing at most 0.5 ms per ms. After a
+      pause it is held at its last pose, so it never starts mid-way.
+    - **Avatars:** pictures leave `welcome` for `GET /avatar/<id>`. The id is a content hash, ref-counted across
+      rooms and cached forever; the snapshot still keeps data URLs (version 1).
+    - **Rooms of 100+:** `MAX_PEERS` is 128. People after the eighth get golden-angle colours. Labels and automap
+      names show only within 10 tiles.
+    - **Old tabs:** `join.v = 2`. A join without it gets `invalid_room` (old tabs show "Couldn't join this room");
+      an older `v` gets the new fatal `outdated` ("zoom3d was updated: reload the page").
   - **Testing aid (2026-10-11): bots.** `/?bots=N` (1–100) → "Start a party" makes a room whose creating join asks the
     server for N bots: generic names ("Bot 001"), muted colours, no media, spawned on random floor tiles, wandering like
     robot vacuums (straight on, a random new heading at a wall, now and then a turn) at 10 Hz through the normal
-    `peer_state` relay. Outside the people cap; gone when the last person leaves; at most 3 bot rooms per server.
+    `peer_state` relay (since 6d: every fan-out tick, in the same `peers` batches as people). Outside the people cap; gone when the last person leaves; at most 3 bot rooms per server.
     100 bots on desktop Chrome: 60 fps, with ~1,000 position messages/s per client, which is what 6c/6d are measured
     against.
   - **Then a load test:** `lk load-test` for 100 simulated media participants plus a bot swarm on the game socket,
@@ -283,7 +292,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   starting with a robot vacuum in every room. It cleans the floor in 3×3-tile patches (the edge first, then lanes) at a
   real robot's pace, about 1.5 h for LEVEL1, then searches for its dock forever and never finds it.
   - **World objects are not peers.** The server simulates them per room (`apps/server/src/vacuum*.ts`, stepped with
-    the bots at 10 Hz) and relays `object_state`. They have no labels, automap dot, media or `MAX_PEERS` slot, and
+    the bots, every fan-out tick since 6d) and relays `object_state`. They have no labels, automap dot, media or `MAX_PEERS` slot, and
     never keep a room open. The robot is saved in the state file with a map fingerprint; a different map gives a
     fresh robot.
   - **Models are described in code** (`renderer/models/`), not imported from an editor. `renderer/voxels.ts` draws

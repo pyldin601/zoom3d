@@ -93,10 +93,10 @@ test('a welcome cancels the deadline', () => {
   expect(FakeWebSocket.instances).toHaveLength(1);
 });
 
-test('a fatal error stops reconnecting', () => {
+test.each(['room_full', 'outdated'])('a fatal error (%s) stops reconnecting', (code) => {
   start();
   FakeWebSocket.latest().open();
-  FakeWebSocket.latest().receive({ type: 'error', code: 'room_full', message: 'full' });
+  FakeWebSocket.latest().receive({ type: 'error', code, message: 'no' });
   FakeWebSocket.latest().serverClose(4001);
   vi.advanceTimersByTime(10_000);
   expect(statuses.at(-1)).toBe('failed');

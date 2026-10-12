@@ -12,4 +12,4 @@ Each step gets its own implementation plan in `docs/superpowers/plans/`.
 | 4 | M4 Spatial audio ✅ | Distance/pan/reverb, wall muffling, speaking ring, debug panel |
 | 5 | M5 Polish | Device pickers, error states, perf, Firefox |
 | 6 | M6 Deploy ✅ | Home k3s (casa) via ArgoCD, HTTPS; TURN comes with LiveKit (D11) |
-| 7 | M7 100+ rooms | LiveKit on casa (D21): 6a deploy ✅, 6b media through it ✅, 6c dynamic subscription ✅ (no video for people out of view, no audio beyond hearing range, smaller face tracks for distant faces), 6d server fan-out (batched per-tick state with interest management, avatars over HTTP, more colours, higher cap), then a 100-person load test |
+| 7 | M7 100+ rooms | LiveKit on casa (D21): 6a deploy ✅, 6b media through it ✅, 6c dynamic subscription ✅ (no video for people out of view, no audio beyond hearing range, smaller face tracks for distant faces), 6d server fan-out ✅ (one batch of changed poses per client per tick, far peers twice a second, avatars over HTTP, generated colours, 128 people), then a 100-person load test |

@@ -142,7 +142,7 @@ glue to browser/Node APIs.
 
 ### 7.2 Protocol (JSON over WebSocket, types and validators in `shared`)
 Client → server:
-- `join {roomId, name, resumeToken?, avatar?}`
+- `join {v, roomId, name, resumeToken?, avatar?}` (`v` = `PROTOCOL_VERSION` since 6d)
 - `state {x, y, angle, seq}`, sent at 15 Hz while moving and 1 Hz while idle
 - `media {cam: bool, mic: bool}`
 - `held {item}`, where `item` is `'beer' | 'coffee' | 'wine' | null` (see the [held items spec](2026-10-09-held-items-design.md))
@@ -152,7 +152,8 @@ Client → server:
 Server → client:
 - `welcome {selfId, resumeToken, color, spawn, peers: Peer[], iceServers}`
 - `peer_joined {peer}`, `peer_left {id}`
-- `peer_state {id, x, y, angle, seq}`, relayed immediately
+- `peers {s: [slot, x, y, angle][]}`: one batch of changed poses per server tick (6d, the
+  [fan-out spec](2026-10-11-server-fan-out-design.md); it replaced `peer_state`)
 - `peer_media {id, cam, mic}`
 - `peer_held {id, item}`
 - `peer_drink {id}`: relayed only while that peer holds something, at most once per second
@@ -160,8 +161,9 @@ Server → client:
 - `signal {from, payload}`
 - `error {code, message}`
 
-where `Peer = {id, name, color, x, y, angle, cam, mic, avatar, held}`. `avatar` is a
-`data:image/jpeg;base64,…` URL of a 128×128 picture (≤ 12 000 chars) or `null` (§8.1).
+where `Peer = {id, slot, name, color, x, y, angle, cam, mic, avatar, held}`. In `join`, `avatar` is a
+`data:image/jpeg;base64,…` URL of a 128×128 picture (≤ 12 000 chars); in `Peer` it is that picture's id, served at
+`/avatar/<id>` (6d), or `null` (§8.1).
 `held` is the item in the peer's hand or `null`.
 
 ### 7.3 Server validation

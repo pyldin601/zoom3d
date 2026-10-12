@@ -9,7 +9,7 @@ import {
 
 export type ConnStatus = 'connecting' | 'open' | 'reconnecting' | 'failed';
 
-const FATAL: readonly ErrorCode[] = ['room_full', 'invalid_room', 'invalid_name'];
+const FATAL: readonly ErrorCode[] = ['room_full', 'invalid_room', 'invalid_name', 'outdated'];
 const BACKOFF_BASE_MS = 500;
 const BACKOFF_MAX_MS = 5000;
 /**

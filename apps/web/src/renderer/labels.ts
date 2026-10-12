@@ -5,6 +5,13 @@ import { type Projection, projectSprite } from './sprites';
 
 const projection: Projection = { screenX: 0, depth: 0, size: 0 };
 
+/** Names show only for people this close (6d spec §4): a crowd of 100 labels is unreadable. */
+export const LABEL_TILES = 10;
+
+export function inLabelRange(p: { x: number; y: number }, x: number, y: number): boolean {
+  return Math.hypot(x - p.x, y - p.y) <= LABEL_TILES;
+}
+
 export function drawLabels(
   ctx: CanvasRenderingContext2D,
   fb: Framebuffer,
@@ -23,7 +30,7 @@ export function drawLabels(
   ctx.lineJoin = 'round';
   ctx.lineWidth = Math.max(2, textH * 0.005);
   for (const o of others) {
-    if (!projectSprite(p, o.x, o.y, fb.width, fb.fov, projection)) {
+    if (!inLabelRange(p, o.x, o.y) || !projectSprite(p, o.x, o.y, fb.width, fb.fov, projection)) {
       continue;
     }
     const col = Math.round(projection.screenX);

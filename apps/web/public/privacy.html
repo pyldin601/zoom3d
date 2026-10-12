@@ -29,7 +29,9 @@
 
       <h2>What the server keeps</h2>
       <p>While a room exists, the server holds what the others in it need to see: your display name, your picture
-        if you chose one, where you stand and what you hold. A room is forgotten a short while after everyone has left.
+        if you chose one, where you stand and what you hold. Your picture is fetched from an address made from the
+        picture itself, which only the people in your room are given, and it stops working once nobody uses it. A room
+        is forgotten a short while after everyone has left.
         During a server restart it is written to disk briefly and deleted again on start.</p>
       <p>Server logs record technical events, like a connection opening or a room closing, with random ids and a
         scrambled form of the room link. They never contain names, pictures or room links. Like most websites, our web

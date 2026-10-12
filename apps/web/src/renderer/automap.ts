@@ -1,5 +1,6 @@
 // Top-down automap drawn on the HUD canvas.
 import { type GameMap, type PlayerState, tileAt } from '@zoom3d/shared';
+import { inLabelRange } from './labels';
 
 const FILL = 0.9;
 const ZONE_COLORS = ['', '#8c8e8c', '#7a5530', '#1a2cc0'];
@@ -84,8 +85,10 @@ export function drawAutomap(
     ctx.beginPath();
     ctx.arc(ox, oy, dot, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.fillText(o.name, ox, oy - dot - 2);
+    if (inLabelRange(p, o.x, o.y)) {
+      ctx.fillStyle = '#fff';
+      ctx.fillText(o.name, ox, oy - dot - 2);
+    }
   }
 
   const size = Math.max(cell * 0.9, 6);

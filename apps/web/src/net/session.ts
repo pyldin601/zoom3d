@@ -10,12 +10,14 @@ import {
   type ObjectInfo,
   type PeerInfo,
   type PlayerState,
+  PROTOCOL_VERSION,
   type ServerMessage,
   SIP_MS,
   SnapshotBuffer,
   STATE_INTERVAL_MS,
 } from '@zoom3d/shared';
 import { type ConnStatus, connect } from './connection';
+import { holdBefore, nearTier, PeerDelay, tierInterval } from './peer-delay';
 
 const MOVE_EPSILON = 1e-4;
 const TURN_EPSILON = 1e-3;
@@ -23,7 +25,8 @@ const TURN_EPSILON = 1e-3;
 export interface RemotePeer {
   info: PeerInfo;
   buffer: SnapshotBuffer;
-  lastSeq: number;
+  /** How far in the past to draw this peer: depends on how often the server sends it (6d spec §2.3). */
+  delay: PeerDelay;
   /** This peer's last sip or cheers, by when it arrived (now()); null before any or once the drink is put down. */
   gesture: { kind: 'sip' | 'cheers'; at: number } | null;
 }
@@ -86,6 +89,8 @@ export interface SessionOptions {
 export function createSession(opts: SessionOptions): Session {
   const { player, now } = opts;
   const peers = new Map<string, RemotePeer>();
+  /** The same peers by slot, the name `peers` batches use. */
+  const bySlot = new Map<number, RemotePeer>();
   const objects = new Map<string, RemoteObject>();
   const playing = (g: RemotePeer['gesture']) => g !== null && now() - g.at < (g.kind === 'sip' ? SIP_MS : CHEERS_MS);
   let selfId: string | null = null;
@@ -105,7 +110,9 @@ export function createSession(opts: SessionOptions): Session {
   const addPeer = (info: PeerInfo) => {
     const buffer = new SnapshotBuffer();
     buffer.push({ t: now(), x: info.x, y: info.y, angle: info.angle });
-    peers.set(info.id, { info: { ...info }, buffer, lastSeq: -1, gesture: null });
+    const peer: RemotePeer = { info: { ...info }, buffer, delay: new PeerDelay(), gesture: null };
+    peers.set(info.id, peer);
+    bySlot.set(info.slot, peer);
   };
 
   const handle = (m: ServerMessage) => {
@@ -120,6 +127,7 @@ export function createSession(opts: SessionOptions): Session {
         color = m.color;
         resumeToken = m.resumeToken;
         peers.clear();
+        bySlot.clear();
         for (const p of m.peers) {
           addPeer(p);
         }
@@ -148,10 +156,15 @@ export function createSession(opts: SessionOptions): Session {
         addPeer(m.peer);
         listener.peerJoined?.(m.peer);
         break;
-      case 'peer_left':
+      case 'peer_left': {
+        const peer = peers.get(m.id);
+        if (peer) {
+          bySlot.delete(peer.info.slot);
+        }
         peers.delete(m.id);
         listener.peerLeft?.(m.id);
         break;
+      }
       case 'peer_media': {
         const peer = peers.get(m.id);
         if (!peer) {
@@ -188,14 +201,20 @@ export function createSession(opts: SessionOptions): Session {
         }
         break;
       }
-      case 'peer_state': {
-        const peer = peers.get(m.id);
-        if (!peer || m.seq <= peer.lastSeq) {
-          return;
+      case 'peers': {
+        // The socket is ordered, so there is no seq: a batch is always newer than the last.
+        const t = now();
+        for (const [slot, x, y, angle] of m.s) {
+          const peer = bySlot.get(slot);
+          if (!peer) {
+            continue;
+          }
+          holdBefore(peer.buffer, t, tierInterval(nearTier(player.x, player.y, x, y)));
+          peer.info.x = x;
+          peer.info.y = y;
+          peer.info.angle = angle;
+          peer.buffer.push({ t, x, y, angle });
         }
-        peer.lastSeq = m.seq;
-        Object.assign(peer.info, { x: m.x, y: m.y, angle: m.angle });
-        peer.buffer.push({ t: now(), x: m.x, y: m.y, angle: m.angle });
         break;
       }
       case 'object_state': {
@@ -232,6 +251,7 @@ export function createSession(opts: SessionOptions): Session {
     url: opts.url,
     makeJoin: () => ({
       type: 'join',
+      v: PROTOCOL_VERSION,
       roomId: opts.roomId,
       name: opts.name,
       ...(resumeToken ? { resumeToken } : {}),
