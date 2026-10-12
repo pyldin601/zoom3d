@@ -144,6 +144,9 @@ test('the audio panel shows boombox controls while playing, and its volume reach
 });
 
 test('the boombox volume is remembered across a reload', async ({ page }) => {
+  // Two joins (camera and face tracking start each time) and two uploads: ~2 s alone, but 18-30 s under the full
+  // suite's media load, right at the 30 s default.
+  test.setTimeout(60_000);
   await createAndJoin(page, 'Ada');
   await play(page, 20);
   await page.keyboard.press('Backquote');
