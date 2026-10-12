@@ -276,6 +276,14 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     measuring LiveKit CPU and egress on casa (4 cores, 1 Gbps), server CPU, and browser frame rate. casa's limits
     (shared 4 cores, UDP buffer `net.core.rmem_max`) are the main risks; monitoring (LiveKit Prometheus + Grafana)
     comes first.
+    - **Run 2026-10-12** ([report](load-tests/2026-10-12-m7-100-people.md)): **100 people fit.** Results:
+      - **Game socket:** 100 walking clients cost the server 0.35 cores, 30 msg/s per client, no corrections.
+      - **Media:** LiveKit fed 100 subscribers at the 6c caps with 0% loss.
+      - **Both at once:** node CPU ~60%.
+      - **Browser:** 60 fps in the crowd.
+    - **Full model, scaled:** ~75–85% node CPU and ~265 Mbit/s LiveKit egress.
+    - **Untested:** casa's internet uplink and ingest from 100 real publishers. Measure the uplink before a
+      100-person event.
 - **Decided (product, 2026-10-11): proximity only.** You see and hear people near you; clusters are natural breakout
   rooms. No room-wide stage/spotlight or webinar mode in M7 (a stage would need a broadcast path on top of 6c's
   rules).
