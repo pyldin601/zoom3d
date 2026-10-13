@@ -1,9 +1,11 @@
-import { isWallAt, LEVEL1, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
+import { LEVEL1 } from '../../map/level1';
+import { isWallAt, parseMap } from '../../map/map';
 import { createVacuumNav, VACUUM_RADIUS } from './nav';
 import { defined, seeded } from './test-helpers';
 import {
   createVacuum,
+  parkVacuum,
   restoreVacuum,
   saveVacuum,
   stepVacuum,
@@ -74,6 +76,25 @@ describe('createVacuum', () => {
     const v = createVacuum(nav, seeded(), 'v1', { nearlyDone: true });
     expect(v.clean.size).toBe(nav.dirtyAtStart.length - 1);
     expect(v.clean.has(nav.patchOf(Math.floor(v.x), Math.floor(v.y)))).toBe(false);
+  });
+});
+
+describe('parkVacuum', () => {
+  test('a parked robot starts cleaning from the given pose', () => {
+    const v = parkVacuum('v', 1.5, 3.5, -Math.PI / 2);
+    expect(v.phase).toBe('cleaning');
+    expect(v.clean.size).toBe(0);
+    expect(v.x).toBe(1.5);
+    expect(v.y).toBe(3.5);
+    expect(v.angle).toBeCloseTo((3 * Math.PI) / 2);
+
+    const nav = createVacuumNav(TWO_ROOMS);
+    const rng = seeded(11);
+    for (let t = 0; t < 60; t += DT) {
+      stepVacuum(nav, v, DT, rng, []);
+    }
+    expect(Math.hypot(v.x - 1.5, v.y - 3.5)).toBeGreaterThan(0.1);
+    expect(v.clean.size).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -166,7 +187,6 @@ describe('stepVacuum', () => {
       stepVacuum(nav, v, DT, rng, []);
       t += DT;
     }
-    console.info(`full LEVEL1 clean: ${(t / 60).toFixed(1)} min, ${v.waypointsSkipped} points given up`);
     expect(t).toBeGreaterThanOrEqual(50 * 60);
     expect(t).toBeLessThanOrEqual(120 * 60);
   });

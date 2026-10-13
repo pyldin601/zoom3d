@@ -1,8 +1,15 @@
-import { type JoinMessage, LEVEL1, PROTOCOL_VERSION, parseMap, type ServerMessage } from '@zoom3d/shared';
+import {
+  type JoinMessage,
+  LEVEL1,
+  PROTOCOL_VERSION,
+  parseMap,
+  type ServerMessage,
+  seeded,
+  VACUUM_RADIUS,
+} from '@zoom3d/shared';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { Lobby, type LobbySnapshot, type Outbox } from '../../lobby';
-import { VACUUM_RADIUS } from './nav';
-import { defined, seeded } from './test-helpers';
+import { defined } from './test-helpers';
 
 // Robot vacuum spec §3.1, §3.6, §4: one robot per room, driven by the lobby, saved with the room.
 const ROOM = 'AAAAAAAAAAAAAAAAAAAAAA';

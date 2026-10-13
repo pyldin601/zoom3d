@@ -1,5 +1,7 @@
-import { hasLineOfSight, isWallAt, LEVEL1, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
+import { hasLineOfSight } from '../../geometry/los';
+import { LEVEL1 } from '../../map/level1';
+import { isWallAt, parseMap } from '../../map/map';
 import { createVacuumNav, mapFingerprint, type Point, VACUUM_RADIUS } from './nav';
 import { defined } from './test-helpers';
 

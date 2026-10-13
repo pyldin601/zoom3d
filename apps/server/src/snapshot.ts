@@ -1,9 +1,8 @@
 // The lobby written on shutdown and read back on the next start, so a deploy doesn't drop the rooms.
 import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { isValidAvatar, isValidRoomId, MAX_PEERS, parsePeerInfo } from '@zoom3d/shared';
+import { isValidAvatar, isValidRoomId, MAX_PEERS, parsePeerInfo, type VacuumSave } from '@zoom3d/shared';
 import type { LobbySnapshot, SnapshotPeer } from './lobby';
 import type { Logger } from './log';
-import type { VacuumSave } from './objects/vacuum/vacuum';
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 

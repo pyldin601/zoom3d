@@ -5,6 +5,8 @@
 // room opens with its first person and closes with its last; bots and the vacuum never keep it open.
 import {
   type BoomboxMessage,
+  createVacuum,
+  createVacuumNav,
   DRINK_GAP_MS,
   type GameMap,
   type HeldMessage,
@@ -16,27 +18,25 @@ import {
   MAX_PEERS,
   type MediaMessage,
   type PeerInfo,
+  type Point,
   PROTOCOL_VERSION,
   RESUME_GRACE_MS,
+  restoreVacuum,
   type ServerMessage,
   type StateMessage,
   sanitizeName,
+  saveVacuum,
   spawnPoint,
+  stepVacuum,
+  type Vacuum,
+  type VacuumNav,
+  type VacuumSave,
+  vacuumInfo,
 } from '@zoom3d/shared';
 import { AvatarStore } from './avatars';
 import { floorTiles, MAX_BOT_ROOMS, placeBot, stepBot } from './bots';
 import { pickColor } from './colors';
 import { type SentLog, selectBatch } from './fanout';
-import { createVacuumNav, type Point, type VacuumNav } from './objects/vacuum/nav';
-import {
-  createVacuum,
-  restoreVacuum,
-  saveVacuum,
-  stepVacuum,
-  type Vacuum,
-  type VacuumSave,
-  vacuumInfo,
-} from './objects/vacuum/vacuum';
 
 /** WebSocket close codes. */
 const CLOSE_ROOM_FULL = 4001;

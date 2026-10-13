@@ -4,7 +4,9 @@
 // Two pieces of state drive it:
 // - `phase` is its long-term goal: `cleaning` patches, then `searching` for the dock (it never finds it).
 // - `activity` is what it does this step: `move` along its waypoints, `scan` the slow search circle, or `pause`.
-import { isWallAt, moveWithCollision, type ObjectEvent, type ObjectInfo, PLAYER_RADIUS } from '@zoom3d/shared';
+import { moveWithCollision, PLAYER_RADIUS } from '../../geometry/movement';
+import { isWallAt } from '../../map/map';
+import type { ObjectEvent, ObjectInfo } from '../../protocol/protocol';
 import { pick } from '../../random';
 import { mapFingerprint, type Point, VACUUM_RADIUS, type VacuumNav } from './nav';
 
@@ -140,6 +142,11 @@ export function createVacuum(
     }
   }
   return initialState(id, tile.x + 0.5, tile.y + 0.5, rng() * TWO_PI, 'cleaning', clean);
+}
+
+/** A robot parked at a chosen pose with nothing cleaned yet (the landing page's, which starts out of view). */
+export function parkVacuum(id: string, x: number, y: number, angle: number): Vacuum {
+  return initialState(id, x, y, angle, 'cleaning', new Set());
 }
 
 export function saveVacuum(nav: VacuumNav, v: Vacuum): VacuumSave {

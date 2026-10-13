@@ -1,6 +1,7 @@
 // Where the robot vacuum goes (robot vacuum spec §3.3): the map cut into 3×3-tile patches, a coverage route per patch
 // (the edge ring first, then back-and-forth lanes) and tile paths between them. Pure; built once per map.
-import { type GameMap, hasLineOfSight, isWallAt } from '@zoom3d/shared';
+import { hasLineOfSight } from '../../geometry/los';
+import { type GameMap, isWallAt } from '../../map/map';
 
 /** Tiles per patch side. */
 const PATCH = 3;

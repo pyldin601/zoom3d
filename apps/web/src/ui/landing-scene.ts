@@ -7,6 +7,7 @@ import type { Framebuffer } from '../renderer/framebuffer';
 import { bakeLighting, LAMP, type Light, type Lighting } from '../renderer/lighting';
 import { hexToRgb, renderSprites, type Sprite } from '../renderer/sprites';
 import { makeTextures } from '../renderer/textures';
+import type { VoxelInstance } from '../renderer/voxels';
 import { CEILING, FLOOR, renderWalls } from '../renderer/walls';
 import { drawLogo } from './landing-logo';
 
@@ -172,20 +173,13 @@ export function faceTexels(person: LandingPerson): Uint32Array {
   return texels;
 }
 
-/**
- * Draws the picture into `fb` once. The landing page shows it with the title; the lobby shows it without, until Join
- * starts the room.
- */
-export function renderLandingScene(
-  fb: Framebuffer,
-  { logo = true, lights = false }: { logo?: boolean; lights?: boolean } = {}
-): void {
-  const camera = landingCamera(fb);
-  if (lights && !landingLighting) {
-    landingLighting = bakeLighting(LANDING_MAP, LANDING_LIGHTS, AMBIENT, FLOOR, CEILING);
-  }
-  renderWalls(fb, LANDING_MAP, camera, makeTextures(1), lights ? landingLighting : null);
-  const sprites: Sprite[] = LANDING_PEOPLE.map((p, i) => ({
+/** The picture's sprites and textures, built on first use and reused: the landing show redraws it every frame. */
+let landingSprites: Sprite[] | null = null;
+let landingTextures: Uint32Array[] | null = null;
+const landingVoxels: VoxelInstance[] = [];
+
+function sprites(): Sprite[] {
+  landingSprites ??= LANDING_PEOPLE.map((p, i) => ({
     key: String(i),
     x: p.x,
     y: p.y,
@@ -200,7 +194,33 @@ export function renderLandingScene(
     held: p.held ?? null,
     boombox: false,
   }));
-  renderSprites(fb, camera, sprites);
+  return landingSprites;
+}
+
+/**
+ * Draws the picture into `fb`: the landing page shows it with the title, and the lobby without, until Join starts
+ * the room. `vacuum` is the landing show's robot (landing vacuum spec §3.3), drawn among the people.
+ */
+export function renderLandingScene(
+  fb: Framebuffer,
+  {
+    logo = true,
+    lights = false,
+    vacuum = null,
+  }: { logo?: boolean; lights?: boolean; vacuum?: VoxelInstance | null } = {}
+): void {
+  const camera = landingCamera(fb);
+  if (lights && !landingLighting) {
+    landingLighting = bakeLighting(LANDING_MAP, LANDING_LIGHTS, AMBIENT, FLOOR, CEILING);
+  }
+  const lighting = lights ? landingLighting : null;
+  landingTextures ??= makeTextures(1);
+  renderWalls(fb, LANDING_MAP, camera, landingTextures, lighting);
+  landingVoxels.length = 0;
+  if (vacuum) {
+    landingVoxels.push(vacuum);
+  }
+  renderSprites(fb, camera, sprites(), undefined, landingVoxels, lighting);
   if (logo) {
     drawLogo(fb, LOGO_MARGIN, camera === LANDING_CAMERA_PORTRAIT ? 'center' : 'right');
   }
