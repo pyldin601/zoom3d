@@ -49,12 +49,14 @@ scale the same way media now does, so a room can hold 100+ people.
 
 ### 2.2 Message
 ```ts
-{ type: 'peers'; s: [slot: number, x: number, y: number, angle: number][] }
+{ type: 'peers'; s: [slot: number, x: number, y: number, angle: number, age: number][] }
 ```
+- *Amended 2026-10-13 (D23):* `age` (whole ms, ≥ 0) is how long before the batch the server accepted that pose
+  (`now − poseAt`). It was added after the first build, with `PROTOCOL_VERSION` 3; see §2.3.
 - `slot` is a small integer the server gives each peer in a room (`PeerInfo.slot`, sent in `welcome` and
   `peer_joined`), so the hot message doesn't repeat 16-character ids. Slots are never reused within a room's
   life (a counter), so a late batch can never move the wrong person.
-- `x`, `y` are rounded to 0.01 tile; `angle` to 0.001 rad. One entry is ~25 bytes.
+- `x`, `y` are rounded to 0.01 tile; `angle` to 0.001 rad. One entry is ~28 bytes.
 - Expected: someone in a 100-person crowd gets ~15 messages/s of up to ~100 entries, ~2.5 KB each in the worst
   case (everyone near and moving), against ~1,000 messages/s today. Far peers cost ~2 entries/s each.
 - Events stay as they are, sent once when they happen: `peer_joined`, `peer_left`, `peer_media`, `peer_held`,
@@ -69,6 +71,15 @@ scale the same way media now does, so a room can hold 100+ people.
   server's line, because near the line the two views differ, and drawing a near peer late is smooth while drawing a
   far peer early is choppy. The delay moves at most 0.5 ms per ms, so crossing the line slows drawn time to half
   speed (or runs it 1.5×) for about a second, never backwards. Near peers stay at 100 ms, as smooth as before.
+  - *Amended 2026-10-13 (D23): they weren't.* The client's 66 ms send timer and the server's 66 ms tick drift against
+    each other, so now and then two moves land in one tick and the first is never sent. Stamped on arrival, every
+    entry sat on the tick grid. A peer's drawn speed wobbled with the timers' phase, and a skipped tick left a 132 ms
+    gap. That gap emptied a 100 ms buffer and also tripped the pause hold, so the peer stopped, then lurched. Now each
+    entry is stamped `arrival − age` (never before the previous one), the near delay is 150 ms (`INTERP_DELAY_MS`:
+    two ticks plus jitter), and only a gap longer than the interval plus **two** ticks counts as a pause. Simulated
+    (client every 66.7 ms ± 4, server ticks 66 ms, downlink jitter 10–30 ms): frozen frames went from 2–3% to 0, and
+    the drawn speed's rms error from ~0.27 to ~0.07 of walking speed. Age stamps with the old 100 ms delay were worse
+    than before (5% frozen): the three changes only work together.
   - *Known gap:* two people walking apart fast cross the one-tile band in ~170 ms, before the delay has grown, so the
     distant one can freeze for a few frames and then step ~0.15 tile. Server-side hysteresis (keep sending at the
     near rate ~1.3 s after someone leaves the tier) would close it; not built.
@@ -78,8 +89,8 @@ scale the same way media now does, so a room can hold 100+ people.
 - **Pauses:** since an unchanged pose is never resent, the update after a pause follows a long gap. Interpolating
   across it would draw the peer already most of the way to its new pose. So before applying an entry, the client
   holds the last pose until one tier interval before now (`holdBefore`): 66 ms near, 528 ms far (the first tick at
-  least 500 ms after the last send). Only a gap longer than the interval plus one tick counts as a pause; anything
-  shorter is timer drift or jitter, and holding then would stutter.
+  least 500 ms after the last send). Only a gap longer than the interval plus two ticks counts as a pause (one tick
+  before D23); anything shorter is timer drift, a skipped tick or jitter, and holding then would stutter.
 
 ## 3. Avatars over HTTP
 - **Join is unchanged:** the client still sends its picture once, as a JPEG data URL (≤ 12 KB), in `join`.

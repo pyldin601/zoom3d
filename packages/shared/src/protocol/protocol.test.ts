@@ -8,6 +8,7 @@ import {
   FANOUT_TICK_MS,
   FAR_INTERVAL_MS,
   HELD_ITEMS,
+  INTERP_DELAY_MS,
   isAvatarId,
   isHeldItem,
   isValidAvatar,
@@ -221,7 +222,7 @@ describe('parseServerMessage', () => {
     { type: 'peer_held', id: 'p1', item: null },
     { type: 'peer_drink', id: 'p1' },
     { type: 'peer_left', id: 'p1' },
-    { type: 'peers', s: [[0, 1, 2, 3]] },
+    { type: 'peers', s: [[0, 1, 2, 3, 40]] },
     { type: 'error', code: 'outdated', message: 'zoom3d was updated: reload the page' },
     { type: 'correction', x: 1, y: 2, angle: 3, seq: 4 },
     { type: 'error', code: 'room_full', message: 'full' },
@@ -461,22 +462,28 @@ describe('server fan-out (6d)', () => {
     expect(NEAR_TILES).toBe(16);
     expect(FAR_INTERVAL_MS).toBe(500);
     expect(MAX_PEERS).toBe(128);
-    expect(PROTOCOL_VERSION).toBe(2);
+    expect(PROTOCOL_VERSION).toBe(3);
+    expect(INTERP_DELAY_MS).toBe(150);
   });
 
-  test('peerEntry rounds positions to 0.01 tile and the angle to 0.001 rad', () => {
-    expect(peerEntry(3, 1.23456, 2.5, 0.12345)).toEqual([3, 1.23, 2.5, 0.123]);
-    expect(peerEntry(0, 7.006, 0.004, 6.2834)).toEqual([0, 7.01, 0, 6.283]);
+  test('peerEntry rounds positions to 0.01 tile, the angle to 0.001 rad and the age to whole ms', () => {
+    expect(peerEntry(3, 1.23456, 2.5, 0.12345, 12.6)).toEqual([3, 1.23, 2.5, 0.123, 13]);
+    expect(peerEntry(0, 7.006, 0.004, 6.2834, 0)).toEqual([0, 7.01, 0, 6.283, 0]);
+  });
+
+  test('peerEntry never sends a negative age (the server clock stepped back)', () => {
+    expect(peerEntry(1, 1, 1, 0, -30)).toEqual([1, 1, 1, 0, 0]);
   });
 
   test('peers keeps good entries and drops malformed ones', () => {
     const raw =
-      '{"type":"peers","s":[[1,2,3,0.5],[1.5,2,3,0],[-1,2,3,0],[2,"2",3,0],[3,2,3],[4,2,3,0,9],5,[5,1e999,3,0],[6,0,0,0]]}';
+      '{"type":"peers","s":[[1,2,3,0.5,7],[1.5,2,3,0,0],[-1,2,3,0,0],[2,"2",3,0,0],[3,2,3,0],[4,2,3,0,9,9],5,' +
+      '[5,1e999,3,0,0],[7,2,3,0,-1],[8,2,3,0,1.5],[6,0,0,0,0]]}';
     expect(parseServerMessage(raw)).toEqual({
       type: 'peers',
       s: [
-        [1, 2, 3, 0.5],
-        [6, 0, 0, 0],
+        [1, 2, 3, 0.5, 7],
+        [6, 0, 0, 0, 0],
       ],
     });
   });

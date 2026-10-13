@@ -141,7 +141,9 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   poses (`fanout.ts`: near ≤ 16 tiles every tick, far every 500 ms), keyed by per-room `slot`s that are never reused. A
   welcome or `peer_joined` counts as sent, so tracking resets there. Clients draw each peer at its tier's delay
   (`net/peer-delay.ts`) and hold the last pose before an update that follows a pause; never go back to one global
-  `INTERP_DELAY_MS` for peers.
+  `INTERP_DELAY_MS` for peers. Each entry carries its `age` (ms since the server accepted it), and the client stamps it
+  `arrival − age`: arrival times sit on the tick grid, and with two drifting 66 ms timers that grid makes walkers
+  stutter (D23). Keep the near delay at two ticks plus jitter (150 ms).
 - Avatars travel as ids (`isAvatarId`) and load from `/avatar/<id>` (server `AvatarStore`, ref-counted; nginx and Vite
   proxy the path). The snapshot keeps the data URL, so `LobbySnapshot` is still version 1.
 - Protocol version: joins carry `v: PROTOCOL_VERSION`. Bump it on a breaking wire change: older tabs then get the fatal

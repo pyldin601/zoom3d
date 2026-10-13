@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { avatarPath, PROTOCOL_VERSION, parseServerMessage, type ServerMessage } from '@zoom3d/shared';
+import { avatarPath, FANOUT_TICK_MS, PROTOCOL_VERSION, parseServerMessage, type ServerMessage } from '@zoom3d/shared';
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import WebSocket from 'ws';
 import type { Logger } from './log';
@@ -159,7 +159,10 @@ test('two clients see each other and state arrives in batches', async () => {
   const { x, y } = a.welcome.spawn;
   a.send({ type: 'state', x, y, angle: 1, seq: 1 });
   const slot = b.welcome.peers[0]?.slot;
-  expect((await b.waitFor('peers')).s).toEqual([[slot, Math.round(x * 100) / 100, Math.round(y * 100) / 100, 1]]);
+  const [entry] = (await b.waitFor('peers')).s;
+  expect(entry?.slice(0, 4)).toEqual([slot, Math.round(x * 100) / 100, Math.round(y * 100) / 100, 1]);
+  // Accepted at most a tick (plus timer slack) before the batch went out.
+  expect(entry?.[4]).toBeLessThan(FANOUT_TICK_MS + 50);
 });
 
 test('a join without a protocol version (a tab from before 6d) is refused as invalid_room', async () => {

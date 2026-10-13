@@ -91,15 +91,15 @@ test('a welcome with a new identity (slot expired or server restarted) applies t
 test('a peers batch moves each listed peer, found by slot', () => {
   const { session, ws } = joinedSession([peer('a', 2, 4), peer('b', 3, 7)]);
   vi.advanceTimersByTime(66);
-  ws.receive({ type: 'peers', s: [[7, 3.5, 2, 1]] });
+  ws.receive({ type: 'peers', s: [[7, 3.5, 2, 1, 0]] });
   expect(session.peers.get('b')?.info).toMatchObject({ x: 3.5, y: 2, angle: 1 });
   expect(session.peers.get('b')?.buffer.latest()).toMatchObject({ x: 3.5, y: 2, angle: 1 });
   expect(session.peers.get('a')?.info.x).toBe(2);
   ws.receive({
     type: 'peers',
     s: [
-      [4, 2.5, 2, 0],
-      [7, 4, 2, 1],
+      [4, 2.5, 2, 0, 0],
+      [7, 4, 2, 1, 0],
     ],
   });
   expect(session.peers.get('a')?.info.x).toBe(2.5);
@@ -108,17 +108,17 @@ test('a peers batch moves each listed peer, found by slot', () => {
 
 test('entries for unknown or departed slots create no ghosts', () => {
   const { session, ws } = joinedSession([peer('a', 2, 1)]);
-  ws.receive({ type: 'peers', s: [[9, 3, 3, 0]] });
+  ws.receive({ type: 'peers', s: [[9, 3, 3, 0, 0]] });
   expect([...session.peers.keys()]).toEqual(['a']);
   ws.receive({ type: 'peer_left', id: 'a' });
-  ws.receive({ type: 'peers', s: [[1, 4, 2, 0]] });
+  ws.receive({ type: 'peers', s: [[1, 4, 2, 0, 0]] });
   expect(session.peers.size).toBe(0);
 });
 
 test('a peer joining later is found by its slot', () => {
   const { session, ws } = joinedSession();
   ws.receive({ type: 'peer_joined', peer: peer('c', 7, 12) });
-  ws.receive({ type: 'peers', s: [[12, 7.5, 2, 0]] });
+  ws.receive({ type: 'peers', s: [[12, 7.5, 2, 0, 0]] });
   expect(session.peers.get('c')?.info.x).toBe(7.5);
 });
 
@@ -132,8 +132,8 @@ test('a welcome after reconnect rebuilds the slots', () => {
   ws2.receive({
     type: 'peers',
     s: [
-      [1, 9, 9, 0],
-      [2, 3.5, 2, 0],
+      [1, 9, 9, 0, 0],
+      [2, 3.5, 2, 0, 0],
     ],
   });
   expect([...session.peers.keys()]).toEqual(['b']);
@@ -144,10 +144,28 @@ test('a far peer moving after standing still starts from where it stood, not mid
   const { session, ws } = joinedSession([peer('far', 40, 3)]);
   vi.advanceTimersByTime(5000);
   const t = Date.now();
-  ws.receive({ type: 'peers', s: [[3, 41, 2, 0]] });
+  ws.receive({ type: 'peers', s: [[3, 41, 2, 0, 0]] });
   const out = { x: 0, y: 0, angle: 0 };
   session.peers.get('far')?.buffer.sample(t - tierInterval(false), out);
   expect(out.x).toBe(40);
+});
+
+test('an entry is placed when the server accepted it (arrival minus its age), not when the batch came', () => {
+  const { session, ws } = joinedSession([peer('a', 2, 4)]);
+  vi.advanceTimersByTime(1000);
+  const t = Date.now();
+  ws.receive({ type: 'peers', s: [[4, 2.5, 4, 0, 50]] });
+  expect(session.peers.get('a')?.buffer.latest()).toMatchObject({ t: t - 50, x: 2.5 });
+});
+
+test('an entry that would land before the last one (faster network) goes just after it instead', () => {
+  const { session, ws } = joinedSession([peer('a', 2, 4)]);
+  vi.advanceTimersByTime(1000);
+  const t = Date.now();
+  ws.receive({ type: 'peers', s: [[4, 2.5, 4, 0, 0]] });
+  vi.advanceTimersByTime(10);
+  ws.receive({ type: 'peers', s: [[4, 2.6, 4, 0, 30]] });
+  expect(session.peers.get('a')?.buffer.latest()).toMatchObject({ t: t + 1, x: 2.6 });
 });
 
 test('join carries the protocol version', () => {

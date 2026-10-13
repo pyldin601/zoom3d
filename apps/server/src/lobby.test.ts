@@ -231,8 +231,10 @@ describe('state', () => {
     time += 100;
     lobby.state('A', { type: 'state', x: spawn.x, y: spawn.y, angle: 1, seq: 7 });
     expect(sent).toHaveLength(before);
+    time += 40;
     lobby.fanOut();
-    expect(batches('B')).toEqual([[[welcome('B').peers[0]?.slot, spawn.x, spawn.y, 1]]]);
+    // The entry says the move was accepted 40 ms before this batch.
+    expect(batches('B')).toEqual([[[welcome('B').peers[0]?.slot, spawn.x, spawn.y, 1, 40]]]);
     expect(batches('A')).toEqual([]);
   });
 
@@ -461,7 +463,7 @@ describe('disconnect and resume', () => {
     expect(bSlot?.type).toBe('peer_joined');
     expect(last('A')).toEqual({
       type: 'peers',
-      s: [[bSlot?.type === 'peer_joined' ? bSlot.peer.slot : -1, first.spawn.x, first.spawn.y, 2]],
+      s: [[bSlot?.type === 'peer_joined' ? bSlot.peer.slot : -1, first.spawn.x, first.spawn.y, 2, 0]],
     });
   });
 
