@@ -3,7 +3,7 @@
 /** People per room (bots don't count). To revisit after the 100-person load test (D21). */
 export const MAX_PEERS = 128;
 /** Sent in every join; a join without it, or with an older one, comes from a tab opened before an update. */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 /** Bots a room may be created with (opt-in via the room link's `?bots=N`), outside MAX_PEERS. */
 export const MAX_BOTS = 100;
 export const NAME_MAX = 24;
@@ -16,7 +16,11 @@ export const AVATAR_MAX_CHARS = 12_000;
 export const RESUME_GRACE_MS = 30000;
 export const STATE_INTERVAL_MS = 66;
 export const IDLE_INTERVAL_MS = 1000;
-export const INTERP_DELAY_MS = 100;
+/**
+ * How far in the past near peers and objects are drawn. A pose waits up to a tick for its batch, and two moves landing
+ * in one tick double the gap to the next, so less than two ticks plus jitter would run the buffer dry.
+ */
+export const INTERP_DELAY_MS = 150;
 /** The server sends each client one batch of poses per tick (6d spec §2.1): the clients' own send rate. */
 export const FANOUT_TICK_MS = 66;
 /** Peers within this many tiles (straight line) are sent every tick... */
@@ -105,8 +109,11 @@ export type ClientMessage =
 export type ErrorCode = 'room_full' | 'invalid_room' | 'invalid_name' | 'not_joined' | 'outdated';
 const ERROR_CODES: readonly ErrorCode[] = ['room_full', 'invalid_room', 'invalid_name', 'not_joined', 'outdated'];
 
-/** One peer's pose in a `peers` batch: slot, then x and y (0.01 tile) and angle (0.001 rad). */
-export type PeerEntry = [slot: number, x: number, y: number, angle: number];
+/**
+ * One peer's pose in a `peers` batch: slot, then x and y (0.01 tile), angle (0.001 rad), and age: how many ms before
+ * the batch the server accepted this pose, so receivers place it on its real timeline rather than the tick's.
+ */
+export type PeerEntry = [slot: number, x: number, y: number, angle: number, age: number];
 
 export type ServerMessage =
   | {
@@ -167,8 +174,14 @@ export function avatarPath(id: string): string {
 }
 
 /** A pose as it goes on the wire, rounded so a batch stays small. */
-export function peerEntry(slot: number, x: number, y: number, angle: number): PeerEntry {
-  return [slot, Math.round(x * 100) / 100, Math.round(y * 100) / 100, Math.round(angle * 1000) / 1000];
+export function peerEntry(slot: number, x: number, y: number, angle: number, age: number): PeerEntry {
+  return [
+    slot,
+    Math.round(x * 100) / 100,
+    Math.round(y * 100) / 100,
+    Math.round(angle * 1000) / 1000,
+    Math.max(0, Math.round(age)),
+  ];
 }
 
 /** A JPEG data URL of at most AVATAR_MAX_CHARS. Receivers only ever draw it onto a canvas. */
@@ -227,7 +240,7 @@ function liveKitAccess(v: unknown): LiveKitAccess | null {
 }
 
 function isPeerEntry(v: unknown): v is PeerEntry {
-  return Array.isArray(v) && v.length === 4 && isSeq(v[0]) && isNum(v[1]) && isNum(v[2]) && isNum(v[3]);
+  return Array.isArray(v) && v.length === 5 && isSeq(v[0]) && isNum(v[1]) && isNum(v[2]) && isNum(v[3]) && isSeq(v[4]);
 }
 
 function parseJson(raw: string, limit: number): Obj | null {

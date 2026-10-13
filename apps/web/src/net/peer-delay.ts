@@ -1,5 +1,5 @@
 // How far in the past each peer is drawn (6d spec §2.3). The server sends near peers every tick and far ones twice
-// a second, so a far peer drawn 100 ms late would stand still and jump. Each peer gets the delay of its tier instead,
+// a second, so a far peer drawn at the near delay would stand still and jump. Each peer gets the delay of its tier instead,
 // changed gradually so crossing the line never jumps.
 import { FANOUT_TICK_MS, FAR_INTERVAL_MS, INTERP_DELAY_MS, NEAR_TILES, type SnapshotBuffer } from '@zoom3d/shared';
 
@@ -42,11 +42,12 @@ export class PeerDelay {
 /**
  * The server sends nothing while a peer stands still, so its next update follows a long gap. Interpolating across that
  * gap would draw it already most of the way to the new pose: hold the last pose until one interval before `t`. A gap
- * up to a tick longer than the interval is timer drift or jitter, not a pause, and holding then would stutter.
+ * up to two ticks longer than the interval is not a pause: the client's and the server's timers drift, so two moves
+ * now and then land in one tick and the first is never sent. Holding then would stutter.
  */
 export function holdBefore(buffer: SnapshotBuffer, t: number, intervalMs: number): void {
   const last = buffer.latest();
-  if (last && last.t < t - intervalMs - FANOUT_TICK_MS) {
+  if (last && last.t < t - intervalMs - 2 * FANOUT_TICK_MS) {
     buffer.push({ t: t - intervalMs, x: last.x, y: last.y, angle: last.angle });
   }
 }

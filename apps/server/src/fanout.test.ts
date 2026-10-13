@@ -10,6 +10,7 @@ const near = (over: Partial<Subject> = {}): Subject => ({
   y: 10,
   angle: 0,
   poseVersion: 1,
+  poseAt: 0,
   ...over,
 });
 const far = (over: Partial<Subject> = {}): Subject => ({
@@ -19,6 +20,7 @@ const far = (over: Partial<Subject> = {}): Subject => ({
   y: 10,
   angle: 0,
   poseVersion: 1,
+  poseAt: 0,
   ...over,
 });
 
@@ -26,10 +28,11 @@ describe('selectBatch', () => {
   test('a changed near peer goes out on every call', () => {
     const sent: SentLog = new Map();
     const n = near();
-    expect(selectBatch(self, [n], sent, 0)).toEqual([[1, 12, 10, 0]]);
+    expect(selectBatch(self, [n], sent, 0)).toEqual([[1, 12, 10, 0, 0]]);
     n.poseVersion++;
     n.x = 12.5;
-    expect(selectBatch(self, [n], sent, 66)).toEqual([[1, 12.5, 10, 0]]);
+    n.poseAt = 66;
+    expect(selectBatch(self, [n], sent, 66)).toEqual([[1, 12.5, 10, 0, 0]]);
   });
 
   test('an unchanged pose is never resent, near or far', () => {
@@ -50,7 +53,9 @@ describe('selectBatch', () => {
       expect(selectBatch(self, [f], sent, t)).toEqual([]);
     }
     f.poseVersion++;
-    expect(selectBatch(self, [f], sent, FAR_INTERVAL_MS)).toEqual([[2, f.x, Math.round(f.y * 100) / 100, 0]]);
+    expect(selectBatch(self, [f], sent, FAR_INTERVAL_MS)).toEqual([
+      [2, f.x, Math.round(f.y * 100) / 100, 0, FAR_INTERVAL_MS],
+    ]);
   });
 
   test('exactly NEAR_TILES away is near', () => {
@@ -67,7 +72,12 @@ describe('selectBatch', () => {
 
   test('entries are rounded for the wire', () => {
     expect(selectBatch(self, [near({ x: 12.3456, y: 9.8765, angle: 1.23456 })], new Map(), 0)).toEqual([
-      [1, 12.35, 9.88, 1.235],
+      [1, 12.35, 9.88, 1.235, 0],
     ]);
+  });
+
+  test('each entry carries how long ago the server accepted that pose', () => {
+    // A move accepted 50 ms before the tick: the receiver places it on its real timeline, not the tick's.
+    expect(selectBatch(self, [near({ poseAt: 1000 })], new Map(), 1050)).toEqual([[1, 12, 10, 0, 50]]);
   });
 });

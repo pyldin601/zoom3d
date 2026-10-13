@@ -145,9 +145,11 @@ describe('moving', () => {
     const map = parseMap(LEVEL1);
     tick(50);
     const poses = posesTo('A');
-    for (const [slot, x, y] of poses) {
+    for (const [slot, x, y, , age] of poses) {
       expect(start.has(slot)).toBe(true);
       expect(isWallAt(map, x, y)).toBe(false);
+      // A bot's pose is stepped in the same tick that sends it.
+      expect(age).toBe(0);
     }
     for (const [slot, b] of start) {
       const end = poses.filter((p) => p[0] === slot).at(-1);

@@ -85,6 +85,17 @@ describe('holdBefore', () => {
     expect(out.x).toBeCloseTo(1.5, 5);
   });
 
+  test('a near peer whose move was skipped (two moves in one server tick) is not held', () => {
+    // Two client sends 66.7 ms apart land in one tick: the receiver sees a 133 ms gap while the peer never stopped.
+    const b = new SnapshotBuffer();
+    b.push({ t: 0, x: 1, y: 1, angle: 0 });
+    holdBefore(b, 133, tierInterval(true));
+    b.push({ t: 133, x: 3, y: 1, angle: 0 });
+    const out = { x: 0, y: 0, angle: 0 };
+    b.sample(66.5, out);
+    expect(out.x).toBeCloseTo(2, 5);
+  });
+
   test('does nothing on an empty buffer', () => {
     const b = new SnapshotBuffer();
     holdBefore(b, 1000, 66);

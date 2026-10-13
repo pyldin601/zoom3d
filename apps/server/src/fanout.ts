@@ -1,7 +1,7 @@
 // Which peers' poses go to one recipient this tick (6d spec §2.1). Pure: the lobby owns the clock and the sockets.
 import { FAR_INTERVAL_MS, NEAR_TILES, type PeerEntry, peerEntry } from '@zoom3d/shared';
 
-/** A peer whose pose may be sent: `poseVersion` changes whenever its pose does. */
+/** A peer whose pose may be sent: `poseVersion` changes whenever its pose does, `poseAt` is when it last did. */
 export interface Subject {
   id: string;
   slot: number;
@@ -9,6 +9,7 @@ export interface Subject {
   y: number;
   angle: number;
   poseVersion: number;
+  poseAt: number;
 }
 
 /** Per recipient: for each other peer, the pose version last sent to it and when. */
@@ -37,7 +38,7 @@ export function selectBatch(
     if (last && !near && now - last.at < FAR_INTERVAL_MS) {
       continue;
     }
-    out.push(peerEntry(s.slot, s.x, s.y, s.angle));
+    out.push(peerEntry(s.slot, s.x, s.y, s.angle, now - s.poseAt));
     if (last) {
       last.version = s.poseVersion;
       last.at = now;
