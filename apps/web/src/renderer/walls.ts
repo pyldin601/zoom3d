@@ -2,7 +2,7 @@
 import { castRay, createRayHit, type GameMap, type PlayerState } from '@zoom3d/shared';
 import { type Framebuffer, rgb } from './framebuffer';
 import { FLOOR_SUB, type Lighting, WALL_U, WALL_V } from './lighting';
-import { TEX } from './textures';
+import { RELIEF, RELIEF_LEVELS, TEX } from './textures';
 
 export const CEILING = rgb(0x38, 0x38, 0x38);
 export const FLOOR = rgb(0x70, 0x70, 0x70);
@@ -103,6 +103,7 @@ function renderLitWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textures:
     rowDistFor = key;
   }
   const { faceOffset, wall, floor, ceiling, stride, rows } = lm;
+  const levels = RELIEF_LEVELS.length;
   const vShift = Math.log2(size / WALL_V);
 
   for (let col = 0; col < w; col++) {
@@ -121,6 +122,7 @@ function renderLitWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textures:
       continue;
     }
     const tex = textures[hit.tile] as Uint32Array;
+    const relief = RELIEF[hit.tile] as Uint8Array;
     let texX = Math.floor(hit.wallX * size);
     if ((hit.side === 0 && rayX > 0) || (hit.side === 1 && rayY < 0)) {
       texX = size - texX - 1;
@@ -130,12 +132,27 @@ function renderLitWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textures:
     const lightCol = base + Math.floor(hit.wallX * WALL_U) * WALL_V;
     const step = size / lineH;
     let texPos = (start - half + lineH / 2) * step;
+    // A near wall spreads each texel over several rows: shade it once and repeat it.
+    let shadedY = -1;
+    let shaded = 0;
     for (let y = start; y < end; y++) {
       const texY = Math.min(size - 1, texPos | 0);
       texPos += step;
-      const c = tex[texY * size + texX] as number;
+      if (texY === shadedY) {
+        pixels[y * w + col] = shaded;
+        continue;
+      }
+      shadedY = texY;
+      const t = texY * size + texX;
       // A face with no floor in front can't be seen; −1 only guards rounding at the map edge.
-      const l = base < 0 ? 0x808080 : (wall[lightCol + (texY >> vShift)] as number);
+      if (base < 0) {
+        shaded = tex[t] as number;
+        pixels[y * w + col] = shaded;
+        continue;
+      }
+      const c = tex[t] as number;
+      // The baked light for this sample at this texel's relief level.
+      const l = wall[(lightCol + (texY >> vShift)) * levels + (relief[t] as number)] as number;
       let r = ((c & 0xff) * (l & 0xff)) >> 7;
       let g = (((c >>> 8) & 0xff) * ((l >>> 8) & 0xff)) >> 7;
       let b = (((c >>> 16) & 0xff) * ((l >>> 16) & 0xff)) >> 7;
@@ -148,7 +165,8 @@ function renderLitWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textures:
       if (b > 255) {
         b = 255;
       }
-      pixels[y * w + col] = (0xff000000 | (b << 16) | (g << 8) | r) >>> 0;
+      shaded = (0xff000000 | (b << 16) | (g << 8) | r) >>> 0;
+      pixels[y * w + col] = shaded;
     }
   }
 

@@ -2,6 +2,7 @@ import { parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { rgb } from './framebuffer';
 import { bakeLighting, DIR_BACK, DIR_FRONT, DIR_TOP, directLight, type Light } from './lighting';
+import { RELIEF_LEVELS } from './textures';
 
 // A 6×3 room with a pillar at (3, 1) splitting it into a west and an east half along the middle row.
 const map = parseMap(`
@@ -54,5 +55,39 @@ describe('directLight', () => {
     const out = new Float64Array(15);
     directLight(lm, 1.5, 2.5, 0.1, 0, out);
     expect([...out]).toEqual(new Array(15).fill(0));
+  });
+});
+
+describe('bakeLighting relief levels', () => {
+  const levels = RELIEF_LEVELS.length;
+  const channel = (v: number) => v & 0xff;
+
+  test('every wall sample holds one light per relief level', () => {
+    const lm = bakeLighting(map, [], 0.45, GREY, GREY);
+    expect(lm.wall.length % levels).toBe(0);
+  });
+
+  test('without lamps, relief changes nothing', () => {
+    const lm = bakeLighting(map, [], 0.45, GREY, GREY);
+    for (let s = 0; s < lm.wall.length; s += levels) {
+      expect(new Set(lm.wall.subarray(s, s + levels))).toEqual(new Set([lm.wall[s]]));
+    }
+  });
+
+  test('under a lamp, raised texels get more light and sunken ones less', () => {
+    const lm = bakeLighting(map, [lamp(2.5, 2.5)], 0.45, GREY, GREY);
+    let lit = 0;
+    for (let s = 0; s < lm.wall.length; s += levels) {
+      const flat = channel(lm.wall[s] as number);
+      const at = (k: number) => channel(lm.wall[s + k] as number);
+      const raised = RELIEF_LEVELS.findIndex((v) => v > 0);
+      const sunken = RELIEF_LEVELS.findIndex((v) => v < 0);
+      // Too little lamp light rounds away; look where it clearly shows.
+      if (at(raised) >= flat + 4) {
+        lit++;
+        expect(at(sunken)).toBeLessThan(flat);
+      }
+    }
+    expect(lit).toBeGreaterThan(0);
   });
 });

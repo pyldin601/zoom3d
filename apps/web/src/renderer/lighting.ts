@@ -3,6 +3,7 @@
 // whether its light can see it (2D line of sight), so wall corners throw shadows along walls and floors.
 import { type GameMap, hasLineOfSight, tileAt } from '@zoom3d/shared';
 import { rgb } from './framebuffer';
+import { RELIEF_LEVELS } from './textures';
 
 export interface Light {
   x: number;
@@ -34,7 +35,7 @@ export interface Lighting {
   ambient: number;
   /** Per wall cell × face (0 W, 1 E, 2 N, 3 S): offset into `wall`, or −1 when the face touches no floor. */
   faceOffset: Int32Array;
-  /** Packed multipliers, [face][u][v]. */
+  /** Packed multipliers, [face][u][v][relief level]: ambient + lamps × (1 + RELIEF_LEVELS[level]). */
   wall: Uint32Array;
   /** Final floor / ceiling colours, (map.width·FLOOR_SUB) × (map.height·FLOOR_SUB). */
   floor: Uint32Array;
@@ -51,7 +52,7 @@ const FACES: readonly { dx: number; dy: number }[] = [
 ];
 
 function pack(r: number, g: number, b: number): number {
-  const q = (v: number) => Math.min(255, Math.round(v * ONE));
+  const q = (v: number) => Math.max(0, Math.min(255, Math.round(v * ONE)));
   return (q(b) << 16) | (q(g) << 8) | q(r);
 }
 
@@ -93,7 +94,8 @@ export function bakeLighting(
     }
   }
 
-  const wall = new Uint32Array(faces * WALL_U * WALL_V);
+  const levels = RELIEF_LEVELS.length;
+  const wall = new Uint32Array(faces * WALL_U * WALL_V * levels);
   for (let cy = 0; cy < height; cy++) {
     for (let cx = 0; cx < width; cx++) {
       for (let f = 0; f < 4; f++) {
@@ -108,9 +110,9 @@ export function bakeLighting(
           const along = (u + 0.5) / WALL_U;
           const px = n.dx === 0 ? cx + along : n.dx < 0 ? cx : cx + 1;
           const py = n.dy === 0 ? cy + along : n.dy < 0 ? cy : cy + 1;
-          const r = new Float64Array(WALL_V).fill(amb);
-          const g = new Float64Array(WALL_V).fill(amb);
-          const b = new Float64Array(WALL_V).fill(amb);
+          const r = new Float64Array(WALL_V);
+          const g = new Float64Array(WALL_V);
+          const b = new Float64Array(WALL_V);
           for (const l of lights) {
             const dx = l.x - px;
             const dy = l.y - py;
@@ -131,7 +133,13 @@ export function bakeLighting(
             }
           }
           for (let v = 0; v < WALL_V; v++) {
-            wall[base + u * WALL_V + v] = pack(r[v] as number, g[v] as number, b[v] as number);
+            const rv = r[v] as number;
+            const gv = g[v] as number;
+            const bv = b[v] as number;
+            for (let k = 0; k < levels; k++) {
+              const lift = 1 + (RELIEF_LEVELS[k] as number);
+              wall[(base + u * WALL_V + v) * levels + k] = pack(amb + rv * lift, amb + gv * lift, amb + bv * lift);
+            }
           }
         }
       }

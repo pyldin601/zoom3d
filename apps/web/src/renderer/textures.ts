@@ -34,6 +34,49 @@ function isMortar(x: number, y: number): boolean {
   return y % 16 < 2 || (x + offset) % 32 < 2;
 }
 
+/** How much a brick edge brightens (top) or darkens (bottom) under full lamp light. */
+const RELIEF_STRENGTH = 0.6;
+
+/**
+ * Relief levels, as multipliers of the lamp light added to a texel's light: flat, a brick's top row (catches the
+ * light from the ceiling lamps), its bottom row, and the mortar right under it (in its shadow). RELIEF holds indices.
+ */
+export const RELIEF_LEVELS: readonly number[] = [0, RELIEF_STRENGTH, -RELIEF_STRENGTH, -RELIEF_STRENGTH / 2];
+const FLAT = 0;
+const RAISED = 1;
+const SUNKEN = 2;
+const SHADOWED = 3;
+
+/** Brick relief, lit from above. Rows past the texture's edge count as no edge. */
+function brickRelief(): Uint8Array {
+  const relief = new Uint8Array(TEX * TEX);
+  for (let y = 0; y < TEX; y++) {
+    for (let x = 0; x < TEX; x++) {
+      const here = isMortar(x, y);
+      const above = y > 0 && isMortar(x, y - 1);
+      const below = y < TEX - 1 && isMortar(x, y + 1);
+      let v = FLAT;
+      if (!here && above) {
+        v = RAISED;
+      } else if (!here && below) {
+        v = SUNKEN;
+      } else if (here && y > 0 && !above) {
+        v = SHADOWED;
+      }
+      relief[y * TEX + x] = v;
+    }
+  }
+  return relief;
+}
+
+/** RELIEF_LEVELS index per texel and texture (index = tile id, like makeTextures): stone and blue are bricks, wood flat. */
+export const RELIEF: readonly Uint8Array[] = [
+  new Uint8Array(0),
+  brickRelief(),
+  new Uint8Array(TEX * TEX),
+  brickRelief(),
+];
+
 export function makeTextures(seed = 1): Uint32Array[] {
   const rand = mulberry32(seed);
   const stone = texture(rand, (x, y, n) => {

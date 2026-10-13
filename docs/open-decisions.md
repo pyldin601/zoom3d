@@ -339,6 +339,11 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Voxels can glow** (`glow(colour, L)` in a model, L 0..1): the face is blended towards its own colour, untouched
     by ambient, lamps, shadows and flat shading; at 1 it's always full colour. Glow lights nothing around it. The
     vacuum's eyes and the disc on top glow fully.
+  - **Brick relief, lit by the lamps** (2026-10-13): stone and blue-stone bricks catch lamp light on their top row,
+    darken on their bottom row and shade the mortar under them (`RELIEF` in `renderer/textures.ts`, lit from above
+    like the ceiling lamps). Only lamp light is scaled, so relief fades away between lamps. The bake stores each wall
+    sample's light per relief level, and the wall loop shades each texel once and repeats it down its rows: +0.04 ms.
+    Wood is flat.
   - Not done yet: avatars aren't lit, shadow edges are stair-stepped, rooms get no lamps of their own.
 
 ## Resolved
