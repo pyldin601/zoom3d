@@ -1,8 +1,8 @@
 // Column-by-column textured wall renderer with flat ceiling and floor.
 import { castRay, createRayHit, type GameMap, type PlayerState } from '@zoom3d/shared';
 import { type Framebuffer, rgb } from './framebuffer';
-import { FLOOR_SUB, type Lighting, WALL_U, WALL_V } from './lighting';
-import { RELIEF, RELIEF_LEVELS, TEX } from './textures';
+import { FACES, FLOOR_SUB, GLINT_RANGE, GLINT_STRENGTH, glint, type Lighting, WALL_U, WALL_V } from './lighting';
+import { GLINT_F0, GLOSS, RELIEF, RELIEF_LEVELS, TEX } from './textures';
 
 export const CEILING = rgb(0x38, 0x38, 0x38);
 export const FLOOR = rgb(0x70, 0x70, 0x70);
@@ -102,7 +102,7 @@ function renderLitWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textures:
     wallEnd = new Int32Array(w);
     rowDistFor = key;
   }
-  const { faceOffset, wall, floor, ceiling, stride, rows } = lm;
+  const { faceOffset, wall, wallLamp, floor, ceiling, stride, rows } = lm;
   const levels = RELIEF_LEVELS.length;
   const vShift = Math.log2(size / WALL_V);
 
@@ -130,6 +130,15 @@ function renderLitWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textures:
     const face = hit.side === 0 ? (rayX > 0 ? 0 : 1) : rayY > 0 ? 2 : 3;
     const base = faceOffset[(hit.mapY * map.width + hit.mapX) * 4 + face] as number;
     const lightCol = base + Math.floor(hit.wallX * WALL_U) * WALL_V;
+    // A near wall glints where it mirrors its lamp: per texel row, faded out towards GLINT_RANGE.
+    const lampIndex = base < 0 || hit.distance >= GLINT_RANGE ? -1 : (wallLamp[lightCol / WALL_V] as number);
+    const lamp = lampIndex < 0 ? null : lm.lights.at(lampIndex);
+    const normal = FACES.at(face);
+    const gloss = GLOSS[hit.tile] as Uint8Array;
+    const f0 = GLINT_F0[hit.tile] as number;
+    const hitX = p.x + hit.distance * rayX;
+    const hitY = p.y + hit.distance * rayY;
+    const glintScale = (1 - hit.distance / GLINT_RANGE) * GLINT_STRENGTH * 255;
     const step = size / lineH;
     let texPos = (start - half + lineH / 2) * step;
     // A near wall spreads each texel over several rows: shade it once and repeat it.
@@ -156,6 +165,13 @@ function renderLitWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textures:
       let r = ((c & 0xff) * (l & 0xff)) >> 7;
       let g = (((c >>> 8) & 0xff) * ((l >>> 8) & 0xff)) >> 7;
       let b = (((c >>> 16) & 0xff) * ((l >>> 16) & 0xff)) >> 7;
+      if (lamp && normal && gloss[t] === 1) {
+        const z = 1 - (texY + 0.5) / size;
+        const s = glint(lamp, f0, normal.dx, normal.dy, hitX, hitY, z, p.x, p.y) * glintScale;
+        r += (s * lamp.r) | 0;
+        g += (s * lamp.g) | 0;
+        b += (s * lamp.b) | 0;
+      }
       if (r > 255) {
         r = 255;
       }

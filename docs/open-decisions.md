@@ -353,6 +353,14 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     like the ceiling lamps). Only lamp light is scaled, so relief fades away between lamps. The bake stores each wall
     sample's light per relief level, and the wall loop shades each texel once and repeats it down its rows: +0.04 ms.
     Wood is flat.
+  - **Walls glint** (2026-10-13): a wall within 3 tiles of the eye shows a lamp's highlight where it mirrors it
+    (Phong, cos³², times the lamp's falloff, added in the lamp's colour), fading out towards 3 tiles. The bake picks
+    one lamp per wall sample column, the brightest it can see, so glints keep the baked shadows. Per frame it's one
+    lookup per column and a few multiplies per texel run on near walls, no roots: about +0.05 ms. Mortar stays matte
+    (`GLOSS` in `renderer/textures.ts`); floors and ceilings don't glint. Brick only shines at an angle: the glint is
+    scaled by f0 + (1 − f0)·sin² of the viewing angle (`GLINT_F0`: 0.1 for brick, 1 for wood, which shines alike from
+    every angle). Schlick's Fresnel was tried first, but its rise comes past 80°, and a corridor's glints sit at 60–70°,
+    so brick barely shone at all.
   - Not done yet: avatars aren't lit, shadow edges are stair-stepped, rooms get no lamps of their own.
 
 ## Resolved
