@@ -144,6 +144,11 @@ export function createVacuum(
   return initialState(id, tile.x + 0.5, tile.y + 0.5, rng() * TWO_PI, 'cleaning', clean);
 }
 
+/** A robot parked at a chosen pose with nothing cleaned yet (the landing page's, which starts out of view). */
+export function parkVacuum(id: string, x: number, y: number, angle: number): Vacuum {
+  return initialState(id, x, y, angle, 'cleaning', new Set());
+}
+
 export function saveVacuum(nav: VacuumNav, v: Vacuum): VacuumSave {
   return {
     id: v.id,
