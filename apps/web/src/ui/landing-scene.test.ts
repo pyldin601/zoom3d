@@ -2,6 +2,7 @@ import { fovForAspect, hasLineOfSight, isWallAt } from '@zoom3d/shared';
 import { expect, test } from 'vitest';
 import { FACE_SIZE } from '../media/faces';
 import { createFramebuffer, rgb } from '../renderer/framebuffer';
+import { VACUUM_MODEL } from '../renderer/models/vacuum';
 import { AVATAR_RADIUS, hexToRgb, type Projection, projectSprite } from '../renderer/sprites';
 import { makeTextures } from '../renderer/textures';
 import { renderWalls } from '../renderer/walls';
@@ -16,6 +17,7 @@ import {
   landingCamera,
   renderLandingScene,
 } from './landing-scene';
+import { LANDING_PARK } from './landing-show';
 
 const byName = (name: string) => LANDING_PEOPLE.find((p) => p.name === name) as (typeof LANDING_PEOPLE)[number];
 
@@ -130,4 +132,42 @@ test('the portrait camera is used for frames taller than wide', () => {
   expect(landingCamera(createFramebuffer(296, 640))).toBe(LANDING_CAMERA_PORTRAIT);
   expect(landingCamera(createFramebuffer(640, 360))).toBe(LANDING_CAMERA);
   expect(landingCamera(createFramebuffer(640, 296))).toBe(LANDING_CAMERA);
+});
+
+const landscape = () => createFramebuffer();
+const portrait = () => createFramebuffer(296, 640, fovForAspect(296 / 640));
+const PARKED = { model: VACUUM_MODEL, ...LANDING_PARK };
+
+test('the parked vacuum is out of sight of both cameras', () => {
+  for (const frame of [landscape, portrait]) {
+    for (const lights of [false, true]) {
+      const without = frame();
+      renderLandingScene(without, { lights });
+      const parked = frame();
+      renderLandingScene(parked, { lights, vacuum: PARKED });
+      expect(parked.pixels, `${frame.name}, lights ${lights}`).toEqual(without.pixels);
+    }
+  }
+});
+
+test('a vacuum in the corridor is drawn', () => {
+  const without = landscape();
+  renderLandingScene(without);
+  const drawn = landscape();
+  renderLandingScene(drawn, { vacuum: { model: VACUUM_MODEL, x: 6, y: 4.5, angle: 0 } });
+  let changed = 0;
+  for (let i = 0; i < drawn.pixels.length; i++) {
+    if (drawn.pixels[i] !== without.pixels[i]) {
+      changed++;
+    }
+  }
+  expect(changed).toBeGreaterThanOrEqual(100);
+});
+
+test('repeated frames draw the same picture', () => {
+  const fb = landscape();
+  renderLandingScene(fb, { lights: true });
+  const first = fb.pixels.slice();
+  renderLandingScene(fb, { lights: true });
+  expect(fb.pixels).toEqual(first);
 });
