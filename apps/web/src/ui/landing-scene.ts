@@ -4,9 +4,10 @@
 import { type GameMap, type HeldItem, type PlayerState, parseMap } from '@zoom3d/shared';
 import { FACE_SIZE } from '../media/faces';
 import type { Framebuffer } from '../renderer/framebuffer';
+import { bakeLighting, LAMP, type Light, type Lighting } from '../renderer/lighting';
 import { hexToRgb, renderSprites, type Sprite } from '../renderer/sprites';
 import { makeTextures } from '../renderer/textures';
-import { renderWalls } from '../renderer/walls';
+import { CEILING, FLOOR, renderWalls } from '../renderer/walls';
 import { drawLogo } from './landing-logo';
 
 export const LANDING_MAP: GameMap = parseMap(`
@@ -22,6 +23,14 @@ export const LANDING_MAP: GameMap = parseMap(`
 export const LANDING_CAMERA: PlayerState = { x: 1.2, y: 4.8, angle: -0.4 };
 /** A portrait phone's narrower view (mobile spec §3): backed into the corner, so Max, Ada and Bob all still fit. */
 export const LANDING_CAMERA_PORTRAIT: PlayerState = { x: 1.05, y: 4.9, angle: -0.36 };
+
+/** SPIKE: two ceiling lamps down the corridor; Max's alcove stays in the dark. */
+export const LANDING_LIGHTS: readonly Light[] = [
+  { x: 5.5, y: 4.5, z: 0.85, radius: 4.5, ...LAMP },
+  { x: 11, y: 4.5, z: 0.85, radius: 4.5, ...LAMP },
+];
+export const AMBIENT = 0.45;
+let landingLighting: Lighting | null = null;
 
 /** The camera for this frame's shape. */
 export function landingCamera(fb: Framebuffer): PlayerState {
@@ -167,9 +176,15 @@ export function faceTexels(person: LandingPerson): Uint32Array {
  * Draws the picture into `fb` once. The landing page shows it with the title; the lobby shows it without, until Join
  * starts the room.
  */
-export function renderLandingScene(fb: Framebuffer, { logo = true }: { logo?: boolean } = {}): void {
+export function renderLandingScene(
+  fb: Framebuffer,
+  { logo = true, lights = false }: { logo?: boolean; lights?: boolean } = {}
+): void {
   const camera = landingCamera(fb);
-  renderWalls(fb, LANDING_MAP, camera, makeTextures(1));
+  if (lights && !landingLighting) {
+    landingLighting = bakeLighting(LANDING_MAP, LANDING_LIGHTS, AMBIENT, FLOOR, CEILING);
+  }
+  renderWalls(fb, LANDING_MAP, camera, makeTextures(1), lights ? landingLighting : null);
   const sprites: Sprite[] = LANDING_PEOPLE.map((p, i) => ({
     key: String(i),
     x: p.x,
