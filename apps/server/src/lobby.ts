@@ -107,6 +107,8 @@ interface Peer extends PeerInfo {
   picture: string | null;
   /** Bumped whenever the pose changes, so fan-out sends only what moved. */
   poseVersion: number;
+  /** When the pose last changed: batches carry its age, so receivers can place it on its real timeline. */
+  poseAt: number;
   /** What this peer, as a recipient, was last sent of each other peer (6d spec §2.1). */
   sent: SentLog;
   /** Set on a wandering bot: no connection, never expires, never resumable, never saved. */
@@ -262,6 +264,7 @@ export class Lobby {
       lastAcceptedAt: this.opts.now(),
       disconnectedAt: null,
       poseVersion: 0,
+      poseAt: this.opts.now(),
       sent: new Map(),
     };
     if (room.size === 0) {
@@ -312,6 +315,7 @@ export class Lobby {
       peer.y = msg.y;
       peer.angle = msg.angle;
       peer.poseVersion++;
+      peer.poseAt = now;
     }
     peer.lastAcceptedAt = now;
   }
@@ -458,6 +462,7 @@ export class Lobby {
           disconnectedAt: now,
           lastGestureAt: Number.NEGATIVE_INFINITY,
           poseVersion: 0,
+          poseAt: now,
           sent: new Map(),
         });
       }
@@ -486,6 +491,7 @@ export class Lobby {
   private stepBots(dtMs: number): void {
     const dt = dtMs / 1000;
     const { map, rng } = this.opts;
+    const now = this.opts.now();
     for (const room of this.rooms.values()) {
       if (![...room.values()].some((p) => p.conn !== null)) {
         continue;
@@ -507,6 +513,7 @@ export class Lobby {
           }
         }
         bot.poseVersion++;
+        bot.poseAt = now;
       }
     }
   }
@@ -600,6 +607,7 @@ export class Lobby {
         lastGestureAt: Number.NEGATIVE_INFINITY,
         disconnectedAt: null,
         poseVersion: 0,
+        poseAt: now(),
         sent: new Map(),
         bot: true,
       };

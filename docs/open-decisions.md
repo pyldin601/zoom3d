@@ -313,5 +313,17 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Pace:** it drives at 0.6 tiles/s and turns at 90°/s. Lanes are 0.6 tiles apart, which brought the full clean
     inside the 50 min – 2 h target.
 
+### D23 — Smooth peers within batched fan-out
+- **Question (2026-10-13):** after 6d, nearby people visibly hitch while walking. Go back to relaying each move at once
+  (with a slower rate for distant people), or keep the batches?
+- *Resolved 2026-10-13:* **keep the batches**, and place every pose on its real timeline.
+  - In a meeting room nearly everyone is within 16 tiles, so per-move relays would bring back ~N² messages
+    (~150,000/s for 100 people), the cost 6d removed.
+  - The hitch came from the client's and the server's 66 ms timers drifting against each other, not from batching.
+    Each `peers` entry now carries `age`, the ms since the server accepted the pose. The client stamps it
+    `arrival − age`, draws near peers and objects 150 ms late (was 100), and treats only a gap longer than the
+    interval plus two ticks as a pause. `PROTOCOL_VERSION` goes to 3. Details and the simulation's numbers: 6d spec
+    §2.2–2.3.
+
 ## Resolved
 _(none yet)_

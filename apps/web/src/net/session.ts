@@ -203,12 +203,16 @@ export function createSession(opts: SessionOptions): Session {
       }
       case 'peers': {
         // The socket is ordered, so there is no seq: a batch is always newer than the last.
-        const t = now();
-        for (const [slot, x, y, angle] of m.s) {
+        const arrival = now();
+        for (const [slot, x, y, angle, age] of m.s) {
           const peer = bySlot.get(slot);
           if (!peer) {
             continue;
           }
+          // Each pose goes where the server accepted it, not where its tick sent it (a faster batch than the last
+          // could put it earlier than the previous pose: then it goes just after).
+          const latest = peer.buffer.latest();
+          const t = latest ? Math.max(arrival - age, latest.t + 1) : arrival - age;
           holdBefore(peer.buffer, t, tierInterval(nearTier(player.x, player.y, x, y)));
           peer.info.x = x;
           peer.info.y = y;
