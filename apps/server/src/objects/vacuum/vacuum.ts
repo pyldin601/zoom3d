@@ -5,6 +5,7 @@
 // - `phase` is its long-term goal: `cleaning` patches, then `searching` for the dock (it never finds it).
 // - `activity` is what it does this step: `move` along its waypoints, `scan` the slow search circle, or `pause`.
 import { isWallAt, moveWithCollision, type ObjectEvent, type ObjectInfo, PLAYER_RADIUS } from '@zoom3d/shared';
+import { pick } from '../../random';
 import { mapFingerprint, type Point, VACUUM_RADIUS, type VacuumNav } from './nav';
 
 /** Tiles per second: a real robot's 0.3 m/s at this game's scale (walking, 3 tiles/s, is about 1.4 m/s). */
@@ -98,9 +99,6 @@ const shortestTurn = (from: number, to: number) => {
   const turn = normalizeAngle(to - from);
   return turn > Math.PI ? turn - TWO_PI : turn;
 };
-
-/** A random element of `items`, or undefined when there are none. */
-const pick = <T>(rng: () => number, items: readonly T[]): T | undefined => items.at(Math.floor(rng() * items.length));
 
 /** A robot standing at (x, y) with no plan yet: its first step plans a leg. */
 function initialState(id: string, x: number, y: number, angle: number, phase: VacuumPhase, clean: Set<number>): Vacuum {

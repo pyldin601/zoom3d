@@ -10,7 +10,8 @@ import {
   type ServerMessage,
 } from '@zoom3d/shared';
 import { beforeEach, describe, expect, test } from 'vitest';
-import { BOT_COLORS, Lobby, type LobbyEvent, MAX_BOT_ROOMS, type Outbox } from './lobby';
+import { BOT_COLORS, MAX_BOT_ROOMS } from './bots';
+import { Lobby, type LobbyEvent, type Outbox } from './lobby';
 
 // Wandering bots for testing large rooms (opt-in with the room link's ?bots=N).
 const ROOM = 'AAAAAAAAAAAAAAAAAAAAAA';
