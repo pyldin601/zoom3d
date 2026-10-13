@@ -1,5 +1,6 @@
-import { isWallAt, LEVEL1, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
+import { LEVEL1 } from '../../map/level1';
+import { isWallAt, parseMap } from '../../map/map';
 import { createVacuumNav, VACUUM_RADIUS } from './nav';
 import { defined, seeded } from './test-helpers';
 import {
@@ -166,7 +167,6 @@ describe('stepVacuum', () => {
       stepVacuum(nav, v, DT, rng, []);
       t += DT;
     }
-    console.info(`full LEVEL1 clean: ${(t / 60).toFixed(1)} min, ${v.waypointsSkipped} points given up`);
     expect(t).toBeGreaterThanOrEqual(50 * 60);
     expect(t).toBeLessThanOrEqual(120 * 60);
   });

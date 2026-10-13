@@ -153,8 +153,8 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
 - World objects (decision D22, robot vacuum spec `docs/superpowers/specs/2026-10-11-robot-vacuum-design.md`):
   - **Not peers.** `object_state`, `welcome.objects`, `session.objects` and `objectKey(id)` keep them apart from peers:
     no labels, automap, `MAX_PEERS` or media, and they never keep a room open.
-  - **The vacuum:** the server steps it in `Lobby.stepWorld` (`apps/server/src/objects/vacuum/`, pure), bumping connected
-    people only. It is saved in the state file, keyed by `mapFingerprint`. `VACUUM_NEARLY_DONE=1` (ignored in
+  - **The vacuum:** the server steps it in `Lobby.stepWorld` (the pure sim is `packages/shared/src/objects/vacuum/`,
+    shared with the landing page), bumping connected people only. It is saved in the state file, keyed by `mapFingerprint`. `VACUUM_NEARLY_DONE=1` (ignored in
     production) starts it one patch from done, so its dock search shows within a minute.
   - **Drawing:** voxel models (`renderer/models/`) are drawn by `renderer/voxels.ts` inside `renderSprites`, far to
     near with the discs.

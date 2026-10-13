@@ -1,8 +1,7 @@
 // Wandering bots (`?bots=N`): server-driven peers for testing large rooms. They have no connection or media, walk
 // straight on below walking pace, and turn when they hit a wall or now and then on their own. Pure: the lobby owns
 // them as peers and calls stepBot on every world step.
-import { type GameMap, isWallAt, stepPlayer } from '@zoom3d/shared';
-import { pick } from './random';
+import { type GameMap, isWallAt, pick, stepPlayer } from '@zoom3d/shared';
 
 /** Rooms that may have bots at once on one server, so a public link can't load casa with thousands. */
 export const MAX_BOT_ROOMS = 3;

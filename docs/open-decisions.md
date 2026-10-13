@@ -312,6 +312,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     (`AudioEngine.attachNode`). It is always quieter than a voice at the same distance (`VACUUM_GAIN`).
   - **Pace:** it drives at 0.6 tiles/s and turns at 90°/s. Lanes are 0.6 tiles apart, which brought the full clean
     inside the 50 min – 2 h target.
+  - *Amended 2026-10-13* ([landing vacuum spec](superpowers/specs/2026-10-13-landing-vacuum-design.md)): the sim moved
+    to `packages/shared/src/objects/vacuum/` (with `pick` and `seeded` in `packages/shared/src/random.ts`), so the
+    landing page runs the same robot in the browser. The server still steps the room's robot, unchanged.
 
 ### D23 — Smooth peers within batched fan-out
 - **Question (2026-10-13):** after 6d, nearby people visibly hitch while walking. Go back to relaying each move at once

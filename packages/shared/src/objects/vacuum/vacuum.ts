@@ -4,7 +4,9 @@
 // Two pieces of state drive it:
 // - `phase` is its long-term goal: `cleaning` patches, then `searching` for the dock (it never finds it).
 // - `activity` is what it does this step: `move` along its waypoints, `scan` the slow search circle, or `pause`.
-import { isWallAt, moveWithCollision, type ObjectEvent, type ObjectInfo, PLAYER_RADIUS } from '@zoom3d/shared';
+import { moveWithCollision, PLAYER_RADIUS } from '../../geometry/movement';
+import { isWallAt } from '../../map/map';
+import type { ObjectEvent, ObjectInfo } from '../../protocol/protocol';
 import { pick } from '../../random';
 import { mapFingerprint, type Point, VACUUM_RADIUS, type VacuumNav } from './nav';
 
