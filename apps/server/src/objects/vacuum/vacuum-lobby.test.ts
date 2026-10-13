@@ -1,7 +1,8 @@
 import { type JoinMessage, LEVEL1, PROTOCOL_VERSION, parseMap, type ServerMessage } from '@zoom3d/shared';
 import { beforeEach, describe, expect, test } from 'vitest';
-import { Lobby, type LobbySnapshot, type Outbox } from './lobby';
-import { VACUUM_RADIUS } from './vacuum-nav';
+import { Lobby, type LobbySnapshot, type Outbox } from '../../lobby';
+import { VACUUM_RADIUS } from './nav';
+import { defined, seeded } from './test-helpers';
 
 // Robot vacuum spec §3.1, §3.6, §4: one robot per room, driven by the lobby, saved with the room.
 const ROOM = 'AAAAAAAAAAAAAAAAAAAAAA';
@@ -10,14 +11,6 @@ const GRACE_MS = 30_000;
 
 let sent: { conn: string; msg: ServerMessage }[];
 let time: number;
-
-function seeded(seed = 7) {
-  let s = seed;
-  return () => {
-    s = (s * 1103515245 + 12345) % 2147483648;
-    return s / 2147483648;
-  };
-}
 
 function makeLobby(opts: { vacuum?: boolean } = { vacuum: true }) {
   sent = [];
@@ -94,7 +87,7 @@ describe('one robot vacuum per room', () => {
     const states = objectStates('A');
     expect(states).toHaveLength(20);
     expect(states.map((s) => s.seq)).toEqual(states.map((_, i) => i + 1));
-    expect(states.every((s) => s.id === welcome('A').objects[0]?.id)).toBe(true);
+    expect(states.every((s) => s.id === welcome('A').objects.at(0)?.id)).toBe(true);
     expect(objectStates('B')).toEqual([]);
   });
 
@@ -102,28 +95,28 @@ describe('one robot vacuum per room', () => {
     join('A');
     step(50);
     lobby.disconnect('A');
-    const before = lobby.snapshot().rooms[0]?.vacuum;
+    const before = lobby.snapshot().rooms.at(0)?.vacuum;
     const count = sent.length;
     step(50);
     expect(sent.length).toBe(count);
-    expect(lobby.snapshot().rooms[0]?.vacuum).toEqual(before);
+    expect(lobby.snapshot().rooms.at(0)?.vacuum).toEqual(before);
   });
 
   test('the vacuum never keeps a room open and goes with it', () => {
     join('A');
-    const first = welcome('A').objects[0]?.id;
+    const first = welcome('A').objects.at(0)?.id;
     lobby.disconnect('A');
     time += GRACE_MS;
     lobby.tick();
     expect(lobby.roomCount()).toBe(0);
     join('B');
-    expect(welcome('B').objects[0]?.id).not.toBe(first);
+    expect(welcome('B').objects.at(0)?.id).not.toBe(first);
   });
 
   test('each room has its own vacuum', () => {
     join('A');
     join('B', {}, OTHER);
-    expect(welcome('A').objects[0]?.id).not.toBe(welcome('B').objects[0]?.id);
+    expect(welcome('A').objects.at(0)?.id).not.toBe(welcome('B').objects.at(0)?.id);
   });
 });
 
@@ -146,9 +139,9 @@ describe('who it bumps', () => {
   test('connected people do: four people round the robot get bumped once it drives', () => {
     join('A');
     const snap = lobby.snapshot();
-    const room = snap.rooms[0] as LobbySnapshot['rooms'][number];
-    const vacuum = room.vacuum as NonNullable<typeof room.vacuum>;
-    const peer = room.peers[0] as LobbySnapshot['rooms'][number]['peers'][number];
+    const room = defined(snap.rooms.at(0), 'room');
+    const vacuum = defined(room.vacuum, 'vacuum');
+    const peer = defined(room.peers.at(0), 'peer');
     const d = VACUUM_RADIUS + 0.1;
     room.peers = [
       [d, 0],
@@ -178,7 +171,7 @@ describe('restart survival', () => {
     step(300);
     const last = objectStates('A').at(-1);
     const snap = JSON.parse(JSON.stringify(lobby.snapshot())) as LobbySnapshot;
-    expect(snap.rooms[0]?.vacuum?.id).toBe(last?.id);
+    expect(snap.rooms.at(0)?.vacuum?.id).toBe(last?.id);
     const token = welcome('A').resumeToken;
     lobby = makeLobby();
     lobby.restore(snap);
@@ -191,16 +184,16 @@ describe('restart survival', () => {
     join('A');
     const token = welcome('A').resumeToken;
     const snap = lobby.snapshot();
-    const old = snap.rooms[0]?.vacuum?.id;
-    for (const vacuum of [undefined, { ...snap.rooms[0]?.vacuum, map: 'deadbeef' }]) {
-      const room = { ...(snap.rooms[0] as LobbySnapshot['rooms'][number]), vacuum } as LobbySnapshot['rooms'][number];
+    const old = snap.rooms.at(0)?.vacuum?.id;
+    for (const vacuum of [undefined, { ...snap.rooms.at(0)?.vacuum, map: 'deadbeef' }]) {
+      const room = { ...defined(snap.rooms.at(0), 'room'), vacuum } as LobbySnapshot['rooms'][number];
       lobby = makeLobby();
       lobby.restore({ version: 1, rooms: [room] });
       join('A2', { resumeToken: token });
       const w = welcome('A2');
-      expect(w.selfId).toBe(snap.rooms[0]?.peers[0]?.id);
+      expect(w.selfId).toBe(snap.rooms.at(0)?.peers.at(0)?.id);
       expect(w.objects).toHaveLength(1);
-      expect(w.objects[0]?.id).not.toBe(old);
+      expect(w.objects.at(0)?.id).not.toBe(old);
     }
   });
 });

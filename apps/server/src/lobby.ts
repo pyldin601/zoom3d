@@ -25,6 +25,7 @@ import {
 import { AvatarStore } from './avatars';
 import { pickColor } from './colors';
 import { type SentLog, selectBatch } from './fanout';
+import { createVacuumNav, type Point, type VacuumNav } from './objects/vacuum/nav';
 import {
   createVacuum,
   restoreVacuum,
@@ -33,8 +34,7 @@ import {
   type Vacuum,
   type VacuumSave,
   vacuumInfo,
-} from './vacuum';
-import { createVacuumNav, type Point, type VacuumNav } from './vacuum-nav';
+} from './objects/vacuum/vacuum';
 
 export const CLOSE_ROOM_FULL = 4001;
 export const CLOSE_INVALID = 4002;

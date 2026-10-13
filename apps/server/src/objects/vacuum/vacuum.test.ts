@@ -1,5 +1,7 @@
 import { isWallAt, LEVEL1, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
+import { createVacuumNav, VACUUM_RADIUS } from './nav';
+import { defined, seeded } from './test-helpers';
 import {
   createVacuum,
   restoreVacuum,
@@ -10,19 +12,9 @@ import {
   type Vacuum,
   vacuumInfo,
 } from './vacuum';
-import { createVacuumNav, VACUUM_RADIUS } from './vacuum-nav';
 
 // Robot vacuum spec §3: cleans 3×3 patches one by one at a real robot's pace, then searches for its dock forever.
 const DT = 0.1;
-
-/** Deterministic but varied randomness, as in bots.test.ts. */
-function seeded(seed = 7) {
-  let s = seed;
-  return () => {
-    s = (s * 1103515245 + 12345) % 2147483648;
-    return s / 2147483648;
-  };
-}
 
 const room = (rows: string[]) => parseMap(rows.join('\n'));
 
@@ -130,7 +122,7 @@ describe('stepVacuum', () => {
     const v = createVacuum(nav, seeded(), 'v1');
     run(nav, v, 30 * 60);
     expect(v.phase).toBe('searching');
-    expect(v.skipped).toBe(0);
+    expect(v.waypointsSkipped).toBe(0);
   });
 
   test('switches to searching only when every patch is clean', () => {
@@ -174,7 +166,7 @@ describe('stepVacuum', () => {
       stepVacuum(nav, v, DT, rng, []);
       t += DT;
     }
-    console.info(`full LEVEL1 clean: ${(t / 60).toFixed(1)} min, ${v.skipped} points given up`);
+    console.info(`full LEVEL1 clean: ${(t / 60).toFixed(1)} min, ${v.waypointsSkipped} points given up`);
     expect(t).toBeGreaterThanOrEqual(50 * 60);
     expect(t).toBeLessThanOrEqual(120 * 60);
   });
@@ -236,9 +228,11 @@ describe('bumping into people', () => {
       poses.push({ t, x: v.x, y: v.y, angle: v.angle });
     }
     expect(events.map((e) => e.e)).toEqual(['bump']);
-    const bumpAt = (events[0] as { t: number }).t;
+    const bumpAt = defined(events.at(0), 'bump').t;
     const after = poses.filter((p) => p.t > bumpAt);
-    const still = after.findIndex((p) => p.x !== after[0]?.x || p.y !== after[0]?.y || p.angle !== after[0]?.angle);
+    const still = after.findIndex(
+      (p) => p.x !== after.at(0)?.x || p.y !== after.at(0)?.y || p.angle !== after.at(0)?.angle
+    );
     expect(still * DT).toBeGreaterThanOrEqual(0.2);
     expect(still * DT).toBeLessThanOrEqual(0.4);
     const turned = after.find((p) => Math.abs(Math.abs(p.angle - Math.PI) - Math.PI / 2) < 1e-6);
@@ -275,7 +269,7 @@ describe('bumping into people', () => {
     const nav = createVacuumNav(OPEN);
     const v = createVacuum(nav, seeded(), 'v1');
     stepVacuum(nav, v, DT, seeded(), []);
-    const parked = v.waypoints[2] as { x: number; y: number };
+    const parked = defined(v.waypoints.at(2), 'waypoint');
     const person = { x: parked.x, y: parked.y };
     let t = 0;
     while (v.waypoints.includes(parked) && t < 30) {
@@ -284,7 +278,7 @@ describe('bumping into people', () => {
     }
     expect(v.waypoints.includes(parked)).toBe(false);
     expect(t).toBeLessThan(20);
-    expect(v.skipped).toBeGreaterThanOrEqual(1);
+    expect(v.waypointsSkipped).toBeGreaterThanOrEqual(1);
   });
 });
 
