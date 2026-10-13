@@ -1,6 +1,6 @@
 # Landing-page vacuum: design spec
 
-Status: design, awaiting approval (builder check done 2026-10-13). Decision records: [open-decisions.md](../../open-decisions.md) D19 (landing page, amended)
+Status: approved design, implemented 2026-10-13. Decision records: [open-decisions.md](../../open-decisions.md) D19 (landing page, amended)
 and D22 (robot vacuum, amended).
 
 Calls marked **(my call)** were made by the designer, not by the product owner, and can be overridden.

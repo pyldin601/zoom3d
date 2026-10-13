@@ -169,6 +169,12 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   for screen readers only) sits in the bottom-right corner below it, undimmed; both are inset
   28 of 640 px from their corner. *Amended 2026-10-10:* the lobby shows the same picture without the logo, dimmed, behind its
   centred panel; the room loop starts on Join instead of running behind the lobby.
+  *Amended 2026-10-13* ([landing vacuum spec](superpowers/specs/2026-10-13-landing-vacuum-design.md)): the picture
+  comes alive. The room's robot vacuum, parked out of view, comes out after 10 s, cleans the corridor (bumping Ada,
+  Bob, Max and the camera, about 10 min) and then searches for its dock forever. No input reaches it, it makes no sound,
+  and every visitor sees the same run. Start a party stops it, and the lobby picture stays still and vacuum-free.
+  Under `prefers-reduced-motion` the picture stays still. The landing page redraws on its own small loop; the room
+  loop still never starts on `/`.
 
 ### D20 — Logs, metrics, error reporting, analytics
 - *Resolved 2026-10-10:*

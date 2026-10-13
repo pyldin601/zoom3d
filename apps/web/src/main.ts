@@ -58,6 +58,7 @@ import { loadBoomboxVolume, saveBoomboxVolume } from './ui/boombox-store';
 import { CHEERS_HOLD_MS, createDrinkPress } from './ui/drink-press';
 import { heldForKey, heldKeyAction, loadHeld, saveHeld } from './ui/held-store';
 import { AMBIENT, renderLandingScene } from './ui/landing-scene';
+import { createLandingShow, LANDING_PARK } from './ui/landing-show';
 import { joinBanner, PROBLEM_TEXT, showLobby } from './ui/lobby';
 import { createMicLevel } from './ui/mic-level';
 import { botsParam, parseRoute } from './ui/route';
@@ -79,6 +80,8 @@ const PIXEL_PERFECT = new URLSearchParams(location.search).has('pixelperfect');
 /** Touch mode (mobile spec §2.0): decided once at load, never re-evaluated, so the frame never flips mid-visit. */
 const TOUCH = matchMedia('(pointer: coarse)').matches;
 document.documentElement.classList.toggle('touch', TOUCH);
+/** Reduced motion (landing vacuum spec §2.5): read once at load; the landing picture then stays still. */
+const REDUCED_MOTION = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const NAME_KEY = 'zoom3d.name';
 
 const stage = document.getElementById('stage') as HTMLDivElement;
@@ -163,6 +166,9 @@ const storage = (): Storage | null => {
 /** Whether the frame loop runs; before that the stage shows a still that a new frame size must redraw. */
 let looping = false;
 let still: { logo: boolean } | null = null;
+/** The landing show's robot while the show runs (landing vacuum spec); null once Start a party resets the picture. */
+let landingVacuum: VoxelInstance | null = null;
+let stopLandingShow: (() => void) | null = null;
 /** Swaps in a buffer of the new size or FOV; only on rotation or resize, never per frame. */
 function rebuildFrame(frame: Frame): void {
   if (frame.width === fb.width && frame.height === fb.height && frame.fov === fb.fov) {
@@ -530,6 +536,9 @@ if (route.kind === 'landing') {
     // `/?bots=N` carries into the room link, so the join that creates the room asks for bots.
     const bots = botsParam(location.search);
     history.pushState(null, '', `/r/${roomId}${bots ? `?bots=${bots}` : ''}`);
+    stopLandingShow?.();
+    stopLandingShow = null;
+    landingVacuum = null;
     showStill(false);
     openLobby(roomId);
   });
@@ -847,8 +856,27 @@ function frame(dt: number): void {
  * the lobby. The room loop starts on Join. */
 function showStill(logo: boolean): void {
   still = { logo };
-  renderLandingScene(fb, { logo, lights: LIGHTS });
+  drawStill(logo);
+}
+
+function drawStill(logo: boolean): void {
+  renderLandingScene(fb, { logo, lights: LIGHTS, vacuum: landingVacuum });
   gameCtx.putImageData(image, 0, 0);
+}
+
+/**
+ * The landing show (landing vacuum spec §2): the title picture redrawn every frame with the robot vacuum, which comes
+ * out after 10 s. Its own small loop, not the room loop, and no input reaches it.
+ */
+function startLandingShow(): void {
+  const show = createLandingShow();
+  const vacuum: VoxelInstance = { model: VACUUM_MODEL, ...LANDING_PARK };
+  landingVacuum = vacuum;
+  stopLandingShow = startLoop((dt) => {
+    show.advance(dt);
+    show.poseInto(vacuum);
+    drawStill(true);
+  });
 }
 
 function startFrames(): void {
@@ -860,4 +888,7 @@ if (route.kind === 'invalid') {
   startFrames();
 } else {
   showStill(route.kind === 'landing');
+  if (route.kind === 'landing' && !REDUCED_MOTION) {
+    startLandingShow();
+  }
 }
