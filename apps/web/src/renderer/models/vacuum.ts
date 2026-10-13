@@ -1,14 +1,15 @@
 // The robot vacuum (robot vacuum spec §2, variant C "chunky retro toy"): an orange D shape, flat at the front, with two
 // bright eyes on its bumper so you can tell which way it's heading. Model +x is the front.
 import { rgb } from '../framebuffer';
-import { buildModel } from '../voxels';
+import { buildModel, glow } from '../voxels';
 
 const SKIRT = rgb(0x3c, 0x32, 0x2d);
 const BODY = rgb(0xe8, 0x78, 0x28);
 const TOP = rgb(0xf5, 0x8c, 0x37);
-const TOP_CENTRE = rgb(0xfa, 0xd2, 0x50);
+/** The disc on top and the eyes glow: full colour even in the dark, untouched by lamps and shadows. */
+const TOP_CENTRE = glow(rgb(0xfa, 0xd2, 0x50), 1);
 const BUMPER = rgb(0x46, 0x46, 0x4b);
-const EYES = rgb(0xff, 0xff, 0xd2);
+const EYES = glow(rgb(0xff, 0xff, 0xd2), 1);
 
 /** 14 × 14 × 4 voxels of 0.05 tiles: 0.7 × 0.7 × 0.2 tiles, about a face disc wide and knee-high. */
 export const VACUUM_MODEL = buildModel(14, 14, 4, 0.05, (x, y, z) => {

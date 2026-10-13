@@ -826,7 +826,7 @@ function frame(dt: number): void {
   }
 
   renderWalls(fb, map, player, textures, lighting);
-  renderSprites(fb, player, sprites, facts, session ? voxels : undefined);
+  renderSprites(fb, player, sprites, facts, session ? voxels : undefined, lighting);
   if (session) {
     updateInterest(session, performance.now(), document.hidden);
   }

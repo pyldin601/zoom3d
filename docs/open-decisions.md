@@ -334,6 +334,11 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Lamps light the corridors:** auto-placed on every floor run at most 3 tiles across and at least 4 long, at least
     5 tiles apart (37 on LEVEL1). The landing scene has two hand-placed lamps.
   - `?lights=off` shows the old flat look.
+  - **Voxel objects are lit too** (2026-10-13), per frame: the lamps in reach and in sight of the object's centre
+    light each of its five face directions. The old flat shading only scales the ambient part.
+  - **Voxels can glow** (`glow(colour, L)` in a model, L 0..1): the face is blended towards its own colour, untouched
+    by ambient, lamps, shadows and flat shading; at 1 it's always full colour. Glow lights nothing around it. The
+    vacuum's eyes and the disc on top glow fully.
   - Not done yet: avatars aren't lit, shadow edges are stair-stepped, rooms get no lamps of their own.
 
 ## Resolved
