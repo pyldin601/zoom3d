@@ -1,5 +1,8 @@
 // Room membership, colours, resume grace and move validation, plus opt-in wandering bots and each room's robot vacuum.
-// Pure: no sockets or timers (the server drives tick() and stepWorld()).
+// Pure: no sockets or timers (the server drives tick(), fanOut() and stepWorld()).
+//
+// A room is a map of peers by id: people (with a connection, or within their resume grace without one) and bots. A
+// room opens with its first person and closes with its last; bots and the vacuum never keep it open.
 import {
   type BoomboxMessage,
   DRINK_GAP_MS,
@@ -8,7 +11,6 @@ import {
   isPlausibleMove,
   isValidAvatar,
   isValidRoomId,
-  isWallAt,
   type JoinMessage,
   type LiveKitAccess,
   MAX_PEERS,
@@ -20,11 +22,12 @@ import {
   type StateMessage,
   sanitizeName,
   spawnPoint,
-  stepPlayer,
 } from '@zoom3d/shared';
 import { AvatarStore } from './avatars';
+import { floorTiles, MAX_BOT_ROOMS, placeBot, stepBot } from './bots';
 import { pickColor } from './colors';
 import { type SentLog, selectBatch } from './fanout';
+import { createVacuumNav, type Point, type VacuumNav } from './objects/vacuum/nav';
 import {
   createVacuum,
   restoreVacuum,
@@ -33,22 +36,12 @@ import {
   type Vacuum,
   type VacuumSave,
   vacuumInfo,
-} from './vacuum';
-import { createVacuumNav, type Point, type VacuumNav } from './vacuum-nav';
+} from './objects/vacuum/vacuum';
 
-export const CLOSE_ROOM_FULL = 4001;
-export const CLOSE_INVALID = 4002;
-export const CLOSE_REPLACED = 4003;
-
-/** Rooms that may have bots at once on one server, so a public link can't load casa with thousands. */
-export const MAX_BOT_ROOMS = 3;
-/** Muted colours, never a player colour, so people stand out from bots. */
-export const BOT_COLORS = ['#7f8c8d', '#95a5a6', '#8d7b68', '#6c7a89', '#a09080'] as const;
-/** Bots wander slower than walking pace. */
-const BOT_SPEED = 0.6;
-/** On average, a bot that isn't blocked turns on its own about this often. */
-const BOT_TURN_EVERY_S = 8;
-const FORWARD = { forward: 1, strafe: 0, turn: 0 };
+/** WebSocket close codes. */
+const CLOSE_ROOM_FULL = 4001;
+const CLOSE_INVALID = 4002;
+const CLOSE_REPLACED = 4003;
 
 export interface Outbox {
   send(connId: string, msg: ServerMessage): void;
@@ -117,8 +110,6 @@ interface Peer extends PeerInfo {
 
 type Room = Map<string, Peer>;
 
-const isPerson = (p: Peer) => p.bot === undefined;
-
 /**
  * A peer as written to the restart snapshot: no connection, gesture timing or slot (restore hands out new ones), and
  * `avatar` is the picture's data URL, not its id.
@@ -134,7 +125,32 @@ export interface LobbySnapshot {
   rooms: { id: string; peers: SnapshotPeer[]; vacuum?: VacuumSave }[];
 }
 
-const info = ({ id, slot, name, color, x, y, angle, cam, mic, avatar, held, boombox }: Peer): PeerInfo => ({
+const isPerson = (p: Peer) => p.bot === undefined;
+
+/** The room's people, without its bots. */
+const peopleIn = (room: Room) => [...room.values()].filter(isPerson);
+
+function countPeople(room: Room): number {
+  let count = 0;
+  for (const p of room.values()) {
+    if (isPerson(p)) {
+      count++;
+    }
+  }
+  return count;
+}
+
+function hasConnection(room: Room): boolean {
+  for (const p of room.values()) {
+    if (p.conn !== null) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** The peer as everyone else sees it on the wire. */
+const peerInfo = ({ id, slot, name, color, x, y, angle, cam, mic, avatar, held, boombox }: Peer): PeerInfo => ({
   id,
   slot,
   name,
@@ -149,10 +165,22 @@ const info = ({ id, slot, name, color, x, y, angle, cam, mic, avatar, held, boom
   boombox,
 });
 
+/** A person as saved: the picture itself, as before 6d, since avatar ids mean nothing to the next process. */
+function savePeer(p: Peer): SnapshotPeer {
+  const { slot: _, ...saved } = peerInfo(p);
+  return { ...saved, avatar: p.picture, resumeToken: p.resumeToken, lastAcceptedAt: p.lastAcceptedAt };
+}
+
+/** The bookkeeping every new or restored peer starts with: no gesture yet, a fresh pose, nothing sent. */
+function freshTracking(now: number): Pick<Peer, 'lastGestureAt' | 'poseVersion' | 'poseAt' | 'sent'> {
+  return { lastGestureAt: Number.NEGATIVE_INFINITY, poseVersion: 0, poseAt: now, sent: new Map() };
+}
+
 export class Lobby {
   private readonly rooms = new Map<string, Room>();
   private readonly conns = new Map<string, { roomId: string; peerId: string }>();
   private readonly graceMs: number;
+  /** Floor tiles for spawning bots, found on first use. */
   private floor: { x: number; y: number }[] | null = null;
   private nav: VacuumNav | null = null;
   /** Each room's robot vacuum, by room id. Not a peer: it never keeps a room open. */
@@ -160,11 +188,12 @@ export class Lobby {
   /** Each room's next peer slot: a counter, so a late batch can never move the wrong peer. */
   private readonly nextSlot = new Map<string, number>();
   private readonly avatars = new AvatarStore();
-  private readonly moved = { x: 0, y: 0, angle: 0 };
 
   constructor(private readonly opts: LobbyOptions) {
     this.graceMs = opts.graceMs ?? RESUME_GRACE_MS;
   }
+
+  // Queries.
 
   roomCount(): number {
     return this.rooms.size;
@@ -192,113 +221,38 @@ export class Lobby {
     return { rooms: this.rooms.size, connected, waiting, bots };
   }
 
+  /** The JPEG served at `GET /avatar/<id>`, while someone in any room uses it. */
+  avatar(id: string): Buffer | null {
+    return this.avatars.get(id);
+  }
+
+  // Messages from a connection.
+
+  /** Takes a person back into their place if they bring its resume token, else admits them as someone new. */
   join(conn: string, msg: JoinMessage): void {
     if (this.conns.has(conn)) {
       return;
     }
-    // Tabs opened before 6d send no version and only know fatal invalid_room ("Couldn't join this room").
-    if (msg.v === undefined) {
-      this.reject(conn, 'invalid_room', OUTDATED, CLOSE_INVALID, 'outdated');
-      return;
-    }
-    if (msg.v < PROTOCOL_VERSION) {
-      this.reject(conn, 'outdated', OUTDATED, CLOSE_INVALID);
-      return;
-    }
-    const name = sanitizeName(msg.name);
-    if (!isValidRoomId(msg.roomId)) {
-      this.reject(conn, 'invalid_room', 'Invalid room link', CLOSE_INVALID);
-      return;
-    }
+    const name = this.acceptedName(conn, msg);
     if (name === null) {
-      this.reject(conn, 'invalid_name', 'Invalid name', CLOSE_INVALID);
       return;
     }
-
     const room = this.rooms.get(msg.roomId) ?? new Map<string, Peer>();
-    const resumable = [...room.values()].find((p) => isPerson(p) && p.resumeToken === msg.resumeToken);
-    if (msg.resumeToken !== undefined && resumable) {
-      // The client often notices a dead link before the server does: hand the slot to the new connection.
-      const replaced = resumable.conn !== null;
-      if (resumable.conn !== null) {
-        const stale = resumable.conn;
-        this.conns.delete(stale);
-        this.opts.out.close(stale, CLOSE_REPLACED, 'replaced');
-      }
-      resumable.conn = conn;
-      resumable.disconnectedAt = null;
-      this.conns.set(conn, { roomId: msg.roomId, peerId: resumable.id });
-      this.welcome(conn, msg.roomId, room, resumable);
-      this.emit({
-        type: 'joined',
-        roomId: msg.roomId,
-        peerId: resumable.id,
-        resumed: true,
-        replaced,
-        peers: this.people(room),
-      });
+    const resumable =
+      msg.resumeToken === undefined ? undefined : peopleIn(room).find((p) => p.resumeToken === msg.resumeToken);
+    if (resumable) {
+      this.resume(conn, msg.roomId, room, resumable);
       return;
     }
-    if (this.people(room) >= MAX_PEERS) {
+    if (countPeople(room) >= MAX_PEERS) {
       this.reject(conn, 'room_full', 'This room is full', CLOSE_ROOM_FULL);
       return;
     }
-
-    const used = new Set([...room.values()].filter(isPerson).map((p) => p.color));
-    const color = pickColor(used);
-    const spawn = spawnPoint(this.opts.map, this.opts.rng);
-    const peer: Peer = {
-      id: this.opts.newToken(),
-      slot: this.takeSlot(msg.roomId),
-      name,
-      color,
-      ...spawn,
-      cam: false,
-      mic: false,
-      ...this.picture(isValidAvatar(msg.avatar) ? msg.avatar : null),
-      held: null,
-      boombox: false,
-      lastGestureAt: Number.NEGATIVE_INFINITY,
-      resumeToken: this.opts.newToken(),
-      conn,
-      lastAcceptedAt: this.opts.now(),
-      disconnectedAt: null,
-      poseVersion: 0,
-      poseAt: this.opts.now(),
-      sent: new Map(),
-    };
-    if (room.size === 0) {
-      this.emit({ type: 'room_opened', roomId: msg.roomId });
-      if (msg.bots && this.botRooms() < MAX_BOT_ROOMS) {
-        this.spawnBots(msg.roomId, room, msg.bots);
-        this.emit({ type: 'bots_spawned', roomId: msg.roomId, count: msg.bots });
-      }
-      this.spawnVacuum(msg.roomId);
-    }
-    room.set(peer.id, peer);
-    this.rooms.set(msg.roomId, room);
-    this.conns.set(conn, { roomId: msg.roomId, peerId: peer.id });
-    this.welcome(conn, msg.roomId, room, peer);
-    this.broadcast(room, peer.id, { type: 'peer_joined', peer: info(peer) });
-    // peer_joined carried the newcomer's pose: nobody needs it again until it moves.
-    const now = this.opts.now();
-    for (const p of room.values()) {
-      if (p !== peer) {
-        p.sent.set(peer.id, { version: peer.poseVersion, at: now });
-      }
-    }
-    this.emit({
-      type: 'joined',
-      roomId: msg.roomId,
-      peerId: peer.id,
-      resumed: false,
-      replaced: false,
-      peers: this.people(room),
-    });
+    this.admit(conn, msg, room, name);
   }
 
   state(conn: string, msg: StateMessage): void {
-    const found = this.lookup(conn);
+    const found = this.peerOf(conn);
     if (!found) {
       return;
     }
@@ -320,6 +274,77 @@ export class Lobby {
     peer.lastAcceptedAt = now;
   }
 
+  media(conn: string, msg: MediaMessage): void {
+    const found = this.peerOf(conn);
+    if (!found) {
+      return;
+    }
+    const { room, peer } = found;
+    peer.cam = msg.cam;
+    peer.mic = msg.mic;
+    this.broadcast(room, peer.id, { type: 'peer_media', id: peer.id, cam: msg.cam, mic: msg.mic });
+  }
+
+  held(conn: string, msg: HeldMessage): void {
+    const found = this.peerOf(conn);
+    if (!found) {
+      return;
+    }
+    const { room, peer } = found;
+    peer.held = msg.item;
+    this.broadcast(room, peer.id, { type: 'peer_held', id: peer.id, item: msg.item });
+  }
+
+  boombox(conn: string, msg: BoomboxMessage): void {
+    const found = this.peerOf(conn);
+    if (!found) {
+      return;
+    }
+    const { room, peer } = found;
+    peer.boombox = msg.on;
+    this.broadcast(room, peer.id, { type: 'peer_boombox', id: peer.id, on: msg.on });
+  }
+
+  /** Relays a sip, only from a peer holding a drink and at most one gesture per DRINK_GAP_MS. */
+  drink(conn: string): void {
+    this.gesture(conn, 'peer_drink');
+  }
+
+  /** Relays a cheers under the same rules as a sip, sharing its gap. */
+  cheers(conn: string): void {
+    this.gesture(conn, 'peer_cheers');
+  }
+
+  /** The connection is gone: its person keeps their place for the resume grace period. */
+  disconnect(conn: string): void {
+    const found = this.peerOf(conn);
+    this.conns.delete(conn);
+    if (!found) {
+      return;
+    }
+    found.peer.conn = null;
+    found.peer.disconnectedAt = this.opts.now();
+    this.emit({ type: 'disconnected', roomId: found.roomId, peerId: found.peer.id });
+  }
+
+  // Timers.
+
+  /** Expires peers whose grace has run out and closes rooms with nobody left. */
+  tick(): void {
+    const now = this.opts.now();
+    for (const [roomId, room] of this.rooms) {
+      for (const peer of [...room.values()]) {
+        if (peer.disconnectedAt !== null && now - peer.disconnectedAt >= this.graceMs) {
+          this.expire(roomId, room, peer);
+        }
+      }
+      // Bots never keep a room alive: it closes with its last person.
+      if (countPeople(room) === 0) {
+        this.closeRoom(roomId);
+      }
+    }
+  }
+
   /**
    * One server tick of state (6d spec §2.1): each connected person gets one `peers` batch of the poses that changed
    * since they were last sent to them, near ones every tick and far ones at most every FAR_INTERVAL_MS.
@@ -339,96 +364,14 @@ export class Lobby {
     }
   }
 
-  media(conn: string, msg: MediaMessage): void {
-    const found = this.lookup(conn);
-    if (!found) {
-      return;
-    }
-    found.peer.cam = msg.cam;
-    found.peer.mic = msg.mic;
-    this.broadcast(found.room, found.peer.id, {
-      type: 'peer_media',
-      id: found.peer.id,
-      cam: msg.cam,
-      mic: msg.mic,
-    });
+  /** Moves every room's bots and robot vacuum; rooms with nobody connected stand still. */
+  stepWorld(dtMs: number): void {
+    const dt = dtMs / 1000;
+    this.stepBots(dt);
+    this.stepVacuums(dt);
   }
 
-  held(conn: string, msg: HeldMessage): void {
-    const found = this.lookup(conn);
-    if (!found) {
-      return;
-    }
-    found.peer.held = msg.item;
-    this.broadcast(found.room, found.peer.id, { type: 'peer_held', id: found.peer.id, item: msg.item });
-  }
-
-  boombox(conn: string, msg: BoomboxMessage): void {
-    const found = this.lookup(conn);
-    if (!found) {
-      return;
-    }
-    found.peer.boombox = msg.on;
-    this.broadcast(found.room, found.peer.id, { type: 'peer_boombox', id: found.peer.id, on: msg.on });
-  }
-
-  /** Relays a sip, only from a peer holding a drink and at most one gesture per DRINK_GAP_MS. */
-  drink(conn: string): void {
-    this.gesture(conn, 'peer_drink');
-  }
-
-  /** Relays a cheers under the same rules as a sip, sharing its gap. */
-  cheers(conn: string): void {
-    this.gesture(conn, 'peer_cheers');
-  }
-
-  private gesture(conn: string, type: 'peer_drink' | 'peer_cheers'): void {
-    const found = this.lookup(conn);
-    const now = this.opts.now();
-    if (!found || found.peer.held === null || now - found.peer.lastGestureAt < DRINK_GAP_MS) {
-      return;
-    }
-    found.peer.lastGestureAt = now;
-    this.broadcast(found.room, found.peer.id, { type, id: found.peer.id });
-  }
-
-  disconnect(conn: string): void {
-    const found = this.lookup(conn);
-    this.conns.delete(conn);
-    if (!found) {
-      return;
-    }
-    found.peer.conn = null;
-    found.peer.disconnectedAt = this.opts.now();
-    this.emit({ type: 'disconnected', roomId: found.roomId, peerId: found.peer.id });
-  }
-
-  /** Expires peers whose grace has run out and deletes empty rooms. */
-  tick(): void {
-    const now = this.opts.now();
-    for (const [roomId, room] of this.rooms) {
-      for (const peer of [...room.values()]) {
-        if (peer.disconnectedAt !== null && now - peer.disconnectedAt >= this.graceMs) {
-          room.delete(peer.id);
-          if (peer.avatar !== null) {
-            this.avatars.release(peer.avatar);
-          }
-          for (const p of room.values()) {
-            p.sent.delete(peer.id);
-          }
-          this.broadcast(room, peer.id, { type: 'peer_left', id: peer.id });
-          this.emit({ type: 'left', roomId, peerId: peer.id, peers: this.people(room) });
-        }
-      }
-      // Bots never keep a room alive: it closes with its last person.
-      if (this.people(room) === 0) {
-        this.rooms.delete(roomId);
-        this.vacuums.delete(roomId);
-        this.nextSlot.delete(roomId);
-        this.emit({ type: 'room_closed', roomId });
-      }
-    }
-  }
+  // Restart survival.
 
   snapshot(): LobbySnapshot {
     return {
@@ -437,11 +380,7 @@ export class Lobby {
         const vacuum = this.vacuums.get(id);
         return {
           id,
-          peers: [...room.values()].filter(isPerson).map((p) => {
-            // The picture itself, as before 6d: avatar ids mean nothing to the next process.
-            const { slot: _, ...saved } = info(p);
-            return { ...saved, avatar: p.picture, resumeToken: p.resumeToken, lastAcceptedAt: p.lastAcceptedAt };
-          }),
+          peers: peopleIn(room).map(savePeer),
           ...(vacuum ? { vacuum: saveVacuum(this.vacuumNav(), vacuum) } : {}),
         };
       }),
@@ -453,17 +392,14 @@ export class Lobby {
     const now = this.opts.now();
     for (const { id, peers, vacuum } of snap.rooms) {
       const room: Room = new Map();
-      for (const p of peers) {
-        room.set(p.id, {
-          ...p,
-          ...this.picture(p.avatar),
+      for (const saved of peers) {
+        room.set(saved.id, {
+          ...saved,
+          ...this.picture(saved.avatar),
           slot: this.takeSlot(id),
           conn: null,
           disconnectedAt: now,
-          lastGestureAt: Number.NEGATIVE_INFINITY,
-          poseVersion: 0,
-          poseAt: now,
-          sent: new Map(),
+          ...freshTracking(now),
         });
       }
       this.rooms.set(id, room);
@@ -478,51 +414,212 @@ export class Lobby {
     }
   }
 
-  /** Moves every room's bots and robot vacuum; rooms with nobody connected stand still. */
-  stepWorld(dtMs: number): void {
-    this.stepBots(dtMs);
-    this.stepVacuums(dtMs);
+  // Joining and leaving.
+
+  /** The join's sanitized name, or null after rejecting a join from an outdated tab, to a bad room or with a bad name. */
+  private acceptedName(conn: string, msg: JoinMessage): string | null {
+    // Tabs opened before 6d send no version and only know fatal invalid_room ("Couldn't join this room").
+    if (msg.v === undefined) {
+      this.reject(conn, 'invalid_room', OUTDATED, CLOSE_INVALID, 'outdated');
+      return null;
+    }
+    if (msg.v < PROTOCOL_VERSION) {
+      this.reject(conn, 'outdated', OUTDATED, CLOSE_INVALID);
+      return null;
+    }
+    if (!isValidRoomId(msg.roomId)) {
+      this.reject(conn, 'invalid_room', 'Invalid room link', CLOSE_INVALID);
+      return null;
+    }
+    const name = sanitizeName(msg.name);
+    if (name === null) {
+      this.reject(conn, 'invalid_name', 'Invalid name', CLOSE_INVALID);
+    }
+    return name;
   }
 
-  /**
-   * Moves every bot of every room with someone connected: straight on, a random new heading on hitting a wall, now
-   * and then a turn of its own. Fan-out sends their poses like a player's.
-   */
-  private stepBots(dtMs: number): void {
-    const dt = dtMs / 1000;
-    const { map, rng } = this.opts;
+  /** Hands a person's place to their new connection, closing the old one if the server hadn't noticed it die. */
+  private resume(conn: string, roomId: string, room: Room, peer: Peer): void {
+    const stale = peer.conn;
+    if (stale !== null) {
+      this.conns.delete(stale);
+      this.opts.out.close(stale, CLOSE_REPLACED, 'replaced');
+    }
+    peer.conn = conn;
+    peer.disconnectedAt = null;
+    this.conns.set(conn, { roomId, peerId: peer.id });
+    this.welcome(conn, roomId, room, peer);
+    const replaced = stale !== null;
+    this.emit({ type: 'joined', roomId, peerId: peer.id, resumed: true, replaced, peers: countPeople(room) });
+  }
+
+  /** Adds someone new to the room (opening it if they are its first person) and tells everyone else. */
+  private admit(conn: string, msg: JoinMessage, room: Room, name: string): void {
+    const { roomId } = msg;
+    const now = this.opts.now();
+    const usedColors = new Set(peopleIn(room).map((p) => p.color));
+    const spawn = spawnPoint(this.opts.map, this.opts.rng);
+    const peer: Peer = {
+      id: this.opts.newToken(),
+      slot: this.takeSlot(roomId),
+      name,
+      color: pickColor(usedColors),
+      ...spawn,
+      cam: false,
+      mic: false,
+      ...this.picture(isValidAvatar(msg.avatar) ? msg.avatar : null),
+      held: null,
+      boombox: false,
+      resumeToken: this.opts.newToken(),
+      conn,
+      lastAcceptedAt: now,
+      disconnectedAt: null,
+      ...freshTracking(now),
+    };
+    if (room.size === 0) {
+      this.openRoom(roomId, room, msg.bots);
+    }
+    room.set(peer.id, peer);
+    this.rooms.set(roomId, room);
+    this.conns.set(conn, { roomId, peerId: peer.id });
+    this.welcome(conn, roomId, room, peer);
+    this.broadcast(room, peer.id, { type: 'peer_joined', peer: peerInfo(peer) });
+    // peer_joined carried the newcomer's pose: nobody needs it again until it moves.
+    for (const p of room.values()) {
+      if (p !== peer) {
+        p.sent.set(peer.id, { version: peer.poseVersion, at: now });
+      }
+    }
+    this.emit({ type: 'joined', roomId, peerId: peer.id, resumed: false, replaced: false, peers: countPeople(room) });
+  }
+
+  /** A room's first person opens it, with a robot vacuum and any bots the link asked for (while the server allows). */
+  private openRoom(roomId: string, room: Room, bots: number | undefined): void {
+    this.emit({ type: 'room_opened', roomId });
+    if (bots && this.countBotRooms() < MAX_BOT_ROOMS) {
+      this.spawnBots(roomId, room, bots);
+      this.emit({ type: 'bots_spawned', roomId, count: bots });
+    }
+    this.spawnVacuum(roomId);
+  }
+
+  /** Removes a person whose grace ran out, and tells the room. */
+  private expire(roomId: string, room: Room, peer: Peer): void {
+    room.delete(peer.id);
+    if (peer.avatar !== null) {
+      this.avatars.release(peer.avatar);
+    }
+    for (const p of room.values()) {
+      p.sent.delete(peer.id);
+    }
+    this.broadcast(room, peer.id, { type: 'peer_left', id: peer.id });
+    this.emit({ type: 'left', roomId, peerId: peer.id, peers: countPeople(room) });
+  }
+
+  private closeRoom(roomId: string): void {
+    this.rooms.delete(roomId);
+    this.vacuums.delete(roomId);
+    this.nextSlot.delete(roomId);
+    this.emit({ type: 'room_closed', roomId });
+  }
+
+  /** Sends the joiner everyone else in the room, their LiveKit access and the room's objects. */
+  private welcome(conn: string, roomId: string, room: Room, self: Peer): void {
+    // The welcome carries everyone's current pose: start this recipient's fan-out from there.
+    const now = this.opts.now();
+    self.sent = new Map();
+    for (const p of room.values()) {
+      if (p !== self) {
+        self.sent.set(p.id, { version: p.poseVersion, at: now });
+      }
+    }
+    const vacuum = this.vacuums.get(roomId);
+    this.opts.out.send(conn, {
+      type: 'welcome',
+      selfId: self.id,
+      resumeToken: self.resumeToken,
+      color: self.color,
+      spawn: { x: self.x, y: self.y, angle: self.angle },
+      peers: [...room.values()].filter((p) => p.id !== self.id).map(peerInfo),
+      livekit: this.opts.liveKitFor(roomId, self.id),
+      objects: vacuum ? [vacuumInfo(vacuum)] : [],
+    });
+  }
+
+  /** Errors and closes a join. `reason` is what metrics see when it differs from `code` (a tab too old for `outdated`). */
+  private reject(conn: string, code: RejectReason, message: string, close: number, reason: RejectReason = code): void {
+    this.opts.out.send(conn, { type: 'error', code, message });
+    this.opts.out.close(conn, close, code);
+    this.emit({ type: 'rejected', reason });
+  }
+
+  // The world: bots and robot vacuums.
+
+  private spawnBots(roomId: string, room: Room, count: number): void {
+    const { newToken, now } = this.opts;
+    this.floor ??= floorTiles(this.opts.map);
+    for (let i = 0; i < count; i++) {
+      const bot: Peer = {
+        id: newToken(),
+        slot: this.takeSlot(roomId),
+        ...placeBot(i, this.floor, this.opts.rng),
+        cam: false,
+        mic: false,
+        avatar: null,
+        picture: null,
+        held: null,
+        boombox: false,
+        resumeToken: newToken(),
+        conn: null,
+        lastAcceptedAt: now(),
+        disconnectedAt: null,
+        ...freshTracking(now()),
+        bot: true,
+      };
+      room.set(bot.id, bot);
+    }
+  }
+
+  /** Walks every bot of every room with someone connected; fan-out sends their poses like a player's. */
+  private stepBots(dt: number): void {
     const now = this.opts.now();
     for (const room of this.rooms.values()) {
-      if (![...room.values()].some((p) => p.conn !== null)) {
+      if (!hasConnection(room)) {
         continue;
       }
-      for (const bot of room.values()) {
-        if (!bot.bot) {
-          continue;
+      for (const peer of room.values()) {
+        if (peer.bot) {
+          stepBot(this.opts.map, peer, dt, this.opts.rng);
+          peer.poseVersion++;
+          peer.poseAt = now;
         }
-        const step = dt * BOT_SPEED;
-        const to = stepPlayer(map, bot, FORWARD, step, this.moved);
-        const travelled = Math.hypot(to.x - bot.x, to.y - bot.y);
-        if (travelled < step * 0.5) {
-          bot.angle = rng() * Math.PI * 2;
-        } else {
-          bot.x = to.x;
-          bot.y = to.y;
-          if (rng() < dt / BOT_TURN_EVERY_S) {
-            bot.angle += (rng() - 0.5) * Math.PI;
-          }
-        }
-        bot.poseVersion++;
-        bot.poseAt = now;
       }
     }
   }
 
+  private countBotRooms(): number {
+    let count = 0;
+    for (const room of this.rooms.values()) {
+      if ([...room.values()].some((p) => p.bot)) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  private spawnVacuum(roomId: string): void {
+    if (this.opts.vacuum) {
+      const vacuum = createVacuum(this.vacuumNav(), this.opts.rng, this.opts.newToken(), {
+        nearlyDone: this.opts.vacuumNearlyDone,
+      });
+      this.vacuums.set(roomId, vacuum);
+    }
+  }
+
   /** Steps each robot vacuum, bumping only connected people (never bots), and relays its pose as `object_state`. */
-  private stepVacuums(dtMs: number): void {
-    const dt = dtMs / 1000;
+  private stepVacuums(dt: number): void {
     const nav = this.vacuumNav();
-    for (const [roomId, v] of this.vacuums) {
+    for (const [roomId, vacuum] of this.vacuums) {
       const room = this.rooms.get(roomId);
       if (!room) {
         continue;
@@ -538,37 +635,44 @@ export class Lobby {
       if (conns.length === 0) {
         continue;
       }
-      const event = stepVacuum(nav, v, dt, this.opts.rng, people);
-      v.seq++;
+      const event = stepVacuum(nav, vacuum, dt, this.opts.rng, people);
+      vacuum.seq++;
       this.opts.out.broadcast(conns, {
         type: 'object_state',
-        id: v.id,
-        x: v.x,
-        y: v.y,
-        angle: v.angle,
-        seq: v.seq,
+        id: vacuum.id,
+        x: vacuum.x,
+        y: vacuum.y,
+        angle: vacuum.angle,
+        seq: vacuum.seq,
         ...(event ? { event } : {}),
       });
     }
   }
 
-  private spawnVacuum(roomId: string): void {
-    if (this.opts.vacuum) {
-      const v = createVacuum(this.vacuumNav(), this.opts.rng, this.opts.newToken(), {
-        nearlyDone: this.opts.vacuumNearlyDone,
-      });
-      this.vacuums.set(roomId, v);
-    }
-  }
-
+  /** The vacuum's map analysis, built on first use and shared by every room. */
   private vacuumNav(): VacuumNav {
     this.nav ??= createVacuumNav(this.opts.map);
     return this.nav;
   }
 
-  /** The JPEG served at `GET /avatar/<id>`, while someone in any room uses it. */
-  avatar(id: string): Buffer | null {
-    return this.avatars.get(id);
+  // Plumbing.
+
+  /** The connection's room and peer, or null if it hasn't joined (or its peer is gone). */
+  private peerOf(conn: string): { roomId: string; room: Room; peer: Peer } | null {
+    const binding = this.conns.get(conn);
+    const room = binding && this.rooms.get(binding.roomId);
+    const peer = binding && room?.get(binding.peerId);
+    return binding && room && peer ? { roomId: binding.roomId, room, peer } : null;
+  }
+
+  private gesture(conn: string, type: 'peer_drink' | 'peer_cheers'): void {
+    const found = this.peerOf(conn);
+    const now = this.opts.now();
+    if (!found || found.peer.held === null || now - found.peer.lastGestureAt < DRINK_GAP_MS) {
+      return;
+    }
+    found.peer.lastGestureAt = now;
+    this.broadcast(found.room, found.peer.id, { type, id: found.peer.id });
   }
 
   /** Stores a peer's picture: its id goes on the wire, the picture into the snapshot. */
@@ -582,92 +686,7 @@ export class Lobby {
     return slot;
   }
 
-  private spawnBots(roomId: string, room: Room, count: number): void {
-    const { map, rng, newToken, now } = this.opts;
-    this.floor ??= floorTiles(map);
-    for (let i = 0; i < count; i++) {
-      const tile = this.floor[Math.floor(rng() * this.floor.length)] as { x: number; y: number };
-      const bot: Peer = {
-        id: newToken(),
-        slot: this.takeSlot(roomId),
-        name: `Bot ${String(i + 1).padStart(3, '0')}`,
-        color: BOT_COLORS[i % BOT_COLORS.length] as string,
-        x: tile.x + 0.5,
-        y: tile.y + 0.5,
-        angle: rng() * Math.PI * 2,
-        cam: false,
-        mic: false,
-        avatar: null,
-        picture: null,
-        held: null,
-        boombox: false,
-        resumeToken: newToken(),
-        conn: null,
-        lastAcceptedAt: now(),
-        lastGestureAt: Number.NEGATIVE_INFINITY,
-        disconnectedAt: null,
-        poseVersion: 0,
-        poseAt: now(),
-        sent: new Map(),
-        bot: true,
-      };
-      room.set(bot.id, bot);
-    }
-  }
-
-  private people(room: Room): number {
-    let n = 0;
-    for (const p of room.values()) {
-      if (isPerson(p)) {
-        n++;
-      }
-    }
-    return n;
-  }
-
-  private botRooms(): number {
-    let n = 0;
-    for (const room of this.rooms.values()) {
-      if ([...room.values()].some((p) => p.bot)) {
-        n++;
-      }
-    }
-    return n;
-  }
-
-  private lookup(conn: string): { roomId: string; room: Room; peer: Peer } | null {
-    const binding = this.conns.get(conn);
-    const room = binding && this.rooms.get(binding.roomId);
-    const peer = binding && room?.get(binding.peerId);
-    return binding && room && peer ? { roomId: binding.roomId, room, peer } : null;
-  }
-
-  private emit(e: LobbyEvent): void {
-    this.opts.onEvent?.(e);
-  }
-
-  private welcome(conn: string, roomId: string, room: Room, self: Peer): void {
-    const vacuum = this.vacuums.get(roomId);
-    // The welcome carries everyone's current pose: start this recipient's fan-out from there.
-    const now = this.opts.now();
-    self.sent = new Map();
-    for (const p of room.values()) {
-      if (p !== self) {
-        self.sent.set(p.id, { version: p.poseVersion, at: now });
-      }
-    }
-    this.opts.out.send(conn, {
-      type: 'welcome',
-      selfId: self.id,
-      resumeToken: self.resumeToken,
-      color: self.color,
-      spawn: { x: self.x, y: self.y, angle: self.angle },
-      peers: [...room.values()].filter((p) => p.id !== self.id).map(info),
-      livekit: this.opts.liveKitFor(roomId, self.id),
-      objects: vacuum ? [vacuumInfo(vacuum)] : [],
-    });
-  }
-
+  /** Sends to every connected peer in the room except `exceptId`. */
   private broadcast(room: Room, exceptId: string, msg: ServerMessage): void {
     const conns: string[] = [];
     for (const p of room.values()) {
@@ -680,22 +699,7 @@ export class Lobby {
     }
   }
 
-  private reject(conn: string, code: RejectReason, message: string, close: number, reason: RejectReason = code) {
-    this.opts.out.send(conn, { type: 'error', code, message });
-    this.opts.out.close(conn, close, code);
-    this.emit({ type: 'rejected', reason });
+  private emit(e: LobbyEvent): void {
+    this.opts.onEvent?.(e);
   }
-}
-
-/** Every floor tile; the map validator guarantees each one is reachable from the spawn. */
-function floorTiles(map: GameMap): { x: number; y: number }[] {
-  const tiles: { x: number; y: number }[] = [];
-  for (let y = 0; y < map.height; y++) {
-    for (let x = 0; x < map.width; x++) {
-      if (!isWallAt(map, x + 0.5, y + 0.5)) {
-        tiles.push({ x, y });
-      }
-    }
-  }
-  return tiles;
 }

@@ -1,6 +1,7 @@
 import { hasLineOfSight, isWallAt, LEVEL1, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
-import { createVacuumNav, mapFingerprint, type Point, VACUUM_RADIUS } from './vacuum-nav';
+import { createVacuumNav, mapFingerprint, type Point, VACUUM_RADIUS } from './nav';
+import { defined } from './test-helpers';
 
 // Robot vacuum spec §3.3: the map is cleaned in 3×3-tile patches, edge first, then lanes.
 const level = parseMap(LEVEL1);
@@ -39,8 +40,8 @@ describe('createVacuumNav', () => {
   test('route starts at the ring point nearest from', () => {
     const open = createVacuumNav(OPEN);
     const route = open.route(open.patchOf(4, 4), { x: 6.9, y: 5.2 });
-    expect(route[0]?.x).toBeCloseTo(5.7);
-    expect(route[0]?.y).toBeCloseTo(5.1);
+    expect(route.at(0)?.x).toBeCloseTo(5.7);
+    expect(route.at(0)?.y).toBeCloseTo(5.1);
   });
 
   test('route points keep the robot clear of walls', () => {
@@ -55,8 +56,8 @@ describe('createVacuumNav', () => {
     for (const patch of nav.dirtyAtStart) {
       const route = nav.route(patch, { x: 0, y: 0 });
       for (let i = 1; i < route.length; i++) {
-        const a = route[i - 1] as Point;
-        const b = route[i] as Point;
+        const a = defined(route.at(i - 1), 'point');
+        const b = defined(route.at(i), 'point');
         expect(hasLineOfSight(level, a.x, a.y, b.x, b.y), `patch ${patch} step ${i}`).toBe(true);
       }
     }
@@ -67,7 +68,7 @@ describe('createVacuumNav', () => {
     const to = { x: 1, y: 13 };
     const path = nav.path(from, to);
     expect(path.at(-1)).toEqual({ x: 1.5, y: 13.5 });
-    expect(nav.distances(from)[to.y * level.width + to.x]).toBe(path.length);
+    expect(nav.distances(from)(to)).toBe(path.length);
     expect(nav.path(from, from)).toEqual([]);
   });
 });

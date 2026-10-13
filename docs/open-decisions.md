@@ -299,7 +299,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 - *Resolved 2026-10-11* ([spec](superpowers/specs/2026-10-11-robot-vacuum-design.md)): zoom3d gets **world objects**,
   starting with a robot vacuum in every room. It cleans the floor in 3×3-tile patches (the edge first, then lanes) at a
   real robot's pace, about 1.5 h for LEVEL1, then searches for its dock forever and never finds it.
-  - **World objects are not peers.** The server simulates them per room (`apps/server/src/vacuum*.ts`, stepped with
+  - **World objects are not peers.** The server simulates them per room (`apps/server/src/objects/vacuum/`, stepped with
     the bots, every fan-out tick since 6d) and relays `object_state`. They have no labels, automap dot, media or `MAX_PEERS` slot, and
     never keep a room open. The robot is saved in the state file with a map fingerprint; a different map gives a
     fresh robot.

@@ -25,6 +25,8 @@ decisions are recorded there with date and rationale; update it when a decision 
   commas, matching the Prettier style of github.com/pyldin601/maisumtuga. Run `pnpm exec biome check --write .`.
 - Every `if`/`else`/`for`/`while` body is a braced block, even one-liners (`style/useBlockStatements`):
   write `if (x) {\n  y();\n}`, never `if (x) y();`.
+- Readability conventions are in [docs/code-style.md](docs/code-style.md): names with units, tagged unions over
+  mode flags, `.at()` over `arr[i] as T`, small named stages, and behaviour-preserving refactors proven by a trace.
 - Commit small, imperative-mood messages. Don't commit secrets or `.env`.
 - Never block the render loop: no allocations in the per-frame/per-column hot path.
 
@@ -132,7 +134,7 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   camera directly or drop the canvas track when the camera is off: the face would be unpublished, and turning the
   camera on would have to republish it. `LocalMediaController` (`media/local-media.ts`) owns every local track
   from the lobby onward; the room never calls `getUserMedia` itself.
-- Bots (`?bots=N`, `Lobby.spawnBots`/`stepWorld`): server-side peers with a `bot` flag, no connection and no media.
+- Bots (`?bots=N`, `bots.ts`, `Lobby.spawnBots`/`stepWorld`): server-side peers with a `bot` flag, no connection and no media.
   They never count toward `MAX_PEERS`, never expire, can't be resumed into, aren't saved in the state file, and never
   keep a room open (it closes with its last person). At most `MAX_BOT_ROOMS` rooms have them at once. They move every
   fan-out tick and go out in the same `peers` batches as players, so they exercise the real fan-out.
@@ -151,7 +153,7 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
 - World objects (decision D22, robot vacuum spec `docs/superpowers/specs/2026-10-11-robot-vacuum-design.md`):
   - **Not peers.** `object_state`, `welcome.objects`, `session.objects` and `objectKey(id)` keep them apart from peers:
     no labels, automap, `MAX_PEERS` or media, and they never keep a room open.
-  - **The vacuum:** the server steps it in `Lobby.stepWorld` (`apps/server/src/vacuum*.ts`, pure), bumping connected
+  - **The vacuum:** the server steps it in `Lobby.stepWorld` (`apps/server/src/objects/vacuum/`, pure), bumping connected
     people only. It is saved in the state file, keyed by `mapFingerprint`. `VACUUM_NEARLY_DONE=1` (ignored in
     production) starts it one patch from done, so its dock search shows within a minute.
   - **Drawing:** voxel models (`renderer/models/`) are drawn by `renderer/voxels.ts` inside `renderSprites`, far to
