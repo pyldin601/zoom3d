@@ -19,6 +19,8 @@ export interface VoxelModel {
   /** The same colours unshaded, and each face's direction (lighting.ts DIR_*), for lit rooms. */
   base: Uint32Array;
   dirs: Uint8Array;
+  /** Per face, 0..1: how much it glows. A glowing face shows its own colour, untouched by light and shadow. */
+  glow: Float32Array;
   /** Top of the model above the floor, in tiles. */
   height: number;
   faceCount: number;
@@ -57,13 +59,26 @@ function scale(c: number, k: number): number {
   return ((c & 0xff000000) | (b << 16) | (g << 8) | r) >>> 0;
 }
 
-/** A model from a grid of sx × sy × sz voxels; `color(x, y, z)` is a packed rgb(), or 0 for empty. */
+/** A voxel that glows: `glow` 0 is lit like any other, 1 always shows `color` itself. */
+export interface Glow {
+  color: number;
+  glow: number;
+}
+
+export function glow(color: number, amount: number): Glow {
+  return { color, glow: amount };
+}
+
+/**
+ * A model from a grid of sx × sy × sz voxels; `color(x, y, z)` is a packed rgb(), or 0 for empty, or a glow() for a
+ * voxel that gives off its own light.
+ */
 export function buildModel(
   sx: number,
   sy: number,
   sz: number,
   voxel: number,
-  color: (x: number, y: number, z: number) => number
+  color: (x: number, y: number, z: number) => number | Glow
 ): VoxelModel {
   const at = (x: number, y: number, z: number) =>
     x < 0 || y < 0 || z < 0 || x >= sx || y >= sy || z >= sz ? 0 : color(x, y, z);
@@ -72,13 +87,15 @@ export function buildModel(
   const colors: number[] = [];
   const base: number[] = [];
   const dirs: number[] = [];
+  const glows: number[] = [];
   for (let z = 0; z < sz; z++) {
     for (let y = 0; y < sy; y++) {
       for (let x = 0; x < sx; x++) {
-        const c = at(x, y, z);
-        if (c === 0) {
+        const v = at(x, y, z);
+        if (v === 0) {
           continue;
         }
+        const c = typeof v === 'number' ? v : v.color;
         for (let d = 0; d < FACES.length; d++) {
           const f = FACES[d] as (typeof FACES)[number];
           if (at(x + f.n[0], y + f.n[1], z + f.n[2]) !== 0) {
@@ -95,6 +112,7 @@ export function buildModel(
           colors.push(scale(c, f.k));
           base.push(c);
           dirs.push(d);
+          glows.push(typeof v === 'number' ? 0 : v.glow);
         }
       }
     }
@@ -106,6 +124,7 @@ export function buildModel(
     colors: Uint32Array.from(colors),
     base: Uint32Array.from(base),
     dirs: Uint8Array.from(dirs),
+    glow: Float32Array.from(glows),
     height: sz * voxel,
     faceCount: colors.length,
     shadowRadius: (Math.max(sx, sy) * voxel) / 2,
@@ -120,11 +139,15 @@ const byDepth = (a: number, b: number) => (faceDepth[b] as number) - (faceDepth[
 /** Lamp light per face direction (r, g, b × 5), then ambient × shade added: this instance's multipliers. */
 const light = new Float64Array(FACES.length * 3);
 
-/** A face's colour in a lit room: the unshaded colour times the light on its direction, which may overbright. */
-function litColor(c: number, d: number): number {
-  let r = ((c & 0xff) * (light[d * 3] as number)) | 0;
-  let g = (((c >>> 8) & 0xff) * (light[d * 3 + 1] as number)) | 0;
-  let b = (((c >>> 16) & 0xff) * (light[d * 3 + 2] as number)) | 0;
+/**
+ * A face's colour in a lit room: the unshaded colour times the light on its direction, which may overbright, blended
+ * towards the colour itself as far as the face glows.
+ */
+function litColor(c: number, d: number, glow: number): number {
+  const lit = 1 - glow;
+  let r = ((c & 0xff) * ((light[d * 3] as number) * lit + glow)) | 0;
+  let g = (((c >>> 8) & 0xff) * ((light[d * 3 + 1] as number) * lit + glow)) | 0;
+  let b = (((c >>> 16) & 0xff) * ((light[d * 3 + 2] as number) * lit + glow)) | 0;
   if (r > 255) {
     r = 255;
   }
@@ -171,7 +194,7 @@ export function renderVoxel(fb: Framebuffer, p: PlayerState, v: VoxelInstance, l
   const half = h / 2;
   const ca = Math.cos(v.angle);
   const sa = Math.sin(v.angle);
-  const { corners, normals, colors, base, dirs } = model;
+  const { corners, normals, colors, base, dirs, glow } = model;
   if (lighting) {
     directLight(lighting, v.x, v.y, model.height / 2, v.angle, light);
     for (let d = 0; d < FACES.length; d++) {
@@ -225,7 +248,7 @@ export function renderVoxel(fb: Framebuffer, p: PlayerState, v: VoxelInstance, l
   for (const f of order) {
     const s = f * 8;
     const depth = faceDepth[f] as number;
-    const color = lighting ? litColor(base[f] as number, dirs[f] as number) : (colors[f] as number);
+    const color = lighting ? litColor(base[f] as number, dirs[f] as number, glow[f] as number) : (colors[f] as number);
     let minY = Number.POSITIVE_INFINITY;
     let maxY = Number.NEGATIVE_INFINITY;
     for (let k = 1; k < 8; k += 2) {

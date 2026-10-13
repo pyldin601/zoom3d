@@ -4,7 +4,7 @@ import { createFramebuffer, rgb } from './framebuffer';
 import { bakeLighting, type Light } from './lighting';
 import { VACUUM_MODEL } from './models/vacuum';
 import { renderSprites, type Sprite } from './sprites';
-import { buildModel, renderVoxel, type VoxelInstance } from './voxels';
+import { buildModel, glow, renderVoxel, type VoxelInstance } from './voxels';
 
 // Voxel objects (robot vacuum spec §6): models described in code, drawn depth-correct among walls and discs.
 const player: PlayerState = { x: 1.5, y: 4.5, angle: 0 };
@@ -59,6 +59,25 @@ describe('buildModel', () => {
   });
 });
 
+describe('glowing voxels', () => {
+  test("buildModel keeps each face's glow; plain colours get none", () => {
+    const m = buildModel(2, 1, 1, 0.1, (x) => (x === 0 ? RED : glow(RED, 0.75)));
+    const byX = new Map<number, Set<number>>();
+    for (let f = 0; f < m.faceCount; f++) {
+      const x = Math.min(m.corners[f * 12] as number, m.corners[f * 12 + 3] as number) < 0 ? 0 : 1;
+      byX.set(x, (byX.get(x) ?? new Set()).add(m.glow[f] as number));
+    }
+    expect(byX.get(0)).toEqual(new Set([0]));
+    expect(byX.get(1)).toEqual(new Set([0.75]));
+  });
+
+  test('a glowing voxel keeps its colour in the plain (unlit) shading', () => {
+    const m = buildModel(1, 1, 1, 0.1, () => glow(RED, 1));
+    const plain = buildModel(1, 1, 1, 0.1, () => RED);
+    expect([...m.colors]).toEqual([...plain.colors]);
+  });
+});
+
 describe('the vacuum model', () => {
   test('is 0.7 × 0.7 × 0.2 tiles and flat at the front', () => {
     const c = VACUUM_MODEL.corners;
@@ -69,6 +88,17 @@ describe('the vacuum model', () => {
     expect(Math.min(...axis(1))).toBeCloseTo(-0.35);
     expect(Math.max(...axis(2))).toBeCloseTo(0.2);
     expect(VACUUM_MODEL.shadowRadius).toBeCloseTo(0.35);
+  });
+
+  test('its eyes and the disc on top glow; nothing else does', () => {
+    const glowing = new Set<number>();
+    for (let f = 0; f < VACUUM_MODEL.faceCount; f++) {
+      if ((VACUUM_MODEL.glow[f] as number) > 0) {
+        glowing.add(VACUUM_MODEL.base[f] as number);
+        expect(VACUUM_MODEL.glow[f]).toBe(1);
+      }
+    }
+    expect(glowing).toEqual(new Set([rgb(0xff, 0xff, 0xd2), rgb(0xfa, 0xd2, 0x50)]));
   });
 
   test('its eyes face the front (+x)', () => {
@@ -187,6 +217,25 @@ describe('renderVoxel with lighting', () => {
     renderVoxel(lit, player, box, bakeLighting(room, [lamp], 0.45, RED, RED));
     const red = (fb: ReturnType<typeof blank>) => Math.max(...[...drawn(fb)].map((c) => c & 0xff));
     expect(red(lit)).toBeGreaterThan(red(dark));
+  });
+
+  test('a fully glowing voxel shows its own colour on every face, whatever the light', () => {
+    const lit = (l: Light[]) => {
+      const fb = blank();
+      const model = buildModel(1, 1, 1, 0.2, () => glow(RED, 1));
+      renderVoxel(fb, player, { ...box, model }, bakeLighting(room, l, 0.45, RED, RED));
+      return drawn(fb);
+    };
+    expect(lit([])).toEqual(new Set([RED]));
+    expect(lit([lamp])).toEqual(new Set([RED]));
+  });
+
+  test('half a glow is halfway between lit and its own colour', () => {
+    const fb = blank();
+    const model = buildModel(1, 1, 1, 0.2, () => glow(RED, 0.5));
+    renderVoxel(fb, player, { ...box, model }, bakeLighting(room, [], 0.45, RED, RED));
+    // Top: 0.45 × 0.5 + 0.5; the face to the camera: 0.45 × 0.8 × 0.5 + 0.5.
+    expect(drawn(fb)).toEqual(new Set([scaled(RED, 0.725), scaled(RED, 0.68)]));
   });
 
   test('renderSprites passes the lighting on to voxels', () => {
