@@ -146,4 +146,33 @@ describe('renderWalls glint', () => {
     }
     expect(far).toBeGreaterThan(0);
   });
+
+  test('keeps a blue wall blue: the glint brightens it in its own hue', () => {
+    const blue = parseMap('3333333333\n3S.......3\n3333333333');
+    const blueLit = bakeLighting(
+      blue,
+      [{ x: 6.5, y: 1.5, z: 0.85, radius: 4.5, r: 1.25, g: 1.05, b: 0.75 }],
+      0.45,
+      FLOOR,
+      CEILING
+    );
+    const glinted = createFramebuffer();
+    const plain = createFramebuffer();
+    const pose = { x: 7.5, y: 1.5, angle: 0.4 };
+    renderWalls(glinted, blue, pose, textures, blueLit);
+    renderWalls(plain, blue, pose, textures, {
+      ...blueLit,
+      wallLamp: new Int16Array(blueLit.wallLamp.length).fill(-1),
+    });
+    let red = 0;
+    let blueAdded = 0;
+    for (let i = 0; i < plain.pixels.length; i++) {
+      const a = channels(glinted.pixels[i] as number);
+      const b = channels(plain.pixels[i] as number);
+      red += (a[0] as number) - (b[0] as number);
+      blueAdded += (a[2] as number) - (b[2] as number);
+    }
+    expect(blueAdded).toBeGreaterThan(0);
+    expect(red).toBeLessThan(blueAdded / 4);
+  });
 });

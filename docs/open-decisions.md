@@ -358,8 +358,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     one lamp per wall sample column, the brightest it can see, so glints keep the baked shadows. Per frame it's one
     lookup per column and a few multiplies per texel run on near walls, no roots: about +0.05 ms. Mortar stays matte
     (`GLOSS` in `renderer/textures.ts`); floors and ceilings don't glint. Brick only shines at an angle: the glint is
-    scaled by f0 + (1 − f0)·sin² of the viewing angle (`GLINT_F0`: 0.1 for brick, 1 for wood, which shines alike from
-    every angle). Schlick's Fresnel was tried first, but its rise comes past 80°, and a corridor's glints sit at 60–70°,
+    scaled by f0 + (1 − f0)·sin² of the viewing angle (`GLINT_MATERIAL`: f0 0.1 for brick, 1 for wood, which shines
+    alike from every angle). Brick's glint also takes the texel's hue, scaled so its brightest channel is 1: the lamp's
+    warm colour on blue brick read as violet. Wood keeps the pure lamp colour. Schlick's Fresnel was tried first, but its rise comes past 80°, and a corridor's glints sit at 60–70°,
     so brick barely shone at all.
   - Not done yet: avatars aren't lit, shadow edges are stair-stepped, rooms get no lamps of their own.
 

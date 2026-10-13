@@ -2,7 +2,7 @@
 import { castRay, createRayHit, type GameMap, type PlayerState } from '@zoom3d/shared';
 import { type Framebuffer, rgb } from './framebuffer';
 import { FACES, FLOOR_SUB, GLINT_RANGE, GLINT_STRENGTH, glint, type Lighting, WALL_U, WALL_V } from './lighting';
-import { GLINT_F0, GLOSS, RELIEF, RELIEF_LEVELS, TEX } from './textures';
+import { GLINT_MATERIAL, GLOSS, RELIEF, RELIEF_LEVELS, TEX } from './textures';
 
 export const CEILING = rgb(0x38, 0x38, 0x38);
 export const FLOOR = rgb(0x70, 0x70, 0x70);
@@ -135,7 +135,7 @@ function renderLitWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textures:
     const lamp = lampIndex < 0 ? null : lm.lights.at(lampIndex);
     const normal = FACES.at(face);
     const gloss = GLOSS[hit.tile] as Uint8Array;
-    const f0 = GLINT_F0[hit.tile] as number;
+    const { f0, tinted } = GLINT_MATERIAL[hit.tile] as (typeof GLINT_MATERIAL)[number];
     const hitX = p.x + hit.distance * rayX;
     const hitY = p.y + hit.distance * rayY;
     const glintScale = (1 - hit.distance / GLINT_RANGE) * GLINT_STRENGTH * 255;
@@ -168,9 +168,19 @@ function renderLitWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textures:
       if (lamp && normal && gloss[t] === 1) {
         const z = 1 - (texY + 0.5) / size;
         const s = glint(lamp, f0, normal.dx, normal.dy, hitX, hitY, z, p.x, p.y) * glintScale;
-        r += (s * lamp.r) | 0;
-        g += (s * lamp.g) | 0;
-        b += (s * lamp.b) | 0;
+        if (tinted) {
+          const cr = c & 0xff;
+          const cg = (c >>> 8) & 0xff;
+          const cb = (c >>> 16) & 0xff;
+          const k = s / Math.max(cr, cg, cb, 1);
+          r += (k * cr * lamp.r) | 0;
+          g += (k * cg * lamp.g) | 0;
+          b += (k * cb * lamp.b) | 0;
+        } else {
+          r += (s * lamp.r) | 0;
+          g += (s * lamp.g) | 0;
+          b += (s * lamp.b) | 0;
+        }
       }
       if (r > 255) {
         r = 255;
