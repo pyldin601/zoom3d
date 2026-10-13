@@ -18,6 +18,7 @@ import {
   sipLeft,
   sipTop,
 } from './held-items';
+import type { Lighting } from './lighting';
 import { renderVoxel, type VoxelInstance, voxelDepth } from './voxels';
 import { shade } from './walls';
 
@@ -218,7 +219,8 @@ export function renderSprites(
   p: PlayerState,
   sprites: readonly Sprite[],
   facts?: Map<string, PeerFacts>,
-  voxels: readonly VoxelInstance[] = []
+  voxels: readonly VoxelInstance[] = [],
+  lighting: Lighting | null = null
 ): void {
   const { width: w, height: h, pixels, zbuffer } = fb;
   visible.length = 0;
@@ -301,7 +303,7 @@ export function renderSprites(
   for (const i of visible) {
     const { screenX, depth, size } = projections[i] as Projection;
     while (nextVoxel < voxelOrder.length && (voxelDepths[voxelOrder[nextVoxel] as number] as number) > depth) {
-      renderVoxel(fb, p, voxels[voxelOrder[nextVoxel++] as number] as VoxelInstance);
+      renderVoxel(fb, p, voxels[voxelOrder[nextVoxel++] as number] as VoxelInstance, lighting);
     }
     const { color, face, speaking, held, bob, itemBob, sip, cheers, wobble, boombox } = sprites[i] as Sprite;
     const ring = speaking > 0 ? mixWhite(color, Math.min(speaking, 1) * SPEAKING_GLOW) : color;
@@ -347,7 +349,7 @@ export function renderSprites(
     }
   }
   while (nextVoxel < voxelOrder.length) {
-    renderVoxel(fb, p, voxels[voxelOrder[nextVoxel++] as number] as VoxelInstance);
+    renderVoxel(fb, p, voxels[voxelOrder[nextVoxel++] as number] as VoxelInstance, lighting);
   }
 }
 

@@ -29,6 +29,9 @@ const FIXTURE_RADIUS = 0.18;
 const FIXTURE = rgb(255, 236, 190);
 
 export interface Lighting {
+  map: GameMap;
+  lights: readonly Light[];
+  ambient: number;
   /** Per wall cell × face (0 W, 1 E, 2 N, 3 S): offset into `wall`, or −1 when the face touches no floor. */
   faceOffset: Int32Array;
   /** Packed multipliers, [face][u][v]. */
@@ -180,7 +183,48 @@ export function bakeLighting(
       ceiling[sy * stride + sx] = fixture ? FIXTURE : tint(ceilingColour, cr, cg, cb);
     }
   }
-  return { faceOffset, wall, floor, ceiling, stride, rows };
+  return { map, lights, ambient, faceOffset, wall, floor, ceiling, stride, rows };
+}
+
+/** A voxel face's direction in model space (+x front, +y the model's right, +z up), as voxels.ts orders them. */
+export const DIR_TOP = 0;
+export const DIR_FRONT = 1;
+export const DIR_BACK = 2;
+export const DIR_RIGHT = 3;
+export const DIR_LEFT = 4;
+
+/**
+ * Light from the lamps (ambient not included) reaching a moving object at (x, y, z) turned to `angle`, per face
+ * direction: `out` gets r, g, b for each DIR_* in turn. Only lamps in reach and in sight count, so a few per call.
+ */
+export function directLight(lm: Lighting, x: number, y: number, z: number, angle: number, out: Float64Array): void {
+  out.fill(0);
+  const ca = Math.cos(angle);
+  const sa = Math.sin(angle);
+  for (const l of lm.lights) {
+    const dx = l.x - x;
+    const dy = l.y - y;
+    const dz = l.z - z;
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const k = falloff(dist, l.radius);
+    if (k === 0 || !hasLineOfSight(lm.map, x, y, l.x, l.y)) {
+      continue;
+    }
+    // The lamp's direction in model space: rotate the horizontal part by −angle.
+    const fx = (dx * ca + dy * sa) / dist;
+    const fy = (-dx * sa + dy * ca) / dist;
+    addLight(out, DIR_TOP, l, k * Math.max(0, dz / dist));
+    addLight(out, DIR_FRONT, l, k * Math.max(0, fx));
+    addLight(out, DIR_BACK, l, k * Math.max(0, -fx));
+    addLight(out, DIR_RIGHT, l, k * Math.max(0, fy));
+    addLight(out, DIR_LEFT, l, k * Math.max(0, -fy));
+  }
+}
+
+function addLight(out: Float64Array, dir: number, l: Light, k: number): void {
+  out[dir * 3] = (out[dir * 3] as number) + l.r * k;
+  out[dir * 3 + 1] = (out[dir * 3 + 1] as number) + l.g * k;
+  out[dir * 3 + 2] = (out[dir * 3 + 2] as number) + l.b * k;
 }
 
 export const LAMP = { r: 1.25, g: 1.05, b: 0.75 };

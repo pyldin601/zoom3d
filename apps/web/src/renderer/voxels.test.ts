@@ -1,6 +1,7 @@
-import type { PlayerState } from '@zoom3d/shared';
+import { type PlayerState, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { createFramebuffer, rgb } from './framebuffer';
+import { bakeLighting, type Light } from './lighting';
 import { VACUUM_MODEL } from './models/vacuum';
 import { renderSprites, type Sprite } from './sprites';
 import { buildModel, renderVoxel, type VoxelInstance } from './voxels';
@@ -153,5 +154,44 @@ describe('renderSprites with voxels', () => {
     renderSprites(both, player, [disc(4.0)], undefined, [robot(3.9)]);
     const changed = [...painted(discOnly)].filter(([i, px]) => both.pixels[i] !== px);
     expect(changed.length).toBeGreaterThan(0);
+  });
+});
+
+describe('renderVoxel with lighting', () => {
+  // Open floor round the player and the robot at (3.5, 4.5).
+  const room = parseMap(`
+1111111
+1.....1
+1.....1
+1.....1
+1S....1
+1.....1
+1111111
+`);
+  const cube = buildModel(1, 1, 1, 0.2, () => RED);
+  const box: VoxelInstance = { model: cube, x: 3.5, y: 4.5, angle: Math.PI };
+  const drawn = (fb: ReturnType<typeof blank>) => new Set([...fb.pixels].filter((px) => px !== 0));
+  const lamp: Light = { x: 3.5, y: 4.5, z: 0.85, radius: 4, r: 1, g: 1, b: 1 };
+
+  test('with no lamps, faces get only the ambient share of their usual shade', () => {
+    const fb = blank();
+    renderVoxel(fb, player, box, bakeLighting(room, [], 0.45, RED, RED));
+    // The top and the face turned to the camera.
+    expect(drawn(fb)).toEqual(new Set([scaled(RED, 0.45), scaled(RED, 0.45 * 0.8)]));
+  });
+
+  test('a lamp overhead brightens the top', () => {
+    const dark = blank();
+    renderVoxel(dark, player, box, bakeLighting(room, [], 0.45, RED, RED));
+    const lit = blank();
+    renderVoxel(lit, player, box, bakeLighting(room, [lamp], 0.45, RED, RED));
+    const red = (fb: ReturnType<typeof blank>) => Math.max(...[...drawn(fb)].map((c) => c & 0xff));
+    expect(red(lit)).toBeGreaterThan(red(dark));
+  });
+
+  test('renderSprites passes the lighting on to voxels', () => {
+    const fb = blank();
+    renderSprites(fb, player, [], undefined, [box], bakeLighting(room, [], 0.45, RED, RED));
+    expect(drawn(fb).has(scaled(RED, 0.45))).toBe(true);
   });
 });
