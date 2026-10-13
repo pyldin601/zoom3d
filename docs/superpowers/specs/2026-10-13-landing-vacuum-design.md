@@ -73,9 +73,10 @@ Ada, Bob and Max are passed to the sim as the "people" it bumps (`stepVacuum`'s 
 don't animate (no bob or wobble).
 
 **The camera is a person too** **(my call)**. In a room the viewer is someone the vacuum bumps into, so on the landing
-page the viewer's position is a fourth entry in `people`. Without it, the vacuum drives through the camera (it cleans
-the camera's patch first) and `renderVoxel` draws a huge, half-clipped model as faces cross `MIN_DEPTH`. With it, the
-trial run kept the vacuum at least 0.56 tiles away. To keep the run the same for everyone (§2.2), this is one fixed
+page the viewer's position is a fourth entry in `people`. Without it, the vacuum drives through the camera's spot (it
+cleans the camera's patch first), looming up from the bottom of the frame and vanishing beneath it. With it, the trial
+run kept the vacuum at least 0.56 tiles away. (Faces dropped at `MIN_DEPTH` never show: a knee-high model that close
+is below the frame.) To keep the run the same for everyone (§2.2), this is one fixed
 point, `LANDING_CAMERA`'s position, for both the landscape and portrait cameras (they are 0.15 tiles apart).
 
 ### 2.4 Start a party, and the lobby

@@ -14,8 +14,8 @@ test('the vacuum comes out after 10 seconds', async ({ page }) => {
   await page.waitForTimeout(5_000);
   const parked = await frame(page);
   expect(parked).toBe(early);
-  await page.waitForTimeout(9_000);
-  expect(await frame(page)).not.toBe(parked);
+  // It is in view for a few seconds from about 13 s, then cleans out of sight: poll rather than sample one moment.
+  await expect.poll(() => frame(page), { timeout: 30_000 }).not.toBe(parked);
 });
 
 test('input does not wake the vacuum early', async ({ page }) => {

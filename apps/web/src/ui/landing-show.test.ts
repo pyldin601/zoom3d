@@ -1,9 +1,14 @@
 import { describe, expect, test } from 'vitest';
-import { LANDING_CAMERA } from './landing-scene';
+import { LANDING_CAMERA, LANDING_CAMERA_PORTRAIT } from './landing-scene';
 import { createLandingShow, LANDING_PARK, type LandingShow, MAX_FRAME_S } from './landing-show';
 
 // Landing vacuum spec §2: parked out of view for 10 s, then cleans the corridor, then searches forever.
 const FRAME_S = 1 / 60;
+/**
+ * How close the vacuum's centre may come to where the viewer stands, in tiles. As a person there, the viewer gets
+ * bumped and driven round (closest about 0.56); without that it drives straight through the camera's spot.
+ */
+const CLEAR_OF_VIEWER_TILES = 0.5;
 /** Generous cap on a full clean (a trial run took about 9.5 min). */
 const CLEAN_CAP_S = 900;
 
@@ -60,10 +65,9 @@ describe('a full run', () => {
   while (show.timeS < CLEAN_CAP_S + 120) {
     show.advance(FRAME_S);
     show.poseInto(pose);
-    closestToCameraTiles = Math.min(
-      closestToCameraTiles,
-      Math.hypot(pose.x - LANDING_CAMERA.x, pose.y - LANDING_CAMERA.y)
-    );
+    for (const camera of [LANDING_CAMERA, LANDING_CAMERA_PORTRAIT]) {
+      closestToCameraTiles = Math.min(closestToCameraTiles, Math.hypot(pose.x - camera.x, pose.y - camera.y));
+    }
     if (lostAtS < 0 && show.vacuum.phase === 'searching') {
       lostAtS = show.timeS;
       bumpsWhenLost = show.bumps;
@@ -80,7 +84,7 @@ describe('a full run', () => {
     expect(show.vacuum.phase).toBe('searching');
   });
 
-  test('the camera is a person: the vacuum keeps its distance', () => {
-    expect(closestToCameraTiles).toBeGreaterThan(0.45);
+  test('the camera is a person: the vacuum never drives through the viewer', () => {
+    expect(closestToCameraTiles).toBeGreaterThan(CLEAR_OF_VIEWER_TILES);
   });
 });
