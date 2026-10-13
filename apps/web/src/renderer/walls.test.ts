@@ -1,6 +1,7 @@
 import { parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { createFramebuffer, DEFAULT_FOV } from './framebuffer';
+import { bakeLighting, GLINT_RANGE } from './lighting';
 import { makeTextures, TEX } from './textures';
 import { CEILING, FLOOR, renderWalls, shade } from './walls';
 
@@ -95,4 +96,83 @@ test('a narrower FOV draws the same wall taller', () => {
     Math.tan((33 * Math.PI) / 180) / Math.tan((25 * Math.PI) / 180),
     1
   );
+});
+
+describe('renderWalls glint', () => {
+  // A corridor with a lamp near its east end.
+  const corridor = parseMap('1111111111\n1S.......1\n1111111111');
+  const lit = bakeLighting(
+    corridor,
+    [{ x: 6.5, y: 1.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 }],
+    0.45,
+    FLOOR,
+    CEILING
+  );
+  const matte = { ...lit, wallLamp: new Int16Array(lit.wallLamp.length).fill(-1) };
+  const render = (x: number, lighting: typeof lit) => {
+    const fb = createFramebuffer();
+    renderWalls(fb, corridor, { x, y: 1.5, angle: 0 }, textures, lighting);
+    return fb;
+  };
+  const channels = (c: number) => [c & 0xff, (c >>> 8) & 0xff, (c >>> 16) & 0xff];
+
+  test('brightens a near wall where it mirrors the lamp, never darkens', () => {
+    const glinted = render(7.5, lit).pixels;
+    const plain = render(7.5, matte).pixels;
+    let brighter = 0;
+    for (let i = 0; i < plain.length; i++) {
+      const a = channels(glinted[i] as number);
+      const b = channels(plain[i] as number);
+      expect(a.every((v, k) => v >= (b[k] as number))).toBe(true);
+      if (a.some((v, k) => v > (b[k] as number))) {
+        brighter++;
+      }
+    }
+    expect(brighter).toBeGreaterThan(0);
+  });
+
+  test('leaves walls past GLINT_RANGE alone', () => {
+    // Looking down the corridor: the end wall is far, the side walls near the edges are close.
+    const glinted = render(1.5, lit);
+    const plain = render(1.5, matte);
+    let far = 0;
+    for (let col = 0; col < plain.width; col++) {
+      if ((plain.zbuffer[col] as number) < GLINT_RANGE) {
+        continue;
+      }
+      far++;
+      const differs = column(glinted, col).some((c, y) => c !== plain.pixels[y * plain.width + col]);
+      expect(differs).toBe(false);
+    }
+    expect(far).toBeGreaterThan(0);
+  });
+
+  test('keeps a blue wall blue: the glint brightens it in its own hue', () => {
+    const blue = parseMap('3333333333\n3S.......3\n3333333333');
+    const blueLit = bakeLighting(
+      blue,
+      [{ x: 6.5, y: 1.5, z: 0.85, radius: 4.5, r: 1.25, g: 1.05, b: 0.75 }],
+      0.45,
+      FLOOR,
+      CEILING
+    );
+    const glinted = createFramebuffer();
+    const plain = createFramebuffer();
+    const pose = { x: 7.5, y: 1.5, angle: 0.4 };
+    renderWalls(glinted, blue, pose, textures, blueLit);
+    renderWalls(plain, blue, pose, textures, {
+      ...blueLit,
+      wallLamp: new Int16Array(blueLit.wallLamp.length).fill(-1),
+    });
+    let red = 0;
+    let blueAdded = 0;
+    for (let i = 0; i < plain.pixels.length; i++) {
+      const a = channels(glinted.pixels[i] as number);
+      const b = channels(plain.pixels[i] as number);
+      red += (a[0] as number) - (b[0] as number);
+      blueAdded += (a[2] as number) - (b[2] as number);
+    }
+    expect(blueAdded).toBeGreaterThan(0);
+    expect(red).toBeLessThan(blueAdded / 4);
+  });
 });

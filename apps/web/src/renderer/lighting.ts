@@ -28,6 +28,12 @@ const ONE = 128;
 /** Ceiling cells within this distance (tiles) of a lamp show the lamp itself. */
 const FIXTURE_RADIUS = 0.18;
 const FIXTURE = rgb(255, 236, 190);
+/** The eye's height above the floor: walls are drawn centred on the horizon. */
+const EYE_Z = 0.5;
+/** Walls glint within this many tiles of the eye, fading to nothing at the edge. */
+export const GLINT_RANGE = 3;
+/** A full glint adds this much of the lamp's colour (×255) on top of the lit texel. */
+export const GLINT_STRENGTH = 0.5;
 
 export interface Lighting {
   map: GameMap;
@@ -37,6 +43,8 @@ export interface Lighting {
   faceOffset: Int32Array;
   /** Packed multipliers, [face][u][v][relief level]: ambient + lamps × (1 + RELIEF_LEVELS[level]). */
   wall: Uint32Array;
+  /** Per face sample column ([face][u], so faceOffset / WALL_V + u): the lamp that glints there, or −1. */
+  wallLamp: Int16Array;
   /** Final floor / ceiling colours, (map.width·FLOOR_SUB) × (map.height·FLOOR_SUB). */
   floor: Uint32Array;
   ceiling: Uint32Array;
@@ -44,7 +52,7 @@ export interface Lighting {
   rows: number;
 }
 
-const FACES: readonly { dx: number; dy: number }[] = [
+export const FACES: readonly { dx: number; dy: number }[] = [
   { dx: -1, dy: 0 },
   { dx: 1, dy: 0 },
   { dx: 0, dy: -1 },
@@ -96,6 +104,7 @@ export function bakeLighting(
 
   const levels = RELIEF_LEVELS.length;
   const wall = new Uint32Array(faces * WALL_U * WALL_V * levels);
+  const wallLamp = new Int16Array(faces * WALL_U).fill(-1);
   for (let cy = 0; cy < height; cy++) {
     for (let cx = 0; cx < width; cx++) {
       for (let f = 0; f < 4; f++) {
@@ -113,7 +122,9 @@ export function bakeLighting(
           const r = new Float64Array(WALL_V);
           const g = new Float64Array(WALL_V);
           const b = new Float64Array(WALL_V);
-          for (const l of lights) {
+          let brightest = 0;
+          for (let i = 0; i < lights.length; i++) {
+            const l = lights[i] as Light;
             const dx = l.x - px;
             const dy = l.y - py;
             const facing = dx * n.dx + dy * n.dy;
@@ -122,6 +133,12 @@ export function bakeLighting(
             }
             if (!hasLineOfSight(map, px + n.dx * 1e-3, py + n.dy * 1e-3, l.x, l.y)) {
               continue;
+            }
+            const mid = Math.hypot(dx, dy, l.z - EYE_Z);
+            const strength = falloff(mid, l.radius) * (facing / mid) * Math.max(l.r, l.g, l.b);
+            if (strength > brightest) {
+              brightest = strength;
+              wallLamp[base / WALL_V + u] = i;
             }
             for (let v = 0; v < WALL_V; v++) {
               const dz = l.z - (1 - (v + 0.5) / WALL_V);
@@ -191,7 +208,56 @@ export function bakeLighting(
       ceiling[sy * stride + sx] = fixture ? FIXTURE : tint(ceilingColour, cr, cg, cb);
     }
   }
-  return { map, lights, ambient, faceOffset, wall, floor, ceiling, stride, rows };
+  return { map, lights, ambient, faceOffset, wall, wallLamp, floor, ceiling, stride, rows };
+}
+
+/**
+ * How brightly lamp `l` glints at (px, py, pz) on a wall facing (nx, ny), seen from the eye at (ex, ey): Phong, cos³²
+ * of the angle between the lamp and the eye's ray mirrored off the wall, times the lamp's falloff, times a sheen
+ * that grows with the viewing angle: f0 + (1 − f0)·sin², so a glint seen head-on keeps f0 of itself and one seen at
+ * an angle nearly all (f0 = 1 shines alike from every angle). Schlick's Fresnel would be truer, but its rise past 80°
+ * is steeper than any glint a corridor shows. 0..1, before the lamp's colour. It runs per texel row on near walls, so
+ * squares only, no roots. Shadows are the caller's (wallLamp).
+ */
+export function glint(
+  l: Light,
+  f0: number,
+  nx: number,
+  ny: number,
+  px: number,
+  py: number,
+  pz: number,
+  ex: number,
+  ey: number
+): number {
+  const lx = l.x - px;
+  const ly = l.y - py;
+  const lz = l.z - pz;
+  const l2 = lx * lx + ly * ly + lz * lz;
+  const reach2 = l.radius * l.radius;
+  if (l2 >= reach2 || lx * nx + ly * ny <= 0) {
+    return 0;
+  }
+  // The eye's ray to the point, mirrored off the wall.
+  let rx = px - ex;
+  let ry = py - ey;
+  const rz = pz - EYE_Z;
+  const into = rx * nx + ry * ny;
+  rx -= 2 * into * nx;
+  ry -= 2 * into * ny;
+  const dot = rx * lx + ry * ly + rz * lz;
+  if (dot <= 0) {
+    return 0;
+  }
+  const r2 = rx * rx + ry * ry + rz * rz;
+  let c = (dot * dot) / (l2 * r2);
+  c *= c;
+  c *= c;
+  c *= c;
+  c *= c;
+  const k = 1 - l2 / reach2;
+  const sin2 = 1 - (into * into) / r2;
+  return c * k * k * (f0 + (1 - f0) * sin2);
 }
 
 /** A voxel face's direction in model space (+x front, +y the model's right, +z up), as voxels.ts orders them. */

@@ -77,6 +77,43 @@ export const RELIEF: readonly Uint8Array[] = [
   brickRelief(),
 ];
 
+/** Bricks glint, mortar doesn't. */
+function brickGloss(): Uint8Array {
+  const gloss = new Uint8Array(TEX * TEX);
+  for (let y = 0; y < TEX; y++) {
+    for (let x = 0; x < TEX; x++) {
+      gloss[y * TEX + x] = isMortar(x, y) ? 0 : 1;
+    }
+  }
+  return gloss;
+}
+
+export interface GlintMaterial {
+  /** How much of a lamp's glint shows head-on (see glint()): 1 shines alike from every angle. */
+  f0: number;
+  /** The glint takes the texel's hue (scaled so its brightest channel is 1) instead of the lamp's colour alone. */
+  tinted: boolean;
+}
+
+/**
+ * Per texture (index = tile id, like RELIEF). Varnished wood shines from every angle in the lamp's colour; rough brick
+ * only catches it at a grazing angle, in its own colour (a warm glint on blue brick reads as violet).
+ */
+export const GLINT_MATERIAL: readonly GlintMaterial[] = [
+  { f0: 0, tinted: false },
+  { f0: 0.1, tinted: true },
+  { f0: 1, tinted: false },
+  { f0: 0.1, tinted: true },
+];
+
+/** Per texel and texture (index = tile id, like RELIEF): 1 where a lamp can glint, 0 where it can't. */
+export const GLOSS: readonly Uint8Array[] = [
+  new Uint8Array(0),
+  brickGloss(),
+  new Uint8Array(TEX * TEX).fill(1),
+  brickGloss(),
+];
+
 export function makeTextures(seed = 1): Uint32Array[] {
   const rand = mulberry32(seed);
   const stone = texture(rand, (x, y, n) => {
