@@ -39,6 +39,7 @@ import { type AutomapPeer, drawAutomap } from './renderer/automap';
 import { type Bob, createBob } from './renderer/bob';
 import { createFramebuffer, type Framebuffer } from './renderer/framebuffer';
 import { drawLabels } from './renderer/labels';
+import { bakeLighting, corridorLights } from './renderer/lighting';
 import { VACUUM_MODEL } from './renderer/models/vacuum';
 import { renderOwnBoombox } from './renderer/own-boombox';
 import { renderOwnHeld } from './renderer/own-held';
@@ -46,7 +47,7 @@ import { cheersPose, createGestureClock, sipPose } from './renderer/sip';
 import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
 import { makeTextures } from './renderer/textures';
 import type { VoxelInstance } from './renderer/voxels';
-import { renderWalls } from './renderer/walls';
+import { CEILING, FLOOR, renderWalls } from './renderer/walls';
 import { flushOnHide, initAnalytics, track } from './telemetry/analytics';
 import { mediaOutcome } from './telemetry/onboarding';
 import { createRoomTracker, type RoomTracker, withRoomTracker } from './telemetry/room-tracker';
@@ -56,7 +57,7 @@ import type { BoomboxPanelOptions } from './ui/boombox-panel';
 import { loadBoomboxVolume, saveBoomboxVolume } from './ui/boombox-store';
 import { CHEERS_HOLD_MS, createDrinkPress } from './ui/drink-press';
 import { heldForKey, heldKeyAction, loadHeld, saveHeld } from './ui/held-store';
-import { renderLandingScene } from './ui/landing-scene';
+import { AMBIENT, renderLandingScene } from './ui/landing-scene';
 import { joinBanner, PROBLEM_TEXT, showLobby } from './ui/lobby';
 import { createMicLevel } from './ui/mic-level';
 import { botsParam, parseRoute } from './ui/route';
@@ -91,6 +92,9 @@ const hudCtx = hud.getContext('2d') as CanvasRenderingContext2D;
 
 const map = parseMap(LEVEL1);
 const textures = makeTextures(1);
+/** SPIKE: baked corridor lamps; `?lights=off` shows the old flat look. */
+const LIGHTS = new URLSearchParams(location.search).get('lights') !== 'off';
+const lighting = LIGHTS ? bakeLighting(map, corridorLights(map), AMBIENT, FLOOR, CEILING) : null;
 let fb: Framebuffer = createFramebuffer();
 let image = imageOf(fb);
 function imageOf(buffer: Framebuffer): ImageData {
@@ -821,7 +825,7 @@ function frame(dt: number): void {
     audio?.update(now, player, positions);
   }
 
-  renderWalls(fb, map, player, textures);
+  renderWalls(fb, map, player, textures, lighting);
   renderSprites(fb, player, sprites, facts, session ? voxels : undefined);
   if (session) {
     updateInterest(session, performance.now(), document.hidden);
@@ -843,7 +847,7 @@ function frame(dt: number): void {
  * the lobby. The room loop starts on Join. */
 function showStill(logo: boolean): void {
   still = { logo };
-  renderLandingScene(fb, { logo });
+  renderLandingScene(fb, { logo, lights: LIGHTS });
   gameCtx.putImageData(image, 0, 0);
 }
 
