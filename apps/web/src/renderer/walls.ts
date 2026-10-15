@@ -6,7 +6,6 @@ import {
   brightestReflection,
   distanceToWall,
   FACES,
-  FLOOR_LAMP_SUB,
   FLOOR_SUB,
   type Lighting,
   REFLECTION_LAMPS,
@@ -157,8 +156,7 @@ function reflectedRgbTable(textures: Uint32Array[], lm: Lighting): Float64Array 
  * the row's floor point at pixel col is (x0 + dx·col, y0 + dy·col) in tiles. Returns whether any of it shows.
  */
 function shineFloorRow(lm: Lighting, p: PlayerState, x0: number, y0: number, dx: number, dy: number): boolean {
-  const across = lm.map.width * FLOOR_LAMP_SUB;
-  const down = lm.map.height * FLOOR_LAMP_SUB;
+  const { stride: across, rows: down } = lm;
   const { shininess, f0 } = FLOOR_MATERIAL;
   // The eye is always half a tile off the floor's face.
   const near = 0.5 / REFLECTION_NEAR;
@@ -169,8 +167,8 @@ function shineFloorRow(lm: Lighting, p: PlayerState, x0: number, y0: number, dx:
     const y = y0 + dy * i * FLOOR_STEP;
     const far2 = ((x - p.x) ** 2 + (y - p.y) ** 2) / (REFLECTION_RANGE * REFLECTION_RANGE);
     floorShine[i] = 0;
-    const cx = Math.floor(x * FLOOR_LAMP_SUB);
-    const cy = Math.floor(y * FLOOR_LAMP_SUB);
+    const cx = Math.floor(x * FLOOR_SUB);
+    const cy = Math.floor(y * FLOOR_SUB);
     if (far2 >= 1 || cx < 0 || cy < 0 || cx >= across || cy >= down) {
       continue;
     }
@@ -383,7 +381,15 @@ function renderLitWalls(
         pixels[row + col] = c;
         continue;
       }
-      const colour = (textures.length * lm.lights.length + (floorShineLamp[left >= right ? i : i + 1] as number)) * 3;
+      // The blend is smooth, so check this very floor cell lists the lamp (REFLECTION_LAMPS of them): its shadow edge
+      // is then the floor light's.
+      const lamp = floorShineLamp[left >= right ? i : i + 1] as number;
+      const cell = (iy * stride + ix) * REFLECTION_LAMPS;
+      if (lm.floorLamp[cell] !== lamp && lm.floorLamp[cell + 1] !== lamp && lm.floorLamp[cell + 2] !== lamp) {
+        pixels[row + col] = c;
+        continue;
+      }
+      const colour = (textures.length * lm.lights.length + lamp) * 3;
       let r = (c & 0xff) + ((s * (colours[colour] as number)) | 0);
       let g = ((c >>> 8) & 0xff) + ((s * (colours[colour + 1] as number)) | 0);
       let b = ((c >>> 16) & 0xff) + ((s * (colours[colour + 2] as number)) | 0);

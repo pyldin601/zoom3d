@@ -9,7 +9,7 @@ import {
   DIR_FRONT,
   DIR_TOP,
   directLight,
-  FLOOR_LAMP_SUB,
+  FLOOR_SUB,
   type Light,
   REFLECTION_LAMPS,
   reflection,
@@ -236,8 +236,7 @@ describe('reflection on the floor', () => {
 describe('bakeLighting floor lamps', () => {
   /** The first floorLamp slot of the floor at (x, y). */
   const slot = (lm: ReturnType<typeof bakeLighting>, x: number, y: number) =>
-    (Math.floor(y * FLOOR_LAMP_SUB) * lm.map.width * FLOOR_LAMP_SUB + Math.floor(x * FLOOR_LAMP_SUB)) *
-    REFLECTION_LAMPS;
+    (Math.floor(y * FLOOR_SUB) * lm.map.width * FLOOR_SUB + Math.floor(x * FLOOR_SUB)) * REFLECTION_LAMPS;
 
   test('lists the lamps a floor spot can see, nearest first', () => {
     const lm = bakeLighting(map, [lamp(5.5, 2.5), lamp(1.5, 2.5)], 0.45, GREY, GREY);
