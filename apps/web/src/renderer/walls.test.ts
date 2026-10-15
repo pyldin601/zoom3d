@@ -376,3 +376,41 @@ describe('renderWalls reflection modes', () => {
     expect(floor).toBeGreaterThan(0);
   });
 });
+
+describe('renderWalls floor reflections in shadow', () => {
+  // One lamp beyond a pillar: the pillar shades the floor behind it from the lamp. Its light reaches the whole hall,
+  // so floor with only ambient light is in its shadow, not just out of reach.
+  const hall = parseMap('1111111111111\n1...........1\n1S.....1....1\n1...........1\n1111111111111');
+  const hallLit = bakeLighting(hall, [{ x: 9.5, y: 2.5, z: 0.85, radius: 20, r: 1, g: 1, b: 1 }], 0.45, FLOOR, CEILING);
+  const hallMatte = {
+    ...hallLit,
+    wallLamp: new Int16Array(hallLit.wallLamp.length).fill(-1),
+    floorLamp: new Int16Array(hallLit.floorLamp.length).fill(-1),
+  };
+  // The floor where no lamp reaches: ambient light only.
+  const shadow = hallLit.floor[0] as number;
+
+  test('no floor pixel in the lamp’s shadow ever shines', () => {
+    let shaded = 0;
+    for (const pose of [
+      { x: 2.5, y: 1.5, angle: 0.2 },
+      { x: 2.5, y: 3.5, angle: -0.2 },
+      { x: 4.5, y: 2.5, angle: 0.4 },
+      { x: 4.5, y: 2.5, angle: -0.4 },
+    ]) {
+      const shiny = createFramebuffer();
+      const plain = createFramebuffer();
+      renderWalls(shiny, hall, pose, textures, hallLit);
+      renderWalls(plain, hall, pose, textures, hallMatte);
+      for (let i = (plain.height / 2) * plain.width; i < plain.pixels.length; i++) {
+        if (plain.pixels[i] === shadow) {
+          shaded++;
+          if (shiny.pixels[i] !== shadow) {
+            throw new Error(`a shaded floor pixel shines at ${pose.x},${pose.y},${pose.angle}, pixel ${i}`);
+          }
+        }
+      }
+    }
+    expect(shaded).toBeGreaterThan(100);
+  });
+});

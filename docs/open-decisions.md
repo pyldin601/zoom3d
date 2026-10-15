@@ -366,9 +366,11 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
       The ceiling doesn't reflect.
     - *Floor* (2026-10-15): the same model on a semi-glossy floor facing up (shininess 16, f0 0.1, `FLOOR_MATERIAL` in
       `renderer/walls.ts`): each lamp ahead leaves a narrow smear on the floor, faint near the eye, strongest part way
-      and gone under the lamp. The bake lists up to 3 lamps each quarter-tile of floor can see (`floorLamp`), so it
-      keeps the floor's shadows. It's worked out every 16 pixels on every other row and blended between (every 8 on
-      every row cost +0.21 ms); about +0.09 ms, and the bake grows to about 90 ms for LEVEL1.
+      and gone under the lamp. It's worked out every 16 pixels on every other row and blended between (every 8 on
+      every row cost +0.21 ms); about +0.11 ms. Shadows: the floor's light bake also lists up to 3 lamps each floor
+      cell can see (`floorLamp`, the same cells and sight lines), and each pixel adds a reflection only if its own
+      cell lists the lamp. Blending alone carried reflection up to 16 pixels into shadows, in 2-row steps: a comb
+      interleaving with the shadow edge (fixed 2026-10-15). The bake is about 78 ms for LEVEL1; the lists take 1.3 MB.
     - *Colour* (`reflectedColour()` in `renderer/colour.ts`): plain RGB addition of the warm lamp turned blue brick
       violet, a hue in neither. The lamp's light is now mixed in OKLab, where warm on blue passes through grey, never
       violet: as bright as addition, its colour axes weighted by brightness. That alone keeps the lamp's brightness,

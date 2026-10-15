@@ -23,8 +23,6 @@ export const WALL_U = 16;
 export const WALL_V = 8;
 /** Floor and ceiling samples per tile edge. */
 export const FLOOR_SUB = 8;
-/** Floor reflection lamp lists per tile edge (coarser than the floor's light: they only pick a lamp). */
-export const FLOOR_LAMP_SUB = 4;
 /** Light multipliers are packed 0xBBGGRR with 128 = 1.0, so a lamp can overbright up to 2×. */
 const ONE = 128;
 /** Ceiling cells within this distance (tiles) of a lamp show the lamp itself. */
@@ -69,8 +67,8 @@ export interface Lighting {
    */
   wallLamp: Int16Array;
   /**
-   * Per floor spot (FLOOR_LAMP_SUB per tile edge, row by row) × REFLECTION_LAMPS: the lamps in sight and in reflection
-   * reach, nearest first, −1 past the last.
+   * Per floor cell (like `floor`) × REFLECTION_LAMPS: the lamps in sight and in reflection reach, nearest first, −1
+   * past the last. The same cells and sight lines as the floor's light, so a reflection's shadow edge is the floor's.
    */
   floorLamp: Int16Array;
   /** Final floor / ceiling colours, (map.width·FLOOR_SUB) × (map.height·FLOOR_SUB). */
@@ -229,6 +227,7 @@ export function bakeLighting(
   const rows = height * FLOOR_SUB;
   const floor = new Uint32Array(stride * rows).fill(tint(floorColour, ambient, ambient, ambient));
   const ceiling = new Uint32Array(stride * rows).fill(tint(ceilingColour, ambient, ambient, ambient));
+  const floorLamp = new Int16Array(stride * rows * REFLECTION_LAMPS).fill(-1);
   for (let sy = 0; sy < rows; sy++) {
     for (let sx = 0; sx < stride; sx++) {
       const px = (sx + 0.5) / FLOOR_SUB;
@@ -243,11 +242,17 @@ export function bakeLighting(
       let cg = ambient;
       let cb = ambient;
       let fixture = false;
-      for (const l of lights) {
+      seen.length = 0;
+      for (let i = 0; i < lights.length; i++) {
+        const l = lights[i] as Light;
         const dx = l.x - px;
         const dy = l.y - py;
         const flat = Math.hypot(dx, dy);
-        if (flat >= l.radius || !hasLineOfSight(map, px, py, l.x, l.y)) {
+        if (flat >= l.radius * REFLECTION_REACH || !hasLineOfSight(map, px, py, l.x, l.y)) {
+          continue;
+        }
+        seen.push({ i, dist: flat });
+        if (flat >= l.radius) {
           continue;
         }
         if (flat < FIXTURE_RADIUS) {
@@ -266,40 +271,15 @@ export function bakeLighting(
         cg += l.g * kc;
         cb += l.b * kc;
       }
+      seen.sort((a, b) => a.dist - b.dist);
+      for (let k = 0; k < Math.min(seen.length, REFLECTION_LAMPS); k++) {
+        floorLamp[(sy * stride + sx) * REFLECTION_LAMPS + k] = (seen[k] as { i: number }).i;
+      }
       floor[sy * stride + sx] = tint(floorColour, fr, fg, fb);
       ceiling[sy * stride + sx] = fixture ? FIXTURE : tint(ceilingColour, cr, cg, cb);
     }
   }
-  const floorLamp = bakeFloorLamps(map, lights);
   return { map, lights, ambient, faceOffset, faceRun, wall, wallLamp, floorLamp, floor, ceiling, stride, rows };
-}
-
-function bakeFloorLamps(map: GameMap, lights: readonly Light[]): Int16Array {
-  const across = map.width * FLOOR_LAMP_SUB;
-  const down = map.height * FLOOR_LAMP_SUB;
-  const floorLamp = new Int16Array(across * down * REFLECTION_LAMPS).fill(-1);
-  const seen: { i: number; dist: number }[] = [];
-  for (let sy = 0; sy < down; sy++) {
-    for (let sx = 0; sx < across; sx++) {
-      const px = (sx + 0.5) / FLOOR_LAMP_SUB;
-      const py = (sy + 0.5) / FLOOR_LAMP_SUB;
-      if (tileAt(map, Math.floor(px), Math.floor(py)) !== 0) {
-        continue;
-      }
-      seen.length = 0;
-      lights.forEach((l, i) => {
-        const flat = Math.hypot(l.x - px, l.y - py);
-        if (flat < l.radius * REFLECTION_REACH && hasLineOfSight(map, px, py, l.x, l.y)) {
-          seen.push({ i, dist: flat });
-        }
-      });
-      seen.sort((a, b) => a.dist - b.dist);
-      for (let k = 0; k < Math.min(seen.length, REFLECTION_LAMPS); k++) {
-        floorLamp[(sy * across + sx) * REFLECTION_LAMPS + k] = (seen[k] as { i: number }).i;
-      }
-    }
-  }
-  return floorLamp;
 }
 
 /**
