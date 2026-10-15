@@ -48,10 +48,26 @@ export const REFLECTION_STRENGTH = 0.385;
 /** Heights a wall column's reflection is worked out at (0 to 1, evenly), blended between for each texel row. */
 export const REFLECTION_SAMPLES = 17;
 
+/** Bounce light (a console-switchable ambient): what the lit surfaces throw back, spread through the open floor. */
+export interface Bounce {
+  /** Each wall texture's average colour (index = tile id): the colour its lit faces throw back. */
+  wallColours: readonly number[];
+  /** How much of that light comes back as ambient, on top of the bare `ambient`. */
+  strength: number;
+}
+
+/** Bounce light cells per tile edge: it's soft, so coarse is enough. */
+const BOUNCE_SUB = 2;
+/** Blur rounds spreading bounce light through the open floor: about √rounds cells, so ~3 tiles. */
+const BOUNCE_ROUNDS = 40;
+
 export interface Lighting {
   map: GameMap;
   lights: readonly Light[];
+  /** The bare ambient, everywhere; bounce light (if baked) adds to it. */
   ambient: number;
+  /** Bounce light per cell (BOUNCE_SUB per tile edge, row by row) × r, g, b, or null for flat ambient. */
+  bounce: Float32Array | null;
   /** Per wall cell × face (0 W, 1 E, 2 N, 3 S): offset into `wall`, or −1 when the face touches no floor. */
   faceOffset: Int32Array;
   /**
@@ -109,9 +125,23 @@ export function bakeLighting(
   lights: readonly Light[],
   ambient: number,
   floorColour: number,
-  ceilingColour: number
+  ceilingColour: number,
+  bounce?: Bounce
 ): Lighting {
   const { width, height } = map;
+  const bounceLight = bounce ? bakeBounce(map, lights, floorColour, ceilingColour, bounce) : null;
+  /** The ambient light, r, g, b, at (x, y): the bare ambient plus the bounce there. */
+  const ambientRgb = new Float64Array(3);
+  const ambientAround = (x: number, y: number) => {
+    ambientRgb.fill(ambient);
+    const at = bounceLight ? bounceCell(map, x, y) : -1;
+    if (bounceLight && at >= 0) {
+      for (let ch = 0; ch < 3; ch++) {
+        ambientRgb[ch] = ambient + (bounceLight[at * 3 + ch] as number);
+      }
+    }
+    return ambientRgb;
+  };
   const faceOffset = new Int32Array(width * height * 4).fill(-1);
   let faces = 0;
   for (let cy = 0; cy < height; cy++) {
@@ -171,11 +201,16 @@ export function bakeLighting(
         }
         const n = FACES[f] as { dx: number; dy: number };
         // The old renderer's fake sun: north/south faces at 70%. It now only shades the ambient part.
-        const amb = ambient * (n.dy !== 0 ? 0.7 : 1);
+        const shade = n.dy !== 0 ? 0.7 : 1;
         for (let u = 0; u < WALL_U; u++) {
           const along = (u + 0.5) / WALL_U;
           const px = n.dx === 0 ? cx + along : n.dx < 0 ? cx : cx + 1;
           const py = n.dy === 0 ? cy + along : n.dy < 0 ? cy : cy + 1;
+          // The ambient of the floor just in front of this sample.
+          const around = ambientAround(px + n.dx * 0.25, py + n.dy * 0.25);
+          const ar = (around[0] as number) * shade;
+          const ag = (around[1] as number) * shade;
+          const ab = (around[2] as number) * shade;
           const r = new Float64Array(WALL_V);
           const g = new Float64Array(WALL_V);
           const b = new Float64Array(WALL_V);
@@ -215,7 +250,7 @@ export function bakeLighting(
             const bv = b[v] as number;
             for (let k = 0; k < levels; k++) {
               const lift = 1 + (RELIEF_LEVELS[k] as number);
-              wall[(base + u * WALL_V + v) * levels + k] = pack(amb + rv * lift, amb + gv * lift, amb + bv * lift);
+              wall[(base + u * WALL_V + v) * levels + k] = pack(ar + rv * lift, ag + gv * lift, ab + bv * lift);
             }
           }
         }
@@ -235,12 +270,13 @@ export function bakeLighting(
       if (tileAt(map, Math.floor(px), Math.floor(py)) !== 0) {
         continue;
       }
-      let fr = ambient;
-      let fg = ambient;
-      let fb = ambient;
-      let cr = ambient;
-      let cg = ambient;
-      let cb = ambient;
+      const around = ambientAround(px, py);
+      let fr = around[0] as number;
+      let fg = around[1] as number;
+      let fb = around[2] as number;
+      let cr = fr;
+      let cg = fg;
+      let cb = fb;
       let fixture = false;
       seen.length = 0;
       for (let i = 0; i < lights.length; i++) {
@@ -279,7 +315,167 @@ export function bakeLighting(
       ceiling[sy * stride + sx] = fixture ? FIXTURE : tint(ceilingColour, cr, cg, cb);
     }
   }
-  return { map, lights, ambient, faceOffset, faceRun, wall, wallLamp, floorLamp, floor, ceiling, stride, rows };
+  return {
+    map,
+    lights,
+    ambient,
+    bounce: bounceLight,
+    faceOffset,
+    faceRun,
+    wall,
+    wallLamp,
+    floorLamp,
+    floor,
+    ceiling,
+    stride,
+    rows,
+  };
+}
+
+/** The bounce cell at (x, y) in tiles, or −1 off the map. */
+function bounceCell(map: GameMap, x: number, y: number): number {
+  const across = map.width * BOUNCE_SUB;
+  const cx = Math.floor(x * BOUNCE_SUB);
+  const cy = Math.floor(y * BOUNCE_SUB);
+  return cx < 0 || cy < 0 || cx >= across || cy >= map.height * BOUNCE_SUB ? -1 : cy * across + cx;
+}
+
+/** The ambient light, r, g, b into `out`, at (x, y): the bare ambient plus any bounce light there. */
+export function ambientAt(lm: Lighting, x: number, y: number, out: Float64Array): void {
+  out.fill(lm.ambient);
+  const at = lm.bounce ? bounceCell(lm.map, x, y) : -1;
+  if (lm.bounce && at >= 0) {
+    for (let ch = 0; ch < 3; ch++) {
+      out[ch] = lm.ambient + (lm.bounce[at * 3 + ch] as number);
+    }
+  }
+}
+
+/**
+ * Bounce light per cell: first what each open cell's surfaces throw back, the lamps' direct light on its floor,
+ * ceiling and bordering wall faces times each one's colour, averaged; then spread through the open floor by
+ * BOUNCE_ROUNDS rounds of blur, never through walls. One soft bounce, baked once.
+ */
+function bakeBounce(
+  map: GameMap,
+  lights: readonly Light[],
+  floorColour: number,
+  ceilingColour: number,
+  bounce: Bounce
+): Float32Array {
+  const across = map.width * BOUNCE_SUB;
+  const down = map.height * BOUNCE_SUB;
+  const cells = across * down;
+  const open = (cx: number, cy: number) =>
+    cx >= 0 &&
+    cy >= 0 &&
+    cx < across &&
+    cy < down &&
+    tileAt(map, Math.floor(cx / BOUNCE_SUB), Math.floor(cy / BOUNCE_SUB)) === 0;
+  const albedo = (colour: number, ch: number) => ((colour >>> (ch * 8)) & 0xff) / 255;
+  let light = new Float32Array(cells * 3);
+  const direct = new Float64Array(3);
+  for (let cy = 0; cy < down; cy++) {
+    for (let cx = 0; cx < across; cx++) {
+      if (!open(cx, cy)) {
+        continue;
+      }
+      const px = (cx + 0.5) / BOUNCE_SUB;
+      const py = (cy + 0.5) / BOUNCE_SUB;
+      const sum = [0, 0, 0];
+      let surfaces = 0;
+      // The floor and the ceiling.
+      for (const [z, colour] of [
+        [0, floorColour],
+        [1, ceilingColour],
+      ] as const) {
+        lampsOn(map, lights, px, py, z, 0, 0, direct);
+        for (let ch = 0; ch < 3; ch++) {
+          sum[ch] = (sum[ch] as number) + (direct[ch] as number) * albedo(colour, ch);
+        }
+        surfaces++;
+      }
+      // Any wall faces bordering the cell, lit at mid height, facing back into it.
+      for (const n of FACES) {
+        if (open(cx + n.dx, cy + n.dy)) {
+          continue;
+        }
+        const tile = tileAt(map, Math.floor((cx + n.dx) / BOUNCE_SUB), Math.floor((cy + n.dy) / BOUNCE_SUB));
+        const colour = bounce.wallColours[tile] ?? 0;
+        const fx = px + (n.dx * 0.5) / BOUNCE_SUB;
+        const fy = py + (n.dy * 0.5) / BOUNCE_SUB;
+        lampsOn(map, lights, fx, fy, 0.5, -n.dx, -n.dy, direct);
+        for (let ch = 0; ch < 3; ch++) {
+          sum[ch] = (sum[ch] as number) + (direct[ch] as number) * albedo(colour, ch);
+        }
+        surfaces++;
+      }
+      for (let ch = 0; ch < 3; ch++) {
+        light[(cy * across + cx) * 3 + ch] = ((sum[ch] as number) / surfaces) * bounce.strength;
+      }
+    }
+  }
+  // Spread: each round, an open cell takes the average of itself and its open neighbours.
+  let next = new Float32Array(cells * 3);
+  for (let round = 0; round < BOUNCE_ROUNDS; round++) {
+    for (let cy = 0; cy < down; cy++) {
+      for (let cx = 0; cx < across; cx++) {
+        if (!open(cx, cy)) {
+          continue;
+        }
+        const at = (cy * across + cx) * 3;
+        let n = 1;
+        let r = light[at] as number;
+        let g = light[at + 1] as number;
+        let b = light[at + 2] as number;
+        for (const d of FACES) {
+          if (open(cx + d.dx, cy + d.dy)) {
+            const there = ((cy + d.dy) * across + cx + d.dx) * 3;
+            r += light[there] as number;
+            g += light[there + 1] as number;
+            b += light[there + 2] as number;
+            n++;
+          }
+        }
+        next[at] = r / n;
+        next[at + 1] = g / n;
+        next[at + 2] = b / n;
+      }
+    }
+    [light, next] = [next, light];
+  }
+  return light;
+}
+
+/**
+ * The lamps' direct light, r, g, b into `out`, on a surface at (x, y, z): the floor (z 0) and ceiling (z 1) face up
+ * and down; a wall point facing (nx, ny) is lit by what's in front of it. Only lamps in reach and in sight count.
+ */
+function lampsOn(
+  map: GameMap,
+  lights: readonly Light[],
+  x: number,
+  y: number,
+  z: number,
+  nx: number,
+  ny: number,
+  out: Float64Array
+): void {
+  out.fill(0);
+  for (const l of lights) {
+    const dx = l.x - x;
+    const dy = l.y - y;
+    const dz = l.z - z;
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const facing = nx === 0 && ny === 0 ? Math.abs(dz) / dist : (dx * nx + dy * ny) / dist;
+    const k = facing > 0 ? falloff(dist, l.radius) * facing : 0;
+    if (k === 0 || !hasLineOfSight(map, x + nx * 1e-3, y + ny * 1e-3, l.x, l.y)) {
+      continue;
+    }
+    out[0] = (out[0] as number) + l.r * k;
+    out[1] = (out[1] as number) + l.g * k;
+    out[2] = (out[2] as number) + l.b * k;
+  }
 }
 
 /**

@@ -15,14 +15,14 @@ function memory() {
   };
 }
 
-test('reflections default to walls and floor, with ambient light on', () => {
-  expect(DEFAULT_RENDER_SETTINGS).toEqual({ reflections: 'both', ambient: true });
+test('reflections default to walls and floor', () => {
+  expect(DEFAULT_RENDER_SETTINGS).toEqual({ reflections: 'both' });
 });
 
 test('round-trips through storage', () => {
   const store = memory();
-  saveRenderSettings(store, { reflections: 'walls', ambient: false });
-  expect(loadRenderSettings(store)).toEqual({ reflections: 'walls', ambient: false });
+  saveRenderSettings(store, { reflections: 'walls' });
+  expect(loadRenderSettings(store)).toEqual({ reflections: 'walls' });
   expect(store.data.has(RENDER_SETTINGS_KEY)).toBe(true);
 });
 
@@ -43,13 +43,9 @@ test('broken, missing or stale storage gives the defaults', () => {
   expect(loadRenderSettings(store)).toEqual(DEFAULT_RENDER_SETTINGS);
 });
 
-test('each stored setting is checked on its own: a bad or missing one falls back alone', () => {
+test('settings saved with an option that no longer exists keep the rest', () => {
   const store = memory();
-  // Saved before the ambient switch existed.
-  store.data.set(RENDER_SETTINGS_KEY, '{"reflections":"walls"}');
-  expect(loadRenderSettings(store)).toEqual({ reflections: 'walls', ambient: true });
-  store.data.set(RENDER_SETTINGS_KEY, '{"reflections":"ceiling","ambient":false}');
-  expect(loadRenderSettings(store)).toEqual({ reflections: 'both', ambient: false });
-  store.data.set(RENDER_SETTINGS_KEY, '{"reflections":"none","ambient":"dim"}');
-  expect(loadRenderSettings(store)).toEqual({ reflections: 'none', ambient: true });
+  // Saved while there was an ambient light switch.
+  store.data.set(RENDER_SETTINGS_KEY, '{"reflections":"walls","ambient":false}');
+  expect(loadRenderSettings(store)).toEqual({ reflections: 'walls' });
 });

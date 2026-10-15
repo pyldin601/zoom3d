@@ -45,7 +45,7 @@ import { renderOwnBoombox } from './renderer/own-boombox';
 import { renderOwnHeld } from './renderer/own-held';
 import { cheersPose, createGestureClock, sipPose } from './renderer/sip';
 import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
-import { makeTextures } from './renderer/textures';
+import { averageColour, makeTextures } from './renderer/textures';
 import type { VoxelInstance } from './renderer/voxels';
 import { CEILING, FLOOR, renderWalls } from './renderer/walls';
 import { flushOnHide, initAnalytics, track } from './telemetry/analytics';
@@ -57,7 +57,7 @@ import type { BoomboxPanelOptions } from './ui/boombox-panel';
 import { loadBoomboxVolume, saveBoomboxVolume } from './ui/boombox-store';
 import { CHEERS_HOLD_MS, createDrinkPress } from './ui/drink-press';
 import { heldForKey, heldKeyAction, loadHeld, saveHeld } from './ui/held-store';
-import { AMBIENT, renderLandingScene } from './ui/landing-scene';
+import { renderLandingScene } from './ui/landing-scene';
 import { createLandingShow, LANDING_PARK } from './ui/landing-show';
 import { joinBanner, PROBLEM_TEXT, showLobby } from './ui/lobby';
 import { createMicLevel } from './ui/mic-level';
@@ -99,10 +99,14 @@ const textures = makeTextures(1);
 /** SPIKE: baked corridor lamps; `?lights=off` shows the old flat look. */
 const LIGHTS = new URLSearchParams(location.search).get('lights') !== 'off';
 const lamps = corridorLights(map);
-/** The room's lighting, baked with or without its ambient part (a console switch); null with `?lights=off`. */
-function bakeRoomLighting(ambient: boolean): Lighting | null {
-  return LIGHTS ? bakeLighting(map, lamps, ambient ? AMBIENT : 0, FLOOR, CEILING) : null;
-}
+/** Ambient light is bounce light: what the lamps' lit surfaces throw back, over a bare minimum so no room is black. */
+const BARE_AMBIENT = 0.08;
+const BOUNCE_STRENGTH = 3.5;
+const wallColours = textures.map((tex) => (tex.length ? averageColour(tex) : 0));
+/** The room's lighting; null with `?lights=off`. */
+const lighting: Lighting | null = LIGHTS
+  ? bakeLighting(map, lamps, BARE_AMBIENT, FLOOR, CEILING, { wallColours, strength: BOUNCE_STRENGTH })
+  : null;
 let fb: Framebuffer = createFramebuffer();
 let image = imageOf(fb);
 function imageOf(buffer: Framebuffer): ImageData {
@@ -207,7 +211,6 @@ for (const type of ['pointerdown', 'keydown'] as const) {
 let audioPanelVisible = false;
 /** The renderer's console options (reflections), kept per browser. */
 let renderSettings = loadRenderSettings(storage());
-let lighting = bakeRoomLighting(renderSettings.ambient);
 /** The boombox column of the audio panel, while our boombox plays (boombox spec §3.1). */
 function boomboxControls(): BoomboxPanelOptions | null {
   const box = boombox;
@@ -248,9 +251,6 @@ function toggleAudioPanel(): void {
     render: {
       settings: renderSettings,
       onChange(s) {
-        if (s.ambient !== renderSettings.ambient) {
-          lighting = bakeRoomLighting(s.ambient);
-        }
         renderSettings = s;
         saveRenderSettings(storage(), s);
       },

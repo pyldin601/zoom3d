@@ -2,6 +2,7 @@ import { parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { rgb } from './framebuffer';
 import {
+  ambientAt,
   bakeLighting,
   bounceHeight,
   brightestReflection,
@@ -274,5 +275,53 @@ describe('bakeLighting wall runs', () => {
 
   test('a pillar face is a run of one', () => {
     expect(run(lm, 3, 1, 3)).toEqual([3, 4]);
+  });
+});
+
+describe('bounce light', () => {
+  // Room A (x 1–5) with a short-reach lamp in its west corner; room B (x 7–9) sealed off by the wall at x = 6.
+  const rooms = parseMap(`
+11111111111
+1S....1...1
+1.....1...1
+11111111111
+`);
+  const near = { ...lamp(1.5, 1.5), radius: 2 };
+  const BLUE = rgb(20, 20, 200);
+  const bake = (wall = GREY) => bakeLighting(rooms, [near], 0.1, GREY, GREY, { wallColours: [0, wall], strength: 1 });
+  const flat = bakeLighting(rooms, [near], 0.1, GREY, GREY);
+  const floorAt = (lm: ReturnType<typeof bakeLighting>, x: number, y: number) =>
+    lm.floor[Math.floor(y * FLOOR_SUB) * lm.stride + Math.floor(x * FLOOR_SUB)] as number;
+  const channels = (c: number) => [c & 0xff, (c >>> 8) & 0xff, (c >>> 16) & 0xff] as const;
+  const out = new Float64Array(3);
+  const ambient = (lm: ReturnType<typeof bakeLighting>, x: number, y: number) => {
+    ambientAt(lm, x, y, out);
+    return [...out];
+  };
+
+  test('light bounces into the room’s far end, out of the lamp’s reach', () => {
+    const [r] = channels(floorAt(bake(), 5.5, 2.5));
+    const [r0] = channels(floorAt(flat, 5.5, 2.5));
+    expect(r).toBeGreaterThan(r0);
+  });
+
+  test('it fades with distance from the lit part', () => {
+    const lm = bake();
+    expect(ambient(lm, 2.5, 1.5)[0] as number).toBeGreaterThan(ambient(lm, 5.5, 2.5)[0] as number);
+  });
+
+  test('no light gets through a wall: the sealed room keeps the bare ambient', () => {
+    expect(ambient(bake(), 8.5, 1.5)).toEqual([0.1, 0.1, 0.1]);
+    expect(floorAt(bake(), 8.5, 1.5)).toBe(floorAt(flat, 8.5, 1.5));
+  });
+
+  test('walls tint what they throw back: blue walls make the bounce blue', () => {
+    // The bounce part, over the bare ambient.
+    const [r, , b] = ambient(bake(BLUE), 4.5, 2.5).map((v) => v - 0.1) as [number, number, number];
+    expect(b).toBeGreaterThan(r * 1.5);
+  });
+
+  test('without bounce, ambient is flat', () => {
+    expect(ambient(flat, 5.5, 2.5)).toEqual([0.1, 0.1, 0.1]);
   });
 });

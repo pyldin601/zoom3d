@@ -148,13 +148,7 @@ function renderSection(opts: NonNullable<AudioPanelOptions['render']>): HTMLElem
   const reflectionsRow = make('label');
   reflectionsRow.append('Reflections', reflections);
 
-  const ambient = make('input', { type: 'checkbox' });
-  ambient.checked = current.ambient;
-  ambient.addEventListener('change', () => commit({ ...current, ambient: ambient.checked }));
-  const ambientRow = make('label');
-  ambientRow.append('Ambient light', ambient);
-
-  section.append(make('h2', { textContent: 'Renderer' }), reflectionsRow, ambientRow);
+  section.append(make('h2', { textContent: 'Renderer' }), reflectionsRow);
   return section;
 }
 
