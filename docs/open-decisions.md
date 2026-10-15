@@ -365,7 +365,12 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     a soft spot where the wall mirrors the lamp; looking along a wall towards a lamp the same reflection stretches
     into a blurry streak towards the light.
     - *Model* (`reflection()` in `renderer/lighting.ts`): Blinn-Phong, (n·h)^shininess, times a boost at shallow
-      angles, f0 + (1 − f0)·(1 − (v·h)²), times the lamp's falloff over 1.5× its reach. Schlick's (1 − v·h)⁵ only
+      angles, f0 + (1 − f0)·(1 − (v·h)²), times how brightly the lamp lights the surface, 1 / (1 + (d / 1.5×reach)²),
+      times a fade over the whole path, lamp to surface to eye, to nothing at 32 tiles. The lamp term was a falloff
+      cut off at 1.5× the lamp's reach, which hid lamps seen across a dark room (2026-10-15): a lamp through a
+      doorway 12 tiles off left no streak on the floor between. Now it does (+24/255), at the cost of streaks
+      growing towards their lamp a little less steeply. Past a lamp's light reach, walls and floor list it by a
+      coarse half-tile sight table (`bakeLampSight`, lamps within 16 tiles) instead of an exact sight line each. Schlick's (1 − v·h)⁵ only
       rises past 80°, and a corridor's reflections sit at 60–70°. It replaced two separate effects (a mirror glint and
       a streak), which competed and left a dark gap beside each lamp, like a shadow.
     - *Materials* (`REFLECTION_MATERIAL` in `renderer/textures.ts`): varnished wood is glossy (shininess 16, f0 0.4),
@@ -386,9 +391,12 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
       reflects 85% more of its own colour (`tint`) and 15% that light; wood reflects the light, and stays warm. It's
       worked out once per texture and lamp, from the texture's average shiny texel, so a texel costs three
       multiplies.
-    - *Which lamp:* the bake lists up to 3 lamps each wall sample column can see (`wallLamp`, nearest first), and each
-      screen column takes the one that reflects brightest at its bounce height (`brightestReflection`). With one
-      baked lamp per column (the brightest on that strip), the lamp you look towards was never the one picked.
+    - *Which lamp:* the bake lists, per wall sample column and per floor cell, the 2 nearest lamps in sight in each
+      direction, east, west, south and north (`wallLamp`, `floorLamp`, `REFLECTION_LAMPS`, 8 slots), and each screen
+      column or floor sample takes the one that reflects brightest (`brightestReflection`). Each simpler list made a
+      reflection stop dead at a line: one baked lamp per column never picked the lamp you look towards; the 3 nearest
+      let a lamp behind the eye push out the one ahead; 1 per direction let a corridor's nearer lamp push out the next
+      in the row (the far lamp's floor streak vanished under the near one).
     - *Only near the wall:* it fades out as the eye steps away from the wall (gone at 4 tiles, `REFLECTION_NEAR`)
       and with distance (gone at 8, `REFLECTION_RANGE`). "Away from the wall" is from the wall itself, not its endless
       plane (`distanceToWall`): the bake records each face's run, the unbroken line of faces on that side

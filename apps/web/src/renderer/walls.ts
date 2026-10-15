@@ -177,7 +177,7 @@ function shineFloorRow(lm: Lighting, p: PlayerState, x0: number, y0: number, dx:
       const index = lm.floorLamp[slot + k] as number;
       const lamp = lm.lights.at(index);
       if (index < 0 || !lamp) {
-        break;
+        continue;
       }
       const shine = reflection(lamp, shininess, f0, 0, 0, 1, x, y, 0, p.x, p.y) * (1 - far2) * scale;
       if (shine > (floorShine[i] as number)) {
@@ -381,11 +381,14 @@ function renderLitWalls(
         pixels[row + col] = c;
         continue;
       }
-      // The blend is smooth, so check this very floor cell lists the lamp (REFLECTION_LAMPS of them): its shadow edge
-      // is then the floor light's.
+      // The blend is smooth, so check this very floor cell lists the lamp: its shadow edge is then the floor light's.
       const lamp = floorShineLamp[left >= right ? i : i + 1] as number;
       const cell = (iy * stride + ix) * REFLECTION_LAMPS;
-      if (lm.floorLamp[cell] !== lamp && lm.floorLamp[cell + 1] !== lamp && lm.floorLamp[cell + 2] !== lamp) {
+      let listed = false;
+      for (let k = 0; k < REFLECTION_LAMPS && !listed; k++) {
+        listed = lm.floorLamp[cell + k] === lamp;
+      }
+      if (!listed) {
         pixels[row + col] = c;
         continue;
       }
