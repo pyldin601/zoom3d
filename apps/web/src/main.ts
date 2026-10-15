@@ -32,12 +32,14 @@ import { createInterest, INTEREST_MS, type PeerFacts, type Want } from './media/
 import { createLiveKitTransport } from './media/livekit';
 import { createLocalMedia, type LocalMediaController } from './media/local-media';
 import { loadMediaPrefs, saveMediaPrefs } from './media/media-prefs';
+import { createOwnGlowSampler } from './media/own-glow';
 import { createRemoteMedia } from './media/remote-media';
 import { nearTier } from './net/peer-delay';
 import { createSession, objectKey, type Session } from './net/session';
 import { type AutomapPeer, drawAutomap } from './renderer/automap';
 import { type Bob, createBob } from './renderer/bob';
 import { createFramebuffer, type Framebuffer } from './renderer/framebuffer';
+import { type Glow, glowOf } from './renderer/glow';
 import { drawLabels } from './renderer/labels';
 import { bakeLighting, corridorLights, type Lighting } from './renderer/lighting';
 import { VACUUM_MODEL } from './renderer/models/vacuum';
@@ -99,6 +101,11 @@ const textures = makeTextures(1);
 /** SPIKE: baked corridor lamps; `?lights=off` shows the old flat look. */
 const LIGHTS = new URLSearchParams(location.search).get('lights') !== 'off';
 const lamps = corridorLights(map);
+/** Each avatar's glow: its face lights the floor and walls around it like a screen. Yours too, last. */
+const avatarGlows: Glow[] = [];
+const ownGlow: Glow = { x: 0, y: 0, r: 0, g: 0, b: 0 };
+/** Your face's average colour while the camera is on, null otherwise; set once local media exists. */
+let ownGlowColour: (now: number) => number | null = () => null;
 /** Ambient light is bounce light: what the lamps' lit surfaces throw back, over a bare minimum so no room is black. */
 const BARE_AMBIENT = 0.08;
 const BOUNCE_STRENGTH = 3.5;
@@ -585,6 +592,8 @@ function openLobby(roomId: string): void {
     },
     loadMediaPrefs(storage())
   );
+  const ownFace = createOwnGlowSampler(local.framer.canvas, document);
+  ownGlowColour = (now) => (local.state().cam ? ownFace.colour(now) : null);
   track({ name: 'lobby_viewed', entry: roomId === hostedRoom ? 'host' : 'invite' });
   void local.ready.then(() => track({ name: 'media_permission', ...mediaOutcome(local.state()) }));
   // Saved for the whole visit, so the room's Cam/Mic buttons are remembered too.
@@ -852,7 +861,19 @@ function frame(dt: number): void {
     audio?.update(now, player, positions);
   }
 
-  renderWalls(fb, map, player, textures, lighting, renderSettings.reflections);
+  avatarGlows.length = sprites.length;
+  for (let i = 0; i < avatarGlows.length; i++) {
+    const s = sprites[i] as Sprite;
+    avatarGlows[i] ??= { x: 0, y: 0, r: 0, g: 0, b: 0 };
+    glowOf(s.x, s.y, s.face, s.color, avatarGlows[i] as Glow);
+  }
+  // Your own face glows around you too: its camera colour, else your ring colour.
+  const selfColor = session?.selfColor();
+  if (selfColor) {
+    glowOf(player.x, player.y, null, ownGlowColour(performance.now()) ?? hexToRgb(selfColor), ownGlow);
+    avatarGlows.push(ownGlow);
+  }
+  renderWalls(fb, map, player, textures, lighting, renderSettings.reflections, avatarGlows);
   renderSprites(fb, player, sprites, facts, session ? voxels : undefined, lighting);
   if (session) {
     updateInterest(session, performance.now(), document.hidden);

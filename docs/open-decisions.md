@@ -408,7 +408,18 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     - *Per frame:* a wall column whose reflection peaks under half a step of brightness is skipped; the rest work it
       out at 17 heights and blend them per texel row (per texel row it cost +1 ms). Walls and floor together cost
       about +0.22 ms at the worst spots, close to walls in lit corridors (esbuild bundle).
-  - Not done yet: avatars aren't lit, shadow edges are stair-stepped, rooms get no lamps of their own.
+  - **Avatars glow** (2026-10-15): faces stay at full brightness, like screens, and each one lights the floor,
+    ceiling and walls around it with its face's average colour (sampled 16×16; ring colour without a face), up to
+    2.5 tiles (`renderer/glow.ts`; at 1.5 a person in the middle of a 3-wide corridor lit no wall). Your own face
+    glows around you too: the framer's canvas scaled to 16×16 and averaged every 250 ms (`media/own-glow.ts`), or
+    your ring colour with the camera off. Per frame: the floor and ceiling get it per floor cell, added into copies of
+    the baked colours around each avatar and put back next frame, so it costs the cells near avatars, not the pixels
+    showing them; walls per column, at 9 heights. About +0.06 ms for 7 avatars, +0.16 ms for 20. The camera colour
+    costs ~0.2 µs per avatar per frame over the ring colour: kept for the screen-light look. No shadows: across a
+    one-tile wall it can reach a strip at the far side's foot. Tried and measured first: faces lit by the room
+    (ambient, bounce and lamps on the side facing the eye, floored at 35%; +0.01 ms); the glow evaluated per pixel
+    (+0.8–2.1 ms), then per 8 pixels (+0.7–1.4 ms).
+  - Not done yet: shadow edges are stair-stepped, rooms get no lamps of their own.
 
 ## Resolved
 _(none yet)_
