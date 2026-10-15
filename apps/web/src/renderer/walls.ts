@@ -1,7 +1,9 @@
 // Column-by-column textured wall renderer with flat ceiling and floor.
 import { castRay, createRayHit, type GameMap, type PlayerState } from '@zoom3d/shared';
+import { EYE_HEIGHT } from './camera';
 import { reflectedColour } from './colour';
 import { type Framebuffer, rgb } from './framebuffer';
+import { GLOW_RADIUS, type Glow, glowLight } from './glow';
 import {
   brightestReflection,
   distanceToWall,
@@ -44,6 +46,23 @@ const peak = new Float64Array(1);
 const reflected = new Float64Array(REFLECTION_SAMPLES);
 /** A floor row's reflection every FLOOR_STEP pixels (scaled, 0 where it doesn't show) and the lamp behind each. */
 let floorShine = new Float64Array(0);
+/** Avatar glow is worked out at GLOW_HEIGHTS heights up a wall column, blended per texel row. */
+const GLOW_HEIGHTS = 9;
+/** The avatars glowing on the wall column being drawn, and its glow light, r, g, b, per height from the floor up. */
+const columnGlows: Glow[] = [];
+let columnGlowCount = 0;
+const columnGlowLight = new Float64Array(GLOW_HEIGHTS * 3);
+/**
+ * The floor and ceiling colours with this frame's avatar glow added, per floor cell, copies of a Lighting's; and the
+ * cells the glow touched, put back from the Lighting's own next frame.
+ */
+let glowTables: {
+  lm: Lighting;
+  floor: Uint32Array;
+  ceiling: Uint32Array;
+  touched: Uint8Array;
+  dirty: number[];
+} | null = null;
 let floorShineLamp = new Int32Array(0);
 
 /** Darkens a colour to 70% (y-side walls), keeping alpha. */
@@ -60,10 +79,11 @@ export function renderWalls(
   p: PlayerState,
   textures: Uint32Array[],
   lighting: Lighting | null = null,
-  reflections: ReflectionMode = 'both'
+  reflections: ReflectionMode = 'both',
+  glows: readonly Glow[] = []
 ): void {
   if (lighting) {
-    renderLitWalls(fb, map, p, textures, lighting, reflections);
+    renderLitWalls(fb, map, p, textures, lighting, reflections, glows);
     return;
   }
   const { width: w, height: h, pixels, zbuffer } = fb;
@@ -152,6 +172,97 @@ function reflectedRgbTable(textures: Uint32Array[], lm: Lighting): Float64Array 
 }
 
 /**
+ * The floor's reflection at column `col` of the row shineFloorRow worked out: blended between its samples, only where
+ * this very floor cell (at `cell` in floorLamp) lists the lamp, so its shadow edge is the floor light's.
+ */
+function shineFloorPixel(
+  lm: Lighting,
+  c: number,
+  col: number,
+  cell: number,
+  colours: Float64Array,
+  floorTile: number
+): number {
+  const i = (col / FLOOR_STEP) | 0;
+  const left = floorShine[i] as number;
+  const right = floorShine[i + 1] as number;
+  const s = left + (right - left) * ((col - i * FLOOR_STEP) / FLOOR_STEP);
+  if (s < 0.5) {
+    return c;
+  }
+  const lamp = floorShineLamp[left >= right ? i : i + 1] as number;
+  let listed = false;
+  for (let k = 0; k < REFLECTION_LAMPS && !listed; k++) {
+    listed = lm.floorLamp[cell + k] === lamp;
+  }
+  if (!listed) {
+    return c;
+  }
+  const colour = (floorTile * lm.lights.length + lamp) * 3;
+  const r = Math.min(255, (c & 0xff) + ((s * (colours[colour] as number)) | 0));
+  const g = Math.min(255, ((c >>> 8) & 0xff) + ((s * (colours[colour + 1] as number)) | 0));
+  const b = Math.min(255, ((c >>> 16) & 0xff) + ((s * (colours[colour + 2] as number)) | 0));
+  return (0xff000000 | (b << 16) | (g << 8) | r) >>> 0;
+}
+
+/**
+ * The floor and ceiling colours (one per floor cell, like the Lighting's) with the avatars' glow added: last frame's
+ * cells are put back, then each avatar lights the cells within its reach, √(GLOW_RADIUS² − ½²) of its disc. The cost
+ * is the cells near avatars, not the pixels showing them; the floor loop reads these as it reads the Lighting's.
+ */
+function glowingTables(lm: Lighting, glows: readonly Glow[]): { floor: Uint32Array; ceiling: Uint32Array } {
+  if (glowTables?.lm !== lm) {
+    glowTables = {
+      lm,
+      floor: lm.floor.slice(),
+      ceiling: lm.ceiling.slice(),
+      touched: new Uint8Array(lm.floor.length),
+      dirty: [],
+    };
+  }
+  const t = glowTables;
+  for (const i of t.dirty) {
+    t.floor[i] = lm.floor[i] as number;
+    t.ceiling[i] = lm.ceiling[i] as number;
+    t.touched[i] = 0;
+  }
+  t.dirty.length = 0;
+  const { stride, rows } = lm;
+  const reach = Math.sqrt(GLOW_RADIUS * GLOW_RADIUS - EYE_HEIGHT * EYE_HEIGHT);
+  const span = Math.ceil(reach * FLOOR_SUB);
+  for (const g of glows) {
+    const gx = Math.floor(g.x * FLOOR_SUB);
+    const gy = Math.floor(g.y * FLOOR_SUB);
+    for (let cy = Math.max(0, gy - span); cy <= Math.min(rows - 1, gy + span); cy++) {
+      for (let cx = Math.max(0, gx - span); cx <= Math.min(stride - 1, gx + span); cx++) {
+        const x = (cx + 0.5) / FLOOR_SUB;
+        const y = (cy + 0.5) / FLOOR_SUB;
+        const onFloor = glowLight(g, x, y, 0, 0, 0, 1);
+        if (onFloor === 0) {
+          continue;
+        }
+        const i = cy * stride + cx;
+        if (t.touched[i] === 0) {
+          t.touched[i] = 1;
+          t.dirty.push(i);
+        }
+        t.floor[i] = addGlow(t.floor[i] as number, FLOOR, g, onFloor);
+        t.ceiling[i] = addGlow(t.ceiling[i] as number, CEILING, g, glowLight(g, x, y, 1, 0, 0, -1));
+      }
+    }
+  }
+  return t;
+}
+
+/** Colour `c` with glow `g`, reaching it at strength k (see glowLight), on a surface of colour `albedo` added. */
+function addGlow(c: number, albedo: number, g: Glow, k: number): number {
+  const r = Math.min(255, (c & 0xff) + (((albedo & 0xff) * g.r * k) | 0));
+  const gg = Math.min(255, ((c >>> 8) & 0xff) + ((((albedo >>> 8) & 0xff) * g.g * k) | 0));
+  const b = Math.min(255, ((c >>> 16) & 0xff) + ((((albedo >>> 16) & 0xff) * g.b * k) | 0));
+  return (0xff000000 | (b << 16) | (gg << 8) | r) >>> 0;
+}
+
+/**
  * Works out the floor's reflection along one screen row, every FLOOR_STEP pixels, into floorShine and floorShineLamp:
  * the row's floor point at pixel col is (x0 + dx·col, y0 + dy·col) in tiles. Returns whether any of it shows.
  */
@@ -196,7 +307,8 @@ function renderLitWalls(
   p: PlayerState,
   textures: Uint32Array[],
   lm: Lighting,
-  reflections: ReflectionMode
+  reflections: ReflectionMode,
+  glows: readonly Glow[]
 ): void {
   const { width: w, height: h, pixels, zbuffer } = fb;
   const dirX = Math.cos(p.angle);
@@ -221,7 +333,9 @@ function renderLitWalls(
     floorShineLamp = new Int32Array(floorShine.length);
     rowDistFor = key;
   }
-  const { faceOffset, wall, floor, ceiling, stride, rows } = lm;
+  const { faceOffset, wall, stride, rows } = lm;
+  // The avatars' glow is added into the floor and ceiling colours, per cell, before the floor loop reads them.
+  const { floor, ceiling } = glows.length > 0 ? glowingTables(lm, glows) : lm;
   const colours = reflectedRgbTable(textures, lm);
   const levels = RELIEF_LEVELS.length;
   const vShift = Math.log2(size / WALL_V);
@@ -274,6 +388,35 @@ function renderLitWalls(
         reflected[i] = reflection(lamp, shininess, f0, normal.dx, normal.dy, 0, hitX, hitY, z, p.x, p.y) * scale;
       }
     }
+    // Avatars' glow on this column: the ones close enough and in front of it.
+    columnGlowCount = 0;
+    if (normal && base >= 0) {
+      for (const g of glows) {
+        const dx = g.x - hitX;
+        const dy = g.y - hitY;
+        if (dx * normal.dx + dy * normal.dy > 0 && dx * dx + dy * dy < GLOW_RADIUS * GLOW_RADIUS) {
+          columnGlows[columnGlowCount++] = g;
+        }
+      }
+    }
+    if (columnGlowCount > 0 && normal) {
+      for (let j = 0; j < GLOW_HEIGHTS; j++) {
+        const z = j / (GLOW_HEIGHTS - 1);
+        let gr = 0;
+        let gg = 0;
+        let gb = 0;
+        for (let k = 0; k < columnGlowCount; k++) {
+          const glow = columnGlows[k] as Glow;
+          const light = glowLight(glow, hitX, hitY, z, normal.dx, normal.dy, 0);
+          gr += glow.r * light;
+          gg += glow.g * light;
+          gb += glow.b * light;
+        }
+        columnGlowLight[j * 3] = gr;
+        columnGlowLight[j * 3 + 1] = gg;
+        columnGlowLight[j * 3 + 2] = gb;
+      }
+    }
     const gloss = GLOSS[hit.tile] as Uint8Array;
     const colour = (hit.tile * lm.lights.length + lampIndex) * 3;
     const addR = colours[colour] as number;
@@ -315,6 +458,21 @@ function renderLitWalls(
         r += (s * addR) | 0;
         g += (s * addG) | 0;
         b += (s * addB) | 0;
+      }
+      if (columnGlowCount > 0) {
+        // Blend the two heights either side of this texel row.
+        const at = (1 - (texY + 0.5) / size) * (GLOW_HEIGHTS - 1);
+        const below = at | 0;
+        const above = Math.min(below + 1, GLOW_HEIGHTS - 1);
+        const t = at - below;
+        const gr = (columnGlowLight[below * 3] as number) * (1 - t) + (columnGlowLight[above * 3] as number) * t;
+        const gg =
+          (columnGlowLight[below * 3 + 1] as number) * (1 - t) + (columnGlowLight[above * 3 + 1] as number) * t;
+        const gb =
+          (columnGlowLight[below * 3 + 2] as number) * (1 - t) + (columnGlowLight[above * 3 + 2] as number) * t;
+        r += ((c & 0xff) * gr) | 0;
+        g += (((c >>> 8) & 0xff) * gg) | 0;
+        b += (((c >>> 16) & 0xff) * gb) | 0;
       }
       if (r > 255) {
         r = 255;
@@ -369,43 +527,11 @@ function renderLitWalls(
         iy = maxY;
       }
       const c = table[iy * stride + ix] as number;
-      if (!shines) {
-        pixels[row + col] = c;
-        continue;
+      let out = c;
+      if (shines) {
+        out = shineFloorPixel(lm, c, col, (iy * stride + ix) * REFLECTION_LAMPS, colours, textures.length);
       }
-      const i = (col / FLOOR_STEP) | 0;
-      const left = floorShine[i] as number;
-      const right = floorShine[i + 1] as number;
-      const s = left + (right - left) * ((col - i * FLOOR_STEP) / FLOOR_STEP);
-      if (s < 0.5) {
-        pixels[row + col] = c;
-        continue;
-      }
-      // The blend is smooth, so check this very floor cell lists the lamp: its shadow edge is then the floor light's.
-      const lamp = floorShineLamp[left >= right ? i : i + 1] as number;
-      const cell = (iy * stride + ix) * REFLECTION_LAMPS;
-      let listed = false;
-      for (let k = 0; k < REFLECTION_LAMPS && !listed; k++) {
-        listed = lm.floorLamp[cell + k] === lamp;
-      }
-      if (!listed) {
-        pixels[row + col] = c;
-        continue;
-      }
-      const colour = (textures.length * lm.lights.length + lamp) * 3;
-      let r = (c & 0xff) + ((s * (colours[colour] as number)) | 0);
-      let g = ((c >>> 8) & 0xff) + ((s * (colours[colour + 1] as number)) | 0);
-      let b = ((c >>> 16) & 0xff) + ((s * (colours[colour + 2] as number)) | 0);
-      if (r > 255) {
-        r = 255;
-      }
-      if (g > 255) {
-        g = 255;
-      }
-      if (b > 255) {
-        b = 255;
-      }
-      pixels[row + col] = (0xff000000 | (b << 16) | (g << 8) | r) >>> 0;
+      pixels[row + col] = out;
     }
   }
 }

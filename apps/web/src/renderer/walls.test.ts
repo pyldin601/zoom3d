@@ -1,6 +1,7 @@
 import { LEVEL1, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { createFramebuffer, DEFAULT_FOV } from './framebuffer';
+import { GLOW_RADIUS, GLOW_STRENGTH } from './glow';
 import { bakeLighting, corridorLights, REFLECTION_RANGE } from './lighting';
 import { makeTextures, TEX } from './textures';
 import { CEILING, FLOOR, renderWalls, shade } from './walls';
@@ -412,5 +413,56 @@ describe('renderWalls floor reflections in shadow', () => {
       }
     }
     expect(shaded).toBeGreaterThan(100);
+  });
+});
+
+describe('renderWalls avatar glow', () => {
+  const room = parseMap('1111111111\n1S.......1\n1........1\n1........1\n1111111111');
+  const roomLit = bakeLighting(room, [], 0.08, FLOOR, CEILING);
+  // Looking east along the room's middle, an avatar 3 tiles ahead glowing white.
+  const pose = { x: 1.5, y: 2.5, angle: 0 };
+  const glow = { x: 4.5, y: 2.5, r: GLOW_STRENGTH, g: GLOW_STRENGTH, b: GLOW_STRENGTH };
+  const render = (glows: { x: number; y: number; r: number; g: number; b: number }[]) => {
+    const fb = createFramebuffer();
+    renderWalls(fb, room, pose, textures, roomLit, 'both', glows);
+    return fb;
+  };
+  const dark = render([]);
+  const lit = render([glow]);
+  /** The floor distance a screen row below the horizon shows. */
+  const rowDistance = (y: number) => (0.5 * PROJ) / (y + 0.5 - dark.height / 2);
+
+  test('the floor around the avatar glows, and nothing ever darkens', () => {
+    let brighter = 0;
+    for (let i = 0; i < dark.pixels.length; i++) {
+      const a = (lit.pixels[i] as number) & 0xff;
+      const b = (dark.pixels[i] as number) & 0xff;
+      expect(a).toBeGreaterThanOrEqual(b);
+      if (a > b) {
+        brighter++;
+      }
+    }
+    expect(brighter).toBeGreaterThan(100);
+  });
+
+  test('floor rows past the glow’s reach are untouched', () => {
+    const centre = dark.width / 2;
+    for (let y = dark.height / 2 + 1; y < dark.height; y++) {
+      const d = rowDistance(y);
+      // Straight ahead, the floor 1.5 tiles or more from the avatar (3 tiles off) is out of its reach.
+      if (d < 3 - GLOW_RADIUS || d > 3 + GLOW_RADIUS) {
+        expect(lit.pixels[y * dark.width + centre]).toBe(dark.pixels[y * dark.width + centre]);
+      }
+    }
+  });
+
+  test('the ceiling over the avatar glows too', () => {
+    let brighter = 0;
+    for (let i = 0; i < (dark.height / 2) * dark.width; i++) {
+      if (((lit.pixels[i] as number) & 0xff) > ((dark.pixels[i] as number) & 0xff)) {
+        brighter++;
+      }
+    }
+    expect(brighter).toBeGreaterThan(100);
   });
 });
