@@ -1,23 +1,22 @@
 // Column-by-column textured wall renderer with flat ceiling and floor.
 import { castRay, createRayHit, type GameMap, type PlayerState } from '@zoom3d/shared';
+import { reflectedColour } from './colour';
 import { type Framebuffer, rgb } from './framebuffer';
 import {
-  brightestGlint,
+  brightestReflection,
   FACES,
   FLOOR_SUB,
-  GLINT_LAMPS,
-  GLINT_NEAR,
-  GLINT_RANGE,
-  GLINT_STRENGTH,
-  glint,
   type Lighting,
-  STREAK_HALF_HEIGHT,
-  STREAK_STRENGTH,
-  streak,
+  REFLECTION_LAMPS,
+  REFLECTION_NEAR,
+  REFLECTION_RANGE,
+  REFLECTION_SAMPLES,
+  REFLECTION_STRENGTH,
+  reflection,
   WALL_U,
   WALL_V,
 } from './lighting';
-import { GLINT_MATERIAL, GLOSS, RELIEF, RELIEF_LEVELS, TEX } from './textures';
+import { GLOSS, REFLECTION_MATERIAL, RELIEF, RELIEF_LEVELS, TEX } from './textures';
 
 export const CEILING = rgb(0x38, 0x38, 0x38);
 export const FLOOR = rgb(0x70, 0x70, 0x70);
@@ -28,8 +27,12 @@ let rowDist = new Float64Array(0);
 let rowDistFor = '';
 let wallStart = new Int32Array(0);
 let wallEnd = new Int32Array(0);
-/** The column's streak: strength, then height. */
-const streakOut = new Float64Array(2);
+/** Per texture × lamp: what one unit of that lamp's reflection adds to the texture, r, g, b (see reflectedColour). */
+let reflectedRgb = new Float64Array(0);
+let reflectedRgbFor: { lm: Lighting; textures: Uint32Array[] } | null = null;
+/** The column's peak reflection, then its reflection at REFLECTION_SAMPLES heights from the floor up, scaled. */
+const peak = new Float64Array(1);
+const reflected = new Float64Array(REFLECTION_SAMPLES);
 
 /** Darkens a colour to 70% (y-side walls), keeping alpha. */
 export function shade(c: number): number {
@@ -97,6 +100,40 @@ export function renderWalls(
 }
 
 /** SPIKE: renderWalls with baked lights. Walls go column by column; floor and ceiling then row by row (in memory order). */
+/**
+ * reflectedRgb for these textures and lamps, worked out from each texture's average shiny texel the first time they're
+ * drawn together: OKLab per texel row would cost too much, and a texture's texels share a hue.
+ */
+function reflectedRgbTable(textures: Uint32Array[], lm: Lighting): Float64Array {
+  if (reflectedRgbFor?.lm === lm && reflectedRgbFor.textures === textures) {
+    return reflectedRgb;
+  }
+  const lights = lm.lights.length;
+  reflectedRgb = new Float64Array(textures.length * lights * 3);
+  textures.forEach((tex, tile) => {
+    const gloss = GLOSS[tile];
+    let sr = 0;
+    let sg = 0;
+    let sb = 0;
+    let n = 0;
+    tex.forEach((c, t) => {
+      if (gloss?.[t] === 1) {
+        sr += c & 0xff;
+        sg += (c >>> 8) & 0xff;
+        sb += (c >>> 16) & 0xff;
+        n++;
+      }
+    });
+    const tint = REFLECTION_MATERIAL.at(tile)?.tint ?? 0;
+    const mean = [sr / (n || 1), sg / (n || 1), sb / (n || 1)] as const;
+    lm.lights.forEach((l, i) => {
+      reflectedRgb.set(reflectedColour(mean, l, tint), (tile * lights + i) * 3);
+    });
+  });
+  reflectedRgbFor = { lm, textures };
+  return reflectedRgb;
+}
+
 function renderLitWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textures: Uint32Array[], lm: Lighting): void {
   const { width: w, height: h, pixels, zbuffer } = fb;
   const dirX = Math.cos(p.angle);
@@ -120,6 +157,7 @@ function renderLitWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textures:
     rowDistFor = key;
   }
   const { faceOffset, wall, floor, ceiling, stride, rows } = lm;
+  const colours = reflectedRgbTable(textures, lm);
   const levels = RELIEF_LEVELS.length;
   const vShift = Math.log2(size / WALL_V);
 
@@ -147,31 +185,34 @@ function renderLitWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textures:
     const face = hit.side === 0 ? (rayX > 0 ? 0 : 1) : rayY > 0 ? 2 : 3;
     const base = faceOffset[(hit.mapY * map.width + hit.mapX) * 4 + face] as number;
     const lightCol = base + Math.floor(hit.wallX * WALL_U) * WALL_V;
-    // A wall you're close to shines with the lamp it mirrors best: a glint where it mirrors the lamp, and a streak
-    // along it towards the lamp, seen at a shallow angle. It fades as you step away from the wall's face, and with
-    // distance along it.
+    // A wall you're close to reflects the lamp it shows best: a soft spot face-on, a streak towards the lamp seen
+    // along it. It fades as you step away from the wall's face, and with distance along it.
     const normal = FACES.at(face);
     const hitX = p.x + hit.distance * rayX;
     const hitY = p.y + hit.distance * rayY;
-    const away = normal ? ((p.x - hitX) * normal.dx + (p.y - hitY) * normal.dy) / GLINT_NEAR : 1;
-    const far = hit.distance / GLINT_RANGE;
+    const away = normal ? ((p.x - hitX) * normal.dx + (p.y - hitY) * normal.dy) / REFLECTION_NEAR : 1;
+    const far = hit.distance / REFLECTION_RANGE;
     const fade = away < 1 && far < 1 ? (1 - away * away) * (1 - far * far) * 255 : 0;
+    const { shininess, f0 } = REFLECTION_MATERIAL[hit.tile] as (typeof REFLECTION_MATERIAL)[number];
+    const slot = (lightCol / WALL_V) * REFLECTION_LAMPS;
     const lampIndex =
       base < 0 || !normal || fade === 0
         ? -1
-        : brightestGlint(lm, (lightCol / WALL_V) * GLINT_LAMPS, normal.dx, normal.dy, hitX, hitY, p.x, p.y);
-    const lamp = lampIndex < 0 ? null : lm.lights.at(lampIndex);
-    const gloss = GLOSS[hit.tile] as Uint8Array;
-    const material = GLINT_MATERIAL[hit.tile] as (typeof GLINT_MATERIAL)[number];
-    const tint = material.tint;
-    const glintScale = fade * GLINT_STRENGTH * material.glint;
+        : brightestReflection(lm, slot, shininess, f0, normal.dx, normal.dy, hitX, hitY, p.x, p.y, peak);
+    const scale = fade * REFLECTION_STRENGTH;
+    // Under half a step of brightness at its peak, the column shows nothing: skip it.
+    const lamp = lampIndex < 0 || (peak[0] as number) * scale < 0.5 ? null : lm.lights.at(lampIndex);
     if (lamp && normal) {
-      streak(lamp, normal.dx, normal.dy, hitX, hitY, p.x, p.y, streakOut);
-    } else {
-      streakOut[0] = 0;
+      for (let i = 0; i < REFLECTION_SAMPLES; i++) {
+        const z = i / (REFLECTION_SAMPLES - 1);
+        reflected[i] = reflection(lamp, shininess, f0, normal.dx, normal.dy, hitX, hitY, z, p.x, p.y) * scale;
+      }
     }
-    const streakScale = (streakOut[0] as number) * fade * STREAK_STRENGTH;
-    const streakZ = streakOut[1] as number;
+    const gloss = GLOSS[hit.tile] as Uint8Array;
+    const colour = (hit.tile * lm.lights.length + lampIndex) * 3;
+    const addR = colours[colour] as number;
+    const addG = colours[colour + 1] as number;
+    const addB = colours[colour + 2] as number;
     const step = size / lineH;
     let texPos = (start - half + lineH / 2) * step;
     // A near wall spreads each texel over several rows: shade it once and repeat it.
@@ -198,28 +239,16 @@ function renderLitWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textures:
       let r = ((c & 0xff) * (l & 0xff)) >> 7;
       let g = (((c >>> 8) & 0xff) * ((l >>> 8) & 0xff)) >> 7;
       let b = (((c >>> 16) & 0xff) * ((l >>> 16) & 0xff)) >> 7;
-      if (lamp && normal && gloss[t] === 1) {
-        const z = 1 - (texY + 0.5) / size;
-        let s = glint(lamp, normal.dx, normal.dy, hitX, hitY, z, p.x, p.y) * glintScale;
-        const off = (z - streakZ) / STREAK_HALF_HEIGHT;
-        const band = 1 - off * off;
-        if (band > 0) {
-          s += streakScale * band * band;
-        }
-        if (tint > 0) {
-          const cr = c & 0xff;
-          const cg = (c >>> 8) & 0xff;
-          const cb = (c >>> 16) & 0xff;
-          const k = (s * tint) / Math.max(cr, cg, cb, 1);
-          const pale = s * (1 - tint);
-          r += ((k * cr + pale) * lamp.r) | 0;
-          g += ((k * cg + pale) * lamp.g) | 0;
-          b += ((k * cb + pale) * lamp.b) | 0;
-        } else {
-          r += (s * lamp.r) | 0;
-          g += (s * lamp.g) | 0;
-          b += (s * lamp.b) | 0;
-        }
+      if (lamp && gloss[t] === 1) {
+        // Blend the two samples either side of this texel row's height.
+        const at = (1 - (texY + 0.5) / size) * (REFLECTION_SAMPLES - 1);
+        const below = at | 0;
+        const low = reflected[below] as number;
+        const high = reflected[Math.min(below + 1, REFLECTION_SAMPLES - 1)] as number;
+        const s = low + (high - low) * (at - below);
+        r += (s * addR) | 0;
+        g += (s * addG) | 0;
+        b += (s * addB) | 0;
       }
       if (r > 255) {
         r = 255;

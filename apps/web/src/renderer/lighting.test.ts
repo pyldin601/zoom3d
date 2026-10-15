@@ -3,15 +3,15 @@ import { describe, expect, test } from 'vitest';
 import { rgb } from './framebuffer';
 import {
   bakeLighting,
-  brightestGlint,
+  bounceHeight,
+  brightestReflection,
   DIR_BACK,
   DIR_FRONT,
   DIR_TOP,
   directLight,
-  GLINT_LAMPS,
-  glint,
   type Light,
-  streak,
+  REFLECTION_LAMPS,
+  reflection,
   WALL_U,
   WALL_V,
 } from './lighting';
@@ -105,71 +105,66 @@ describe('bakeLighting relief levels', () => {
   });
 });
 
-describe('glint', () => {
-  // A wall face on the plane x = 0, facing +x; the eye is at its height (0.5), 2 tiles out.
-  const l = lamp(1, 2);
-  const at = (y: number, z: number) => glint(l, 1, 0, 0, y, z, 2, 0);
-  // Mirror the eye through the wall to (−2, 0, 0.5): the line from there to the lamp crosses x = 0 a third of the way.
-  const mirrorY = 4 / 3;
-  const mirrorZ = 0.5 + (0.85 - 0.5) * (2 / 3);
+describe('reflection', () => {
+  // A wall on the plane y = 0, facing +y. A lamp 1 off it at x = 5.
+  const l = { ...lamp(5, 1), radius: 4.5 };
+  const WOOD = { shininess: 16, f0: 0.4 };
+  const BRICK = { shininess: 8, f0: 0.05 };
+  /** The brightest it gets up and down the wall's column at x, seen from the eye at (ex, ey). */
+  const peak = (x: number, ex: number, ey: number, m = WOOD, light: Light = l) => {
+    let most = 0;
+    for (let z = 0; z <= 1; z += 0.01) {
+      most = Math.max(most, reflection(light, m.shininess, m.f0, 0, 1, x, 0, z, ex, ey));
+    }
+    return most;
+  };
+  // Face-on: the eye 1.5 off the wall, straight out from the lamp. Along: the eye 0.5 off the wall, 5 tiles before it.
+  const faceOn = (x: number, m = WOOD) => peak(x, 5, 1.5, m);
+  const along = (x: number, m = WOOD) => peak(x, 0, 0.5, m);
+  // Along, the eye's ray mirrored through the wall from (0, −0.5) to the lamp crosses y = 0 here.
+  const mirrorX = 5 / 3;
 
-  test('at the mirror point it is the full falloff, over twice the lamp’s reach', () => {
-    const d2 = 1 + (2 - mirrorY) ** 2 + (0.85 - mirrorZ) ** 2;
-    expect(at(mirrorY, mirrorZ)).toBeCloseTo((1 - d2 / 64) ** 2, 5);
+  test('seen face-on, glossy wood shows a soft spot where it mirrors the lamp', () => {
+    expect(faceOn(5)).toBeGreaterThan(0.3);
+    expect(faceOn(4.25)).toBeLessThan(faceOn(5) / 4);
+    expect(faceOn(5.75)).toBeLessThan(faceOn(5) / 4);
   });
 
-  test('fades away from the mirror point, sideways and vertically', () => {
-    const peak = at(mirrorY, mirrorZ);
-    expect(at(mirrorY + 0.3, mirrorZ)).toBeLessThan(peak / 2);
-    expect(at(mirrorY - 0.3, mirrorZ)).toBeLessThan(peak / 2);
-    expect(at(mirrorY, mirrorZ - 0.3)).toBeLessThan(peak / 2);
+  test('seen along the wall, the same reflection stretches into a streak towards the lamp', () => {
+    // Two tiles on from the mirror point it keeps most of its strength; face-on, 0.75 off the spot loses most.
+    expect(along(mirrorX + 2)).toBeGreaterThan(along(mirrorX) * 0.8);
+  });
+
+  test('fades out past the lamp', () => {
+    expect(along(6)).toBeLessThan(along(mirrorX) / 20);
+  });
+
+  test('rough brick barely shines face-on, but streaks along the wall', () => {
+    expect(faceOn(5, BRICK)).toBeLessThan(along(mirrorX + 2, BRICK) / 5);
+    expect(along(mirrorX + 2, BRICK)).toBeGreaterThan(0.4);
   });
 
   test('is zero for a lamp behind the wall or out of reach', () => {
-    expect(glint(lamp(-1, 2), 1, 0, 0, mirrorY, mirrorZ, 2, 0)).toBe(0);
-    expect(glint({ ...l, radius: 0.5 }, 1, 0, 0, mirrorY, mirrorZ, 2, 0)).toBe(0);
+    expect(peak(mirrorX, 0, 0.5, WOOD, { ...l, y: -1 })).toBe(0);
+    expect(peak(mirrorX, 0, 0.5, WOOD, { ...l, radius: 1 })).toBe(0);
   });
 });
 
-describe('streak', () => {
-  // A wall on the plane y = 0, facing +y. The eye stands 0.5 off it, looking along it at a lamp 5 tiles down, 1 off.
+describe('bounceHeight', () => {
   const l = { ...lamp(5, 1), radius: 4.5 };
-  const out = new Float64Array(2);
-  const at = (x: number, light = l, ex = 0, ey = 0.5) => {
-    streak(light, 0, 1, x, 0, ex, ey, out);
-    return out[0] as number;
-  };
-  const height = (x: number) => {
-    streak(l, 0, 1, x, 0, 0, 0.5, out);
-    return out[1] as number;
-  };
-  // The mirror point: the line from the eye mirrored through the wall, (0, −0.5), to the lamp crosses y = 0 here.
-  const mirrorX = 5 / 3;
+  const at = (x: number) => bounceHeight(l, x, 0, 0, 0.5);
 
-  test('is brighter part way towards the lamp than at the mirror point', () => {
-    expect(at(3.5)).toBeGreaterThan(at(mirrorX) * 1.2);
-  });
-
-  test('fades out right beside the lamp', () => {
-    expect(at(5)).toBeLessThan(at(3.5) / 4);
-  });
-
-  test('is zero seen face-on, or with the lamp behind the eye', () => {
-    expect(at(3.5, l, 3.5, 2)).toBe(0);
-    expect(at(mirrorX, { ...l, x: -5 })).toBe(0);
-  });
-
-  test('sits at the mirror height at the mirror point, climbing towards the lamp’s height beyond it', () => {
-    expect(height(mirrorX)).toBeCloseTo(0.5 + (0.85 - 0.5) / 3, 5);
-    expect(height(3.5)).toBeGreaterThan(height(mirrorX));
-    expect(height(3.5)).toBeLessThan(0.85);
+  test('is the mirror height at the mirror point, climbing towards the lamp’s height beyond it', () => {
+    expect(at(5 / 3)).toBeCloseTo(0.5 + (0.85 - 0.5) / 3, 5);
+    expect(at(3.5)).toBeGreaterThan(at(5 / 3));
+    expect(at(3.5)).toBeLessThan(0.85);
   });
 });
 
-describe('bakeLighting glint lamps', () => {
+describe('bakeLighting reflection lamps', () => {
   /** The first wallLamp slot of a cell's face (0 W, 1 E, 2 N, 3 S), at sample column u. */
   const slot = (lm: ReturnType<typeof bakeLighting>, cx: number, cy: number, face: number, u = 0) =>
-    ((lm.faceOffset[(cy * lm.map.width + cx) * 4 + face] as number) / WALL_V + u) * GLINT_LAMPS;
+    ((lm.faceOffset[(cy * lm.map.width + cx) * 4 + face] as number) / WALL_V + u) * REFLECTION_LAMPS;
 
   test('every face sample column lists lamps it can see, or −1', () => {
     // Two short lamps in the corners: walls in the middle are out of both their reflection reaches.
@@ -184,22 +179,22 @@ describe('bakeLighting glint lamps', () => {
   test('lists the lamps in sight nearest first, those past their light’s reach too', () => {
     const lm = bakeLighting(map, [lamp(5.5, 2.5), lamp(1.5, 2.5)], 0.45, GREY, GREY);
     // The bottom wall's top (north) face under x = 1: the west lamp is close, the east one 4 tiles off, out of its
-    // light's reach (4) but not its reflection's.
+    // light's reach (4) but not its reflection's (6).
     const at = slot(lm, 1, 3, 2);
-    expect([...lm.wallLamp.subarray(at, at + GLINT_LAMPS)]).toEqual([1, 0, -1]);
+    expect([...lm.wallLamp.subarray(at, at + REFLECTION_LAMPS)]).toEqual([1, 0, -1]);
   });
 
   test('a lamp hidden behind the pillar is never listed', () => {
     // The lamp sits in the east half's top row; the top wall's face over x = 1 faces it, but the pillar is between.
     const lm = bakeLighting(map, [lamp(4.5, 1.5)], 0.45, GREY, GREY);
     const behind = slot(lm, 1, 0, 3);
-    expect([...lm.wallLamp.subarray(behind, behind + WALL_U * GLINT_LAMPS)]).toEqual(
-      new Array(WALL_U * GLINT_LAMPS).fill(-1)
+    expect([...lm.wallLamp.subarray(behind, behind + WALL_U * REFLECTION_LAMPS)]).toEqual(
+      new Array(WALL_U * REFLECTION_LAMPS).fill(-1)
     );
   });
 });
 
-describe('brightestGlint', () => {
+describe('brightestReflection', () => {
   const corridor = parseMap(`
 1111111111
 1S.......1
@@ -210,7 +205,9 @@ describe('brightestGlint', () => {
   test('picks the lamp you look towards along the wall, not the one beside you', () => {
     // Close to the top wall at x = 2.5, under the near lamp, looking east to the far one.
     const lm = bakeLighting(corridor, [lamp(2.5, 2.5), lamp(7.5, 2.5)], 0.45, GREY, GREY);
-    const at = ((lm.faceOffset[(0 * corridor.width + 5) * 4 + 3] as number) / WALL_V) * GLINT_LAMPS;
-    expect(brightestGlint(lm, at, 0, 1, 5, 1, 2.5, 1.3)).toBe(1);
+    const at = ((lm.faceOffset[(0 * corridor.width + 5) * 4 + 3] as number) / WALL_V) * REFLECTION_LAMPS;
+    const peak = new Float64Array(1);
+    expect(brightestReflection(lm, at, 16, 0.4, 0, 1, 5, 1, 2.5, 1.3, peak)).toBe(1);
+    expect(peak[0] as number).toBeGreaterThan(0);
   });
 });

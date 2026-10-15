@@ -31,24 +31,20 @@ const FIXTURE = rgb(255, 236, 190);
 /** The eye's height above the floor: walls are drawn centred on the horizon. */
 const EYE_Z = 0.5;
 /**
- * Walls glint only this many tiles from the eye, fading to nothing here: a streak along the wall you're by stays near
- * you, and a far wall that happens to lie in line with the eye (close to its plane) doesn't flash.
+ * Walls reflect only this many tiles from the eye, fading to nothing here: a streak along the wall you're by stays
+ * near you, and a far wall that lies in line with the eye (close to its plane) barely flashes.
  */
-export const GLINT_RANGE = 4;
-/** A wall glints only while the eye is this close to it (tiles off its face), fading to nothing at this distance. */
-export const GLINT_NEAR = 2;
-/** Lamps a wall sample column can glint with (nearest first), so a wall can mirror the lamp you look towards. */
-export const GLINT_LAMPS = 3;
+export const REFLECTION_RANGE = 8;
+/** A wall reflects only while the eye is this close to it (tiles off its face), fading to nothing at this distance. */
+export const REFLECTION_NEAR = 4;
+/** Lamps a wall sample column can reflect (nearest first), so a wall can show the lamp you look towards. */
+export const REFLECTION_LAMPS = 3;
 /** A lamp's reflection carries this many times its light's reach: you see a lamp further off than it lights. */
-const GLINT_REACH = 2;
-/** A lamp's streak along a wall carries this many times its light's reach. */
-const STREAK_REACH = 1.5;
-/** A full streak adds this much of the lamp's colour (×255), like GLINT_STRENGTH. */
-export const STREAK_STRENGTH = 0.385;
-/** Half the streak's height on the wall (the wall is 1 high): it fades from its centre line to nothing at this. */
-export const STREAK_HALF_HEIGHT = 0.25;
-/** A full glint adds this much of the lamp's colour (×255) on top of the lit texel. */
-export const GLINT_STRENGTH = 0.35;
+const REFLECTION_REACH = 1.5;
+/** A full reflection adds this much of the lamp's colour (×255) on top of the lit texel. */
+export const REFLECTION_STRENGTH = 0.385;
+/** Heights a wall column's reflection is worked out at (0 to 1, evenly), blended between for each texel row. */
+export const REFLECTION_SAMPLES = 17;
 
 export interface Lighting {
   map: GameMap;
@@ -59,8 +55,8 @@ export interface Lighting {
   /** Packed multipliers, [face][u][v][relief level]: ambient + lamps × (1 + RELIEF_LEVELS[level]). */
   wall: Uint32Array;
   /**
-   * Per face sample column ([face][u][k], so (faceOffset / WALL_V + u) · GLINT_LAMPS + k): the lamps in sight and in
-   * reflection reach, nearest first, −1 past the last.
+   * Per face sample column ([face][u][k], so (faceOffset / WALL_V + u) · REFLECTION_LAMPS + k): the lamps in sight
+   * and in reflection reach, nearest first, −1 past the last.
    */
   wallLamp: Int16Array;
   /** Final floor / ceiling colours, (map.width·FLOOR_SUB) × (map.height·FLOOR_SUB). */
@@ -122,7 +118,7 @@ export function bakeLighting(
 
   const levels = RELIEF_LEVELS.length;
   const wall = new Uint32Array(faces * WALL_U * WALL_V * levels);
-  const wallLamp = new Int16Array(faces * WALL_U * GLINT_LAMPS).fill(-1);
+  const wallLamp = new Int16Array(faces * WALL_U * REFLECTION_LAMPS).fill(-1);
   const seen: { i: number; dist: number }[] = [];
   for (let cy = 0; cy < height; cy++) {
     for (let cx = 0; cx < width; cx++) {
@@ -148,7 +144,7 @@ export function bakeLighting(
             const dy = l.y - py;
             const facing = dx * n.dx + dy * n.dy;
             const flat = Math.hypot(dx, dy);
-            if (facing <= 0 || flat >= l.radius * GLINT_REACH) {
+            if (facing <= 0 || flat >= l.radius * REFLECTION_REACH) {
               continue;
             }
             if (!hasLineOfSight(map, px + n.dx * 1e-3, py + n.dy * 1e-3, l.x, l.y)) {
@@ -168,8 +164,8 @@ export function bakeLighting(
             }
           }
           seen.sort((a, b) => a.dist - b.dist);
-          for (let k = 0; k < Math.min(seen.length, GLINT_LAMPS); k++) {
-            wallLamp[(base / WALL_V + u) * GLINT_LAMPS + k] = (seen[k] as { i: number }).i;
+          for (let k = 0; k < Math.min(seen.length, REFLECTION_LAMPS); k++) {
+            wallLamp[(base / WALL_V + u) * REFLECTION_LAMPS + k] = (seen[k] as { i: number }).i;
           }
           for (let v = 0; v < WALL_V; v++) {
             const rv = r[v] as number;
@@ -234,14 +230,20 @@ export function bakeLighting(
 }
 
 /**
- * How brightly lamp `l` glints at (px, py, pz) on a wall facing (nx, ny), seen from the eye at (ex, ey): Phong, cos³²
- * of the angle between the lamp and the eye's ray mirrored off the wall, times the lamp's falloff over GLINT_REACH
- * times its reach (a blurry mirror: looking along a wall, you see a lamp further down it), times a sheen
- * 0..1, before the lamp's colour. It runs per texel row on near walls, so squares only, no roots. Shadows are the
- * caller's (wallLamp).
+ * How brightly lamp `l` reflects at (px, py, pz) on a wall facing (nx, ny), seen from the eye at (ex, ey), 0..1 before
+ * the lamp's colour. One model for every angle: Blinn-Phong, (n·h)^shininess with h halfway between the lamp and the
+ * eye, times a boost at shallow angles, f0 + (1 − f0)·(1 − (v·h)²), times the lamp's falloff over REFLECTION_REACH
+ * times its reach. Face-on it's a soft spot where the wall mirrors the lamp, worth f0 of itself; looking along the
+ * wall the same reflection stretches into a streak towards the lamp, near full strength. Glossy surfaces (high
+ * shininess) give a small spot and a narrow streak, rough ones a faint wide spot and a long streak. Schlick's
+ * (1 − v·h)⁵ boost only rises past 80°, and a corridor's reflections sit at 60–70°. Shadows are the caller's
+ * (wallLamp). `shininess` is a power of two (it's raised by squaring). Three roots: callers sample a wall column at
+ * REFLECTION_SAMPLES heights rather than per texel row.
  */
-export function glint(
+export function reflection(
   l: Light,
+  shininess: number,
+  f0: number,
   nx: number,
   ny: number,
   px: number,
@@ -254,115 +256,78 @@ export function glint(
   const ly = l.y - py;
   const lz = l.z - pz;
   const l2 = lx * lx + ly * ly + lz * lz;
-  const reach2 = l.radius * l.radius * GLINT_REACH * GLINT_REACH;
+  const reach2 = l.radius * l.radius * REFLECTION_REACH * REFLECTION_REACH;
   if (l2 >= reach2 || lx * nx + ly * ny <= 0) {
     return 0;
   }
-  // The eye's ray to the point, mirrored off the wall.
-  let rx = px - ex;
-  let ry = py - ey;
-  const rz = pz - EYE_Z;
-  const into = rx * nx + ry * ny;
-  rx -= 2 * into * nx;
-  ry -= 2 * into * ny;
-  const dot = rx * lx + ry * ly + rz * lz;
-  if (dot <= 0) {
+  const vx = ex - px;
+  const vy = ey - py;
+  const vz = EYE_Z - pz;
+  const lampLen = Math.sqrt(l2);
+  const eyeLen = Math.sqrt(vx * vx + vy * vy + vz * vz);
+  // Halfway between the directions to the lamp and to the eye.
+  const hx = lx / lampLen + vx / eyeLen;
+  const hy = ly / lampLen + vy / eyeLen;
+  const hz = lz / lampLen + vz / eyeLen;
+  const halfLen = Math.sqrt(hx * hx + hy * hy + hz * hz);
+  const nh = (hx * nx + hy * ny) / halfLen;
+  if (nh <= 0) {
     return 0;
   }
-  const r2 = rx * rx + ry * ry + rz * rz;
-  let c = (dot * dot) / (l2 * r2);
-  c *= c;
-  c *= c;
-  c *= c;
-  c *= c;
+  const vh = (vx * hx + vy * hy + vz * hz) / (eyeLen * halfLen);
   const k = 1 - l2 / reach2;
-  return c * k * k;
+  let lobe = nh;
+  for (let m = 1; m < shininess; m *= 2) {
+    lobe *= lobe;
+  }
+  return lobe * (f0 + (1 - f0) * (1 - vh * vh)) * k * k;
 }
 
 /**
- * The streak lamp `l` leaves along a wall seen at a shallow angle, a rough wall's blurry reflection smeared towards
- * the light: on the column at (px, py) of a wall facing (nx, ny), seen from (ex, ey), `out[0]` gets its strength 0..1
- * and `out[1]` the height it runs at, where the wall bounces the eye's ray to the lamp. The strength is a broad lobe
- * between the eye's ray mirrored off the wall and the lamp, seen from above (cos²), times how flat the eye's ray meets
- * the wall (sin⁸), times the lamp's falloff over STREAK_REACH times its reach. So it grows from the mirror point
- * towards the lamp and fades right beside it. Once per wall column, so roots are fine.
+ * The height on a wall's column at (px, py) where the wall bounces the ray from the eye at (ex, ey) to lamp `l`: where
+ * the ray climbs from the eye's height to the lamp's over its two legs, eye to wall and wall to lamp, seen from above.
+ * A lamp's reflection on that column peaks about there.
  */
-export function streak(
-  l: Light,
+export function bounceHeight(l: Light, px: number, py: number, ex: number, ey: number): number {
+  const eyeLeg = Math.hypot(px - ex, py - ey);
+  const lampLeg = Math.hypot(l.x - px, l.y - py);
+  return (EYE_Z * lampLeg + l.z * eyeLeg) / (eyeLeg + lampLeg);
+}
+
+/**
+ * Of a wall sample column's lamps (`wallLamp` from `slot`), the one that reflects brightest on the column at (px, py)
+ * facing (nx, ny), seen from (ex, ey), for a surface of this shininess and f0: each tried at its bounce height, where
+ * its reflection peaks, which lands in `peak[0]`. −1 (and a zero peak) if none reflects there.
+ */
+export function brightestReflection(
+  lm: Lighting,
+  slot: number,
+  shininess: number,
+  f0: number,
   nx: number,
   ny: number,
   px: number,
   py: number,
   ex: number,
   ey: number,
-  out: Float64Array
-): void {
-  out[0] = 0;
-  out[1] = EYE_Z;
-  const lx = l.x - px;
-  const ly = l.y - py;
-  const l2 = lx * lx + ly * ly;
-  const reach2 = l.radius * l.radius * STREAK_REACH * STREAK_REACH;
-  if (l2 >= reach2 || lx * nx + ly * ny <= 0) {
-    return;
-  }
-  // The eye's ray to the column, mirrored off the wall, seen from above.
-  let rx = px - ex;
-  let ry = py - ey;
-  const into = rx * nx + ry * ny;
-  rx -= 2 * into * nx;
-  ry -= 2 * into * ny;
-  const dot = rx * lx + ry * ly;
-  if (dot <= 0) {
-    return;
-  }
-  const r2 = rx * rx + ry * ry;
-  const c2 = (dot * dot) / (r2 * l2);
-  const sin2 = 1 - (into * into) / r2;
-  const sin4 = sin2 * sin2;
-  const k = 1 - l2 / reach2;
-  out[0] = c2 * sin4 * sin4 * k * k;
-  // Where the ray climbs from the eye to the lamp over the two horizontal legs, eye to wall and wall to lamp.
-  const eyeLeg = Math.sqrt(r2);
-  const lampLeg = Math.sqrt(l2);
-  out[1] = (EYE_Z * lampLeg + l.z * eyeLeg) / (eyeLeg + lampLeg);
-}
-
-const streakScratch = new Float64Array(2);
-
-/**
- * Of a wall sample column's lamps (`wallLamp` from `slot`), the one that shines brightest on the column at (px, py)
- * facing (nx, ny), seen from (ex, ey): its glint at its mirror height, where the glint peaks, plus its streak. −1 if
- * none shines there.
- */
-export function brightestGlint(
-  lm: Lighting,
-  slot: number,
-  nx: number,
-  ny: number,
-  px: number,
-  py: number,
-  ex: number,
-  ey: number
+  peak: Float64Array
 ): number {
-  const eye = (ex - px) * nx + (ey - py) * ny;
   let best = -1;
-  let bestGlint = 0;
-  for (let k = 0; k < GLINT_LAMPS; k++) {
+  let bestStrength = 0;
+  for (let k = 0; k < REFLECTION_LAMPS; k++) {
     const i = lm.wallLamp[slot + k] as number;
     const l = lm.lights.at(i);
     if (i < 0 || !l) {
       break;
     }
-    const lamp = (l.x - px) * nx + (l.y - py) * ny;
-    const z = EYE_Z + ((l.z - EYE_Z) * eye) / (eye + lamp);
-    streak(l, nx, ny, px, py, ex, ey, streakScratch);
-    const g = glint(l, nx, ny, px, py, z, ex, ey) + (streakScratch[0] as number);
-    if (g > bestGlint) {
-      bestGlint = g;
+    const z = bounceHeight(l, px, py, ex, ey);
+    const strength = reflection(l, shininess, f0, nx, ny, px, py, z, ex, ey);
+    if (strength > bestStrength) {
+      bestStrength = strength;
       best = i;
     }
   }
+  peak[0] = bestStrength;
   return best;
 }
 

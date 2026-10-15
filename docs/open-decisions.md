@@ -353,29 +353,33 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     like the ceiling lamps). Only lamp light is scaled, so relief fades away between lamps. The bake stores each wall
     sample's light per relief level, and the wall loop shades each texel once and repeats it down its rows: +0.04 ms.
     Wood is flat.
-  - **Walls reflect the lamps** (2026-10-13, reworked 2026-10-15): a wall you're close to shows the lamp it mirrors
-    best, in two parts.
-    - *Glint:* a soft highlight where the wall mirrors the lamp (Phong, cos³², over twice the lamp's reach), strongest
-      on varnished wood, which you see face-on too.
-    - *Streak:* looking along a wall towards a lamp, a blurry band smeared towards the light, like a rough wall's
-      reflection. Per column it's a broad lobe between the eye's mirrored ray and the lamp (cos²), times how flat the
-      eye's ray meets the wall (sin⁸), times the lamp's falloff over 1.5× its reach: it grows from the mirror point
-      towards the lamp and fades right beside it. It's half a wall high, centred where the wall bounces the eye's ray to
-      the lamp.
+  - **Walls reflect the lamps** (2026-10-13, reworked 2026-10-15): one reflection, whatever the angle. Face-on it's
+    a soft spot where the wall mirrors the lamp; looking along a wall towards a lamp the same reflection stretches
+    into a blurry streak towards the light.
+    - *Model* (`reflection()` in `renderer/lighting.ts`): Blinn-Phong, (n·h)^shininess, times a boost at shallow
+      angles, f0 + (1 − f0)·(1 − (v·h)²), times the lamp's falloff over 1.5× its reach. Schlick's (1 − v·h)⁵ only
+      rises past 80°, and a corridor's reflections sit at 60–70°. It replaced two separate effects (a mirror glint and
+      a streak), which competed and left a dark gap beside each lamp, like a shadow.
+    - *Materials* (`REFLECTION_MATERIAL` in `renderer/textures.ts`): varnished wood is glossy (shininess 16, f0 0.4),
+      a soft spot face-on and a narrower streak; brick is rough (8, 0.05), barely there face-on and a long streak.
+      Mortar stays matte (`GLOSS`). Light stone is near white under a lamp, so it reads as matte, which suits it.
+      Floors and ceilings don't reflect.
+    - *Colour* (`reflectedColour()` in `renderer/colour.ts`): plain RGB addition of the warm lamp turned blue brick
+      violet, a hue in neither. The lamp's light is now mixed in OKLab, where warm on blue passes through grey, never
+      violet: as bright as addition, its colour axes weighted by brightness. That alone keeps the lamp's brightness,
+      which on dark saturated blue (blue weighs little in brightness) is mostly red and green, a white wash. So brick
+      reflects 85% more of its own colour (`tint`) and 15% that light; wood reflects the light, and stays warm. It's
+      worked out once per texture and lamp, from the texture's average shiny texel, so a texel costs three
+      multiplies.
     - *Which lamp:* the bake lists up to 3 lamps each wall sample column can see (`wallLamp`, nearest first), and each
-      screen column picks the one whose glint plus streak is brightest. With one baked lamp per column (the brightest
-      on that strip), the lamp you look towards was never the one picked.
-    - *Only near the wall:* it fades out as the eye steps off the wall's face (gone at 2 tiles, `GLINT_NEAR`), so a
-      corridor's end wall seen from down it stays matte, and with distance (gone at 4 tiles, `GLINT_RANGE`), so a far
-      wall that lies in line with the eye (close to its plane, far from the eye) doesn't flash a stripe down its edge.
-    - *Materials* (`GLINT_MATERIAL` in `renderer/textures.ts`): wood glints in the lamp's colour; brick barely glints
-      (×0.1) and shines in its streaks, in 60% its own hue and 40% the lamp's (all lamp colour turned blue brick violet,
-      all hue made only a deeper blue). Mortar stays matte (`GLOSS`). Light stone is near white under a lamp, so its
-      streak barely shows: it reads as matte, which suits it. Floors and ceilings don't reflect.
-    - *Tried first:* scaling brick's glint by viewing angle (Schlick's Fresnel, then f0 + (1 − f0)·sin²). A mirror
-      glint sits too close to the eye to read as light along the wall; the streak does.
-    - Per frame: up to 3 lamp tries per near wall column, then a few multiplies per texel run, about +0.04 ms at the
-      worst spots (close to walls in lit corridors, esbuild bundle).
+      screen column takes the one that reflects brightest at its bounce height (`brightestReflection`). With one
+      baked lamp per column (the brightest on that strip), the lamp you look towards was never the one picked.
+    - *Only near the wall:* it fades out as the eye steps off the wall's face (gone at 4 tiles, `REFLECTION_NEAR`)
+      and with distance (gone at 8, `REFLECTION_RANGE`). A far wall lying almost in line with the eye still shows a
+      faint stripe down its edge; halving both distances hides it, at the cost of shorter streaks.
+    - *Per frame:* a column whose reflection peaks under half a step of brightness is skipped; the rest work it out
+      at 17 heights and blend them per texel row (per texel row it cost +1 ms). About +0.09 ms at the worst spots,
+      close to walls in lit corridors (esbuild bundle).
   - Not done yet: avatars aren't lit, shadow edges are stair-stepped, rooms get no lamps of their own.
 
 ## Resolved
