@@ -1,7 +1,22 @@
 // Column-by-column textured wall renderer with flat ceiling and floor.
 import { castRay, createRayHit, type GameMap, type PlayerState } from '@zoom3d/shared';
 import { type Framebuffer, rgb } from './framebuffer';
-import { FACES, FLOOR_SUB, GLINT_RANGE, GLINT_STRENGTH, glint, type Lighting, WALL_U, WALL_V } from './lighting';
+import {
+  brightestGlint,
+  FACES,
+  FLOOR_SUB,
+  GLINT_LAMPS,
+  GLINT_NEAR,
+  GLINT_RANGE,
+  GLINT_STRENGTH,
+  glint,
+  type Lighting,
+  STREAK_HALF_HEIGHT,
+  STREAK_STRENGTH,
+  streak,
+  WALL_U,
+  WALL_V,
+} from './lighting';
 import { GLINT_MATERIAL, GLOSS, RELIEF, RELIEF_LEVELS, TEX } from './textures';
 
 export const CEILING = rgb(0x38, 0x38, 0x38);
@@ -13,6 +28,8 @@ let rowDist = new Float64Array(0);
 let rowDistFor = '';
 let wallStart = new Int32Array(0);
 let wallEnd = new Int32Array(0);
+/** The column's streak: strength, then height. */
+const streakOut = new Float64Array(2);
 
 /** Darkens a colour to 70% (y-side walls), keeping alpha. */
 export function shade(c: number): number {
@@ -102,7 +119,7 @@ function renderLitWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textures:
     wallEnd = new Int32Array(w);
     rowDistFor = key;
   }
-  const { faceOffset, wall, wallLamp, floor, ceiling, stride, rows } = lm;
+  const { faceOffset, wall, floor, ceiling, stride, rows } = lm;
   const levels = RELIEF_LEVELS.length;
   const vShift = Math.log2(size / WALL_V);
 
@@ -130,15 +147,31 @@ function renderLitWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textures:
     const face = hit.side === 0 ? (rayX > 0 ? 0 : 1) : rayY > 0 ? 2 : 3;
     const base = faceOffset[(hit.mapY * map.width + hit.mapX) * 4 + face] as number;
     const lightCol = base + Math.floor(hit.wallX * WALL_U) * WALL_V;
-    // A near wall glints where it mirrors its lamp: per texel row, faded out towards GLINT_RANGE.
-    const lampIndex = base < 0 || hit.distance >= GLINT_RANGE ? -1 : (wallLamp[lightCol / WALL_V] as number);
-    const lamp = lampIndex < 0 ? null : lm.lights.at(lampIndex);
+    // A wall you're close to shines with the lamp it mirrors best: a glint where it mirrors the lamp, and a streak
+    // along it towards the lamp, seen at a shallow angle. It fades as you step away from the wall's face, and with
+    // distance along it.
     const normal = FACES.at(face);
-    const gloss = GLOSS[hit.tile] as Uint8Array;
-    const { f0, tinted } = GLINT_MATERIAL[hit.tile] as (typeof GLINT_MATERIAL)[number];
     const hitX = p.x + hit.distance * rayX;
     const hitY = p.y + hit.distance * rayY;
-    const glintScale = (1 - hit.distance / GLINT_RANGE) * GLINT_STRENGTH * 255;
+    const away = normal ? ((p.x - hitX) * normal.dx + (p.y - hitY) * normal.dy) / GLINT_NEAR : 1;
+    const far = hit.distance / GLINT_RANGE;
+    const fade = away < 1 && far < 1 ? (1 - away * away) * (1 - far * far) * 255 : 0;
+    const lampIndex =
+      base < 0 || !normal || fade === 0
+        ? -1
+        : brightestGlint(lm, (lightCol / WALL_V) * GLINT_LAMPS, normal.dx, normal.dy, hitX, hitY, p.x, p.y);
+    const lamp = lampIndex < 0 ? null : lm.lights.at(lampIndex);
+    const gloss = GLOSS[hit.tile] as Uint8Array;
+    const material = GLINT_MATERIAL[hit.tile] as (typeof GLINT_MATERIAL)[number];
+    const tint = material.tint;
+    const glintScale = fade * GLINT_STRENGTH * material.glint;
+    if (lamp && normal) {
+      streak(lamp, normal.dx, normal.dy, hitX, hitY, p.x, p.y, streakOut);
+    } else {
+      streakOut[0] = 0;
+    }
+    const streakScale = (streakOut[0] as number) * fade * STREAK_STRENGTH;
+    const streakZ = streakOut[1] as number;
     const step = size / lineH;
     let texPos = (start - half + lineH / 2) * step;
     // A near wall spreads each texel over several rows: shade it once and repeat it.
@@ -167,15 +200,21 @@ function renderLitWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textures:
       let b = (((c >>> 16) & 0xff) * ((l >>> 16) & 0xff)) >> 7;
       if (lamp && normal && gloss[t] === 1) {
         const z = 1 - (texY + 0.5) / size;
-        const s = glint(lamp, f0, normal.dx, normal.dy, hitX, hitY, z, p.x, p.y) * glintScale;
-        if (tinted) {
+        let s = glint(lamp, normal.dx, normal.dy, hitX, hitY, z, p.x, p.y) * glintScale;
+        const off = (z - streakZ) / STREAK_HALF_HEIGHT;
+        const band = 1 - off * off;
+        if (band > 0) {
+          s += streakScale * band * band;
+        }
+        if (tint > 0) {
           const cr = c & 0xff;
           const cg = (c >>> 8) & 0xff;
           const cb = (c >>> 16) & 0xff;
-          const k = s / Math.max(cr, cg, cb, 1);
-          r += (k * cr * lamp.r) | 0;
-          g += (k * cg * lamp.g) | 0;
-          b += (k * cb * lamp.b) | 0;
+          const k = (s * tint) / Math.max(cr, cg, cb, 1);
+          const pale = s * (1 - tint);
+          r += ((k * cr + pale) * lamp.r) | 0;
+          g += ((k * cg + pale) * lamp.g) | 0;
+          b += ((k * cb + pale) * lamp.b) | 0;
         } else {
           r += (s * lamp.r) | 0;
           g += (s * lamp.g) | 0;

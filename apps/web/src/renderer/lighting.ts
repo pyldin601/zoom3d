@@ -30,10 +30,25 @@ const FIXTURE_RADIUS = 0.18;
 const FIXTURE = rgb(255, 236, 190);
 /** The eye's height above the floor: walls are drawn centred on the horizon. */
 const EYE_Z = 0.5;
-/** Walls glint within this many tiles of the eye, fading to nothing at the edge. */
-export const GLINT_RANGE = 3;
+/**
+ * Walls glint only this many tiles from the eye, fading to nothing here: a streak along the wall you're by stays near
+ * you, and a far wall that happens to lie in line with the eye (close to its plane) doesn't flash.
+ */
+export const GLINT_RANGE = 4;
+/** A wall glints only while the eye is this close to it (tiles off its face), fading to nothing at this distance. */
+export const GLINT_NEAR = 2;
+/** Lamps a wall sample column can glint with (nearest first), so a wall can mirror the lamp you look towards. */
+export const GLINT_LAMPS = 3;
+/** A lamp's reflection carries this many times its light's reach: you see a lamp further off than it lights. */
+const GLINT_REACH = 2;
+/** A lamp's streak along a wall carries this many times its light's reach. */
+const STREAK_REACH = 1.5;
+/** A full streak adds this much of the lamp's colour (×255), like GLINT_STRENGTH. */
+export const STREAK_STRENGTH = 0.385;
+/** Half the streak's height on the wall (the wall is 1 high): it fades from its centre line to nothing at this. */
+export const STREAK_HALF_HEIGHT = 0.25;
 /** A full glint adds this much of the lamp's colour (×255) on top of the lit texel. */
-export const GLINT_STRENGTH = 0.5;
+export const GLINT_STRENGTH = 0.35;
 
 export interface Lighting {
   map: GameMap;
@@ -43,7 +58,10 @@ export interface Lighting {
   faceOffset: Int32Array;
   /** Packed multipliers, [face][u][v][relief level]: ambient + lamps × (1 + RELIEF_LEVELS[level]). */
   wall: Uint32Array;
-  /** Per face sample column ([face][u], so faceOffset / WALL_V + u): the lamp that glints there, or −1. */
+  /**
+   * Per face sample column ([face][u][k], so (faceOffset / WALL_V + u) · GLINT_LAMPS + k): the lamps in sight and in
+   * reflection reach, nearest first, −1 past the last.
+   */
   wallLamp: Int16Array;
   /** Final floor / ceiling colours, (map.width·FLOOR_SUB) × (map.height·FLOOR_SUB). */
   floor: Uint32Array;
@@ -104,7 +122,8 @@ export function bakeLighting(
 
   const levels = RELIEF_LEVELS.length;
   const wall = new Uint32Array(faces * WALL_U * WALL_V * levels);
-  const wallLamp = new Int16Array(faces * WALL_U).fill(-1);
+  const wallLamp = new Int16Array(faces * WALL_U * GLINT_LAMPS).fill(-1);
+  const seen: { i: number; dist: number }[] = [];
   for (let cy = 0; cy < height; cy++) {
     for (let cx = 0; cx < width; cx++) {
       for (let f = 0; f < 4; f++) {
@@ -122,23 +141,22 @@ export function bakeLighting(
           const r = new Float64Array(WALL_V);
           const g = new Float64Array(WALL_V);
           const b = new Float64Array(WALL_V);
-          let brightest = 0;
+          seen.length = 0;
           for (let i = 0; i < lights.length; i++) {
             const l = lights[i] as Light;
             const dx = l.x - px;
             const dy = l.y - py;
             const facing = dx * n.dx + dy * n.dy;
-            if (facing <= 0 || Math.hypot(dx, dy) >= l.radius) {
+            const flat = Math.hypot(dx, dy);
+            if (facing <= 0 || flat >= l.radius * GLINT_REACH) {
               continue;
             }
             if (!hasLineOfSight(map, px + n.dx * 1e-3, py + n.dy * 1e-3, l.x, l.y)) {
               continue;
             }
-            const mid = Math.hypot(dx, dy, l.z - EYE_Z);
-            const strength = falloff(mid, l.radius) * (facing / mid) * Math.max(l.r, l.g, l.b);
-            if (strength > brightest) {
-              brightest = strength;
-              wallLamp[base / WALL_V + u] = i;
+            seen.push({ i, dist: flat });
+            if (flat >= l.radius) {
+              continue;
             }
             for (let v = 0; v < WALL_V; v++) {
               const dz = l.z - (1 - (v + 0.5) / WALL_V);
@@ -148,6 +166,10 @@ export function bakeLighting(
               g[v] = (g[v] as number) + l.g * k;
               b[v] = (b[v] as number) + l.b * k;
             }
+          }
+          seen.sort((a, b) => a.dist - b.dist);
+          for (let k = 0; k < Math.min(seen.length, GLINT_LAMPS); k++) {
+            wallLamp[(base / WALL_V + u) * GLINT_LAMPS + k] = (seen[k] as { i: number }).i;
           }
           for (let v = 0; v < WALL_V; v++) {
             const rv = r[v] as number;
@@ -213,15 +235,13 @@ export function bakeLighting(
 
 /**
  * How brightly lamp `l` glints at (px, py, pz) on a wall facing (nx, ny), seen from the eye at (ex, ey): Phong, cos³²
- * of the angle between the lamp and the eye's ray mirrored off the wall, times the lamp's falloff, times a sheen
- * that grows with the viewing angle: f0 + (1 − f0)·sin², so a glint seen head-on keeps f0 of itself and one seen at
- * an angle nearly all (f0 = 1 shines alike from every angle). Schlick's Fresnel would be truer, but its rise past 80°
- * is steeper than any glint a corridor shows. 0..1, before the lamp's colour. It runs per texel row on near walls, so
- * squares only, no roots. Shadows are the caller's (wallLamp).
+ * of the angle between the lamp and the eye's ray mirrored off the wall, times the lamp's falloff over GLINT_REACH
+ * times its reach (a blurry mirror: looking along a wall, you see a lamp further down it), times a sheen
+ * 0..1, before the lamp's colour. It runs per texel row on near walls, so squares only, no roots. Shadows are the
+ * caller's (wallLamp).
  */
 export function glint(
   l: Light,
-  f0: number,
   nx: number,
   ny: number,
   px: number,
@@ -234,7 +254,7 @@ export function glint(
   const ly = l.y - py;
   const lz = l.z - pz;
   const l2 = lx * lx + ly * ly + lz * lz;
-  const reach2 = l.radius * l.radius;
+  const reach2 = l.radius * l.radius * GLINT_REACH * GLINT_REACH;
   if (l2 >= reach2 || lx * nx + ly * ny <= 0) {
     return 0;
   }
@@ -256,8 +276,94 @@ export function glint(
   c *= c;
   c *= c;
   const k = 1 - l2 / reach2;
+  return c * k * k;
+}
+
+/**
+ * The streak lamp `l` leaves along a wall seen at a shallow angle, a rough wall's blurry reflection smeared towards
+ * the light: on the column at (px, py) of a wall facing (nx, ny), seen from (ex, ey), `out[0]` gets its strength 0..1
+ * and `out[1]` the height it runs at, where the wall bounces the eye's ray to the lamp. The strength is a broad lobe
+ * between the eye's ray mirrored off the wall and the lamp, seen from above (cos²), times how flat the eye's ray meets
+ * the wall (sin⁸), times the lamp's falloff over STREAK_REACH times its reach. So it grows from the mirror point
+ * towards the lamp and fades right beside it. Once per wall column, so roots are fine.
+ */
+export function streak(
+  l: Light,
+  nx: number,
+  ny: number,
+  px: number,
+  py: number,
+  ex: number,
+  ey: number,
+  out: Float64Array
+): void {
+  out[0] = 0;
+  out[1] = EYE_Z;
+  const lx = l.x - px;
+  const ly = l.y - py;
+  const l2 = lx * lx + ly * ly;
+  const reach2 = l.radius * l.radius * STREAK_REACH * STREAK_REACH;
+  if (l2 >= reach2 || lx * nx + ly * ny <= 0) {
+    return;
+  }
+  // The eye's ray to the column, mirrored off the wall, seen from above.
+  let rx = px - ex;
+  let ry = py - ey;
+  const into = rx * nx + ry * ny;
+  rx -= 2 * into * nx;
+  ry -= 2 * into * ny;
+  const dot = rx * lx + ry * ly;
+  if (dot <= 0) {
+    return;
+  }
+  const r2 = rx * rx + ry * ry;
+  const c2 = (dot * dot) / (r2 * l2);
   const sin2 = 1 - (into * into) / r2;
-  return c * k * k * (f0 + (1 - f0) * sin2);
+  const sin4 = sin2 * sin2;
+  const k = 1 - l2 / reach2;
+  out[0] = c2 * sin4 * sin4 * k * k;
+  // Where the ray climbs from the eye to the lamp over the two horizontal legs, eye to wall and wall to lamp.
+  const eyeLeg = Math.sqrt(r2);
+  const lampLeg = Math.sqrt(l2);
+  out[1] = (EYE_Z * lampLeg + l.z * eyeLeg) / (eyeLeg + lampLeg);
+}
+
+const streakScratch = new Float64Array(2);
+
+/**
+ * Of a wall sample column's lamps (`wallLamp` from `slot`), the one that shines brightest on the column at (px, py)
+ * facing (nx, ny), seen from (ex, ey): its glint at its mirror height, where the glint peaks, plus its streak. −1 if
+ * none shines there.
+ */
+export function brightestGlint(
+  lm: Lighting,
+  slot: number,
+  nx: number,
+  ny: number,
+  px: number,
+  py: number,
+  ex: number,
+  ey: number
+): number {
+  const eye = (ex - px) * nx + (ey - py) * ny;
+  let best = -1;
+  let bestGlint = 0;
+  for (let k = 0; k < GLINT_LAMPS; k++) {
+    const i = lm.wallLamp[slot + k] as number;
+    const l = lm.lights.at(i);
+    if (i < 0 || !l) {
+      break;
+    }
+    const lamp = (l.x - px) * nx + (l.y - py) * ny;
+    const z = EYE_Z + ((l.z - EYE_Z) * eye) / (eye + lamp);
+    streak(l, nx, ny, px, py, ex, ey, streakScratch);
+    const g = glint(l, nx, ny, px, py, z, ex, ey) + (streakScratch[0] as number);
+    if (g > bestGlint) {
+      bestGlint = g;
+      best = i;
+    }
+  }
+  return best;
 }
 
 /** A voxel face's direction in model space (+x front, +y the model's right, +z up), as voxels.ts orders them. */

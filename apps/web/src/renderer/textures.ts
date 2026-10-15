@@ -89,21 +89,24 @@ function brickGloss(): Uint8Array {
 }
 
 export interface GlintMaterial {
-  /** How much of a lamp's glint shows head-on (see glint()): 1 shines alike from every angle. */
-  f0: number;
-  /** The glint takes the texel's hue (scaled so its brightest channel is 1) instead of the lamp's colour alone. */
-  tinted: boolean;
+  /** How much of a lamp's mirror glint shows (see glint()). Streaks along the wall show in full on every material. */
+  glint: number;
+  /**
+   * How much of the glint and streak take the texel's hue (scaled so its brightest channel is 1), 0..1; the rest is
+   * the lamp's colour. All lamp colour on blue brick reads as violet, all hue as just a deeper blue.
+   */
+  tint: number;
 }
 
 /**
- * Per texture (index = tile id, like RELIEF). Varnished wood shines from every angle in the lamp's colour; rough brick
- * only catches it at a grazing angle, in its own colour (a warm glint on blue brick reads as violet).
+ * Per texture (index = tile id, like RELIEF). Varnished wood mirrors a lamp in the lamp's colour; rough brick barely
+ * does, and only shines in its streaks, seen at a shallow angle, in its own colour paled by the lamp's.
  */
 export const GLINT_MATERIAL: readonly GlintMaterial[] = [
-  { f0: 0, tinted: false },
-  { f0: 0.1, tinted: true },
-  { f0: 1, tinted: false },
-  { f0: 0.1, tinted: true },
+  { glint: 0, tint: 0 },
+  { glint: 0.1, tint: 0.6 },
+  { glint: 1, tint: 0 },
+  { glint: 0.1, tint: 0.6 },
 ];
 
 /** Per texel and texture (index = tile id, like RELIEF): 1 where a lamp can glint, 0 where it can't. */
