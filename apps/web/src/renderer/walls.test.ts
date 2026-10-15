@@ -1,7 +1,7 @@
 import { LEVEL1, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { createFramebuffer, DEFAULT_FOV } from './framebuffer';
-import { GLOW_RADIUS, GLOW_STRENGTH } from './glow';
+import { GLOW_RADIUS, GLOW_STRENGTH, type Glow } from './glow';
 import { bakeLighting, corridorLights, REFLECTION_RANGE } from './lighting';
 import { makeTextures, TEX } from './textures';
 import { CEILING, FLOOR, renderWalls, shade } from './walls';
@@ -334,7 +334,7 @@ describe('renderWalls reflection modes', () => {
   const pose = { x: 2.5, y: 1.3, angle: 0 };
   const render = (mode: 'none' | 'walls' | 'both' | 'matte') => {
     const fb = createFramebuffer();
-    renderWalls(fb, hall, pose, textures, mode === 'matte' ? hallMatte : hallLit, mode === 'matte' ? 'both' : mode);
+    renderWalls(fb, hall, pose, textures, mode === 'matte' ? hallMatte : hallLit, mode === 'matte' ? 'none' : mode);
     return fb;
   };
   /** How many pixels differ from the matte render, above and below the horizon. */
@@ -464,5 +464,67 @@ describe('renderWalls avatar glow', () => {
       }
     }
     expect(brighter).toBeGreaterThan(100);
+  });
+});
+
+describe('renderWalls ceiling reflections', () => {
+  // A 3-wide hall, a lamp near its east end; the eye at its west end, looking along it.
+  const hall = parseMap('1111111111111\n1S..........1\n1...........1\n1...........1\n1111111111111');
+  const hallLit = bakeLighting(
+    hall,
+    [{ x: 7.5, y: 2.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 }],
+    0.45,
+    FLOOR,
+    CEILING
+  );
+  const dark = bakeLighting(hall, [], 0.08, FLOOR, CEILING);
+  const pose = { x: 2.5, y: 2.5, angle: 0 };
+  const render = (lm: typeof hallLit, mode: 'walls' | 'both', glows: Glow[] = []) => {
+    const fb = createFramebuffer();
+    renderWalls(fb, hall, pose, textures, lm, mode, glows);
+    return fb;
+  };
+  /** Ceiling pixels brighter with ceiling reflections than without, and the red they gain; fails on any darker. */
+  const brighterCeiling = (lm: typeof hallLit, glows: Glow[] = []) => {
+    const a = render(lm, 'both', glows);
+    const b = render(lm, 'walls', glows);
+    let brighter = 0;
+    let added = 0;
+    // The upper half: walls look the same in both modes, so any change is the ceiling.
+    for (let i = 0; i < (b.height / 2) * b.width; i++) {
+      const lit = (a.pixels[i] as number) & 0xff;
+      const plain = (b.pixels[i] as number) & 0xff;
+      expect(lit).toBeGreaterThanOrEqual(plain);
+      added += lit - plain;
+      if (lit > plain) {
+        brighter++;
+      }
+    }
+    return { brighter, added, a, b };
+  };
+
+  test('the ceiling mirrors the lamp’s reflection on the floor, and never darkens', () => {
+    expect(brighterCeiling(hallLit).brighter).toBeGreaterThan(100);
+  });
+
+  test('it mirrors only the floor’s reflections, not the floor: with no lamp, not even a glowing one shows', () => {
+    const glow = { x: 5.5, y: 2.5, r: GLOW_STRENGTH, g: GLOW_STRENGTH, b: GLOW_STRENGTH };
+    expect(brighterCeiling(dark).brighter).toBe(0);
+    expect(brighterCeiling(dark, [glow]).brighter).toBe(0);
+  });
+
+  test('it shows the lamp’s light off the floor, not a mirror of the floor: no cut-off at the far wall’s mirror image', () => {
+    const { a, b } = brighterCeiling(hallLit);
+    const centre = b.width / 2;
+    let beyond = 0;
+    for (let y = 0; y < b.height / 2; y++) {
+      // A mirror ceiling would show the floor at 3d and stop where that passes the end wall; this light doesn't.
+      const d = (0.5 * PROJ) / (b.height / 2 - y - 0.5);
+      if (3 * d > (b.zbuffer[centre] as number) + 0.5 && d < (b.zbuffer[centre] as number)) {
+        beyond +=
+          ((a.pixels[y * b.width + centre] as number) & 0xff) - ((b.pixels[y * b.width + centre] as number) & 0xff);
+      }
+    }
+    expect(beyond).toBeGreaterThan(0);
   });
 });

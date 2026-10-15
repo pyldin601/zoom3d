@@ -28,6 +28,11 @@ export const FLOOR = rgb(0x70, 0x70, 0x70);
 const FLOOR_MATERIAL: ReflectionMaterial = { shininess: 16, f0: 0.1, tint: 0 };
 /** Floor reflections are worked out every this many pixels along every other row, and blended between. */
 const FLOOR_STEP = 16;
+/**
+ * The ceiling reflects the lamps' light off the floor, this much of what the floor reflects: each lamp mirrored in
+ * the floor, as far under it as the lamp is over it. Only the lamps' light, never the floor, its walls or doorways.
+ */
+const CEILING_SHINE = 0.5;
 
 const hit = createRayHit();
 /** Perpendicular floor / ceiling distance per screen row (lighting only), refilled when the frame changes. */
@@ -172,8 +177,9 @@ function reflectedRgbTable(textures: Uint32Array[], lm: Lighting): Float64Array 
 }
 
 /**
- * The floor's reflection at column `col` of the row shineFloorRow worked out: blended between its samples, only where
- * this very floor cell (at `cell` in floorLamp) lists the lamp, so its shadow edge is the floor light's.
+ * The floor's reflection at column `col` of the row shineFloorRow worked out, `share` of it added to `c`: blended
+ * between its samples, only where this very floor cell (at `cell` in floorLamp) lists the lamp, so its shadow edge is
+ * the floor light's.
  */
 function shineFloorPixel(
   lm: Lighting,
@@ -181,12 +187,13 @@ function shineFloorPixel(
   col: number,
   cell: number,
   colours: Float64Array,
-  floorTile: number
+  floorTile: number,
+  share: number
 ): number {
   const i = (col / FLOOR_STEP) | 0;
   const left = floorShine[i] as number;
   const right = floorShine[i + 1] as number;
-  const s = left + (right - left) * ((col - i * FLOOR_STEP) / FLOOR_STEP);
+  const s = share * (left + (right - left) * ((col - i * FLOOR_STEP) / FLOOR_STEP));
   if (s < 0.5) {
     return c;
   }
@@ -264,9 +271,19 @@ function addGlow(c: number, albedo: number, g: Glow, k: number): number {
 
 /**
  * Works out the floor's reflection along one screen row, every FLOOR_STEP pixels, into floorShine and floorShineLamp:
- * the row's floor point at pixel col is (x0 + dx·col, y0 + dy·col) in tiles. Returns whether any of it shows.
+ * the row's floor point at pixel col is (x0 + dx·col, y0 + dy·col) in tiles. Returns whether any of it shows. For a
+ * `ceiling` row, the ceiling's reflection of the lamps mirrored in the floor: the ceiling, the eye and those lamps
+ * mirrored over the eye's height make the floor, the eye and lamps 1 + z high.
  */
-function shineFloorRow(lm: Lighting, p: PlayerState, x0: number, y0: number, dx: number, dy: number): boolean {
+function shineFloorRow(
+  lm: Lighting,
+  p: PlayerState,
+  x0: number,
+  y0: number,
+  dx: number,
+  dy: number,
+  ceiling: boolean
+): boolean {
   const { stride: across, rows: down } = lm;
   const { shininess, f0 } = FLOOR_MATERIAL;
   // The eye is always half a tile off the floor's face.
@@ -290,7 +307,8 @@ function shineFloorRow(lm: Lighting, p: PlayerState, x0: number, y0: number, dx:
       if (index < 0 || !lamp) {
         continue;
       }
-      const shine = reflection(lamp, shininess, f0, 0, 0, 1, x, y, 0, p.x, p.y) * (1 - far2) * scale;
+      const shine =
+        reflection(lamp, shininess, f0, 0, 0, 1, x, y, 0, p.x, p.y, ceiling ? 1 + lamp.z : lamp.z) * (1 - far2) * scale;
       if (shine > (floorShine[i] as number)) {
         floorShine[i] = shine;
         floorShineLamp[i] = index;
@@ -494,7 +512,7 @@ function renderLitWalls(
   const maxX = stride - 1;
   const maxY = rows - 1;
   const floorTop = Math.ceil(half);
-  let floorShows = false;
+  let shows = false;
   for (let y = 0; y < h; y++) {
     const d = rowDist[y] as number;
     const above = y < half;
@@ -504,12 +522,11 @@ function renderLitWalls(
     const sx = (d * 2 * planeX) / w;
     const sy = (d * 2 * planeY) / w;
     const row = y * w;
-    // The floor reflects the lamps: worked out every FLOOR_STEP pixels on every other row, blended between. It changes
-    // slowly down the screen, so the row below reuses it.
-    if (reflections === 'both' && !above && (y - floorTop) % 2 === 0) {
-      floorShows = d / sub < REFLECTION_RANGE && shineFloorRow(lm, p, fx / sub, fy / sub, sx / sub, sy / sub);
+    // The floor reflects the lamps, and the ceiling their light off the floor: worked out every FLOOR_STEP pixels on
+    // every other row, blended between. It changes slowly down the screen, so the next row reuses it.
+    if (reflections === 'both' && (above ? y : y - floorTop) % 2 === 0) {
+      shows = d / sub < REFLECTION_RANGE && shineFloorRow(lm, p, fx / sub, fy / sub, sx / sub, sy / sub, above);
     }
-    const shines = !above && floorShows;
     for (let col = 0; col < w; col++, fx += sx, fy += sy) {
       if (above ? y >= (wallStart[col] as number) : y < (wallEnd[col] as number)) {
         continue;
@@ -528,8 +545,9 @@ function renderLitWalls(
       }
       const c = table[iy * stride + ix] as number;
       let out = c;
-      if (shines) {
-        out = shineFloorPixel(lm, c, col, (iy * stride + ix) * REFLECTION_LAMPS, colours, textures.length);
+      if (shows) {
+        const share = above ? CEILING_SHINE : 1;
+        out = shineFloorPixel(lm, c, col, (iy * stride + ix) * REFLECTION_LAMPS, colours, textures.length, share);
       }
       pixels[row + col] = out;
     }
