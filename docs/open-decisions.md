@@ -336,8 +336,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 
 ### D24 — Lighting
 - *Resolved 2026-10-13* (spike, shipped as is): static ceiling lamps baked into lightmaps when the map loads
-  (`renderer/lighting.ts`, about 57 ms for LEVEL1). Shadows are hard and grid-exact: a 2D line of sight from each
-  lamp to each wall, floor and ceiling sample. Per frame, a wall pixel costs one lookup and a multiply, and floor and
+  (`renderer/lighting.ts`, about 57 ms for LEVEL1). Shadows are grid-exact: 2D lines of sight from each
+  lamp to each wall, floor and ceiling sample (soft since 2026-10-15, below). Per frame, a wall pixel costs one lookup and a multiply, and floor and
   ceiling (now cast per pixel, row by row) one lookup each: +0.24 ms over 0.58 ms at 640×360.
   - **Ambient is bounce light** (2026-10-15; it was a flat 45%). The bake gathers, per half-tile cell, the lamps'
     direct light on its floor, ceiling and bordering wall faces times each surface's colour (wall colours are the
@@ -426,7 +426,15 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     one-tile wall it can reach a strip at the far side's foot. Tried and measured first: faces lit by the room
     (ambient, bounce and lamps on the side facing the eye, floored at 35%; +0.01 ms); the glow evaluated per pixel
     (+0.8–2.1 ms), then per 8 pixels (+0.7–1.4 ms).
-  - Not done yet: shadow edges are stair-stepped, rooms get no lamps of their own.
+  - **Soft shadows** (2026-10-15): a lamp casts shadows as a disc the size of its fixture (`LAMP_RADIUS`, 0.18 tiles),
+    so a wall's edge hides part of it and shadows fade in over a few cells instead of stepping (`seenShare` in
+    `renderer/lighting.ts`). In 2D the disc seen from a sample is a line across the sight line to it: sight lines to
+    its two ends; where they disagree, 5 halvings find the cut and the share is the disc's area on the seen side.
+    The wall and floor lamp lists keep that share (`wallLampSeen`, `floorLampSeen`), so reflections fade with the
+    shadow. Baked, so nothing per frame; the LEVEL1 bake grows by about 8 ms (69 → 77 ms in an esbuild bundle).
+    Shadow edges are still on the floor's 1/8-tile cells, now as a gradient. The bounce bake and the voxels' per-frame
+    light keep hard sight lines.
+  - Not done yet: rooms get no lamps of their own.
 
 ## Resolved
 _(none yet)_

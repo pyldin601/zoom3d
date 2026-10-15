@@ -391,3 +391,79 @@ describe('far lamps in the lists', () => {
     expect(lm.wallLamp[(face / WALL_V) * REFLECTION_LAMPS]).toBe(0);
   });
 });
+
+describe('soft shadows', () => {
+  // A room with a pillar at (4, 3); a lamp east of it throws its shadow west, across the floor and onto the west wall.
+  const room = parseMap(`
+1111111111
+1S.......1
+1........1
+1...1....1
+1........1
+1........1
+1111111111
+`);
+  const lm = bakeLighting(room, [{ x: 6.5, y: 3.5, z: 0.85, radius: 7, r: 4, g: 4, b: 4 }], 0.1, GREY, GREY);
+  /** The largest step between neighbours, as a share of the whole range from darkest to brightest. */
+  const steepest = (values: number[]) => {
+    const range = Math.max(...values) - Math.min(...values);
+    let step = 0;
+    for (let i = 1; i < values.length; i++) {
+      step = Math.max(step, Math.abs((values.at(i) as number) - (values.at(i - 1) as number)));
+    }
+    expect(range).toBeGreaterThan(20);
+    return step / range;
+  };
+
+  test('the floor fades into the shadow over several cells instead of stepping', () => {
+    // Down x = 2.5 across the shadow's north edge, cell by cell.
+    const red: number[] = [];
+    for (let y = 1.25 * FLOOR_SUB; y < 3 * FLOOR_SUB; y++) {
+      red.push((lm.floor[y * lm.stride + Math.floor(2.5 * FLOOR_SUB)] as number) & 0xff);
+    }
+    expect(steepest(red)).toBeLessThan(0.4);
+  });
+
+  test('so does the wall', () => {
+    // Along the west wall's east face (tile x = 0), mid-height, across the shadow's north edge.
+    const light: number[] = [];
+    const levels = RELIEF_LEVELS.length;
+    for (let ty = 1; ty <= 3; ty++) {
+      const base = lm.faceOffset[(ty * room.width + 0) * 4 + 1] as number;
+      for (let u = 0; u < WALL_U; u++) {
+        light.push((lm.wall[(base + u * WALL_V + WALL_V / 2) * levels] as number) & 0xff);
+      }
+    }
+    expect(steepest(light)).toBeLessThan(0.4);
+  });
+
+  test('a lamp’s reflection fades with it: the floor lists how much of the lamp each cell sees', () => {
+    const seen = new Set<number>();
+    for (let y = 1.25 * FLOOR_SUB; y < 3 * FLOOR_SUB; y++) {
+      const at = (y * lm.stride + Math.floor(2.5 * FLOOR_SUB)) * REFLECTION_LAMPS;
+      for (let k = 0; k < REFLECTION_LAMPS; k++) {
+        if (lm.floorLamp[at + k] === 0) {
+          seen.add(lm.floorLampSeen[at + k] as number);
+        }
+      }
+    }
+    expect(seen.has(255)).toBe(true);
+    expect([...seen].some((s) => s > 0 && s < 255)).toBe(true);
+  });
+
+  test('the walls list it too', () => {
+    const seen = new Set<number>();
+    for (let ty = 1; ty <= 3; ty++) {
+      const base = lm.faceOffset[(ty * room.width + 0) * 4 + 1] as number;
+      for (let u = 0; u < WALL_U; u++) {
+        const at = (base / WALL_V + u) * REFLECTION_LAMPS;
+        for (let k = 0; k < REFLECTION_LAMPS; k++) {
+          if (lm.wallLamp[at + k] === 0) {
+            seen.add(lm.wallLampSeen[at + k] as number);
+          }
+        }
+      }
+    }
+    expect([...seen].some((s) => s > 0 && s < 255)).toBe(true);
+  });
+});

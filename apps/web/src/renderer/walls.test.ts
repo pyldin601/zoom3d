@@ -404,7 +404,10 @@ describe('renderWalls floor reflections in shadow', () => {
       renderWalls(shiny, hall, pose, textures, hallLit);
       renderWalls(plain, hall, pose, textures, hallMatte);
       for (let i = (plain.height / 2) * plain.width; i < plain.pixels.length; i++) {
-        if (plain.pixels[i] === shadow) {
+        const y = Math.floor(i / plain.width);
+        const floorDistance = (0.5 * PROJ) / (y + 0.5 - plain.height / 2);
+        // Floor only: a wall pixel can match the shadow's colour by chance.
+        if (plain.pixels[i] === shadow && floorDistance < (plain.zbuffer[i % plain.width] as number)) {
           shaded++;
           if (shiny.pixels[i] !== shadow) {
             throw new Error(`a shaded floor pixel shines at ${pose.x},${pose.y},${pose.angle}, pixel ${i}`);
