@@ -376,7 +376,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     - *Materials* (`REFLECTION_MATERIAL` in `renderer/textures.ts`): varnished wood is glossy (shininess 16, f0 0.4),
       a soft spot face-on and a narrower streak; brick is rough (8, 0.05), barely there face-on and a long streak.
       Mortar stays matte (`GLOSS`). Light stone is near white under a lamp, so it reads as matte, which suits it.
-      The ceiling doesn't reflect.
+      The ceiling doesn't reflect the lamps; it mirrors the floor (below).
     - *Floor* (2026-10-15): the same model on a semi-glossy floor facing up (shininess 16, f0 0.1, `FLOOR_MATERIAL` in
       `renderer/walls.ts`): each lamp ahead leaves a narrow smear on the floor, faint near the eye, strongest part way
       and gone under the lamp. It's worked out every 16 pixels on every other row and blended between (every 8 on
@@ -384,6 +384,13 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
       cell can see (`floorLamp`, the same cells and sight lines), and each pixel adds a reflection only if its own
       cell lists the lamp. Blending alone carried reflection up to 16 pixels into shadows, in 2-row steps: a comb
       interleaving with the shadow edge (fixed 2026-10-15). The bake is about 78 ms for LEVEL1; the lists take 1.3 MB.
+    - *Ceiling* (2026-10-15): it catches the lamps' light off the floor, not the lamps and not the floor: each lamp
+      mirrored in the floor (as far under it as the lamp is over it) reflected in the ceiling with the floor's model
+      and material, at half strength (`CEILING_SHINE` in `renderer/walls.ts`), each cell's shadows as the floor's.
+      Mirrored over the eye's height that's the floor's own reflection of a lamp 1 + z high, so it's the same code.
+      Tried and dropped: a ceiling lit by the lamps; one mirroring the floor's colours (texture and all), then its
+      reflections, at 3d along the ray, which showed the floor plan, walls and doorways and all, like a mirror. Avatar
+      glow doesn't show in it. About +0.25 ms.
     - *Colour* (`reflectedColour()` in `renderer/colour.ts`): plain RGB addition of the warm lamp turned blue brick
       violet, a hue in neither. The lamp's light is now mixed in OKLab, where warm on blue passes through grey, never
       violet: as bright as addition, its colour axes weighted by brightness. That alone keeps the lamp's brightness,
@@ -403,7 +410,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
       (`faceRun`), and past a run's end the distance counts to that end. Measured to the plane, a far wall face lying
       in line with the eye (a pillar's side down the corridor) counted as close and flashed a stripe down its edge.
       A wall that resumes in the same line after a doorway is a separate run, so its streak starts dimmer.
-    - *Console* (backquote, under the audio tuning): "Reflections" picks None, Walls, or Walls and floor (the default),
+    - *Console* (backquote, under the audio tuning): "Reflections" picks None, Walls, or Walls, floor and ceiling (the default),
       kept per browser (`ui/render-settings.ts`, like the audio settings). The landing page always shows both.
     - *Per frame:* a wall column whose reflection peaks under half a step of brightness is skipped; the rest work it
       out at 17 heights and blend them per texel row (per texel row it cost +1 ms). Walls and floor together cost

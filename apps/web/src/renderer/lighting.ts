@@ -588,11 +588,12 @@ export function reflection(
   py: number,
   pz: number,
   ex: number,
-  ey: number
+  ey: number,
+  lampZ = l.z
 ): number {
   const lx = l.x - px;
   const ly = l.y - py;
-  const lz = l.z - pz;
+  const lz = lampZ - pz;
   const l2 = lx * lx + ly * ly + lz * lz;
   if (lx * nx + ly * ny + lz * nz <= 0) {
     return 0;

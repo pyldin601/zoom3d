@@ -15,7 +15,7 @@ export interface AudioPanelOptions {
 const REFLECTIONS: readonly [ReflectionMode, string][] = [
   ['none', 'None'],
   ['walls', 'Walls'],
-  ['both', 'Walls and floor'],
+  ['both', 'Walls, floor and ceiling'],
 ];
 
 type NumericKey = 'ref' | 'max' | 'reverb' | 'muffleHz' | 'occludedGain';
