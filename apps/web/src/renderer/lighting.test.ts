@@ -9,6 +9,7 @@ import {
   DIR_FRONT,
   DIR_TOP,
   directLight,
+  FLOOR_LAMP_SUB,
   type Light,
   REFLECTION_LAMPS,
   reflection,
@@ -114,7 +115,7 @@ describe('reflection', () => {
   const peak = (x: number, ex: number, ey: number, m = WOOD, light: Light = l) => {
     let most = 0;
     for (let z = 0; z <= 1; z += 0.01) {
-      most = Math.max(most, reflection(light, m.shininess, m.f0, 0, 1, x, 0, z, ex, ey));
+      most = Math.max(most, reflection(light, m.shininess, m.f0, 0, 1, 0, x, 0, z, ex, ey));
     }
     return most;
   };
@@ -209,5 +210,45 @@ describe('brightestReflection', () => {
     const peak = new Float64Array(1);
     expect(brightestReflection(lm, at, 16, 0.4, 0, 1, 5, 1, 2.5, 1.3, peak)).toBe(1);
     expect(peak[0] as number).toBeGreaterThan(0);
+  });
+});
+
+describe('reflection on the floor', () => {
+  // The floor faces up. The eye at (0, 0) looks along +x at a lamp 5 tiles off.
+  const l = { ...lamp(5, 0), radius: 4.5 };
+  const at = (x: number, y = 0) => reflection(l, 16, 0.1, 0, 0, 1, x, y, 0, 0, 0);
+
+  test('smears from near the eye towards the lamp, strongest part way, gone under it', () => {
+    expect(at(3)).toBeGreaterThan(0.5);
+    expect(at(1)).toBeLessThan(at(3) / 2);
+    expect(at(5)).toBeLessThan(0.05);
+  });
+
+  test('is narrow across the view', () => {
+    expect(at(2.5, 0.5)).toBeLessThan(at(2.5) / 10);
+  });
+
+  test('is zero out of reach', () => {
+    expect(reflection({ ...l, radius: 1 }, 16, 0.1, 0, 0, 1, 3, 0, 0, 0, 0)).toBe(0);
+  });
+});
+
+describe('bakeLighting floor lamps', () => {
+  /** The first floorLamp slot of the floor at (x, y). */
+  const slot = (lm: ReturnType<typeof bakeLighting>, x: number, y: number) =>
+    (Math.floor(y * FLOOR_LAMP_SUB) * lm.map.width * FLOOR_LAMP_SUB + Math.floor(x * FLOOR_LAMP_SUB)) *
+    REFLECTION_LAMPS;
+
+  test('lists the lamps a floor spot can see, nearest first', () => {
+    const lm = bakeLighting(map, [lamp(5.5, 2.5), lamp(1.5, 2.5)], 0.45, GREY, GREY);
+    const at = slot(lm, 1.6, 2.4);
+    expect([...lm.floorLamp.subarray(at, at + REFLECTION_LAMPS)]).toEqual([1, 0, -1]);
+  });
+
+  test('a lamp hidden behind the pillar is never listed', () => {
+    // The pillar at (3, 1) stands between (1.5, 1.5) and a lamp at (5.5, 1.5).
+    const lm = bakeLighting(map, [lamp(5.5, 1.5)], 0.45, GREY, GREY);
+    const at = slot(lm, 1.5, 1.5);
+    expect([...lm.floorLamp.subarray(at, at + REFLECTION_LAMPS)]).toEqual([-1, -1, -1]);
   });
 });

@@ -248,3 +248,42 @@ describe('renderWalls reflections', () => {
     expect(blueAdded).toBeGreaterThan(2.5 * greenAdded);
   });
 });
+
+describe('renderWalls floor reflections', () => {
+  // A 3-wide corridor, a lamp near its east end; the eye at its west end, looking along it.
+  const hall = parseMap('1111111111111\n1S..........1\n1...........1\n1...........1\n1111111111111');
+  const hallLit = bakeLighting(
+    hall,
+    [{ x: 7.5, y: 2.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 }],
+    0.45,
+    FLOOR,
+    CEILING
+  );
+  const hallMatte = {
+    ...hallLit,
+    wallLamp: new Int16Array(hallLit.wallLamp.length).fill(-1),
+    floorLamp: new Int16Array(hallLit.floorLamp.length).fill(-1),
+  };
+  const pose = { x: 2.5, y: 2.5, angle: 0 };
+  const channels = (c: number) => [c & 0xff, (c >>> 8) & 0xff, (c >>> 16) & 0xff];
+  const shiny = createFramebuffer();
+  const plain = createFramebuffer();
+  renderWalls(shiny, hall, pose, textures, hallLit);
+  renderWalls(plain, hall, pose, textures, hallMatte);
+
+  test('the floor shines between the eye and the lamp, and never darkens', () => {
+    let brighter = 0;
+    for (let y = plain.height / 2; y < plain.height; y++) {
+      for (let x = 0; x < plain.width; x++) {
+        const i = y * plain.width + x;
+        const a = channels(shiny.pixels[i] as number);
+        const b = channels(plain.pixels[i] as number);
+        expect(a.every((v, k) => v >= (b[k] as number))).toBe(true);
+        if (a.some((v, k) => v > (b[k] as number))) {
+          brighter++;
+        }
+      }
+    }
+    expect(brighter).toBeGreaterThan(100);
+  });
+});

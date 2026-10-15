@@ -23,6 +23,8 @@ export const WALL_U = 16;
 export const WALL_V = 8;
 /** Floor and ceiling samples per tile edge. */
 export const FLOOR_SUB = 8;
+/** Floor reflection lamp lists per tile edge (coarser than the floor's light: they only pick a lamp). */
+export const FLOOR_LAMP_SUB = 4;
 /** Light multipliers are packed 0xBBGGRR with 128 = 1.0, so a lamp can overbright up to 2×. */
 const ONE = 128;
 /** Ceiling cells within this distance (tiles) of a lamp show the lamp itself. */
@@ -59,6 +61,11 @@ export interface Lighting {
    * and in reflection reach, nearest first, −1 past the last.
    */
   wallLamp: Int16Array;
+  /**
+   * Per floor spot (FLOOR_LAMP_SUB per tile edge, row by row) × REFLECTION_LAMPS: the lamps in sight and in reflection
+   * reach, nearest first, −1 past the last.
+   */
+  floorLamp: Int16Array;
   /** Final floor / ceiling colours, (map.width·FLOOR_SUB) × (map.height·FLOOR_SUB). */
   floor: Uint32Array;
   ceiling: Uint32Array;
@@ -226,11 +233,41 @@ export function bakeLighting(
       ceiling[sy * stride + sx] = fixture ? FIXTURE : tint(ceilingColour, cr, cg, cb);
     }
   }
-  return { map, lights, ambient, faceOffset, wall, wallLamp, floor, ceiling, stride, rows };
+  const floorLamp = bakeFloorLamps(map, lights);
+  return { map, lights, ambient, faceOffset, wall, wallLamp, floorLamp, floor, ceiling, stride, rows };
+}
+
+function bakeFloorLamps(map: GameMap, lights: readonly Light[]): Int16Array {
+  const across = map.width * FLOOR_LAMP_SUB;
+  const down = map.height * FLOOR_LAMP_SUB;
+  const floorLamp = new Int16Array(across * down * REFLECTION_LAMPS).fill(-1);
+  const seen: { i: number; dist: number }[] = [];
+  for (let sy = 0; sy < down; sy++) {
+    for (let sx = 0; sx < across; sx++) {
+      const px = (sx + 0.5) / FLOOR_LAMP_SUB;
+      const py = (sy + 0.5) / FLOOR_LAMP_SUB;
+      if (tileAt(map, Math.floor(px), Math.floor(py)) !== 0) {
+        continue;
+      }
+      seen.length = 0;
+      lights.forEach((l, i) => {
+        const flat = Math.hypot(l.x - px, l.y - py);
+        if (flat < l.radius * REFLECTION_REACH && hasLineOfSight(map, px, py, l.x, l.y)) {
+          seen.push({ i, dist: flat });
+        }
+      });
+      seen.sort((a, b) => a.dist - b.dist);
+      for (let k = 0; k < Math.min(seen.length, REFLECTION_LAMPS); k++) {
+        floorLamp[(sy * across + sx) * REFLECTION_LAMPS + k] = (seen[k] as { i: number }).i;
+      }
+    }
+  }
+  return floorLamp;
 }
 
 /**
- * How brightly lamp `l` reflects at (px, py, pz) on a wall facing (nx, ny), seen from the eye at (ex, ey), 0..1 before
+ * How brightly lamp `l` reflects at (px, py, pz) on a surface facing (nx, ny, nz) (a wall, or the floor facing up),
+ * seen from the eye at (ex, ey), 0..1 before
  * the lamp's colour. One model for every angle: Blinn-Phong, (n·h)^shininess with h halfway between the lamp and the
  * eye, times a boost at shallow angles, f0 + (1 − f0)·(1 − (v·h)²), times the lamp's falloff over REFLECTION_REACH
  * times its reach. Face-on it's a soft spot where the wall mirrors the lamp, worth f0 of itself; looking along the
@@ -246,6 +283,7 @@ export function reflection(
   f0: number,
   nx: number,
   ny: number,
+  nz: number,
   px: number,
   py: number,
   pz: number,
@@ -257,7 +295,7 @@ export function reflection(
   const lz = l.z - pz;
   const l2 = lx * lx + ly * ly + lz * lz;
   const reach2 = l.radius * l.radius * REFLECTION_REACH * REFLECTION_REACH;
-  if (l2 >= reach2 || lx * nx + ly * ny <= 0) {
+  if (l2 >= reach2 || lx * nx + ly * ny + lz * nz <= 0) {
     return 0;
   }
   const vx = ex - px;
@@ -270,7 +308,7 @@ export function reflection(
   const hy = ly / lampLen + vy / eyeLen;
   const hz = lz / lampLen + vz / eyeLen;
   const halfLen = Math.sqrt(hx * hx + hy * hy + hz * hz);
-  const nh = (hx * nx + hy * ny) / halfLen;
+  const nh = (hx * nx + hy * ny + hz * nz) / halfLen;
   if (nh <= 0) {
     return 0;
   }
@@ -321,7 +359,7 @@ export function brightestReflection(
       break;
     }
     const z = bounceHeight(l, px, py, ex, ey);
-    const strength = reflection(l, shininess, f0, nx, ny, px, py, z, ex, ey);
+    const strength = reflection(l, shininess, f0, nx, ny, 0, px, py, z, ex, ey);
     if (strength > bestStrength) {
       bestStrength = strength;
       best = i;

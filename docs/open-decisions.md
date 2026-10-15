@@ -363,7 +363,12 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     - *Materials* (`REFLECTION_MATERIAL` in `renderer/textures.ts`): varnished wood is glossy (shininess 16, f0 0.4),
       a soft spot face-on and a narrower streak; brick is rough (8, 0.05), barely there face-on and a long streak.
       Mortar stays matte (`GLOSS`). Light stone is near white under a lamp, so it reads as matte, which suits it.
-      Floors and ceilings don't reflect.
+      The ceiling doesn't reflect.
+    - *Floor* (2026-10-15): the same model on a semi-glossy floor facing up (shininess 16, f0 0.1, `FLOOR_MATERIAL` in
+      `renderer/walls.ts`): each lamp ahead leaves a narrow smear on the floor, faint near the eye, strongest part way
+      and gone under the lamp. The bake lists up to 3 lamps each quarter-tile of floor can see (`floorLamp`), so it
+      keeps the floor's shadows. It's worked out every 16 pixels on every other row and blended between (every 8 on
+      every row cost +0.21 ms); about +0.09 ms, and the bake grows to about 90 ms for LEVEL1.
     - *Colour* (`reflectedColour()` in `renderer/colour.ts`): plain RGB addition of the warm lamp turned blue brick
       violet, a hue in neither. The lamp's light is now mixed in OKLab, where warm on blue passes through grey, never
       violet: as bright as addition, its colour axes weighted by brightness. That alone keeps the lamp's brightness,
@@ -377,9 +382,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     - *Only near the wall:* it fades out as the eye steps off the wall's face (gone at 4 tiles, `REFLECTION_NEAR`)
       and with distance (gone at 8, `REFLECTION_RANGE`). A far wall lying almost in line with the eye still shows a
       faint stripe down its edge; halving both distances hides it, at the cost of shorter streaks.
-    - *Per frame:* a column whose reflection peaks under half a step of brightness is skipped; the rest work it out
-      at 17 heights and blend them per texel row (per texel row it cost +1 ms). About +0.09 ms at the worst spots,
-      close to walls in lit corridors (esbuild bundle).
+    - *Per frame:* a wall column whose reflection peaks under half a step of brightness is skipped; the rest work it
+      out at 17 heights and blend them per texel row (per texel row it cost +1 ms). Walls and floor together cost
+      about +0.22 ms at the worst spots, close to walls in lit corridors (esbuild bundle).
   - Not done yet: avatars aren't lit, shadow edges are stair-stepped, rooms get no lamps of their own.
 
 ## Resolved
