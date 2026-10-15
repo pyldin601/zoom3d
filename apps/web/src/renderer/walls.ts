@@ -178,8 +178,8 @@ function reflectedRgbTable(textures: Uint32Array[], lm: Lighting): Float64Array 
 
 /**
  * The floor's reflection at column `col` of the row shineFloorRow worked out, `share` of it added to `c`: blended
- * between its samples, only where this very floor cell (at `cell` in floorLamp) lists the lamp, so its shadow edge is
- * the floor light's.
+ * between its samples, times how much of the lamp this very floor cell (at `cell` in floorLamp) sees, so its shadow
+ * edge is the floor light's.
  */
 function shineFloorPixel(
   lm: Lighting,
@@ -193,18 +193,22 @@ function shineFloorPixel(
   const i = (col / FLOOR_STEP) | 0;
   const left = floorShine[i] as number;
   const right = floorShine[i + 1] as number;
-  const s = share * (left + (right - left) * ((col - i * FLOOR_STEP) / FLOOR_STEP));
+  let s = share * (left + (right - left) * ((col - i * FLOOR_STEP) / FLOOR_STEP));
   if (s < 0.5) {
     return c;
   }
   const lamp = floorShineLamp[left >= right ? i : i + 1] as number;
-  let listed = false;
-  for (let k = 0; k < REFLECTION_LAMPS && !listed; k++) {
-    listed = lm.floorLamp[cell + k] === lamp;
+  let seen = 0;
+  for (let k = 0; k < REFLECTION_LAMPS; k++) {
+    if (lm.floorLamp[cell + k] === lamp) {
+      seen = (lm.floorLampSeen[cell + k] as number) / 255;
+      break;
+    }
   }
-  if (!listed) {
+  if (seen === 0) {
     return c;
   }
+  s *= seen;
   const colour = (floorTile * lm.lights.length + lamp) * 3;
   const r = Math.min(255, (c & 0xff) + ((s * (colours[colour] as number)) | 0));
   const g = Math.min(255, ((c >>> 8) & 0xff) + ((s * (colours[colour + 1] as number)) | 0));
