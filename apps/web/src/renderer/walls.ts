@@ -4,6 +4,7 @@ import { reflectedColour } from './colour';
 import { type Framebuffer, rgb } from './framebuffer';
 import {
   brightestReflection,
+  distanceToWall,
   FACES,
   FLOOR_LAMP_SUB,
   FLOOR_SUB,
@@ -13,6 +14,7 @@ import {
   REFLECTION_RANGE,
   REFLECTION_SAMPLES,
   REFLECTION_STRENGTH,
+  type ReflectionMode,
   reflection,
   WALL_U,
   WALL_V,
@@ -58,10 +60,11 @@ export function renderWalls(
   map: GameMap,
   p: PlayerState,
   textures: Uint32Array[],
-  lighting: Lighting | null = null
+  lighting: Lighting | null = null,
+  reflections: ReflectionMode = 'both'
 ): void {
   if (lighting) {
-    renderLitWalls(fb, map, p, textures, lighting);
+    renderLitWalls(fb, map, p, textures, lighting, reflections);
     return;
   }
   const { width: w, height: h, pixels, zbuffer } = fb;
@@ -189,7 +192,14 @@ function shineFloorRow(lm: Lighting, p: PlayerState, x0: number, y0: number, dx:
   return shows;
 }
 
-function renderLitWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textures: Uint32Array[], lm: Lighting): void {
+function renderLitWalls(
+  fb: Framebuffer,
+  map: GameMap,
+  p: PlayerState,
+  textures: Uint32Array[],
+  lm: Lighting,
+  reflections: ReflectionMode
+): void {
   const { width: w, height: h, pixels, zbuffer } = fb;
   const dirX = Math.cos(p.angle);
   const dirY = Math.sin(p.angle);
@@ -243,17 +253,18 @@ function renderLitWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textures:
     const base = faceOffset[(hit.mapY * map.width + hit.mapX) * 4 + face] as number;
     const lightCol = base + Math.floor(hit.wallX * WALL_U) * WALL_V;
     // A wall you're close to reflects the lamp it shows best: a soft spot face-on, a streak towards the lamp seen
-    // along it. It fades as you step away from the wall's face, and with distance along it.
+    // along it. It fades as you step away from the wall itself (not its endless plane), and with distance along it.
     const normal = FACES.at(face);
     const hitX = p.x + hit.distance * rayX;
     const hitY = p.y + hit.distance * rayY;
-    const away = normal ? ((p.x - hitX) * normal.dx + (p.y - hitY) * normal.dy) / REFLECTION_NEAR : 1;
+    const away =
+      normal && base >= 0 ? distanceToWall(lm, base, normal.dx, normal.dy, hitX, hitY, p.x, p.y) / REFLECTION_NEAR : 1;
     const far = hit.distance / REFLECTION_RANGE;
     const fade = away < 1 && far < 1 ? (1 - away * away) * (1 - far * far) * 255 : 0;
     const { shininess, f0 } = REFLECTION_MATERIAL[hit.tile] as (typeof REFLECTION_MATERIAL)[number];
     const slot = (lightCol / WALL_V) * REFLECTION_LAMPS;
     const lampIndex =
-      base < 0 || !normal || fade === 0
+      reflections === 'none' || base < 0 || !normal || fade === 0
         ? -1
         : brightestReflection(lm, slot, shininess, f0, normal.dx, normal.dy, hitX, hitY, p.x, p.y, peak);
     const scale = fade * REFLECTION_STRENGTH;
@@ -339,7 +350,7 @@ function renderLitWalls(fb: Framebuffer, map: GameMap, p: PlayerState, textures:
     const row = y * w;
     // The floor reflects the lamps: worked out every FLOOR_STEP pixels on every other row, blended between. It changes
     // slowly down the screen, so the row below reuses it.
-    if (!above && (y - floorTop) % 2 === 0) {
+    if (reflections === 'both' && !above && (y - floorTop) % 2 === 0) {
       floorShows = d / sub < REFLECTION_RANGE && shineFloorRow(lm, p, fx / sub, fy / sub, sx / sub, sy / sub);
     }
     const shines = !above && floorShows;

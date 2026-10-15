@@ -379,9 +379,14 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     - *Which lamp:* the bake lists up to 3 lamps each wall sample column can see (`wallLamp`, nearest first), and each
       screen column takes the one that reflects brightest at its bounce height (`brightestReflection`). With one
       baked lamp per column (the brightest on that strip), the lamp you look towards was never the one picked.
-    - *Only near the wall:* it fades out as the eye steps off the wall's face (gone at 4 tiles, `REFLECTION_NEAR`)
-      and with distance (gone at 8, `REFLECTION_RANGE`). A far wall lying almost in line with the eye still shows a
-      faint stripe down its edge; halving both distances hides it, at the cost of shorter streaks.
+    - *Only near the wall:* it fades out as the eye steps away from the wall (gone at 4 tiles, `REFLECTION_NEAR`)
+      and with distance (gone at 8, `REFLECTION_RANGE`). "Away from the wall" is from the wall itself, not its endless
+      plane (`distanceToWall`): the bake records each face's run, the unbroken line of faces on that side
+      (`faceRun`), and past a run's end the distance counts to that end. Measured to the plane, a far wall face lying
+      in line with the eye (a pillar's side down the corridor) counted as close and flashed a stripe down its edge.
+      A wall that resumes in the same line after a doorway is a separate run, so its streak starts dimmer.
+    - *Console* (backquote, under the audio tuning): "Reflections" picks None, Walls, or Walls and floor (the default),
+      kept per browser (`ui/render-settings.ts`, like the audio settings). The landing page always shows both.
     - *Per frame:* a wall column whose reflection peaks under half a step of brightness is skipped; the rest work it
       out at 17 heights and blend them per texel row (per texel row it cost +1 ms). Walls and floor together cost
       about +0.22 ms at the worst spots, close to walls in lit corridors (esbuild bundle).

@@ -105,3 +105,24 @@ describe('boombox column', () => {
     }
   });
 });
+
+test('the renderer section switches reflections', () => {
+  const onRender = vi.fn();
+  showAudioPanel(root, {
+    settings: DEFAULT_AUDIO_SETTINGS,
+    onChange: () => {},
+    render: { settings: { reflections: 'both' }, onChange: onRender },
+  });
+  expect(root.textContent).toContain('Renderer');
+  const select = input('Reflections') as HTMLSelectElement;
+  expect(select.value).toBe('both');
+  expect([...select.options].map((o) => o.value)).toEqual(['none', 'walls', 'both']);
+  select.value = 'walls';
+  select.dispatchEvent(new Event('change'));
+  expect(onRender).toHaveBeenLastCalledWith({ reflections: 'walls' });
+});
+
+test('without render options there is no renderer section', () => {
+  showAudioPanel(root, { settings: DEFAULT_AUDIO_SETTINGS, onChange: () => {} });
+  expect(root.textContent).not.toContain('Renderer');
+});

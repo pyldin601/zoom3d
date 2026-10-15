@@ -168,9 +168,9 @@ describe('renderWalls reflections', () => {
     expect(column(shiny, centre)).toEqual(column(plain, centre));
   });
 
-  test('on a real map, nothing past REFLECTION_RANGE shines, walls in line with the eye included', () => {
-    // On LEVEL1, looking north up the wood corridor from x 35.26: wall side faces ahead lie almost in line with the
-    // eye, so they're close to their planes however far off they are.
+  test('a far wall face lying in line with the eye stays matte: no stripe down its edge', () => {
+    // On LEVEL1, looking north up the wood corridor from x 35.26: wall side faces 5–6.5 tiles ahead lie almost in
+    // line with the eye, so their planes pass close to it, but the faces themselves are far off.
     const level = parseMap(LEVEL1);
     const levelLit = bakeLighting(level, corridorLights(level), 0.45, FLOOR, CEILING);
     const levelMatte = { ...levelLit, wallLamp: new Int16Array(levelLit.wallLamp.length).fill(-1) };
@@ -180,10 +180,36 @@ describe('renderWalls reflections', () => {
     renderWalls(shiny, level, pose, textures, levelLit);
     renderWalls(plain, level, pose, textures, levelMatte);
     for (let col = 0; col < plain.width; col++) {
-      if ((plain.zbuffer[col] as number) >= REFLECTION_RANGE) {
+      if ((plain.zbuffer[col] as number) > 5) {
         expect(column(shiny, col)).toEqual(column(plain, col));
       }
     }
+  });
+
+  test('the wall you hug still streaks far ahead along it', () => {
+    const hall = parseMap('1111111111111\n1S..........1\n1...........1\n1...........1\n1111111111111');
+    const hallLit = bakeLighting(
+      hall,
+      [{ x: 9.5, y: 2.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 }],
+      0.45,
+      FLOOR,
+      CEILING
+    );
+    const hallMatte = { ...hallLit, wallLamp: new Int16Array(hallLit.wallLamp.length).fill(-1) };
+    // Close to the top wall at its west end, looking east along it.
+    const pose = { x: 1.5, y: 1.3, angle: 0.05 };
+    const shiny = createFramebuffer();
+    const plain = createFramebuffer();
+    renderWalls(shiny, hall, pose, textures, hallLit, 'walls');
+    renderWalls(plain, hall, pose, textures, hallMatte, 'walls');
+    let farShine = 0;
+    for (let col = 0; col < plain.width; col++) {
+      const far = (plain.zbuffer[col] as number) > 4;
+      if (far && column(shiny, col).some((c, y) => c !== plain.pixels[y * plain.width + col])) {
+        farShine++;
+      }
+    }
+    expect(farShine).toBeGreaterThan(0);
   });
 
   test('a wall barely shines seen face-on, but streaks seen along it towards a lamp', () => {
@@ -285,5 +311,68 @@ describe('renderWalls floor reflections', () => {
       }
     }
     expect(brighter).toBeGreaterThan(100);
+  });
+});
+
+describe('renderWalls reflection modes', () => {
+  // The hall from the floor tests: the eye at its west end looks along it at a lamp near its east end.
+  const hall = parseMap('1111111111111\n1S..........1\n1...........1\n1...........1\n1111111111111');
+  const hallLit = bakeLighting(
+    hall,
+    [{ x: 7.5, y: 2.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 }],
+    0.45,
+    FLOOR,
+    CEILING
+  );
+  const hallMatte = {
+    ...hallLit,
+    wallLamp: new Int16Array(hallLit.wallLamp.length).fill(-1),
+    floorLamp: new Int16Array(hallLit.floorLamp.length).fill(-1),
+  };
+  // Close to the top wall, so the wall shines too.
+  const pose = { x: 2.5, y: 1.3, angle: 0 };
+  const render = (mode: 'none' | 'walls' | 'both' | 'matte') => {
+    const fb = createFramebuffer();
+    renderWalls(fb, hall, pose, textures, mode === 'matte' ? hallMatte : hallLit, mode === 'matte' ? 'both' : mode);
+    return fb;
+  };
+  /** How many pixels differ from the matte render, above and below the horizon. */
+  const changed = (fb: ReturnType<typeof render>) => {
+    const matte = render('matte');
+    let wall = 0;
+    let floor = 0;
+    for (let i = 0; i < fb.pixels.length; i++) {
+      if (fb.pixels[i] !== matte.pixels[i]) {
+        if (isWallPixel(matte, i)) {
+          wall++;
+        } else {
+          floor++;
+        }
+      }
+    }
+    return { wall, floor };
+  };
+  /** A wall pixel: between its column's wall top and bottom, worked out from the wall height. */
+  const isWallPixel = (fb: ReturnType<typeof render>, i: number) => {
+    const col = i % fb.width;
+    const y = Math.floor(i / fb.width);
+    const lineH = PROJ / (fb.zbuffer[col] as number);
+    return Math.abs(y - fb.height / 2) < lineH / 2;
+  };
+
+  test('none draws no reflections at all', () => {
+    expect(changed(render('none'))).toEqual({ wall: 0, floor: 0 });
+  });
+
+  test('walls reflects on the walls only', () => {
+    const { wall, floor } = changed(render('walls'));
+    expect(wall).toBeGreaterThan(0);
+    expect(floor).toBe(0);
+  });
+
+  test('both reflects on the walls and the floor', () => {
+    const { wall, floor } = changed(render('both'));
+    expect(wall).toBeGreaterThan(0);
+    expect(floor).toBeGreaterThan(0);
   });
 });

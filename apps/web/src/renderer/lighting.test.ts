@@ -252,3 +252,28 @@ describe('bakeLighting floor lamps', () => {
     expect([...lm.floorLamp.subarray(at, at + REFLECTION_LAMPS)]).toEqual([-1, -1, -1]);
   });
 });
+
+describe('bakeLighting wall runs', () => {
+  /** The run (start, end along its axis) of a cell's face (0 W, 1 E, 2 N, 3 S). */
+  const run = (lm: ReturnType<typeof bakeLighting>, cx: number, cy: number, face: number) => {
+    const index = (lm.faceOffset[(cy * lm.map.width + cx) * 4 + face] as number) / (WALL_U * WALL_V);
+    return [lm.faceRun[index * 2], lm.faceRun[index * 2 + 1]];
+  };
+  const lm = bakeLighting(map, [], 0.45, GREY, GREY);
+
+  test('a long wall’s faces share one run, end to end', () => {
+    // The bottom wall's top (north) faces, x = 1 to 5.
+    expect(run(lm, 2, 3, 2)).toEqual([1, 6]);
+    expect(run(lm, 5, 3, 2)).toEqual([1, 6]);
+  });
+
+  test('a run stops where the wall stops having floor in front', () => {
+    // The top wall's bottom (south) faces are cut at x = 3, where the pillar stands against it.
+    expect(run(lm, 1, 0, 3)).toEqual([1, 3]);
+    expect(run(lm, 4, 0, 3)).toEqual([4, 6]);
+  });
+
+  test('a pillar face is a run of one', () => {
+    expect(run(lm, 3, 1, 3)).toEqual([3, 4]);
+  });
+});

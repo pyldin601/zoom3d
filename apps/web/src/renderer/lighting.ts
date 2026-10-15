@@ -43,6 +43,8 @@ export const REFLECTION_NEAR = 4;
 export const REFLECTION_LAMPS = 3;
 /** A lamp's reflection carries this many times its light's reach: you see a lamp further off than it lights. */
 const REFLECTION_REACH = 1.5;
+/** Which surfaces reflect the lamps (a console option): nothing, the walls, or the walls and the floor. */
+export type ReflectionMode = 'none' | 'walls' | 'both';
 /** A full reflection adds this much of the lamp's colour (×255) on top of the lit texel. */
 export const REFLECTION_STRENGTH = 0.385;
 /** Heights a wall column's reflection is worked out at (0 to 1, evenly), blended between for each texel row. */
@@ -54,6 +56,11 @@ export interface Lighting {
   ambient: number;
   /** Per wall cell × face (0 W, 1 E, 2 N, 3 S): offset into `wall`, or −1 when the face touches no floor. */
   faceOffset: Int32Array;
+  /**
+   * Per face (faceOffset / (WALL_U · WALL_V)): its run, the unbroken line of faces on the same side it belongs to, as
+   * start and end (tiles) along its axis: x for north and south faces, y for west and east ones.
+   */
+  faceRun: Int16Array;
   /** Packed multipliers, [face][u][v][relief level]: ambient + lamps × (1 + RELIEF_LEVELS[level]). */
   wall: Uint32Array;
   /**
@@ -119,6 +126,36 @@ export function bakeLighting(
         if (tileAt(map, cx + n.dx, cy + n.dy) === 0) {
           faceOffset[(cy * width + cx) * 4 + f] = faces++ * WALL_U * WALL_V;
         }
+      }
+    }
+  }
+
+  const faceRun = new Int16Array(faces * 2);
+  const hasFace = (x: number, y: number, f: number) =>
+    x >= 0 && y >= 0 && x < width && y < height && (faceOffset[(y * width + x) * 4 + f] as number) >= 0;
+  for (let cy = 0; cy < height; cy++) {
+    for (let cx = 0; cx < width; cx++) {
+      for (let f = 0; f < 4; f++) {
+        const base = faceOffset[(cy * width + cx) * 4 + f] as number;
+        if (base < 0) {
+          continue;
+        }
+        // North and south faces run along x, west and east ones along y.
+        const alongX = (FACES[f] as { dy: number }).dy !== 0;
+        const sx = alongX ? 1 : 0;
+        const sy = alongX ? 0 : 1;
+        let back = 0;
+        while (hasFace(cx - sx * (back + 1), cy - sy * (back + 1), f)) {
+          back++;
+        }
+        let ahead = 0;
+        while (hasFace(cx + sx * (ahead + 1), cy + sy * (ahead + 1), f)) {
+          ahead++;
+        }
+        const at = alongX ? cx : cy;
+        const face = base / (WALL_U * WALL_V);
+        faceRun[face * 2] = at - back;
+        faceRun[face * 2 + 1] = at + ahead + 1;
       }
     }
   }
@@ -234,7 +271,7 @@ export function bakeLighting(
     }
   }
   const floorLamp = bakeFloorLamps(map, lights);
-  return { map, lights, ambient, faceOffset, wall, wallLamp, floorLamp, floor, ceiling, stride, rows };
+  return { map, lights, ambient, faceOffset, faceRun, wall, wallLamp, floorLamp, floor, ceiling, stride, rows };
 }
 
 function bakeFloorLamps(map: GameMap, lights: readonly Light[]): Int16Array {
@@ -319,6 +356,32 @@ export function reflection(
     lobe *= lobe;
   }
   return lobe * (f0 + (1 - f0) * (1 - vh * vh)) * k * k;
+}
+
+/**
+ * How far the eye at (ex, ey) is from the wall itself, not its endless plane: from the run of faces (`faceRun`) that
+ * the face at `base` (its faceOffset) belongs to, facing (nx, ny), with (px, py) a point on it. Alongside the run it's
+ * how far the eye stands off it; past its end, the distance to that end. So a far wall face lying in line with the
+ * eye counts as far.
+ */
+export function distanceToWall(
+  lm: Lighting,
+  base: number,
+  nx: number,
+  ny: number,
+  px: number,
+  py: number,
+  ex: number,
+  ey: number
+): number {
+  const face = base / (WALL_U * WALL_V);
+  const start = lm.faceRun[face * 2] as number;
+  const end = lm.faceRun[face * 2 + 1] as number;
+  const off = (ex - px) * nx + (ey - py) * ny;
+  // West and east faces run along y, north and south ones along x.
+  const along = nx !== 0 ? ey : ex;
+  const gap = along < start ? start - along : along > end ? along - end : 0;
+  return Math.hypot(off, gap);
 }
 
 /**
