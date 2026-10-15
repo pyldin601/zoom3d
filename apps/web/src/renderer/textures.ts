@@ -122,6 +122,20 @@ export const GLOSS: readonly Uint8Array[] = [
   brickGloss(),
 ];
 
+/** A texture's average colour: what its surface throws back as bounce light. */
+export function averageColour(tex: Uint32Array): number {
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  for (const c of tex) {
+    r += c & 0xff;
+    g += (c >>> 8) & 0xff;
+    b += (c >>> 16) & 0xff;
+  }
+  const n = tex.length || 1;
+  return rgb(Math.round(r / n), Math.round(g / n), Math.round(b / n));
+}
+
 export function makeTextures(seed = 1): Uint32Array[] {
   const rand = mulberry32(seed);
   const stone = texture(rand, (x, y, n) => {

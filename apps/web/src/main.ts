@@ -39,13 +39,13 @@ import { type AutomapPeer, drawAutomap } from './renderer/automap';
 import { type Bob, createBob } from './renderer/bob';
 import { createFramebuffer, type Framebuffer } from './renderer/framebuffer';
 import { drawLabels } from './renderer/labels';
-import { bakeLighting, corridorLights } from './renderer/lighting';
+import { bakeLighting, corridorLights, type Lighting } from './renderer/lighting';
 import { VACUUM_MODEL } from './renderer/models/vacuum';
 import { renderOwnBoombox } from './renderer/own-boombox';
 import { renderOwnHeld } from './renderer/own-held';
 import { cheersPose, createGestureClock, sipPose } from './renderer/sip';
 import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
-import { makeTextures } from './renderer/textures';
+import { averageColour, makeTextures } from './renderer/textures';
 import type { VoxelInstance } from './renderer/voxels';
 import { CEILING, FLOOR, renderWalls } from './renderer/walls';
 import { flushOnHide, initAnalytics, track } from './telemetry/analytics';
@@ -57,7 +57,7 @@ import type { BoomboxPanelOptions } from './ui/boombox-panel';
 import { loadBoomboxVolume, saveBoomboxVolume } from './ui/boombox-store';
 import { CHEERS_HOLD_MS, createDrinkPress } from './ui/drink-press';
 import { heldForKey, heldKeyAction, loadHeld, saveHeld } from './ui/held-store';
-import { AMBIENT, renderLandingScene } from './ui/landing-scene';
+import { renderLandingScene } from './ui/landing-scene';
 import { createLandingShow, LANDING_PARK } from './ui/landing-show';
 import { joinBanner, PROBLEM_TEXT, showLobby } from './ui/lobby';
 import { createMicLevel } from './ui/mic-level';
@@ -98,7 +98,15 @@ const map = parseMap(LEVEL1);
 const textures = makeTextures(1);
 /** SPIKE: baked corridor lamps; `?lights=off` shows the old flat look. */
 const LIGHTS = new URLSearchParams(location.search).get('lights') !== 'off';
-const lighting = LIGHTS ? bakeLighting(map, corridorLights(map), AMBIENT, FLOOR, CEILING) : null;
+const lamps = corridorLights(map);
+/** Ambient light is bounce light: what the lamps' lit surfaces throw back, over a bare minimum so no room is black. */
+const BARE_AMBIENT = 0.08;
+const BOUNCE_STRENGTH = 3.5;
+const wallColours = textures.map((tex) => (tex.length ? averageColour(tex) : 0));
+/** The room's lighting; null with `?lights=off`. */
+const lighting: Lighting | null = LIGHTS
+  ? bakeLighting(map, lamps, BARE_AMBIENT, FLOOR, CEILING, { wallColours, strength: BOUNCE_STRENGTH })
+  : null;
 let fb: Framebuffer = createFramebuffer();
 let image = imageOf(fb);
 function imageOf(buffer: Framebuffer): ImageData {

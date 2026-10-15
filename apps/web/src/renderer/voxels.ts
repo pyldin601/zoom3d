@@ -4,7 +4,7 @@
 import type { PlayerState } from '@zoom3d/shared';
 import { EYE_HEIGHT, MIN_DEPTH } from './camera';
 import type { Framebuffer } from './framebuffer';
-import { directLight, type Lighting } from './lighting';
+import { ambientAt, directLight, type Lighting } from './lighting';
 
 export interface VoxelModel {
   /** Voxel edge in tiles. */
@@ -138,6 +138,8 @@ const order: number[] = [];
 const byDepth = (a: number, b: number) => (faceDepth[b] as number) - (faceDepth[a] as number);
 /** Lamp light per face direction (r, g, b × 5), then ambient × shade added: this instance's multipliers. */
 const light = new Float64Array(FACES.length * 3);
+/** The ambient light, r, g, b, where this instance stands. */
+const around = new Float64Array(3);
 
 /**
  * A face's colour in a lit room: the unshaded colour times the light on its direction, which may overbright, blended
@@ -197,10 +199,11 @@ export function renderVoxel(fb: Framebuffer, p: PlayerState, v: VoxelInstance, l
   const { corners, normals, colors, base, dirs, glow } = model;
   if (lighting) {
     directLight(lighting, v.x, v.y, model.height / 2, v.angle, light);
+    ambientAt(lighting, v.x, v.y, around);
     for (let d = 0; d < FACES.length; d++) {
-      const amb = lighting.ambient * (FACES[d] as (typeof FACES)[number]).k;
+      const k = (FACES[d] as (typeof FACES)[number]).k;
       for (let ch = 0; ch < 3; ch++) {
-        light[d * 3 + ch] = (light[d * 3 + ch] as number) + amb;
+        light[d * 3 + ch] = (light[d * 3 + ch] as number) + (around[ch] as number) * k;
       }
     }
   }

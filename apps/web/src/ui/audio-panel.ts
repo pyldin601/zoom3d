@@ -132,18 +132,23 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
 }
 
 function renderSection(opts: NonNullable<AudioPanelOptions['render']>): HTMLElement {
+  let current = opts.settings;
+  const commit = (next: unknown) => {
+    current = normalizeRenderSettings(next);
+    opts.onChange(current);
+  };
   const section = make('div', { className: 'renderer' });
+
   const reflections = make('select');
   for (const [value, text] of REFLECTIONS) {
     reflections.append(make('option', { value, textContent: text }));
   }
-  reflections.value = opts.settings.reflections;
-  reflections.addEventListener('change', () =>
-    opts.onChange(normalizeRenderSettings({ ...opts.settings, reflections: reflections.value }))
-  );
-  const row = make('label');
-  row.append('Reflections', reflections);
-  section.append(make('h2', { textContent: 'Renderer' }), row);
+  reflections.value = current.reflections;
+  reflections.addEventListener('change', () => commit({ ...current, reflections: reflections.value }));
+  const reflectionsRow = make('label');
+  reflectionsRow.append('Reflections', reflections);
+
+  section.append(make('h2', { textContent: 'Renderer' }), reflectionsRow);
   return section;
 }
 

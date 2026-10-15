@@ -42,3 +42,10 @@ test('broken, missing or stale storage gives the defaults', () => {
   store.data.set(RENDER_SETTINGS_KEY, '{"reflections":"ceiling"}');
   expect(loadRenderSettings(store)).toEqual(DEFAULT_RENDER_SETTINGS);
 });
+
+test('settings saved with an option that no longer exists keep the rest', () => {
+  const store = memory();
+  // Saved while there was an ambient light switch.
+  store.data.set(RENDER_SETTINGS_KEY, '{"reflections":"walls","ambient":false}');
+  expect(loadRenderSettings(store)).toEqual({ reflections: 'walls' });
+});
