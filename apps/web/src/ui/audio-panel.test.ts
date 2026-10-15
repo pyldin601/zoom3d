@@ -111,7 +111,7 @@ test('the renderer section switches reflections', () => {
   showAudioPanel(root, {
     settings: DEFAULT_AUDIO_SETTINGS,
     onChange: () => {},
-    render: { settings: { reflections: 'both' }, onChange: onRender },
+    render: { settings: { reflections: 'both', ambient: true }, onChange: onRender },
   });
   expect(root.textContent).toContain('Renderer');
   const select = input('Reflections') as HTMLSelectElement;
@@ -119,7 +119,26 @@ test('the renderer section switches reflections', () => {
   expect([...select.options].map((o) => o.value)).toEqual(['none', 'walls', 'both']);
   select.value = 'walls';
   select.dispatchEvent(new Event('change'));
-  expect(onRender).toHaveBeenLastCalledWith({ reflections: 'walls' });
+  expect(onRender).toHaveBeenLastCalledWith({ reflections: 'walls', ambient: true });
+});
+
+test('the renderer section switches ambient light, keeping the other settings', () => {
+  const onRender = vi.fn();
+  showAudioPanel(root, {
+    settings: DEFAULT_AUDIO_SETTINGS,
+    onChange: () => {},
+    render: { settings: { reflections: 'walls', ambient: true }, onChange: onRender },
+  });
+  const box = input('Ambient light') as HTMLInputElement;
+  expect([box.type, box.checked]).toEqual(['checkbox', true]);
+  box.checked = false;
+  box.dispatchEvent(new Event('change'));
+  expect(onRender).toHaveBeenLastCalledWith({ reflections: 'walls', ambient: false });
+  // A later change starts from the latest settings, not the ones the panel opened with.
+  const select = input('Reflections') as HTMLSelectElement;
+  select.value = 'none';
+  select.dispatchEvent(new Event('change'));
+  expect(onRender).toHaveBeenLastCalledWith({ reflections: 'none', ambient: false });
 });
 
 test('without render options there is no renderer section', () => {

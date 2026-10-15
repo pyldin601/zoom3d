@@ -339,7 +339,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   (`renderer/lighting.ts`, about 57 ms for LEVEL1). Shadows are hard and grid-exact: a 2D line of sight from each
   lamp to each wall, floor and ceiling sample. Per frame, a wall pixel costs one lookup and a multiply, and floor and
   ceiling (now cast per pixel, row by row) one lookup each: +0.24 ms over 0.58 ms at 640×360.
-  - **Ambient drops to 45%.** North/south faces stay at 70%, but only of the ambient part.
+  - **Ambient drops to 45%.** North/south faces stay at 70%, but only of the ambient part. The backquote console's
+    "Ambient light" switch (2026-10-15, default on, kept per browser in `ui/render-settings.ts`) bakes it at 0 instead:
+    whatever no lamp reaches goes black (rooms have no lamps of their own), and flipping it re-bakes the room
+    (~80 ms). Avatars aren't lit, so they stay at full brightness either way.
   - **Lamps light the corridors:** auto-placed on every floor run at most 3 tiles across and at least 4 long, at least
     5 tiles apart (37 on LEVEL1). The landing scene has two hand-placed lamps.
   - `?lights=off` shows the old flat look.

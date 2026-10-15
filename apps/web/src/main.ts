@@ -39,7 +39,7 @@ import { type AutomapPeer, drawAutomap } from './renderer/automap';
 import { type Bob, createBob } from './renderer/bob';
 import { createFramebuffer, type Framebuffer } from './renderer/framebuffer';
 import { drawLabels } from './renderer/labels';
-import { bakeLighting, corridorLights } from './renderer/lighting';
+import { bakeLighting, corridorLights, type Lighting } from './renderer/lighting';
 import { VACUUM_MODEL } from './renderer/models/vacuum';
 import { renderOwnBoombox } from './renderer/own-boombox';
 import { renderOwnHeld } from './renderer/own-held';
@@ -98,7 +98,11 @@ const map = parseMap(LEVEL1);
 const textures = makeTextures(1);
 /** SPIKE: baked corridor lamps; `?lights=off` shows the old flat look. */
 const LIGHTS = new URLSearchParams(location.search).get('lights') !== 'off';
-const lighting = LIGHTS ? bakeLighting(map, corridorLights(map), AMBIENT, FLOOR, CEILING) : null;
+const lamps = corridorLights(map);
+/** The room's lighting, baked with or without its ambient part (a console switch); null with `?lights=off`. */
+function bakeRoomLighting(ambient: boolean): Lighting | null {
+  return LIGHTS ? bakeLighting(map, lamps, ambient ? AMBIENT : 0, FLOOR, CEILING) : null;
+}
 let fb: Framebuffer = createFramebuffer();
 let image = imageOf(fb);
 function imageOf(buffer: Framebuffer): ImageData {
@@ -203,6 +207,7 @@ for (const type of ['pointerdown', 'keydown'] as const) {
 let audioPanelVisible = false;
 /** The renderer's console options (reflections), kept per browser. */
 let renderSettings = loadRenderSettings(storage());
+let lighting = bakeRoomLighting(renderSettings.ambient);
 /** The boombox column of the audio panel, while our boombox plays (boombox spec §3.1). */
 function boomboxControls(): BoomboxPanelOptions | null {
   const box = boombox;
@@ -243,6 +248,9 @@ function toggleAudioPanel(): void {
     render: {
       settings: renderSettings,
       onChange(s) {
+        if (s.ambient !== renderSettings.ambient) {
+          lighting = bakeRoomLighting(s.ambient);
+        }
         renderSettings = s;
         saveRenderSettings(storage(), s);
       },
