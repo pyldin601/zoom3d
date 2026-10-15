@@ -353,15 +353,43 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     like the ceiling lamps). Only lamp light is scaled, so relief fades away between lamps. The bake stores each wall
     sample's light per relief level, and the wall loop shades each texel once and repeats it down its rows: +0.04 ms.
     Wood is flat.
-  - **Walls glint** (2026-10-13): a wall within 3 tiles of the eye shows a lamp's highlight where it mirrors it
-    (Phong, cos³², times the lamp's falloff, added in the lamp's colour), fading out towards 3 tiles. The bake picks
-    one lamp per wall sample column, the brightest it can see, so glints keep the baked shadows. Per frame it's one
-    lookup per column and a few multiplies per texel run on near walls, no roots: about +0.05 ms. Mortar stays matte
-    (`GLOSS` in `renderer/textures.ts`); floors and ceilings don't glint. Brick only shines at an angle: the glint is
-    scaled by f0 + (1 − f0)·sin² of the viewing angle (`GLINT_MATERIAL`: f0 0.1 for brick, 1 for wood, which shines
-    alike from every angle). Brick's glint also takes the texel's hue, scaled so its brightest channel is 1: the lamp's
-    warm colour on blue brick read as violet. Wood keeps the pure lamp colour. Schlick's Fresnel was tried first, but its rise comes past 80°, and a corridor's glints sit at 60–70°,
-    so brick barely shone at all.
+  - **Walls reflect the lamps** (2026-10-13, reworked 2026-10-15): one reflection, whatever the angle. Face-on it's
+    a soft spot where the wall mirrors the lamp; looking along a wall towards a lamp the same reflection stretches
+    into a blurry streak towards the light.
+    - *Model* (`reflection()` in `renderer/lighting.ts`): Blinn-Phong, (n·h)^shininess, times a boost at shallow
+      angles, f0 + (1 − f0)·(1 − (v·h)²), times the lamp's falloff over 1.5× its reach. Schlick's (1 − v·h)⁵ only
+      rises past 80°, and a corridor's reflections sit at 60–70°. It replaced two separate effects (a mirror glint and
+      a streak), which competed and left a dark gap beside each lamp, like a shadow.
+    - *Materials* (`REFLECTION_MATERIAL` in `renderer/textures.ts`): varnished wood is glossy (shininess 16, f0 0.4),
+      a soft spot face-on and a narrower streak; brick is rough (8, 0.05), barely there face-on and a long streak.
+      Mortar stays matte (`GLOSS`). Light stone is near white under a lamp, so it reads as matte, which suits it.
+      The ceiling doesn't reflect.
+    - *Floor* (2026-10-15): the same model on a semi-glossy floor facing up (shininess 16, f0 0.1, `FLOOR_MATERIAL` in
+      `renderer/walls.ts`): each lamp ahead leaves a narrow smear on the floor, faint near the eye, strongest part way
+      and gone under the lamp. The bake lists up to 3 lamps each quarter-tile of floor can see (`floorLamp`), so it
+      keeps the floor's shadows. It's worked out every 16 pixels on every other row and blended between (every 8 on
+      every row cost +0.21 ms); about +0.09 ms, and the bake grows to about 90 ms for LEVEL1.
+    - *Colour* (`reflectedColour()` in `renderer/colour.ts`): plain RGB addition of the warm lamp turned blue brick
+      violet, a hue in neither. The lamp's light is now mixed in OKLab, where warm on blue passes through grey, never
+      violet: as bright as addition, its colour axes weighted by brightness. That alone keeps the lamp's brightness,
+      which on dark saturated blue (blue weighs little in brightness) is mostly red and green, a white wash. So brick
+      reflects 85% more of its own colour (`tint`) and 15% that light; wood reflects the light, and stays warm. It's
+      worked out once per texture and lamp, from the texture's average shiny texel, so a texel costs three
+      multiplies.
+    - *Which lamp:* the bake lists up to 3 lamps each wall sample column can see (`wallLamp`, nearest first), and each
+      screen column takes the one that reflects brightest at its bounce height (`brightestReflection`). With one
+      baked lamp per column (the brightest on that strip), the lamp you look towards was never the one picked.
+    - *Only near the wall:* it fades out as the eye steps away from the wall (gone at 4 tiles, `REFLECTION_NEAR`)
+      and with distance (gone at 8, `REFLECTION_RANGE`). "Away from the wall" is from the wall itself, not its endless
+      plane (`distanceToWall`): the bake records each face's run, the unbroken line of faces on that side
+      (`faceRun`), and past a run's end the distance counts to that end. Measured to the plane, a far wall face lying
+      in line with the eye (a pillar's side down the corridor) counted as close and flashed a stripe down its edge.
+      A wall that resumes in the same line after a doorway is a separate run, so its streak starts dimmer.
+    - *Console* (backquote, under the audio tuning): "Reflections" picks None, Walls, or Walls and floor (the default),
+      kept per browser (`ui/render-settings.ts`, like the audio settings). The landing page always shows both.
+    - *Per frame:* a wall column whose reflection peaks under half a step of brightness is skipped; the rest work it
+      out at 17 heights and blend them per texel row (per texel row it cost +1 ms). Walls and floor together cost
+      about +0.22 ms at the worst spots, close to walls in lit corridors (esbuild bundle).
   - Not done yet: avatars aren't lit, shadow edges are stair-stepped, rooms get no lamps of their own.
 
 ## Resolved

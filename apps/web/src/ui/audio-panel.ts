@@ -1,12 +1,22 @@
 // Live tuning panel for spatial audio (spec §9.3). All text goes through textContent.
 import { type AudioSettings, DEFAULT_AUDIO_SETTINGS, normalizeAudioSettings } from '@zoom3d/shared';
+import type { ReflectionMode } from '../renderer/lighting';
 import { type BoomboxPanelOptions, showBoomboxPanel } from './boombox-panel';
+import { normalizeRenderSettings, type RenderSettings } from './render-settings';
 
 export interface AudioPanelOptions {
   settings: AudioSettings;
   onChange(s: AudioSettings): void;
   levels?: () => { name: string; speaking: number }[];
+  /** The renderer's options, in their own section under the audio tuning. */
+  render?: { settings: RenderSettings; onChange(s: RenderSettings): void };
 }
+
+const REFLECTIONS: readonly [ReflectionMode, string][] = [
+  ['none', 'None'],
+  ['walls', 'Walls'],
+  ['both', 'Walls and floor'],
+];
 
 type NumericKey = 'ref' | 'max' | 'reverb' | 'muffleHz' | 'occludedGain';
 
@@ -112,9 +122,29 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
     tuning.append(list);
   }
 
+  if (opts.render) {
+    tuning.append(renderSection(opts.render));
+  }
+
   panel.append(tuning, slot);
   render();
   root.append(panel);
+}
+
+function renderSection(opts: NonNullable<AudioPanelOptions['render']>): HTMLElement {
+  const section = make('div', { className: 'renderer' });
+  const reflections = make('select');
+  for (const [value, text] of REFLECTIONS) {
+    reflections.append(make('option', { value, textContent: text }));
+  }
+  reflections.value = opts.settings.reflections;
+  reflections.addEventListener('change', () =>
+    opts.onChange(normalizeRenderSettings({ ...opts.settings, reflections: reflections.value }))
+  );
+  const row = make('label');
+  row.append('Reflections', reflections);
+  section.append(make('h2', { textContent: 'Renderer' }), row);
+  return section;
 }
 
 /** Shows (or with null, clears) the boombox controls in the open audio panel; no-op when it's closed. */

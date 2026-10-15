@@ -1,7 +1,7 @@
-import { parseMap } from '@zoom3d/shared';
+import { LEVEL1, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { createFramebuffer, DEFAULT_FOV } from './framebuffer';
-import { bakeLighting, GLINT_RANGE } from './lighting';
+import { bakeLighting, corridorLights, REFLECTION_RANGE } from './lighting';
 import { makeTextures, TEX } from './textures';
 import { CEILING, FLOOR, renderWalls, shade } from './walls';
 
@@ -98,12 +98,12 @@ test('a narrower FOV draws the same wall taller', () => {
   );
 });
 
-describe('renderWalls glint', () => {
+describe('renderWalls reflections', () => {
   // A corridor with a lamp near its east end.
-  const corridor = parseMap('1111111111\n1S.......1\n1111111111');
+  const corridor = parseMap('11111111111111\n1S...........1\n11111111111111');
   const lit = bakeLighting(
     corridor,
-    [{ x: 6.5, y: 1.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 }],
+    [{ x: 10.5, y: 1.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 }],
     0.45,
     FLOOR,
     CEILING
@@ -116,12 +116,12 @@ describe('renderWalls glint', () => {
   };
   const channels = (c: number) => [c & 0xff, (c >>> 8) & 0xff, (c >>> 16) & 0xff];
 
-  test('brightens a near wall where it mirrors the lamp, never darkens', () => {
-    const glinted = render(7.5, lit).pixels;
+  test('brightens a near wall seen along it towards a lamp, never darkens', () => {
+    const shiny = render(7.5, lit).pixels;
     const plain = render(7.5, matte).pixels;
     let brighter = 0;
     for (let i = 0; i < plain.length; i++) {
-      const a = channels(glinted[i] as number);
+      const a = channels(shiny[i] as number);
       const b = channels(plain[i] as number);
       expect(a.every((v, k) => v >= (b[k] as number))).toBe(true);
       if (a.some((v, k) => v > (b[k] as number))) {
@@ -131,23 +131,115 @@ describe('renderWalls glint', () => {
     expect(brighter).toBeGreaterThan(0);
   });
 
-  test('leaves walls past GLINT_RANGE alone', () => {
+  test('leaves walls past REFLECTION_RANGE alone', () => {
     // Looking down the corridor: the end wall is far, the side walls near the edges are close.
-    const glinted = render(1.5, lit);
+    const shiny = render(1.5, lit);
     const plain = render(1.5, matte);
     let far = 0;
     for (let col = 0; col < plain.width; col++) {
-      if ((plain.zbuffer[col] as number) < GLINT_RANGE) {
+      if ((plain.zbuffer[col] as number) < REFLECTION_RANGE) {
         continue;
       }
       far++;
-      const differs = column(glinted, col).some((c, y) => c !== plain.pixels[y * plain.width + col]);
+      const differs = column(shiny, col).some((c, y) => c !== plain.pixels[y * plain.width + col]);
       expect(differs).toBe(false);
     }
     expect(far).toBeGreaterThan(0);
   });
 
-  test('keeps a blue wall blue: the glint brightens it in its own hue', () => {
+  test('a wall you are not close to stays matte, even in range: the end of a corridor seen from down it', () => {
+    // A wood end wall at x = 13, a lamp 1.5 in front of it; the eye 7 away, looking straight at it.
+    const room = parseMap('33333333333332\n3S...........2\n3............2\n3............2\n33333333333332');
+    const roomLit = bakeLighting(
+      room,
+      [{ x: 11.5, y: 2.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 }],
+      0.45,
+      FLOOR,
+      CEILING
+    );
+    const roomMatte = { ...roomLit, wallLamp: new Int16Array(roomLit.wallLamp.length).fill(-1) };
+    const pose = { x: 6, y: 2.5, angle: 0 };
+    const shiny = createFramebuffer();
+    const plain = createFramebuffer();
+    renderWalls(shiny, room, pose, textures, roomLit);
+    renderWalls(plain, room, pose, textures, roomMatte);
+    const centre = plain.width / 2;
+    expect(plain.zbuffer[centre] as number).toBeLessThan(REFLECTION_RANGE);
+    expect(column(shiny, centre)).toEqual(column(plain, centre));
+  });
+
+  test('a far wall face lying in line with the eye stays matte: no stripe down its edge', () => {
+    // On LEVEL1, looking north up the wood corridor from x 35.26: wall side faces 5–6.5 tiles ahead lie almost in
+    // line with the eye, so their planes pass close to it, but the faces themselves are far off.
+    const level = parseMap(LEVEL1);
+    const levelLit = bakeLighting(level, corridorLights(level), 0.45, FLOOR, CEILING);
+    const levelMatte = { ...levelLit, wallLamp: new Int16Array(levelLit.wallLamp.length).fill(-1) };
+    const pose = { x: 35.26, y: 27.38, angle: 4.48 };
+    const shiny = createFramebuffer();
+    const plain = createFramebuffer();
+    renderWalls(shiny, level, pose, textures, levelLit);
+    renderWalls(plain, level, pose, textures, levelMatte);
+    for (let col = 0; col < plain.width; col++) {
+      if ((plain.zbuffer[col] as number) > 5) {
+        expect(column(shiny, col)).toEqual(column(plain, col));
+      }
+    }
+  });
+
+  test('the wall you hug still streaks far ahead along it', () => {
+    const hall = parseMap('1111111111111\n1S..........1\n1...........1\n1...........1\n1111111111111');
+    const hallLit = bakeLighting(
+      hall,
+      [{ x: 9.5, y: 2.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 }],
+      0.45,
+      FLOOR,
+      CEILING
+    );
+    const hallMatte = { ...hallLit, wallLamp: new Int16Array(hallLit.wallLamp.length).fill(-1) };
+    // Close to the top wall at its west end, looking east along it.
+    const pose = { x: 1.5, y: 1.3, angle: 0.05 };
+    const shiny = createFramebuffer();
+    const plain = createFramebuffer();
+    renderWalls(shiny, hall, pose, textures, hallLit, 'walls');
+    renderWalls(plain, hall, pose, textures, hallMatte, 'walls');
+    let farShine = 0;
+    for (let col = 0; col < plain.width; col++) {
+      const far = (plain.zbuffer[col] as number) > 4;
+      if (far && column(shiny, col).some((c, y) => c !== plain.pixels[y * plain.width + col])) {
+        farShine++;
+      }
+    }
+    expect(farShine).toBeGreaterThan(0);
+  });
+
+  test('a wall barely shines seen face-on, but streaks seen along it towards a lamp', () => {
+    const room = parseMap('3333333333\n3S.......3\n3........3\n3........3\n3333333333');
+    const roomLit = bakeLighting(
+      room,
+      [{ x: 6.5, y: 2.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 }],
+      0.45,
+      FLOOR,
+      CEILING
+    );
+    const roomMatte = { ...roomLit, wallLamp: new Int16Array(roomLit.wallLamp.length).fill(-1) };
+    const brightest = (pose: { x: number; y: number; angle: number }) => {
+      const a = createFramebuffer();
+      const b = createFramebuffer();
+      renderWalls(a, room, pose, textures, roomLit);
+      renderWalls(b, room, pose, textures, roomMatte);
+      let most = 0;
+      for (let i = 0; i < a.pixels.length; i++) {
+        most = Math.max(most, ((a.pixels[i] as number) >>> 16) - ((b.pixels[i] as number) >>> 16));
+      }
+      return most;
+    };
+    // Under the lamp, facing the top wall; then close to that wall, looking east along it towards the lamp.
+    const faceOn = brightest({ x: 6.5, y: 2.5, angle: -Math.PI / 2 });
+    const along = brightest({ x: 2.5, y: 1.3, angle: 0 });
+    expect(along).toBeGreaterThan(faceOn * 3);
+  });
+
+  test('on a blue wall, the reflection is a brighter blue: mostly blue, red never ahead of green', () => {
     const blue = parseMap('3333333333\n3S.......3\n3333333333');
     const blueLit = bakeLighting(
       blue,
@@ -156,23 +248,131 @@ describe('renderWalls glint', () => {
       FLOOR,
       CEILING
     );
-    const glinted = createFramebuffer();
+    const shiny = createFramebuffer();
     const plain = createFramebuffer();
-    const pose = { x: 7.5, y: 1.5, angle: 0.4 };
-    renderWalls(glinted, blue, pose, textures, blueLit);
+    // Close to the top wall, looking along it towards the lamp.
+    const pose = { x: 2.5, y: 1.2, angle: -0.1 };
+    renderWalls(shiny, blue, pose, textures, blueLit);
     renderWalls(plain, blue, pose, textures, {
       ...blueLit,
       wallLamp: new Int16Array(blueLit.wallLamp.length).fill(-1),
     });
-    let red = 0;
+    let redAdded = 0;
+    let greenAdded = 0;
     let blueAdded = 0;
     for (let i = 0; i < plain.pixels.length; i++) {
-      const a = channels(glinted.pixels[i] as number);
-      const b = channels(plain.pixels[i] as number);
-      red += (a[0] as number) - (b[0] as number);
-      blueAdded += (a[2] as number) - (b[2] as number);
+      const [r, g, b] = channels(shiny.pixels[i] as number) as [number, number, number];
+      const [r0, g0, b0] = channels(plain.pixels[i] as number) as [number, number, number];
+      redAdded += r - r0;
+      greenAdded += g - g0;
+      blueAdded += b - b0;
+      // Rounding can tip one channel by one step.
+      expect(r - r0).toBeLessThanOrEqual(g - g0 + 1);
     }
-    expect(blueAdded).toBeGreaterThan(0);
-    expect(red).toBeLessThan(blueAdded / 4);
+    expect(redAdded).toBeGreaterThan(0);
+    // Mostly blue, not washed white: red and green gain little next to it.
+    expect(blueAdded).toBeGreaterThan(2.5 * greenAdded);
+  });
+});
+
+describe('renderWalls floor reflections', () => {
+  // A 3-wide corridor, a lamp near its east end; the eye at its west end, looking along it.
+  const hall = parseMap('1111111111111\n1S..........1\n1...........1\n1...........1\n1111111111111');
+  const hallLit = bakeLighting(
+    hall,
+    [{ x: 7.5, y: 2.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 }],
+    0.45,
+    FLOOR,
+    CEILING
+  );
+  const hallMatte = {
+    ...hallLit,
+    wallLamp: new Int16Array(hallLit.wallLamp.length).fill(-1),
+    floorLamp: new Int16Array(hallLit.floorLamp.length).fill(-1),
+  };
+  const pose = { x: 2.5, y: 2.5, angle: 0 };
+  const channels = (c: number) => [c & 0xff, (c >>> 8) & 0xff, (c >>> 16) & 0xff];
+  const shiny = createFramebuffer();
+  const plain = createFramebuffer();
+  renderWalls(shiny, hall, pose, textures, hallLit);
+  renderWalls(plain, hall, pose, textures, hallMatte);
+
+  test('the floor shines between the eye and the lamp, and never darkens', () => {
+    let brighter = 0;
+    for (let y = plain.height / 2; y < plain.height; y++) {
+      for (let x = 0; x < plain.width; x++) {
+        const i = y * plain.width + x;
+        const a = channels(shiny.pixels[i] as number);
+        const b = channels(plain.pixels[i] as number);
+        expect(a.every((v, k) => v >= (b[k] as number))).toBe(true);
+        if (a.some((v, k) => v > (b[k] as number))) {
+          brighter++;
+        }
+      }
+    }
+    expect(brighter).toBeGreaterThan(100);
+  });
+});
+
+describe('renderWalls reflection modes', () => {
+  // The hall from the floor tests: the eye at its west end looks along it at a lamp near its east end.
+  const hall = parseMap('1111111111111\n1S..........1\n1...........1\n1...........1\n1111111111111');
+  const hallLit = bakeLighting(
+    hall,
+    [{ x: 7.5, y: 2.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 }],
+    0.45,
+    FLOOR,
+    CEILING
+  );
+  const hallMatte = {
+    ...hallLit,
+    wallLamp: new Int16Array(hallLit.wallLamp.length).fill(-1),
+    floorLamp: new Int16Array(hallLit.floorLamp.length).fill(-1),
+  };
+  // Close to the top wall, so the wall shines too.
+  const pose = { x: 2.5, y: 1.3, angle: 0 };
+  const render = (mode: 'none' | 'walls' | 'both' | 'matte') => {
+    const fb = createFramebuffer();
+    renderWalls(fb, hall, pose, textures, mode === 'matte' ? hallMatte : hallLit, mode === 'matte' ? 'both' : mode);
+    return fb;
+  };
+  /** How many pixels differ from the matte render, above and below the horizon. */
+  const changed = (fb: ReturnType<typeof render>) => {
+    const matte = render('matte');
+    let wall = 0;
+    let floor = 0;
+    for (let i = 0; i < fb.pixels.length; i++) {
+      if (fb.pixels[i] !== matte.pixels[i]) {
+        if (isWallPixel(matte, i)) {
+          wall++;
+        } else {
+          floor++;
+        }
+      }
+    }
+    return { wall, floor };
+  };
+  /** A wall pixel: between its column's wall top and bottom, worked out from the wall height. */
+  const isWallPixel = (fb: ReturnType<typeof render>, i: number) => {
+    const col = i % fb.width;
+    const y = Math.floor(i / fb.width);
+    const lineH = PROJ / (fb.zbuffer[col] as number);
+    return Math.abs(y - fb.height / 2) < lineH / 2;
+  };
+
+  test('none draws no reflections at all', () => {
+    expect(changed(render('none'))).toEqual({ wall: 0, floor: 0 });
+  });
+
+  test('walls reflects on the walls only', () => {
+    const { wall, floor } = changed(render('walls'));
+    expect(wall).toBeGreaterThan(0);
+    expect(floor).toBe(0);
+  });
+
+  test('both reflects on the walls and the floor', () => {
+    const { wall, floor } = changed(render('both'));
+    expect(wall).toBeGreaterThan(0);
+    expect(floor).toBeGreaterThan(0);
   });
 });

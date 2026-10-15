@@ -61,6 +61,7 @@ import { AMBIENT, renderLandingScene } from './ui/landing-scene';
 import { createLandingShow, LANDING_PARK } from './ui/landing-show';
 import { joinBanner, PROBLEM_TEXT, showLobby } from './ui/lobby';
 import { createMicLevel } from './ui/mic-level';
+import { loadRenderSettings, saveRenderSettings } from './ui/render-settings';
 import { botsParam, parseRoute } from './ui/route';
 import {
   clearScreen,
@@ -200,6 +201,8 @@ for (const type of ['pointerdown', 'keydown'] as const) {
 }
 
 let audioPanelVisible = false;
+/** The renderer's console options (reflections), kept per browser. */
+let renderSettings = loadRenderSettings(storage());
 /** The boombox column of the audio panel, while our boombox plays (boombox spec §3.1). */
 function boomboxControls(): BoomboxPanelOptions | null {
   const box = boombox;
@@ -237,6 +240,13 @@ function toggleAudioPanel(): void {
         name: p.info.name,
         speaking: engine.speaking(p.info.id),
       })),
+    render: {
+      settings: renderSettings,
+      onChange(s) {
+        renderSettings = s;
+        saveRenderSettings(storage(), s);
+      },
+    },
   });
   setAudioPanelBoombox(ui, boomboxControls());
 }
@@ -834,7 +844,7 @@ function frame(dt: number): void {
     audio?.update(now, player, positions);
   }
 
-  renderWalls(fb, map, player, textures, lighting);
+  renderWalls(fb, map, player, textures, lighting, renderSettings.reflections);
   renderSprites(fb, player, sprites, facts, session ? voxels : undefined, lighting);
   if (session) {
     updateInterest(session, performance.now(), document.hidden);

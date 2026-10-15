@@ -77,7 +77,7 @@ export const RELIEF: readonly Uint8Array[] = [
   brickRelief(),
 ];
 
-/** Bricks glint, mortar doesn't. */
+/** Bricks shine, mortar doesn't. */
 function brickGloss(): Uint8Array {
   const gloss = new Uint8Array(TEX * TEX);
   for (let y = 0; y < TEX; y++) {
@@ -88,25 +88,33 @@ function brickGloss(): Uint8Array {
   return gloss;
 }
 
-export interface GlintMaterial {
-  /** How much of a lamp's glint shows head-on (see glint()): 1 shines alike from every angle. */
+export interface ReflectionMaterial {
+  /** Blinn-Phong exponent: high is glossy (a small spot, a narrow streak), low is rough (faint and wide, a long streak). */
+  shininess: number;
+  /** How much of the reflection shows face-on; seen along the wall it rises towards full (see reflection()). */
   f0: number;
-  /** The glint takes the texel's hue (scaled so its brightest channel is 1) instead of the lamp's colour alone. */
-  tinted: boolean;
+  /**
+   * How much of the reflection is more of the surface's own colour, 0..1; the rest is the lamp's light, mixed in
+   * OKLab so it never turns a wall a new hue (see reflectedColour). Brick at 0.85 shines a brighter blue: the lamp's
+   * share alone washes a dark blue white.
+   */
+  tint: number;
 }
 
+const BRICK: ReflectionMaterial = { shininess: 8, f0: 0.05, tint: 0.85 };
+
 /**
- * Per texture (index = tile id, like RELIEF). Varnished wood shines from every angle in the lamp's colour; rough brick
- * only catches it at a grazing angle, in its own colour (a warm glint on blue brick reads as violet).
+ * Per texture (index = tile id, like RELIEF). Varnished wood is glossy and reflects in the lamp's colour; brick is
+ * rough, barely shines face-on and reflects in its own colour paled by the lamp's.
  */
-export const GLINT_MATERIAL: readonly GlintMaterial[] = [
-  { f0: 0, tinted: false },
-  { f0: 0.1, tinted: true },
-  { f0: 1, tinted: false },
-  { f0: 0.1, tinted: true },
+export const REFLECTION_MATERIAL: readonly ReflectionMaterial[] = [
+  { shininess: 1, f0: 0, tint: 0 },
+  BRICK,
+  { shininess: 16, f0: 0.4, tint: 0 },
+  BRICK,
 ];
 
-/** Per texel and texture (index = tile id, like RELIEF): 1 where a lamp can glint, 0 where it can't. */
+/** Per texel and texture (index = tile id, like RELIEF): 1 where a lamp can reflect, 0 where it can't. */
 export const GLOSS: readonly Uint8Array[] = [
   new Uint8Array(0),
   brickGloss(),
