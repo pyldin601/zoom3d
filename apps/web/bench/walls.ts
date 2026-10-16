@@ -1,6 +1,7 @@
 // Frame-time benchmark for renderWalls in a real bundle (`pnpm bench:walls`): vitest's bench runs transformed
 // modules whose timings don't match the shipped build. LEVEL1 with its corridor lamps and bounce light, at 640×360,
-// from poses near lamps (where reflections cost most), each with 7 glowing avatars nearby and your own glow.
+// from poses near lamps (where reflections cost most), each with 7 glowing avatars nearby and your own glow, and
+// once more with a crowd of 100 glowing avatars spread over the whole map (most of them out of view, as with ?bots).
 // It also prints a hash of the baked lighting and of every pixel drawn in every mode: a refactor that changes no
 // behaviour must leave both hashes alone (docs/code-style.md, Refactoring).
 import { LEVEL1, parseMap, tileAt } from '@zoom3d/shared';
@@ -13,7 +14,9 @@ import { CEILING, FLOOR, renderWalls } from '../src/renderer/walls';
 /** Frames per mode per round, as multiples of the pose count, and rounds (the median is reported). */
 const FRAMES_PER_POSE = 2;
 const ROUNDS = 7;
-const MODES = ['unlit', 'none', 'walls', 'both', 'both + glow', 'only'] as const;
+const MODES = ['unlit', 'none', 'walls', 'both', 'both + glow', 'both + crowd', 'only'] as const;
+/** Glowing avatars in the crowd mode. */
+const CROWD = 100;
 type Mode = (typeof MODES)[number];
 interface Pose {
   x: number;
@@ -31,6 +34,7 @@ const lighting = bakeLighting(map, lights, 0.08, FLOOR, CEILING, bounce);
 const bakeMs = performance.now() - bakeStart;
 const fb = createFramebuffer(640, 360);
 const poses = posesNearLamps();
+const crowd = crowdGlows();
 
 let pixelHash = 0;
 for (const mode of MODES) {
@@ -61,6 +65,8 @@ function draw(mode: Mode, p: Pose): void {
     renderWalls(fb, map, p, textures);
   } else if (mode === 'both + glow') {
     renderWalls(fb, map, p, textures, lighting, 'both', p.glows);
+  } else if (mode === 'both + crowd') {
+    renderWalls(fb, map, p, textures, lighting, 'both', crowd);
   } else {
     renderWalls(fb, map, p, textures, lighting, mode);
   }
@@ -109,6 +115,24 @@ function posesNearLamps(): Pose[] {
       }
       glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2 });
       out.push({ x, y, angle: rand() * Math.PI * 2, glows });
+    }
+  }
+  return out;
+}
+
+/** CROWD seeded glows anywhere open on the map. */
+function crowdGlows(): Glow[] {
+  let seed = 3;
+  const rand = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
+  const out: Glow[] = [];
+  while (out.length < CROWD) {
+    const x = rand() * map.width;
+    const y = rand() * map.height;
+    if (tileAt(map, Math.floor(x), Math.floor(y)) === 0) {
+      out.push({ x, y, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6 });
     }
   }
   return out;
