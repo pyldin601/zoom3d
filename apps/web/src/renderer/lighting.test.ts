@@ -10,6 +10,8 @@ import {
   DIR_FRONT,
   DIR_TOP,
   directLight,
+  distanceToWall,
+  FLOOR_NORMAL,
   FLOOR_SUB,
   type Light,
   REFLECTION_LAMPS,
@@ -29,6 +31,8 @@ const map = parseMap(`
 `);
 const GREY = rgb(100, 100, 100);
 const lamp = (x: number, y: number): Light => ({ x, y, z: 0.85, radius: 4, r: 1, g: 1, b: 1 });
+/** A wall's south face, facing +y. */
+const FACING_SOUTH = { dx: 0, dy: 1, dz: 0 };
 
 describe('directLight', () => {
   test('is zero everywhere with no lamps', () => {
@@ -117,7 +121,7 @@ describe('reflection', () => {
   const peak = (x: number, ex: number, ey: number, m = WOOD, light: Light = l) => {
     let most = 0;
     for (let z = 0; z <= 1; z += 0.01) {
-      most = Math.max(most, reflection(light, m.shininess, m.f0, 0, 1, 0, x, 0, z, ex, ey));
+      most = Math.max(most, reflection(light, m, FACING_SOUTH, x, 0, z, { x: ex, y: ey }));
     }
     return most;
   };
@@ -217,7 +221,8 @@ describe('brightestReflection', () => {
     const lm = bakeLighting(corridor, [lamp(2.5, 2.5), lamp(7.5, 2.5)], 0.45, GREY, GREY);
     const at = ((lm.faceOffset[(0 * corridor.width + 5) * 4 + 3] as number) / WALL_V) * REFLECTION_LAMPS;
     const peak = new Float64Array(1);
-    expect(brightestReflection(lm, at, 16, 0.4, 0, 1, 5, 1, 2.5, 1.3, peak)).toBe(1);
+    const wood = { shininess: 16, f0: 0.4 };
+    expect(brightestReflection(lm, at, wood, FACING_SOUTH, 5, 1, { x: 2.5, y: 1.3 }, peak)).toBe(1);
     expect(peak[0] as number).toBeGreaterThan(0);
   });
 });
@@ -225,7 +230,9 @@ describe('brightestReflection', () => {
 describe('reflection on the floor', () => {
   // The floor faces up. The eye at (0, 0) looks along +x at a lamp 5 tiles off.
   const l = { ...lamp(5, 0), radius: 4.5 };
-  const at = (x: number, y = 0) => reflection(l, 16, 0.1, 0, 0, 1, x, y, 0, 0, 0);
+  const FLOOR = { shininess: 16, f0: 0.1 };
+  const EYE = { x: 0, y: 0 };
+  const at = (x: number, y = 0) => reflection(l, FLOOR, FLOOR_NORMAL, x, y, 0, EYE);
 
   test('smears from near the eye towards the lamp, strongest part way, gone under it', () => {
     expect(at(3)).toBeGreaterThan(0.5);
@@ -238,7 +245,7 @@ describe('reflection on the floor', () => {
   });
 
   test('is zero once the path, eye to floor to lamp, is past REFLECTION_PATH', () => {
-    expect(reflection({ ...l, x: REFLECTION_PATH + 1 }, 16, 0.1, 0, 0, 1, 3, 0, 0, 0, 0)).toBe(0);
+    expect(reflection({ ...l, x: REFLECTION_PATH + 1 }, FLOOR, FLOOR_NORMAL, 3, 0, 0, EYE)).toBe(0);
   });
 });
 
@@ -263,7 +270,7 @@ describe('bakeLighting floor lamps', () => {
 111111111111
 `);
     const lm = bakeLighting(hall, [lamp(10.5, 2), lamp(5.5, 2)], 0.45, GREY, GREY);
-    const at = (Math.floor(2.5 * FLOOR_SUB) * lm.stride + Math.floor(2.5 * FLOOR_SUB)) * REFLECTION_LAMPS;
+    const at = slot(lm, 2.5, 2.5);
     expect([...lm.floorLamp.subarray(at, at + 2)]).toEqual([1, 0]);
   });
 
@@ -285,7 +292,7 @@ describe('bakeLighting floor lamps', () => {
       GREY,
       GREY
     );
-    const at = (Math.floor(2.5 * FLOOR_SUB) * lm.stride + Math.floor(2.5 * FLOOR_SUB)) * REFLECTION_LAMPS;
+    const at = slot(lm, 2.5, 2.5);
     expect(lm.floorLamp[at]).toBe(0);
   });
 
@@ -294,6 +301,29 @@ describe('bakeLighting floor lamps', () => {
     const lm = bakeLighting(map, [lamp(5.5, 1.5)], 0.45, GREY, GREY);
     const at = slot(lm, 1.5, 1.5);
     expect([...lm.floorLamp.subarray(at, at + REFLECTION_LAMPS)]).toEqual(new Array(REFLECTION_LAMPS).fill(-1));
+  });
+});
+
+describe('distanceToWall', () => {
+  // Wall cells x = 1–3 on row 1 face south into a hall, their faces on y = 2; open floor beyond their east end.
+  const hall = parseMap(`
+11111111
+1111...1
+1S.....1
+11111111
+`);
+  const lm = bakeLighting(hall, [], 0.45, GREY, GREY);
+  const SOUTH = { dx: 0, dy: 1, dz: 0 };
+  // The face of the wall cell (2, 1), facing south.
+  const base = lm.faceOffset[(1 * hall.width + 2) * 4 + 3] as number;
+
+  test('alongside the wall it is how far the eye stands off its face', () => {
+    expect(distanceToWall(lm, base, SOUTH, 2.5, 2, { x: 3.5, y: 2.75 })).toBeCloseTo(0.75);
+  });
+
+  test('past the end of the wall, it counts to that end, not to the wall’s endless plane', () => {
+    // The run ends at x = 4: an eye at (6, 2.5) is 0.5 off the plane but 2 tiles along from the end.
+    expect(distanceToWall(lm, base, SOUTH, 2.5, 2, { x: 6, y: 2.5 })).toBeCloseTo(Math.hypot(0.5, 2));
   });
 });
 
@@ -390,6 +420,24 @@ describe('far lamps in the lists', () => {
     const face = lm.faceOffset[(0 * hall.width + 3) * 4 + 3] as number;
     expect(lm.wallLamp[(face / WALL_V) * REFLECTION_LAMPS]).toBe(0);
   });
+});
+
+test('a map with more lamps than the lamp lists can number is refused', () => {
+  const many = Array.from({ length: 128 }, () => lamp(1.5, 1.5));
+  expect(() => bakeLighting(map, many, 0.45, GREY, GREY)).toThrow(/128 lamps/);
+});
+
+test('lamps past LAMP_SIGHT (16 tiles) are not listed, even in plain sight', () => {
+  const long = parseMap(`
+1111111111111111111111
+1S...................1
+1111111111111111111111
+`);
+  const lm = bakeLighting(long, [lamp(20.5, 1.5)], 0.45, GREY, GREY);
+  const cell = (x: number) => (Math.floor(1.5 * FLOOR_SUB) * lm.stride + Math.floor(x * FLOOR_SUB)) * REFLECTION_LAMPS;
+  // 15.5 tiles off: listed; 19.5 off: not.
+  expect(lm.floorLamp[cell(5)]).toBe(0);
+  expect([...lm.floorLamp.subarray(cell(1), cell(1) + REFLECTION_LAMPS)]).toEqual(new Array(REFLECTION_LAMPS).fill(-1));
 });
 
 describe('soft shadows', () => {

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { makeTextures, RELIEF, RELIEF_LEVELS, TEX } from './textures';
+import { rgb } from './framebuffer';
+import { averageColour, makeTextures, RELIEF, RELIEF_LEVELS, TEX } from './textures';
 
 const at = (tile: number, x: number, y: number) =>
   RELIEF_LEVELS[(RELIEF[tile] as Uint8Array)[y * TEX + x] as number] as number;
@@ -26,5 +27,12 @@ describe('RELIEF', () => {
   test('blue stone shares the brick pattern; wood has no relief', () => {
     expect([...(RELIEF[3] as Uint8Array)]).toEqual([...(RELIEF[1] as Uint8Array)]);
     expect((RELIEF[2] as Uint8Array).every((v) => RELIEF_LEVELS[v] === 0)).toBe(true);
+  });
+});
+
+describe('averageColour', () => {
+  test('is the mean of every texel, rounded', () => {
+    const tex = Uint32Array.from([rgb(0, 10, 255), rgb(255, 11, 0)]);
+    expect(averageColour(tex)).toBe(rgb(128, 11, 128));
   });
 });

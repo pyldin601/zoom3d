@@ -336,9 +336,15 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 
 ### D24 — Lighting
 - *Resolved 2026-10-13* (spike, shipped as is): static ceiling lamps baked into lightmaps when the map loads
-  (`renderer/lighting.ts`, about 57 ms for LEVEL1). Shadows are grid-exact: 2D lines of sight from each
-  lamp to each wall, floor and ceiling sample (soft since 2026-10-15, below). Per frame, a wall pixel costs one lookup and a multiply, and floor and
-  ceiling (now cast per pixel, row by row) one lookup each: +0.24 ms over 0.58 ms at 640×360.
+  (`renderer/lighting.ts`, about 57 ms for LEVEL1). Shadows are grid-exact: 2D lines of sight from each lamp to each
+  wall, floor and ceiling sample (soft since 2026-10-15, below). Per frame, a wall pixel costs one lookup and a
+  multiply, and floor and ceiling (now cast per pixel, row by row) one lookup each: +0.24 ms over 0.58 ms at 640×360.
+  - **Baked on the room's first frame** (2026-10-16), not when the page loads: with bounce light and soft shadows the
+    LEVEL1 bake is about 105 ms (cold, esbuild bundle), and the landing page, which bakes only its own small scene,
+    never needs it. By the first frame the join is already connecting.
+  - **Current cost** (2026-10-16, `pnpm bench:walls`: LEVEL1 at 640×360 from 176 poses near lamps, esbuild bundle):
+    unlit 0.50 ms; lit with reflections off 0.68 ms; walls reflecting 0.90 ms; walls, floor and ceiling 1.28 ms;
+    plus 8 glowing avatars 1.52 ms. The bench prints a hash of the bake and of every pixel, for refactors.
   - **Ambient is bounce light** (2026-10-15; it was a flat 45%). The bake gathers, per half-tile cell, the lamps'
     direct light on its floor, ceiling and bordering wall faces times each surface's colour (wall colours are the
     textures' averages), then spreads it through the open floor with 40 rounds of blur, never through walls. A
@@ -370,9 +376,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
       cut off at 1.5× the lamp's reach, which hid lamps seen across a dark room (2026-10-15): a lamp through a
       doorway 12 tiles off left no streak on the floor between. Now it does (+24/255), at the cost of streaks
       growing towards their lamp a little less steeply. Past a lamp's light reach, walls and floor list it by a
-      coarse half-tile sight table (`bakeLampSight`, lamps within 16 tiles) instead of an exact sight line each. Schlick's (1 − v·h)⁵ only
-      rises past 80°, and a corridor's reflections sit at 60–70°. It replaced two separate effects (a mirror glint and
-      a streak), which competed and left a dark gap beside each lamp, like a shadow.
+      coarse half-tile sight table (`bakeLampSight`, lamps within 16 tiles) instead of an exact sight line each, so a
+      far lamp's reflection has half-tile shadow edges. Schlick's (1 − v·h)⁵ only rises past 80°, and a corridor's
+      reflections sit at 60–70°. It replaced two separate effects (a mirror glint and a streak), which competed and
+      left a dark gap beside each lamp, like a shadow.
     - *Materials* (`REFLECTION_MATERIAL` in `renderer/textures.ts`): varnished wood is glossy (shininess 16, f0 0.4),
       a soft spot face-on and a narrower streak; brick is rough (8, 0.05), barely there face-on and a long streak.
       Mortar stays matte (`GLOSS`). Light stone is near white under a lamp, so it reads as matte, which suits it.
@@ -383,7 +390,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
       every row cost +0.21 ms); about +0.11 ms. Shadows: the floor's light bake also lists up to 3 lamps each floor
       cell can see (`floorLamp`, the same cells and sight lines), and each pixel adds a reflection only if its own
       cell lists the lamp. Blending alone carried reflection up to 16 pixels into shadows, in 2-row steps: a comb
-      interleaving with the shadow edge (fixed 2026-10-15). The bake is about 78 ms for LEVEL1; the lists take 1.3 MB.
+      interleaving with the shadow edge (fixed 2026-10-15). With 8 slots per cell (below) the lists take 1.9 MB for
+      LEVEL1, lamp indices as signed bytes (2026-10-16; so at most 127 lamps, which the bake checks), plus 1.9 MB for
+      how much of each lamp a cell sees.
     - *Ceiling* (2026-10-15): it catches the lamps' light off the floor, not the lamps and not the floor: each lamp
       mirrored in the floor (as far under it as the lamp is over it) reflected in the ceiling with the floor's model
       and material, at half strength (`CEILING_SHINE` in `renderer/walls.ts`), each cell's shadows as the floor's.
@@ -410,11 +419,14 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
       (`faceRun`), and past a run's end the distance counts to that end. Measured to the plane, a far wall face lying
       in line with the eye (a pillar's side down the corridor) counted as close and flashed a stripe down its edge.
       A wall that resumes in the same line after a doorway is a separate run, so its streak starts dimmer.
-    - *Console* (backquote, under the audio tuning): "Reflections" picks None, Walls, or Walls, floor and ceiling (the default),
-      kept per browser (`ui/render-settings.ts`, like the audio settings). The landing page always shows both.
+    - *Console* (backquote, under the audio tuning): "Reflections" picks None, Walls, or Walls, floor and ceiling (the
+      default), kept per browser (`ui/render-settings.ts`, like the audio settings). The landing page always shows
+      both.
     - *Per frame:* a wall column whose reflection peaks under half a step of brightness is skipped; the rest work it
-      out at 17 heights and blend them per texel row (per texel row it cost +1 ms). Walls and floor together cost
-      about +0.22 ms at the worst spots, close to walls in lit corridors (esbuild bundle).
+      out at 17 heights and blend them per texel row (per texel row it cost +1 ms). Floor and ceiling are drawn first,
+      then each row's reflection is added in its own pass, which skips the 16-pixel spans whose samples both show
+      nothing (2026-10-16; adding it inside the floor loop cost about 0.2 ms more in every lit mode, reflections off
+      too). Walls add about +0.22 ms, floor and ceiling +0.38 ms (see *Current cost*).
   - **Avatars glow** (2026-10-15): faces stay at full brightness, like screens, and each one lights the floor,
     ceiling and walls around it with its face's average colour (sampled 16×16; ring colour without a face), up to
     2.5 tiles (`renderer/glow.ts`; at 1.5 a person in the middle of a 3-wide corridor lit no wall). Your own face
