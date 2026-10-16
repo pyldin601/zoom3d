@@ -69,3 +69,47 @@ export function glowLight(g: Glow, x: number, y: number, z: number, nx: number, 
   const k = 1 - d2 / reach2;
   return k * k * (facing / Math.sqrt(d2));
 }
+
+/** A disc that glows: where it stands, and its face or, without one, its ring colour. */
+export interface GlowSource {
+  readonly x: number;
+  readonly y: number;
+  readonly face: Uint32Array | null;
+  readonly color: number;
+}
+
+/** A frame's avatar glows, in objects reused from frame to frame. */
+export interface AvatarGlows {
+  /** Recomputes the list: one glow per disc in order, then `self`'s when it isn't null. */
+  update(discs: readonly GlowSource[], self: GlowSource | null): readonly Glow[];
+}
+
+export function createAvatarGlows(): AvatarGlows {
+  /** Every glow object made so far; the list hands out the first `n` each frame. */
+  const pool: Glow[] = [];
+  const glows: Glow[] = [];
+  let n = 0;
+  const add = (source: GlowSource) => {
+    let g = pool.at(n);
+    if (!g) {
+      g = { x: 0, y: 0, r: 0, g: 0, b: 0 };
+      pool.push(g);
+    }
+    glowOf(source.x, source.y, source.face, source.color, g);
+    // Written by index and trimmed after: `length = 0` would make V8 drop the array's storage every frame.
+    glows[n++] = g;
+  };
+  return {
+    update(discs, self) {
+      n = 0;
+      for (const disc of discs) {
+        add(disc);
+      }
+      if (self) {
+        add(self);
+      }
+      glows.length = n;
+      return glows;
+    },
+  };
+}

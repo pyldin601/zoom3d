@@ -39,7 +39,7 @@ import { createSession, objectKey, type Session } from './net/session';
 import { type AutomapPeer, drawAutomap } from './renderer/automap';
 import { type Bob, createBob } from './renderer/bob';
 import { createFramebuffer, type Framebuffer } from './renderer/framebuffer';
-import { type Glow, glowOf } from './renderer/glow';
+import { createAvatarGlows } from './renderer/glow';
 import { drawLabels } from './renderer/labels';
 import { bakeLighting, corridorLights, type Lighting } from './renderer/lighting';
 import { VACUUM_MODEL } from './renderer/models/vacuum';
@@ -103,8 +103,9 @@ const textures = makeTextures(1);
 const LIGHTS = new URLSearchParams(location.search).get('lights') !== 'off';
 const lamps = corridorLights(map);
 /** Each avatar's glow: its face lights the floor and walls around it like a screen. Yours too, last. */
-const avatarGlows: Glow[] = [];
-const ownGlow: Glow = { x: 0, y: 0, r: 0, g: 0, b: 0 };
+const avatarGlows = createAvatarGlows();
+/** Your own disc as a glow source, moved to you each frame. */
+const selfDisc = { x: 0, y: 0, face: null, color: 0 };
 /** Your face's average colour while the camera is on, null otherwise; set once local media exists. */
 let ownGlowColour: (now: number) => number | null = () => null;
 /** Ambient light is bounce light: what the lamps' lit surfaces throw back, over a bare minimum so no room is black. */
@@ -888,22 +889,18 @@ function frame(dt: number): void {
 
   // Drawing starts here: the glows, walls, sprites, your own items, the canvas and the HUD.
   const drawStart = performance.now();
-  avatarGlows.length = sprites.length;
-  for (let i = 0; i < avatarGlows.length; i++) {
-    const s = sprites[i] as Sprite;
-    avatarGlows[i] ??= { x: 0, y: 0, r: 0, g: 0, b: 0 };
-    glowOf(s.x, s.y, s.face, s.color, avatarGlows[i] as Glow);
-  }
   // Your own face glows around you too: its camera colour, else your ring colour.
   const selfColor = session?.selfColor();
   if (selfColor) {
-    glowOf(player.x, player.y, null, ownGlowColour(performance.now()) ?? hexToRgb(selfColor), ownGlow);
-    avatarGlows.push(ownGlow);
+    selfDisc.x = player.x;
+    selfDisc.y = player.y;
+    selfDisc.color = ownGlowColour(performance.now()) ?? hexToRgb(selfColor);
   }
+  const glows = avatarGlows.update(sprites, selfColor ? selfDisc : null);
   // The console's lighting mode; flat is drawn unlit, as with `?lights=off`.
   const reflections = litReflections(renderSettings.mode);
   const lighting = reflections === null ? null : roomLighting();
-  renderWalls(fb, map, player, textures, lighting, reflections ?? 'none', avatarGlows);
+  renderWalls(fb, map, player, textures, lighting, reflections ?? 'none', glows);
   renderSprites(fb, player, sprites, facts, session ? voxels : undefined, lighting);
   if (session) {
     updateInterest(session, performance.now(), document.hidden);
