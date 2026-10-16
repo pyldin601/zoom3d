@@ -126,7 +126,8 @@ export function buildModel(
 let screen = new Float64Array(0);
 let faceDepth = new Float64Array(0);
 const order: number[] = [];
-const byDepth = (a: number, b: number) => (faceDepth[b] as number) - (faceDepth[a] as number);
+/** Far to near. Math.sign: sort can't inline its comparator, and a small integer isn't boxed as a double is. */
+const byDepth = (a: number, b: number) => Math.sign((faceDepth[b] as number) - (faceDepth[a] as number));
 /** Lamp light per face direction (r, g, b × 5), then ambient × shade added: this instance's multipliers. */
 const instanceLight = new Float64Array(FACES.length * 3);
 /** The ambient light, r, g, b, where this instance stands. */

@@ -28,8 +28,10 @@ const FLAT_RING_SHADE = 0.7;
 /** Floor shadow radius (tiles) and how much it darkens the floor at its centre. */
 export const SHADOW_RADIUS = 0.3;
 const SHADOW_DARKNESS = 0.33;
-/** Retro look: the shadow is a low-res floor texture (texel in tiles) with flat darkness bands. */
-const SHADOW_TEXEL = 1 / 16;
+/** Retro look: the shadow is a low-res floor texture (texels per tile) with flat darkness bands. */
+const SHADOW_TEXELS_PER_TILE = 16;
+/** A shadow texel's side, in tiles. */
+const SHADOW_TEXEL = 1 / SHADOW_TEXELS_PER_TILE;
 export const SHADOW_LEVELS = 3;
 /** Top of a walking step, in disc radii. */
 export const BOB_HEIGHT = 0.1;
@@ -130,19 +132,19 @@ function renderShadow(
   const col0 = Math.max(0, Math.floor(centreX - halfW));
   const col1 = Math.min(w - 1, Math.ceil(centreX + halfW));
   const r2 = radius * radius;
-  for (let col = col0; col <= col1; col++) {
-    const cameraX = (2 * col) / w - 1;
-    const rayX = dirX + planeX * cameraX;
-    const rayY = dirY + planeY * cameraX;
-    const wall = zbuffer[col] as number;
-    for (let row = row0; row <= row1; row++) {
-      const dist = floorK / (row + 0.5 - half);
-      if (dist >= wall) {
+  // Row by row: the floor distance is the row's, so it's one division per row, not per pixel.
+  for (let row = row0; row <= row1; row++) {
+    const dist = floorK / (row + 0.5 - half);
+    for (let col = col0; col <= col1; col++) {
+      if (dist >= (zbuffer[col] as number)) {
         continue;
       }
+      const cameraX = (2 * col) / w - 1;
+      const rayX = dirX + planeX * cameraX;
+      const rayY = dirY + planeY * cameraX;
       // Snap the floor point to its texel centre (grid centred on the avatar, so it stays symmetric).
-      const dx = (Math.floor((view.x + rayX * dist - sx) / SHADOW_TEXEL) + 0.5) * SHADOW_TEXEL;
-      const dy = (Math.floor((view.y + rayY * dist - sy) / SHADOW_TEXEL) + 0.5) * SHADOW_TEXEL;
+      const dx = (Math.floor((view.x + rayX * dist - sx) * SHADOW_TEXELS_PER_TILE) + 0.5) * SHADOW_TEXEL;
+      const dy = (Math.floor((view.y + rayY * dist - sy) * SHADOW_TEXELS_PER_TILE) + 0.5) * SHADOW_TEXEL;
       const d2 = dx * dx + dy * dy;
       if (d2 >= r2) {
         continue;
@@ -164,12 +166,13 @@ const frameView = createView();
 const projections: Projection[] = [];
 /** Sprites in front of the camera, far to near. */
 const visible: number[] = [];
+// The depth sorts return Math.sign: sort can't inline its comparator, and a small integer isn't boxed as a double is.
 const spritesFarFirst = (a: number, b: number) =>
-  (projections[b] as Projection).depth - (projections[a] as Projection).depth;
+  Math.sign((projections[b] as Projection).depth - (projections[a] as Projection).depth);
 /** Voxel instances in front of the camera, far to near, with their centre depths. */
 const voxelOrder: number[] = [];
 const voxelDepths: number[] = [];
-const voxelsFarFirst = (a: number, b: number) => (voxelDepths[b] as number) - (voxelDepths[a] as number);
+const voxelsFarFirst = (a: number, b: number) => Math.sign((voxelDepths[b] as number) - (voxelDepths[a] as number));
 /** Each sprite's facts object for this frame (null without a facts map). */
 const spriteFacts: (PeerFacts | null)[] = [];
 /** Per column, the tallest disc slice (half-height, px) already counted this frame, nearest disc first. */
@@ -378,17 +381,18 @@ function drawDisc(fb: Framebuffer, s: Sprite, { screenX, depth, size }: Projecti
       continue;
     }
     const dx = col + 0.5 - screenX;
+    const dx2 = dx * dx;
+    // Map the inner circle onto the whole texture (not mirrored: we face the person).
+    const u = Math.min(faceSize - 1, Math.max(0, ((dx / inner + 1) * 0.5 * faceSize) | 0));
     for (let row = y0; row <= y1; row++) {
       const dy = row + 0.5 - cy;
-      const d2 = dx * dx + dy * dy;
+      const d2 = dx2 + dy * dy;
       if (d2 > r2) {
         continue;
       }
       if (d2 > ring2) {
         pixels[row * w + col] = edge;
       } else if (face) {
-        // Map the inner circle onto the whole texture (not mirrored: we face the person).
-        const u = Math.min(faceSize - 1, Math.max(0, ((dx / inner + 1) * 0.5 * faceSize) | 0));
         const v = Math.min(faceSize - 1, Math.max(0, ((dy / inner + 1) * 0.5 * faceSize) | 0));
         pixels[row * w + col] = face[v * faceSize + u] as number;
       } else {

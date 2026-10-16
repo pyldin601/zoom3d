@@ -171,14 +171,22 @@ export function renderWalls(
       }
       const step = size / lineH;
       let texPos = (start - half + lineH / 2) * step;
+      const shade = hit.side === 1;
+      // Shaded once per texel, not per pixel: a near wall shows each texel on many rows.
+      let shadedY = -1;
+      let shaded = 0;
       for (let y = start; y < end; y++) {
         // A wall under a texture's height steps over a texel per row, so its top row can start over a texel above
         // the texture (texPos < −1): it shows the top texel.
         const texY = texPos < 0 ? 0 : Math.min(size - 1, texPos | 0);
         texPos += step;
-        const c = tex[texY * size + texX] as number;
-        // SIDE_SHADE (lighting.ts) as a literal: read from the constant, this loop measured 3% slower (bench:walls).
-        pixels[y * w + col] = hit.side === 1 ? scaleRgb(c, 0.7) : c;
+        if (texY !== shadedY) {
+          shadedY = texY;
+          const c = tex[texY * size + texX] as number;
+          // SIDE_SHADE (lighting.ts) as a literal: read from the constant, this loop measured 3% slower (bench:walls).
+          shaded = shade ? scaleRgb(c, 0.7) : c;
+        }
+        pixels[y * w + col] = shaded;
       }
     }
     for (let y = Math.max(end, start); y < h; y++) {
