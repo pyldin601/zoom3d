@@ -138,7 +138,8 @@ const landscape = () => createFramebuffer();
 const portrait = () => createFramebuffer(296, 640, fovForAspect(296 / 640));
 const PARKED = { model: VACUUM_MODEL, ...LANDING_PARK };
 
-test('the parked vacuum is out of sight of both cameras', () => {
+// Eight full renders compared pixel by pixel: under a second here, but CI runners have hit the default 5 s.
+test('the parked vacuum is out of sight of both cameras', { timeout: 30_000 }, () => {
   for (const frame of [landscape, portrait]) {
     for (const lights of [false, true]) {
       const without = frame();
