@@ -459,6 +459,40 @@ describe('renderWalls avatar glow', () => {
     }
   });
 
+  test('glows add up with each other: two avatars side by side light the dark floor more than one', () => {
+    const one = render([glow]);
+    const two = render([glow, { ...glow, y: 2.6 }]);
+    let more = 0;
+    for (let i = (dark.height / 2) * dark.width; i < dark.pixels.length; i++) {
+      if (((two.pixels[i] as number) & 0xff) > ((one.pixels[i] as number) & 0xff)) {
+        more++;
+      }
+    }
+    expect(more).toBeGreaterThan(100);
+  });
+
+  test('it doesn’t add to a brighter light: under a strong lamp, an avatar changes nothing around it', () => {
+    // A lamp over the room lights everything more than the glow does, so the glow is lost in it, as a screen is.
+    const bright = bakeLighting(
+      room,
+      [{ x: 4.5, y: 2.5, z: 0.85, radius: 20, r: 3, g: 3, b: 3 }],
+      0.08,
+      FLOOR,
+      CEILING
+    );
+    const without = createFramebuffer();
+    const withGlow = createFramebuffer();
+    renderWalls(without, room, pose, textures, bright, 'none', []);
+    renderWalls(withGlow, room, pose, textures, bright, 'none', [glow]);
+    let changed = 0;
+    for (let i = 0; i < without.pixels.length; i++) {
+      if (withGlow.pixels[i] !== without.pixels[i]) {
+        changed++;
+      }
+    }
+    expect(changed).toBe(0);
+  });
+
   test('the ceiling over the avatar glows too', () => {
     let brighter = 0;
     for (let i = 0; i < (dark.height / 2) * dark.width; i++) {
