@@ -4,6 +4,7 @@
 // surfaces throw back. The bake also lists, per wall sample column and floor cell, the lamps it can reflect; the
 // reflection model itself (`reflection()`) is pure and runs per frame, sampled sparsely by walls.ts.
 import { type GameMap, hasLineOfSight, tileAt } from '@zoom3d/shared';
+import { EYE_HEIGHT } from './camera';
 import { rgb } from './framebuffer';
 import { RELIEF_LEVELS, type ReflectionMaterial } from './textures';
 
@@ -43,8 +44,6 @@ const SHADOW_STEPS = 5;
  * Lamp light is unshaded.
  */
 export const SIDE_SHADE = 0.7;
-/** The eye's height above the floor: walls are drawn centred on the horizon. */
-const EYE_Z = 0.5;
 /**
  * Walls and floor reflect only this many tiles from the eye, fading to nothing here: a streak along the wall you're
  * by stays near you, and a far wall that lies in line with the eye (close to its plane) barely flashes.
@@ -758,7 +757,8 @@ function lampsOn(
 
 /**
  * How brightly lamp `l` reflects at (px, py, pz) on a surface facing `n` (a wall, or the floor facing up), seen from
- * the eye, 0..1 before the lamp's colour; `lampZ` moves the lamp up or down (the ceiling's mirrored lamps).
+ * the eye, 0..1 before the lamp's colour; the lamp is taken at height `lampZ`, `l.z` but for the ceiling's mirrored
+ * lamps.
  *
  * One model for every angle: Blinn-Phong, (n·h)^shininess with h halfway between the lamp and the eye, times a boost
  * at shallow angles, f0 + (1 − f0)·(1 − (v·h)²), times how brightly the lamp lights the surface,
@@ -774,6 +774,9 @@ function lampsOn(
  * Shadows are the caller's (wallLampSeen, floorLampSeen). `shininess` is a power of two (it's raised by squaring).
  * It takes three square roots, so callers sample it sparsely: a wall column at REFLECTION_SAMPLES heights, the floor
  * every few pixels.
+ *
+ * Up to ~90k calls a frame: it must stay small enough for V8 to inline (460 bytes of bytecode by default), or every
+ * call boxes its doubles (−0.16 ms a frame in bench:walls). Hence the helpers, and no default `lampZ`.
  */
 export function reflection(
   l: Light,
@@ -783,26 +786,22 @@ export function reflection(
   py: number,
   pz: number,
   eye: Eye,
-  lampZ = l.z
+  lampZ: number
 ): number {
-  const { shininess, f0 } = gloss;
-  const nx = n.dx;
-  const ny = n.dy;
-  const nz = n.dz;
   const lx = l.x - px;
   const ly = l.y - py;
   const lz = lampZ - pz;
-  const l2 = lx * lx + ly * ly + lz * lz;
-  if (lx * nx + ly * ny + lz * nz <= 0) {
+  if (lx * n.dx + ly * n.dy + lz * n.dz <= 0) {
     return 0;
   }
+  const l2 = lx * lx + ly * ly + lz * lz;
   const vx = eye.x - px;
   const vy = eye.y - py;
-  const vz = EYE_Z - pz;
+  const vz = EYE_HEIGHT - pz;
   const lampLen = Math.sqrt(l2);
   const eyeLen = Math.sqrt(vx * vx + vy * vy + vz * vz);
-  const path = (lampLen + eyeLen) / REFLECTION_PATH;
-  if (path >= 1) {
+  const fade = pathFade(lampLen + eyeLen);
+  if (fade === 0) {
     return 0;
   }
   // Halfway between the directions to the lamp and to the eye.
@@ -810,19 +809,34 @@ export function reflection(
   const hy = ly / lampLen + vy / eyeLen;
   const hz = lz / lampLen + vz / eyeLen;
   const halfLen = Math.sqrt(hx * hx + hy * hy + hz * hz);
-  const nh = (hx * nx + hy * ny + hz * nz) / halfLen;
+  const nh = (hx * n.dx + hy * n.dy + hz * n.dz) / halfLen;
   if (nh <= 0) {
     return 0;
   }
   const vh = (vx * hx + vy * hy + vz * hz) / (eyeLen * halfLen);
-  const reach = l.radius * REFLECTION_REACH;
-  const lit = 1 / (1 + l2 / (reach * reach));
-  const fade = 1 - path * path;
+  return specular(nh, vh, gloss) * lampLit(l, l2) * fade * fade;
+}
+
+/** The fade over a reflection's path, lamp to surface to eye, `length` tiles long: 1 − (length / REFLECTION_PATH)², 0
+ * from REFLECTION_PATH on. */
+function pathFade(length: number): number {
+  const path = length / REFLECTION_PATH;
+  return path >= 1 ? 0 : 1 - path * path;
+}
+
+/** Blinn-Phong's lobe, (n·h)^shininess, times the shallow-angle boost (see reflection()). */
+function specular(nh: number, vh: number, gloss: Gloss): number {
   let lobe = nh;
-  for (let m = 1; m < shininess; m *= 2) {
+  for (let m = 1; m < gloss.shininess; m *= 2) {
     lobe *= lobe;
   }
-  return lobe * (f0 + (1 - f0) * (1 - vh * vh)) * lit * fade * fade;
+  return lobe * (gloss.f0 + (1 - gloss.f0) * (1 - vh * vh));
+}
+
+/** How brightly lamp `l` lights a surface `l2` (tiles²) from it, as its reflection sees it: never cut off. */
+function lampLit(l: Light, l2: number): number {
+  const reach = l.radius * REFLECTION_REACH;
+  return 1 / (1 + l2 / (reach * reach));
 }
 
 /**
@@ -838,7 +852,8 @@ export function distanceToWall(lm: Lighting, base: number, n: Normal, px: number
   // West and east faces run along y, north and south ones along x.
   const along = n.dx !== 0 ? eye.y : eye.x;
   const gap = along < start ? start - along : along > end ? along - end : 0;
-  return Math.hypot(off, gap);
+  // Not Math.hypot: V8 doesn't inline it, and every call boxes its result.
+  return Math.sqrt(off * off + gap * gap);
 }
 
 /**
@@ -847,9 +862,10 @@ export function distanceToWall(lm: Lighting, base: number, n: Normal, px: number
  * A lamp's reflection on that column peaks about there.
  */
 export function bounceHeight(l: Light, px: number, py: number, ex: number, ey: number): number {
-  const eyeLeg = Math.hypot(px - ex, py - ey);
-  const lampLeg = Math.hypot(l.x - px, l.y - py);
-  return (EYE_Z * lampLeg + l.z * eyeLeg) / (eyeLeg + lampLeg);
+  // Not Math.hypot, as in distanceToWall: per column, per lamp.
+  const eyeLeg = Math.sqrt((px - ex) * (px - ex) + (py - ey) * (py - ey));
+  const lampLeg = Math.sqrt((l.x - px) * (l.x - px) + (l.y - py) * (l.y - py));
+  return (EYE_HEIGHT * lampLeg + l.z * eyeLeg) / (eyeLeg + lampLeg);
 }
 
 // Moving objects, per frame.

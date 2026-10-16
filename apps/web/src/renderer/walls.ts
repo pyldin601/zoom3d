@@ -445,7 +445,7 @@ function aimReflection(lm: Lighting, p: PlayerState): boolean {
     // Dimmed by how much of the lamp the column sees: a lamp half hidden by a door's edge reflects half as brightly.
     const strength = scale * ((lm.wallLampSeen[slot + k] as number) / 255);
     const z = bounceHeight(lamp, hitX, hitY, p.x, p.y);
-    if (reflection(lamp, material, normal, hitX, hitY, z, p) * strength < VISIBLE_SHINE) {
+    if (reflection(lamp, material, normal, hitX, hitY, z, p, lamp.z) * strength < VISIBLE_SHINE) {
       continue;
     }
     if (!shows) {
@@ -454,7 +454,8 @@ function aimReflection(lm: Lighting, p: PlayerState): boolean {
       reflectedLamp.fill(index);
     }
     for (let i = 0; i < REFLECTION_SAMPLES; i++) {
-      const shine = reflection(lamp, material, normal, hitX, hitY, i / (REFLECTION_SAMPLES - 1), p) * strength;
+      const height = i / (REFLECTION_SAMPLES - 1);
+      const shine = reflection(lamp, material, normal, hitX, hitY, height, p, lamp.z) * strength;
       if (shine > (reflected[i] as number)) {
         reflected[i] = shine;
         reflectedLamp[i] = index;
