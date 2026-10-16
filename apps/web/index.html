@@ -125,9 +125,12 @@
       #ui .audio-panel .value { color: #888; font-variant-numeric: tabular-nums; }
       #ui .audio-panel .frame-rate { display: flex; justify-content: space-between; align-items: baseline; gap: 1em; color: #aaa; }
       #ui .audio-panel .frame-rate span { color: #eee; font-size: 1.4em; font-weight: 600; font-variant-numeric: tabular-nums; }
-      #ui .audio-panel .frame-rate .good { color: #6c6; }
-      #ui .audio-panel .frame-rate .fair { color: #eb4; }
-      #ui .audio-panel .frame-rate .poor { color: #f77; }
+      /* Render time: the drawing's share of a screen frame, then its ms. */
+      #ui .audio-panel .render-load { display: flex; justify-content: space-between; align-items: baseline; gap: 1em; margin-top: 0.3em; color: #aaa; }
+      #ui .audio-panel .render-load span { color: #eee; font-variant-numeric: tabular-nums; }
+      #ui .audio-panel .frame-rate .good, #ui .audio-panel .render-load .good { color: #6c6; }
+      #ui .audio-panel .frame-rate .fair, #ui .audio-panel .render-load .fair { color: #eb4; }
+      #ui .audio-panel .frame-rate .poor, #ui .audio-panel .render-load .poor { color: #f77; }
       /* Which of your face sizes others receive (6c): a dot and number per size, the biggest first; green while
          someone does. */
       #ui .audio-panel .face-sent { display: flex; justify-content: space-between; align-items: center; gap: 1em; margin-top: 0.3em; color: #aaa; }
