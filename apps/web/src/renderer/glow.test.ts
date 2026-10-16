@@ -30,6 +30,17 @@ describe('glowLight', () => {
     expect(glowLight(g, GLOW_RADIUS, 0, 0, 0, 0, 1)).toBe(0);
   });
 
+  test('the disc sits half way up: the ceiling above a point gets exactly what the floor under it does', () => {
+    // walls.ts works the glow out once per floor cell for both.
+    for (const [x, y] of [
+      [0, 0],
+      [0.7, -0.3],
+      [1.9, 1.1],
+    ] as const) {
+      expect(glowLight(g, x, y, 1, 0, 0, -1)).toBe(glowLight(g, x, y, 0, 0, 0, 1));
+    }
+  });
+
   test('a wall facing away from the disc gets none', () => {
     // A wall at x = 0.5 facing +x, the disc on its back side.
     expect(glowLight(g, 0.5, 0, 0.5, 1, 0, 0)).toBe(0);
