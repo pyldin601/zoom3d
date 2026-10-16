@@ -79,3 +79,27 @@ test('a face out of view stops arriving and comes back, never as initials, when 
   await expect.poll(async () => (await received(b, 'Ada'))?.videoTracks, { timeout: 5000 }).toBe(1);
   expect(await growth(b, 'Ada', 1000)).toBeGreaterThan(2000);
 });
+
+test('the backtick panel’s face dots show whether anyone receives your face', async ({ browser }) => {
+  test.setTimeout(60_000);
+  const a = await (await browser.newContext()).newPage();
+  const b = await (await browser.newContext()).newPage();
+  const url = await createAndJoin(a, 'Ada');
+  await a.locator('#stage').click();
+  await a.keyboard.press('Backquote');
+  const sent = a.locator('.audio-panel .face-sent .dots span.on');
+  await expect(a.locator('.audio-panel .face-sent .dots span')).toHaveCount(3);
+  // Alone: dynacast pauses every size.
+  await expect(sent).toHaveCount(0, { timeout: 15_000 });
+
+  await b.goto(url);
+  await joinAs(b, 'Bob');
+  await lookAt(b, 'Ada');
+  await expect.poll(() => sent.count(), { timeout: 15_000 }).toBeGreaterThan(0);
+
+  // Bob turns away: once he drops her face, nobody receives any size.
+  await b.evaluate(() => {
+    (window as unknown as GameWindow).__game.player.angle += Math.PI;
+  });
+  await expect(sent).toHaveCount(0, { timeout: 15_000 });
+});

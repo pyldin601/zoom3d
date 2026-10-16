@@ -6,7 +6,7 @@ import type { createFace as CreateFace, FaceSource } from './faces';
 import type { Want } from './interest';
 import type { LocalMediaController } from './local-media';
 import type { RemoteMedia } from './remote-media';
-import type { MediaTransport, TransportOptions } from './transport';
+import type { FacesSent, MediaTransport, TransportOptions } from './transport';
 
 export interface Call {
   /** Pass to createSession, then call attach() with the session. */
@@ -15,6 +15,8 @@ export interface Call {
   faceOf(peerId: string): Uint32Array | null;
   isLive(peerId: string): boolean;
   stats(peerId: string): Promise<{ bytesReceived: number; boomboxBytesReceived: number } | null>;
+  /** Which of our face sizes someone receives now; none before the media room is up. */
+  sendingFaces(): FacesSent;
   /** Whether the peer publishes media at all (people do, bots don't). */
   publishes(peerId: string): boolean;
   /** What to receive from a peer (the interest rule's output); kept across a recreated transport. */
@@ -223,6 +225,7 @@ export function createCall(opts: CallOptions): Call {
     faceOf: (id) => faces.get(id)?.texels ?? null,
     isLive: (id) => faces.get(id)?.live() ?? false,
     stats: async (id) => (transport ? transport.stats(id) : null),
+    sendingFaces: () => transport?.sendingFaces() ?? { 256: false, 128: false, 64: false },
     publishes: (id) => transport?.publishes(id) ?? false,
     setWanted(peerId, want) {
       wants.set(peerId, want);

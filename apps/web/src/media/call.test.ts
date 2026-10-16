@@ -139,6 +139,7 @@ function makeCall(init: Parameters<typeof fakeLocal>[0] = {}) {
         close: vi.fn(),
         stats: vi.fn(async () => ({ bytesReceived: 5, boomboxBytesReceived: 2 })),
         setVideoTracks: vi.fn(),
+        sendingFaces: vi.fn(() => ({ 256: true, 128: false, 64: true })),
         setWanted: vi.fn(),
         publishes: vi.fn((id: string) => id === 'a'),
         setAudioTrack: vi.fn(),
@@ -304,6 +305,13 @@ test("media is republished when the controller's camera comes up after joining",
   const calls = (session.setMedia as ReturnType<typeof vi.fn>).mock.calls.length;
   local.notify();
   expect((session.setMedia as ReturnType<typeof vi.fn>).mock.calls.length).toBe(calls);
+});
+
+test("which face sizes go out is the transport's, and none before there is one", () => {
+  const call = makeCall();
+  expect(call.sendingFaces()).toEqual({ 256: false, 128: false, 64: false });
+  call.listener.welcome?.('me', LK, true);
+  expect(call.sendingFaces()).toEqual({ 256: true, 128: false, 64: true });
 });
 
 test('dispose closes the transport and removes elements and faces', () => {

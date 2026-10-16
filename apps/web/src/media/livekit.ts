@@ -9,13 +9,15 @@
 import type { LiveKitAccess } from '@zoom3d/shared';
 import type { RoomConnectOptions, RoomOptions, TrackPublishOptions } from 'livekit-client';
 import type { VideoWant, Want } from './interest';
-import type { FaceTracks, MediaTransport, TransportOptions } from './transport';
+import type { FacesSent, FaceTracks, MediaTransport, TransportOptions } from './transport';
 
 export const VIDEO_MAX_BITRATE = 350_000;
 export const FACE_128_MAX_BITRATE = 120_000;
 export const FACE_64_MAX_BITRATE = 35_000;
 /** Mono music: transparent at this rate, well above Opus's ~32 kbps speech default (boombox spec §5.3). */
 export const BOOMBOX_MAX_BITRATE = 64_000;
+/** Firefox can't switch an encoding off, so for a paused size LiveKit lowers it to this bitrate (and 2 fps) instead. */
+const FIREFOX_PAUSED_BITRATE = 10;
 const RETRY_MIN_MS = 1000;
 const RETRY_MAX_MS = 30_000;
 
@@ -108,6 +110,15 @@ const FACE_ORDER: Record<Exclude<VideoWant, 'off'>, FaceName[]> = {
 /** The small faces' target sizes: fed the raw camera (hidden tab), their encoder scales it down. */
 const SMALL_SIZE: Partial<Record<TrackName, number>> = { 'face-128': 128, 'face-64': 64 };
 const OFF: Want = { video: 'off', audio: false };
+
+/**
+ * Whether a published face goes out: dynacast switches its one encoding off while nobody receives it (LiveKit's
+ * setPublishingLayers, from the SFU's subscribed qualities), or in Firefox turns it down to FIREFOX_PAUSED_BITRATE.
+ */
+function goesOut(lt: LocalTrackLike | null): boolean {
+  const encoding = lt?.sender?.getParameters().encodings?.[0];
+  return !!encoding && encoding.active !== false && (encoding.maxBitrate ?? Infinity) > FIREFOX_PAUSED_BITRATE;
+}
 
 /** One remote participant in the current room. */
 interface Remote {
@@ -444,6 +455,14 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
       wanted['face-128'] = tracks[128];
       wanted['face-64'] = tracks[64];
       update();
+    },
+    sendingFaces(): FacesSent {
+      const live = connected && !closed;
+      return {
+        256: live && goesOut(published.face),
+        128: live && goesOut(published['face-128']),
+        64: live && goesOut(published['face-64']),
+      };
     },
     publishes: (peerId) => (remotes.get(peerId)?.pubs.size ?? 0) > 0,
     setWanted(peerId, want) {

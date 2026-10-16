@@ -113,7 +113,7 @@
          the frame rate as a big coloured number. color-scheme makes the native select and sliders dark too. */
       #ui .audio-panel { position: absolute; top: 0.6em; left: 0.6em; display: flex; gap: 1em; align-items: stretch; pointer-events: auto; color: #ddd; background: rgba(15, 15, 15, 0.94); border: 0.06em solid #555; border-radius: 0.35em; padding: 0.8em 0.9em; font-size: 0.6em; line-height: 1.3; color-scheme: dark; accent-color: #6aa8ff; }
       #ui .audio-panel h2 { margin: 0 0 0.6em; color: #888; font-size: 0.8em; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
-      #ui .audio-panel .frame-rate + h2 { margin-top: 0.8em; padding-top: 0.8em; border-top: 0.06em solid #333; }
+      #ui .audio-panel .face-sent + h2 { margin-top: 0.8em; padding-top: 0.8em; border-top: 0.06em solid #333; }
       #ui .audio-panel .renderer { min-width: 12em; }
       #ui .audio-panel .boombox-slot { width: 14em; padding-left: 1em; border-left: 0.06em solid #333; }
       #ui .audio-panel .boombox-slot:empty { display: none; }
@@ -125,9 +125,20 @@
       #ui .audio-panel .value { color: #888; font-variant-numeric: tabular-nums; }
       #ui .audio-panel .frame-rate { display: flex; justify-content: space-between; align-items: baseline; gap: 1em; color: #aaa; }
       #ui .audio-panel .frame-rate span { color: #eee; font-size: 1.4em; font-weight: 600; font-variant-numeric: tabular-nums; }
-      #ui .audio-panel .frame-rate .good { color: #6c6; }
-      #ui .audio-panel .frame-rate .fair { color: #eb4; }
-      #ui .audio-panel .frame-rate .poor { color: #f77; }
+      /* Render time: the drawing's share of a screen frame, then its ms. */
+      #ui .audio-panel .render-load { display: flex; justify-content: space-between; align-items: baseline; gap: 1em; margin-top: 0.3em; color: #aaa; }
+      #ui .audio-panel .render-load span { color: #eee; font-variant-numeric: tabular-nums; }
+      #ui .audio-panel .frame-rate .good, #ui .audio-panel .render-load .good { color: #6c6; }
+      #ui .audio-panel .frame-rate .fair, #ui .audio-panel .render-load .fair { color: #eb4; }
+      #ui .audio-panel .frame-rate .poor, #ui .audio-panel .render-load .poor { color: #f77; }
+      /* Which of your face sizes others receive (6c): a dot and number per size, the biggest first; green while
+         someone does. */
+      #ui .audio-panel .face-sent { display: flex; justify-content: space-between; align-items: center; gap: 1em; margin-top: 0.3em; color: #aaa; }
+      #ui .audio-panel .face-sent .dots { display: flex; align-items: center; gap: 0.6em; }
+      #ui .audio-panel .face-sent .dots span { display: flex; align-items: center; gap: 0.25em; color: #777; font-variant-numeric: tabular-nums; }
+      #ui .audio-panel .face-sent .dots span::before { content: ''; width: 0.6em; height: 0.6em; border-radius: 50%; background: #3a4a3a; }
+      #ui .audio-panel .face-sent .dots span.on { color: #ddd; }
+      #ui .audio-panel .face-sent .dots span.on::before { background: #5fd35f; }
       #ui .boombox-panel .title { margin-bottom: 0.7em; color: #eee; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       #ui .boombox-panel .stop { width: 100%; padding: 0.35em; color: #ddd; background: #2e2e2e; border: 0.06em solid #555; border-radius: 0.25em; }
       #ui .boombox-panel .stop:hover { background: #3a3a3a; }

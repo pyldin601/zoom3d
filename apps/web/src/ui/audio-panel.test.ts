@@ -11,6 +11,8 @@ beforeEach(() => {
 
 const options = (overrides: Partial<AudioPanelOptions> = {}): AudioPanelOptions => ({
   frameRate: () => null,
+  renderLoad: () => null,
+  facesSent: () => ({ 256: false, 128: false, 64: false }),
   render: { settings: { mode: 'reflections' }, onChange: () => {} },
   ...overrides,
 });
@@ -39,6 +41,45 @@ test('the frame rate is refreshed while the panel is open and coloured by band',
     fps = 60;
     vi.advanceTimersByTime(1000);
     expect(rate.className).toBe('good');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('under the frame rate, the render time shows as a share of a screen frame and in ms, coloured by band', () => {
+  vi.useFakeTimers();
+  try {
+    let load: { ms: number; share: number } | null = null;
+    showAudioPanel(root, options({ renderLoad: () => load }));
+    const value = root.querySelector('.renderer .frame-rate + .render-load span') as HTMLElement;
+    expect(value.parentElement?.firstChild?.textContent).toBe('Render time');
+    expect(value.textContent).toBe('–');
+    load = { ms: 2.5, share: 0.3 };
+    vi.advanceTimersByTime(1000);
+    expect(value.textContent).toBe('30% · 2.5 ms');
+    expect(value.className).toBe('good');
+    load = { ms: 12.04, share: 1.445 };
+    vi.advanceTimersByTime(1000);
+    expect(value.textContent).toBe('145% · 12.0 ms');
+    expect(value.className).toBe('poor');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('under the frame rate, a dot and number per face size show which ones others receive, kept up to date', () => {
+  vi.useFakeTimers();
+  try {
+    let sent = { 256: true, 128: false, 64: true };
+    showAudioPanel(root, options({ facesSent: () => sent }));
+    const row = root.querySelector('.renderer .render-load + .face-sent') as HTMLElement;
+    expect(row.firstChild?.textContent).toBe('Face sent');
+    const dots = [...row.querySelectorAll('.dots > span')];
+    expect(dots.map((d) => d.textContent)).toEqual(['256', '128', '64']);
+    expect(dots.map((d) => d.classList.contains('on'))).toEqual([true, false, true]);
+    sent = { 256: false, 128: true, 64: false };
+    vi.advanceTimersByTime(1000);
+    expect(dots.map((d) => d.classList.contains('on'))).toEqual([false, true, false]);
   } finally {
     vi.useRealTimers();
   }

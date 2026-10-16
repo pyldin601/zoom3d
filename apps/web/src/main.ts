@@ -264,6 +264,8 @@ function toggleAudioPanel(): void {
   }
   showAudioPanel(ui, {
     frameRate: frameRateMeter.fps,
+    renderLoad: frameRateMeter.renderLoad,
+    facesSent: () => call?.sendingFaces() ?? { 256: false, 128: false, 64: false },
     render: {
       settings: renderSettings,
       onChange(s) {
@@ -804,11 +806,10 @@ startHiddenTicker(
   () => document.hidden
 );
 
-/** Counts every drawn room frame; the backtick panel shows the rate. */
+/** Counts every drawn room frame and times its drawing; the backtick panel shows the rate and the render time. */
 const frameRateMeter = createFrameRateMeter();
 
 function frame(dt: number): void {
-  frameRateMeter.frame(performance.now());
   const mouseTurn = input.consumeMouseTurn();
   if (inRoom()) {
     player.angle += mouseTurn;
@@ -885,6 +886,8 @@ function frame(dt: number): void {
     audio?.update(now, player, positions);
   }
 
+  // Drawing starts here: the glows, walls, sprites, your own items, the canvas and the HUD.
+  const drawStart = performance.now();
   avatarGlows.length = sprites.length;
   for (let i = 0; i < avatarGlows.length; i++) {
     const s = sprites[i] as Sprite;
@@ -916,6 +919,9 @@ function frame(dt: number): void {
   if (automapVisible) {
     drawAutomap(hudCtx, map, player, hud.width, hud.height, others);
   }
+  const drawnAt = performance.now();
+  // dt comes from rAF's timestamps, which fall on the screen's refreshes.
+  frameRateMeter.frame(drawnAt, dt * 1000, drawnAt - drawStart);
 }
 
 /** One still from the renderer: the title picture on the landing page, the same corridor without the title behind
