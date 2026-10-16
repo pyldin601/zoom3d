@@ -11,6 +11,7 @@ beforeEach(() => {
 
 const options = (overrides: Partial<AudioPanelOptions> = {}): AudioPanelOptions => ({
   frameRate: () => null,
+  facesSent: () => ({ 256: false, 128: false, 64: false }),
   render: { settings: { mode: 'reflections' }, onChange: () => {} },
   ...overrides,
 });
@@ -39,6 +40,23 @@ test('the frame rate is refreshed while the panel is open and coloured by band',
     fps = 60;
     vi.advanceTimersByTime(1000);
     expect(rate.className).toBe('good');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('under the frame rate, three dots show which face sizes others receive, biggest first, kept up to date', () => {
+  vi.useFakeTimers();
+  try {
+    let sent = { 256: true, 128: false, 64: true };
+    showAudioPanel(root, options({ facesSent: () => sent }));
+    const row = root.querySelector('.renderer .frame-rate + .face-sent') as HTMLElement;
+    expect(row.textContent).toBe('Face sent');
+    const dots = [...row.querySelectorAll('.dots > span')];
+    expect(dots.map((d) => d.classList.contains('on'))).toEqual([true, false, true]);
+    sent = { 256: false, 128: true, 64: false };
+    vi.advanceTimersByTime(1000);
+    expect(dots.map((d) => d.classList.contains('on'))).toEqual([false, true, false]);
   } finally {
     vi.useRealTimers();
   }

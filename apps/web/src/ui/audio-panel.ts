@@ -1,12 +1,16 @@
-// The backtick panel: the frame rate at the top, the renderer's lighting mode under it, and the boombox's controls on the
-// right while it plays (boombox spec §3.1). All text goes through textContent.
+// The backtick panel: the frame rate and which of our face sizes others receive at the top, the renderer's lighting mode
+// under them, and the boombox's controls on the right while it plays (boombox spec §3.1). All text goes through
+// textContent.
 import { frameRateBand } from '../game/frame-rate';
+import type { FacesSent } from '../media/transport';
 import { type BoomboxPanelOptions, showBoomboxPanel } from './boombox-panel';
 import { normalizeRenderSettings, type RenderMode, type RenderSettings } from './render-settings';
 
 export interface AudioPanelOptions {
   /** Frames per second, or null before it is measured; refreshed while the panel is open. */
   frameRate: () => number | null;
+  /** Which of our face sizes others receive (6c); refreshed while the panel is open. */
+  facesSent: () => FacesSent;
   /** The renderer's options. */
   render: { settings: RenderSettings; onChange(s: RenderSettings): void };
 }
@@ -18,7 +22,10 @@ const MODES: readonly [RenderMode, string][] = [
   ['reflections-only', 'Reflections only'],
 ];
 
-/** How often the frame rate is redrawn while the panel is open. */
+/** The face sizes, biggest first: one dot each, the biggest dot for the biggest face. */
+const FACE_SIZES: readonly (keyof FacesSent)[] = [256, 128, 64];
+
+/** How often the frame rate and the face dots are redrawn while the panel is open. */
 const REFRESH_MS = 200;
 const timers = new WeakMap<HTMLElement, ReturnType<typeof setInterval>>();
 
@@ -50,14 +57,23 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
   const renderer = make('div', { className: 'renderer' });
   const slot = make('div', { className: 'boombox-slot' });
   const rate = make('span');
+  const dots = FACE_SIZES.map(() => make('span'));
   const refresh = () => {
     const fps = opts.frameRate();
     rate.textContent = fps === null ? '–' : `${fps} fps`;
     rate.className = fps === null ? '' : frameRateBand(fps);
+    const sent = opts.facesSent();
+    for (const [i, size] of FACE_SIZES.entries()) {
+      dots.at(i)?.classList.toggle('on', sent[size]);
+    }
   };
   const frameRateRow = make('div', { className: 'frame-rate' });
   frameRateRow.append('Frame rate ', rate);
-  renderer.append(frameRateRow, make('h2', { textContent: 'Renderer' }), lightingRow(opts.render));
+  const dotBox = make('span', { className: 'dots' });
+  dotBox.append(...dots);
+  const faceRow = make('div', { className: 'face-sent' });
+  faceRow.append('Face sent', dotBox);
+  renderer.append(frameRateRow, faceRow, make('h2', { textContent: 'Renderer' }), lightingRow(opts.render));
   refresh();
   timers.set(panel, setInterval(refresh, REFRESH_MS));
 

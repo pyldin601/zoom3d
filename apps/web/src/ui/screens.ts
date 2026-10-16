@@ -1,6 +1,5 @@
 // DOM screens and overlays inside the stage. User-provided text only ever goes through textContent.
 import { initials } from '../media/faces';
-import type { FacesSent } from '../media/transport';
 import { deviceIcon, peopleIcon } from './icons';
 
 export function el<K extends keyof HTMLElementTagNameMap>(
@@ -155,44 +154,6 @@ export function showBanner(root: HTMLElement, text: string | null): void {
     banner,
     setTimeout(() => banner.remove(), BANNER_MS)
   );
-}
-
-/** The self-view circle's size (em), as index.html sizes `.selfview`; `.face-sizes` shares its box. */
-export const SELF_VIEW_EM = 4.5;
-/** The face-size dots, biggest face first: where on the circle (radians clockwise from 3 o'clock) and how big (em). */
-const FACE_SIZE_DOTS: readonly { size: keyof FacesSent; angle: number; diameter: number }[] = [
-  { size: 256, angle: (28 * Math.PI) / 180, diameter: 0.42 },
-  { size: 128, angle: (45 * Math.PI) / 180, diameter: 0.32 },
-  { size: 64, angle: (62 * Math.PI) / 180, diameter: 0.24 },
-];
-/** How far each dot's near edge stands off the circle's edge (em). */
-const FACE_SIZE_GAP_EM = 0.3;
-
-/**
- * Three dots on an arc at the self-view's lower right, one per face size, green while someone receives that size
- * (null removes them). They share the self-view's box, so they follow it, and stand off its edge by the same gap.
- */
-export function showFaceSizes(root: HTMLElement, sent: FacesSent | null): void {
-  if (sent === null) {
-    root.querySelector(':scope > .face-sizes')?.remove();
-    return;
-  }
-  const box = slot(root, 'face-sizes');
-  if (box.childElementCount === 0) {
-    box.setAttribute('aria-hidden', 'true');
-    const radius = SELF_VIEW_EM / 2;
-    for (const { angle, diameter } of FACE_SIZE_DOTS) {
-      const reach = radius + FACE_SIZE_GAP_EM + diameter / 2;
-      const dot = el('span');
-      dot.style.width = dot.style.height = `${diameter}em`;
-      dot.style.left = `${radius + reach * Math.cos(angle) - diameter / 2}em`;
-      dot.style.top = `${radius + reach * Math.sin(angle) - diameter / 2}em`;
-      box.append(dot);
-    }
-  }
-  for (const [i, { size }] of FACE_SIZE_DOTS.entries()) {
-    box.children.item(i)?.classList.toggle('on', sent[size]);
-  }
 }
 
 export interface SelfView {

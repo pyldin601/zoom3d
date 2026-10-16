@@ -3,9 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import {
   clearScreen,
   type MediaControls,
-  SELF_VIEW_EM,
   showBanner,
-  showFaceSizes,
   showLanding,
   showMediaControls,
   showNotice,
@@ -126,40 +124,6 @@ test('a cam toggle whose handler resolves false goes back to Cam off', async () 
 });
 
 afterEach(() => vi.useRealTimers());
-
-test('three dots show which face sizes go out, biggest first; null removes them', () => {
-  showFaceSizes(root, { 256: true, 128: false, 64: true });
-  const box = root.querySelector('.face-sizes') as HTMLElement;
-  expect(box.getAttribute('aria-hidden')).toBe('true');
-  const dots = [...box.querySelectorAll('span')];
-  expect(dots.map((d) => d.classList.contains('on'))).toEqual([true, false, true]);
-  showFaceSizes(root, { 256: false, 128: true, 64: false });
-  expect(root.querySelectorAll('.face-sizes')).toHaveLength(1);
-  expect(dots.map((d) => d.classList.contains('on'))).toEqual([false, true, false]);
-  showFaceSizes(root, null);
-  expect(root.querySelector('.face-sizes')).toBeNull();
-});
-
-test('the dots sit on an arc at the lower right, all the same distance from the circle, shrinking clockwise', () => {
-  showFaceSizes(root, { 256: true, 128: true, 64: true });
-  const radius = SELF_VIEW_EM / 2;
-  const dots = [...root.querySelectorAll<HTMLElement>('.face-sizes span')].map((d) => {
-    const size = Number.parseFloat(d.style.width);
-    const x = Number.parseFloat(d.style.left) + size / 2 - radius;
-    const y = Number.parseFloat(d.style.top) + size / 2 - radius;
-    return { size, gap: Math.hypot(x, y) - radius - size / 2, angle: Math.atan2(y, x) };
-  });
-  expect(dots).toHaveLength(3);
-  for (const d of dots) {
-    expect(d.gap).toBeCloseTo(dots[0]?.gap as number, 6);
-    expect(d.gap).toBeGreaterThan(0);
-    // Below and right of the centre: between 3 and 6 o'clock (y grows downwards).
-    expect(d.angle).toBeGreaterThan(0);
-    expect(d.angle).toBeLessThan(Math.PI / 2);
-  }
-  expect(dots.map((d) => d.size)).toEqual([...dots.map((d) => d.size)].sort((a, b) => b - a));
-  expect(dots.map((d) => d.angle)).toEqual([...dots.map((d) => d.angle)].sort((a, b) => a - b));
-});
 
 test('banners show text literally and hide after 8 s', () => {
   vi.useFakeTimers();

@@ -80,13 +80,15 @@ test('a face out of view stops arriving and comes back, never as initials, when 
   expect(await growth(b, 'Ada', 1000)).toBeGreaterThan(2000);
 });
 
-test('the dots by your self-view show whether anyone receives your face', async ({ browser }) => {
+test('the backtick panel’s face dots show whether anyone receives your face', async ({ browser }) => {
   test.setTimeout(60_000);
   const a = await (await browser.newContext()).newPage();
   const b = await (await browser.newContext()).newPage();
   const url = await createAndJoin(a, 'Ada');
-  const sent = a.locator('#ui .face-sizes span.on');
-  await expect(a.locator('#ui .face-sizes span')).toHaveCount(3);
+  await a.locator('#stage').click();
+  await a.keyboard.press('Backquote');
+  const sent = a.locator('.audio-panel .face-sent .dots span.on');
+  await expect(a.locator('.audio-panel .face-sent .dots span')).toHaveCount(3);
   // Alone: dynacast pauses every size.
   await expect(sent).toHaveCount(0, { timeout: 15_000 });
 

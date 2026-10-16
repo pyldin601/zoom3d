@@ -68,7 +68,6 @@ import { botsParam, parseRoute } from './ui/route';
 import {
   clearScreen,
   showBanner,
-  showFaceSizes,
   showLanding,
   showMediaControls,
   showNotice,
@@ -265,6 +264,7 @@ function toggleAudioPanel(): void {
   }
   showAudioPanel(ui, {
     frameRate: frameRateMeter.fps,
+    facesSent: () => call?.sendingFaces() ?? { 256: false, 128: false, 64: false },
     render: {
       settings: renderSettings,
       onChange(s) {
@@ -540,31 +540,12 @@ function joinRoom(
     onMic: (on) => activeCall.setMic(on),
   });
   showSelfPreview(ui, local.stream, { cam: media.cam, name, avatar });
-  watchFaceSizes(activeCall);
   if (TOUCH) {
     showTouch();
   }
   if (new URLSearchParams(location.search).has('debug')) {
     toggleAudioPanel();
   }
-}
-
-/** How often the face-size dots read which of our face sizes others receive. */
-const FACE_SIZES_MS = 500;
-
-/** Keeps the dots by the self-view on which of our face sizes others receive (dynacast), redrawn only on a change. */
-function watchFaceSizes(activeCall: Call): void {
-  let shown = '';
-  const refresh = () => {
-    const sent = activeCall.sendingFaces();
-    const key = `${sent[256]} ${sent[128]} ${sent[64]}`;
-    if (key !== shown) {
-      shown = key;
-      showFaceSizes(ui, sent);
-    }
-  };
-  refresh();
-  setInterval(refresh, FACE_SIZES_MS);
 }
 
 function loadName(): string {
