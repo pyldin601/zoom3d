@@ -5,8 +5,9 @@ export function startLoop(tick: (dt: number) => void): () => void {
   const frame = (now: number) => {
     const dt = last === null ? 0 : (now - last) / 1000;
     last = now;
-    tick(dt);
+    // Scheduled before the tick: one that throws can't freeze the view for good, and one can stop the loop.
     id = requestAnimationFrame(frame);
+    tick(dt);
   };
   id = requestAnimationFrame(frame);
   return () => cancelAnimationFrame(id);
