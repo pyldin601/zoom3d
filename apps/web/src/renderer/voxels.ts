@@ -1,9 +1,8 @@
 // Voxel objects (robot vacuum spec §6): small models built in code from cubes, preprocessed once into their exposed
 // faces, then drawn as flat-shaded quads far to near, depth-tested per column against the walls. Allocation-free per
 // frame.
-import type { PlayerState } from '@zoom3d/shared';
-import { EYE_HEIGHT, MIN_DEPTH } from './camera';
-import type { Framebuffer } from './framebuffer';
+import { EYE_HEIGHT, MIN_DEPTH, type View } from './camera';
+import { type Framebuffer, scaleRgb } from './framebuffer';
 import { ambientAt, directLight, type Lighting } from './lighting';
 
 export interface VoxelModel {
@@ -50,14 +49,6 @@ const FACES: readonly { n: readonly [number, number, number]; k: number; q: read
   { n: [0, 1, 0], k: SHADE_SIDE, q: [0, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1] },
   { n: [0, -1, 0], k: SHADE_SIDE, q: [0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1] },
 ];
-
-/** Scales a packed colour's RGB by k, keeping alpha. */
-function scale(c: number, k: number): number {
-  const r = ((c & 0xff) * k) | 0;
-  const g = (((c >>> 8) & 0xff) * k) | 0;
-  const b = (((c >>> 16) & 0xff) * k) | 0;
-  return ((c & 0xff000000) | (b << 16) | (g << 8) | r) >>> 0;
-}
 
 /** A voxel that glows: `glow` 0 is lit like any other, 1 always shows `color` itself. */
 export interface Glow {
@@ -109,7 +100,7 @@ export function buildModel(
             );
           }
           normals.push(...f.n);
-          colors.push(scale(c, f.k));
+          colors.push(scaleRgb(c, f.k));
           base.push(c);
           dirs.push(d);
           glows.push(typeof v === 'number' ? 0 : v.glow);
@@ -137,15 +128,15 @@ let faceDepth = new Float64Array(0);
 const order: number[] = [];
 const byDepth = (a: number, b: number) => (faceDepth[b] as number) - (faceDepth[a] as number);
 /** Lamp light per face direction (r, g, b × 5), then ambient × shade added: this instance's multipliers. */
-const light = new Float64Array(FACES.length * 3);
+const instanceLight = new Float64Array(FACES.length * 3);
 /** The ambient light, r, g, b, where this instance stands. */
 const around = new Float64Array(3);
 
 /**
- * A face's colour in a lit room: the unshaded colour times the light on its direction, which may overbright, blended
- * towards the colour itself as far as the face glows.
+ * A face's colour in a lit room: the unshaded colour times `light` on its direction d (see instanceLight), which may
+ * overbright, blended towards the colour itself as far as the face glows.
  */
-function litColor(c: number, d: number, glow: number): number {
+function litColor(c: number, light: Float64Array, d: number, glow: number): number {
   const lit = 1 - glow;
   let r = ((c & 0xff) * ((light[d * 3] as number) * lit + glow)) | 0;
   let g = (((c >>> 8) & 0xff) * ((light[d * 3 + 1] as number) * lit + glow)) | 0;
@@ -163,51 +154,51 @@ function litColor(c: number, d: number, glow: number): number {
 }
 
 /** Camera depth of the instance's centre (the measure projectSprite and the z-buffer use), or -1 when behind. */
-export function voxelDepth(fb: Framebuffer, p: PlayerState, v: VoxelInstance): number {
-  const planeLen = Math.tan(fb.fov / 2);
-  const dirX = Math.cos(p.angle);
-  const dirY = Math.sin(p.angle);
-  const planeX = -dirY * planeLen;
-  const planeY = dirX * planeLen;
-  const invDet = 1 / (planeX * dirY - dirX * planeY);
-  const depth = invDet * (-planeY * (v.x - p.x) + planeX * (v.y - p.y));
+export function voxelDepth(view: View, v: VoxelInstance): number {
+  const { planeX, planeY, invDet } = view;
+  const depth = invDet * (-planeY * (v.x - view.x) + planeX * (v.y - view.y));
   return depth < MIN_DEPTH ? -1 : depth;
 }
 
 /**
- * Draws one instance, depth-tested per pixel column against fb.zbuffer. With lighting, each face takes the ambient
- * share of its usual shade plus the lamps that reach its direction (sampled once, at the model's mid height).
+ * Draws one instance seen through `view`, depth-tested per pixel column against fb.zbuffer. With lighting, each face
+ * takes the ambient share of its usual shade plus the lamps that reach its direction (sampled once, at the model's mid
+ * height).
  */
-export function renderVoxel(fb: Framebuffer, p: PlayerState, v: VoxelInstance, lighting: Lighting | null = null): void {
-  const { width: w, height: h, pixels, zbuffer } = fb;
-  const { model } = v;
-  const n = model.faceCount;
+export function renderVoxel(fb: Framebuffer, view: View, v: VoxelInstance, lighting: Lighting | null = null): void {
+  const n = v.model.faceCount;
   if (faceDepth.length < n) {
     screen = new Float64Array(n * 8);
     faceDepth = new Float64Array(n);
   }
-  const planeLen = Math.tan(fb.fov / 2);
-  const dirX = Math.cos(p.angle);
-  const dirY = Math.sin(p.angle);
-  const planeX = -dirY * planeLen;
-  const planeY = dirX * planeLen;
-  const invDet = 1 / (planeX * dirY - dirX * planeY);
-  const proj = w / 2 / planeLen;
-  const half = h / 2;
-  const ca = Math.cos(v.angle);
-  const sa = Math.sin(v.angle);
-  const { corners, normals, colors, base, dirs, glow } = model;
   if (lighting) {
-    directLight(lighting, v.x, v.y, model.height / 2, v.angle, light);
-    ambientAt(lighting, v.x, v.y, around);
-    for (let d = 0; d < FACES.length; d++) {
-      const k = (FACES[d] as (typeof FACES)[number]).k;
-      for (let ch = 0; ch < 3; ch++) {
-        light[d * 3 + ch] = (light[d * 3 + ch] as number) + (around[ch] as number) * k;
-      }
+    lightDirections(lighting, v, instanceLight);
+  }
+  projectFaces(view, v);
+  fillFaces(fb, v.model, lighting ? instanceLight : null);
+}
+
+/** The light on each face direction of this instance into `out` (see instanceLight). */
+function lightDirections(lighting: Lighting, v: VoxelInstance, out: Float64Array): void {
+  directLight(lighting, v.x, v.y, v.model.height / 2, v.angle, out);
+  ambientAt(lighting, v.x, v.y, around);
+  for (let d = 0; d < FACES.length; d++) {
+    const k = (FACES[d] as (typeof FACES)[number]).k;
+    for (let ch = 0; ch < 3; ch++) {
+      out[d * 3 + ch] = (out[d * 3 + ch] as number) + (around[ch] as number) * k;
     }
   }
+}
 
+/**
+ * Projects the faces turned towards the eye and wholly in front of it: their corners into `screen`, their mean depths
+ * into `faceDepth`, and the faces themselves into `order`, far to near.
+ */
+function projectFaces(view: View, v: VoxelInstance): void {
+  const { dirX, dirY, planeX, planeY, invDet, proj, halfWidth, half } = view;
+  const { corners, normals, faceCount: n } = v.model;
+  const ca = Math.cos(v.angle);
+  const sa = Math.sin(v.angle);
   order.length = 0;
   for (let f = 0; f < n; f++) {
     const c = f * 12;
@@ -217,8 +208,8 @@ export function renderVoxel(fb: Framebuffer, p: PlayerState, v: VoxelInstance, l
     const nx = normals[f * 3] as number;
     const ny = normals[f * 3 + 1] as number;
     const nz = normals[f * 3 + 2] as number;
-    const toCamX = p.x - (v.x + mx * ca - my * sa);
-    const toCamY = p.y - (v.y + mx * sa + my * ca);
+    const toCamX = view.x - (v.x + mx * ca - my * sa);
+    const toCamY = view.y - (v.y + mx * sa + my * ca);
     const toCamZ = EYE_HEIGHT - (corners[c + 2] as number);
     if ((nx * ca - ny * sa) * toCamX + (nx * sa + ny * ca) * toCamY + nz * toCamZ <= 0) {
       continue;
@@ -228,15 +219,15 @@ export function renderVoxel(fb: Framebuffer, p: PlayerState, v: VoxelInstance, l
     for (let k = 0; k < 4; k++) {
       const px = corners[c + k * 3] as number;
       const py = corners[c + k * 3 + 1] as number;
-      const sx = v.x + px * ca - py * sa - p.x;
-      const sy = v.y + px * sa + py * ca - p.y;
+      const sx = v.x + px * ca - py * sa - view.x;
+      const sy = v.y + px * sa + py * ca - view.y;
       const lateral = invDet * (dirY * sx - dirX * sy);
       const depth = invDet * (-planeY * sx + planeX * sy);
       if (depth < MIN_DEPTH) {
         near = true;
         break;
       }
-      screen[f * 8 + k * 2] = (w / 2) * (1 + lateral / depth);
+      screen[f * 8 + k * 2] = halfWidth * (1 + lateral / depth);
       screen[f * 8 + k * 2 + 1] = half + (proj * (EYE_HEIGHT - (corners[c + k * 3 + 2] as number))) / depth;
       sum += depth;
     }
@@ -247,11 +238,21 @@ export function renderVoxel(fb: Framebuffer, p: PlayerState, v: VoxelInstance, l
     order.push(f);
   }
   order.sort(byDepth);
+}
 
+/**
+ * Fills the faces in `order` with their flat colour (lit by `light` when given), row by row, where they're nearer
+ * than the column's wall.
+ */
+function fillFaces(fb: Framebuffer, model: VoxelModel, light: Float64Array | null): void {
+  const { width: w, height: h, pixels, zbuffer } = fb;
+  const { colors, base, dirs, glow } = model;
   for (const f of order) {
     const s = f * 8;
     const depth = faceDepth[f] as number;
-    const color = lighting ? litColor(base[f] as number, dirs[f] as number, glow[f] as number) : (colors[f] as number);
+    const color = light
+      ? litColor(base[f] as number, light, dirs[f] as number, glow[f] as number)
+      : (colors[f] as number);
     let minY = Number.POSITIVE_INFINITY;
     let maxY = Number.NEGATIVE_INFINITY;
     for (let k = 1; k < 8; k += 2) {

@@ -52,6 +52,7 @@ pnpm lint         # biome check
 pnpm e2e          # playwright; starts its own LiveKit :7890-7892 + server :8788 + web :5174
 pnpm bench        # renderer frame-time benchmark (vitest, unlit walls and sprites)
 pnpm bench:walls  # lit walls, reflections and glow in an esbuild bundle, with pixel hashes for refactors
+pnpm bench:sprites # avatars, held items, boomboxes and the vacuum, unlit and lit, likewise with a pixel hash
 # Large rooms: open /?bots=100 and start a party: the room gets 100 server-driven bots (any server, prod included)
 docker compose up --build              # both images locally: http://localhost:8080
 scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this before pushing)
@@ -115,7 +116,8 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   `e2e/mobile.spec.ts` emulates a portrait phone (`hasTouch`, `isMobile`), which Chrome reports as `(pointer: coarse)`.
 - Touch mode (mobile spec §2.0) is `matchMedia('(pointer: coarse)')` read once at load (`TOUCH` in `main.ts`, plus
   `html.touch` for CSS). Never re-evaluate it: the frame size, FOV and room UI would flip mid-visit. The FOV lives on
-  the `Framebuffer` (`fb.fov`); every projection reads it, so never reintroduce a FOV constant. The buffer is rebuilt
+  the `Framebuffer` (`fb.fov`); every projection reads it through a `View` (`renderer/camera.ts`, set once per pass
+  by `setView`), so never reintroduce a FOV constant. The buffer is rebuilt
   only when the frame's size or FOV changes, never per frame.
 - iOS: `navigator.audioSession.type = 'play-and-record'` (set in `openLobby`, before capture) keeps Web Audio audible
   with the ringer switch on silent. Pointer lock is requested only for `pointerType === 'mouse'`. Touch-mode relayouts
