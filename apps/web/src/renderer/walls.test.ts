@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { createFramebuffer, DEFAULT_FOV, scaleRgb } from './framebuffer';
 import { GLOW_RADIUS, GLOW_STRENGTH, type Glow } from './glow';
 import { bakeLighting, corridorLights, REFLECTION_RANGE, SIDE_SHADE } from './lighting';
+import { firstDifference } from './test-helpers';
 import { makeTextures, TEX } from './textures';
 import { CEILING, FLOOR, renderWalls } from './walls';
 
@@ -106,7 +107,7 @@ test('lit, a frame of a new size and FOV draws as if it were the first', async (
   const fresh = await import('./walls');
   const first = portrait();
   fresh.renderWalls(first, level, pose, textures, lit);
-  expect(after.pixels).toEqual(first.pixels);
+  expect(firstDifference(after.pixels, first.pixels)).toBe(-1);
 });
 
 describe('renderWalls reflections', () => {
@@ -467,6 +468,40 @@ describe('renderWalls avatar glow', () => {
         expect(lit.pixels[y * dark.width + centre]).toBe(dark.pixels[y * dark.width + centre]);
       }
     }
+  });
+
+  test('glows add up with each other: two avatars side by side light the dark floor more than one', () => {
+    const one = render([glow]);
+    const two = render([glow, { ...glow, y: 2.6 }]);
+    let more = 0;
+    for (let i = (dark.height / 2) * dark.width; i < dark.pixels.length; i++) {
+      if (((two.pixels[i] as number) & 0xff) > ((one.pixels[i] as number) & 0xff)) {
+        more++;
+      }
+    }
+    expect(more).toBeGreaterThan(100);
+  });
+
+  test('it doesn’t add to a brighter light: under a strong lamp, an avatar changes nothing around it', () => {
+    // A lamp over the room lights everything more than the glow does, so the glow is lost in it, as a screen is.
+    const bright = bakeLighting(
+      room,
+      [{ x: 4.5, y: 2.5, z: 0.85, radius: 20, r: 3, g: 3, b: 3 }],
+      0.08,
+      FLOOR,
+      CEILING
+    );
+    const without = createFramebuffer();
+    const withGlow = createFramebuffer();
+    renderWalls(without, room, pose, textures, bright, 'none', []);
+    renderWalls(withGlow, room, pose, textures, bright, 'none', [glow]);
+    let changed = 0;
+    for (let i = 0; i < without.pixels.length; i++) {
+      if (withGlow.pixels[i] !== without.pixels[i]) {
+        changed++;
+      }
+    }
+    expect(changed).toBe(0);
   });
 
   test('the ceiling over the avatar glows too', () => {
