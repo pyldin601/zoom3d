@@ -4,7 +4,8 @@ import { FACE_SIZE } from '../media/faces';
 import { MOUTH_Y_IN_CROP } from '../media/framing';
 import type { PeerFacts } from '../media/interest';
 import { BOOMBOX_LEFT, BOOMBOX_SPRITE, BOOMBOX_TOP } from './boombox';
-import { createFramebuffer, DEFAULT_FOV, rgb } from './framebuffer';
+import { createView, setView } from './camera';
+import { createFramebuffer, DEFAULT_FOV, rgb, scaleRgb } from './framebuffer';
 import {
   CHEERS_LEFT,
   CHEERS_TOP,
@@ -18,6 +19,7 @@ import {
   sipLeft,
   sipTop,
 } from './held-items';
+import { SIDE_SHADE } from './lighting';
 import {
   AVATAR_RADIUS,
   BOB_HEIGHT,
@@ -30,7 +32,7 @@ import {
   SHADOW_RADIUS,
 } from './sprites';
 import { makeTextures } from './textures';
-import { FLOOR, renderWalls, shade } from './walls';
+import { FLOOR, renderWalls } from './walls';
 
 const OPEN = parseMap(
   [
@@ -49,6 +51,8 @@ const PROJ = 320 / Math.tan(DEFAULT_FOV / 2);
 const textures = makeTextures(1);
 const player: PlayerState = { x: 1.5, y: 4.5, angle: 0 };
 const RED = rgb(255, 0, 0);
+/** A flat disc's ring colour: shaded like an unlit y-side wall. */
+const shade = (c: number) => scaleRgb(c, SIDE_SHADE);
 const BLUE = rgb(0, 0, 255);
 
 function frame(map = OPEN) {
@@ -320,16 +324,19 @@ describe('facts for dynamic subscription', () => {
   });
 });
 
+/** The player's view across a frame this wide (its height doesn't matter to a projection). */
+const viewOf = (width: number, fov: number) => setView(createView(), { width, height: 360, fov }, player);
+
 describe('projectSprite', () => {
   test('a sprite to the north while facing east is left of centre', () => {
     const out: Projection = { screenX: 0, depth: 0, size: 0 };
-    expect(projectSprite(player, 3.5, 3.5, 640, DEFAULT_FOV, out)).toBe(true);
+    expect(projectSprite(viewOf(640, DEFAULT_FOV), 3.5, 3.5, out)).toBe(true);
     expect(out.screenX).toBeLessThan(320);
     expect(out.depth).toBeCloseTo(2);
   });
 
   test('reports sprites behind the camera as not visible', () => {
-    expect(projectSprite(player, 0.5, 4.5, 640, DEFAULT_FOV, { screenX: 0, depth: 0, size: 0 })).toBe(false);
+    expect(projectSprite(viewOf(640, DEFAULT_FOV), 0.5, 4.5, { screenX: 0, depth: 0, size: 0 })).toBe(false);
   });
 });
 
@@ -973,7 +980,7 @@ describe('boombox', () => {
 test('projectSprite size scales with 1/tan(fov/2)', () => {
   const a = { screenX: 0, depth: 0, size: 0 };
   const b = { screenX: 0, depth: 0, size: 0 };
-  projectSprite(player, player.x + 2, player.y, 296, (66 * Math.PI) / 180, a);
-  projectSprite(player, player.x + 2, player.y, 296, (50 * Math.PI) / 180, b);
+  projectSprite(viewOf(296, (66 * Math.PI) / 180), player.x + 2, player.y, a);
+  projectSprite(viewOf(296, (50 * Math.PI) / 180), player.x + 2, player.y, b);
   expect(b.size / a.size).toBeCloseTo(Math.tan((33 * Math.PI) / 180) / Math.tan((25 * Math.PI) / 180), 9);
 });

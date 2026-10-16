@@ -38,8 +38,11 @@ const FIXTURE = rgb(255, 236, 190);
 const LAMP_RADIUS = FIXTURE_RADIUS;
 /** Halvings to find where a wall's edge cuts a lamp: its share is then known to 1/2^(steps+1) of its width. */
 const SHADOW_STEPS = 5;
-/** North and south faces get this much of the ambient light: the old renderer's fake sun. Lamp light is unshaded. */
-const SIDE_SHADE = 0.7;
+/**
+ * North and south faces show this share of their colour unlit, and get this much of the ambient light lit: a fake sun.
+ * Lamp light is unshaded.
+ */
+export const SIDE_SHADE = 0.7;
 /** The eye's height above the floor: walls are drawn centred on the horizon. */
 const EYE_Z = 0.5;
 /**

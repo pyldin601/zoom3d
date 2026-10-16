@@ -1,6 +1,7 @@
 import { fovForAspect, hasLineOfSight, isWallAt } from '@zoom3d/shared';
 import { expect, test } from 'vitest';
 import { FACE_SIZE } from '../media/faces';
+import { createView, setView } from '../renderer/camera';
 import { createFramebuffer, rgb } from '../renderer/framebuffer';
 import { VACUUM_MODEL } from '../renderer/models/vacuum';
 import { AVATAR_RADIUS, hexToRgb, type Projection, projectSprite } from '../renderer/sprites';
@@ -62,8 +63,9 @@ test('the camera sees every disc whole, none cut by a wall', () => {
   const fb = createFramebuffer();
   renderWalls(fb, LANDING_MAP, LANDING_CAMERA, makeTextures(1));
   const proj: Projection = { screenX: 0, depth: 0, size: 0 };
+  const view = setView(createView(), fb, LANDING_CAMERA);
   for (const p of LANDING_PEOPLE) {
-    expect(projectSprite(LANDING_CAMERA, p.x, p.y, fb.width, fb.fov, proj), p.name).toBe(true);
+    expect(projectSprite(view, p.x, p.y, proj), p.name).toBe(true);
     const left = Math.floor(proj.screenX - proj.size / 2);
     const right = Math.ceil(proj.screenX + proj.size / 2);
     expect(left, p.name).toBeGreaterThanOrEqual(0);
@@ -91,7 +93,7 @@ test('the scene draws walls and the people over them', () => {
   expect(fb.zbuffer.every((d) => d > 0)).toBe(true);
   const proj: Projection = { screenX: 0, depth: 0, size: 0 };
   const ada = byName('Ada');
-  projectSprite(LANDING_CAMERA, ada.x, ada.y, fb.width, fb.fov, proj);
+  projectSprite(setView(createView(), fb, LANDING_CAMERA), ada.x, ada.y, proj);
   const centre = fb.pixels[(fb.height / 2) * fb.width + Math.round(proj.screenX)];
   expect(centre).not.toBe(rgb(0, 0, 0));
   expect(Object.values(FACE_PALETTE).map(hexToRgb).concat(hexToRgb(ada.color))).toContain(centre);
@@ -117,8 +119,9 @@ test('a portrait phone frame sees every disc whole, none cut by a wall', () => {
   const fb = createFramebuffer(296, 640, fovForAspect(296 / 640));
   renderWalls(fb, LANDING_MAP, LANDING_CAMERA_PORTRAIT, makeTextures(1));
   const proj: Projection = { screenX: 0, depth: 0, size: 0 };
+  const view = setView(createView(), fb, LANDING_CAMERA_PORTRAIT);
   for (const p of LANDING_PEOPLE) {
-    expect(projectSprite(LANDING_CAMERA_PORTRAIT, p.x, p.y, fb.width, fb.fov, proj), p.name).toBe(true);
+    expect(projectSprite(view, p.x, p.y, proj), p.name).toBe(true);
     const left = Math.floor(proj.screenX - proj.size / 2);
     const right = Math.ceil(proj.screenX + proj.size / 2);
     expect(left, p.name).toBeGreaterThanOrEqual(0);

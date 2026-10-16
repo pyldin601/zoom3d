@@ -1,8 +1,10 @@
 // Name labels above avatars, drawn on the HUD canvas at full resolution.
 import type { PlayerState } from '@zoom3d/shared';
+import { createView, setView } from './camera';
 import type { Framebuffer } from './framebuffer';
 import { type Projection, projectSprite } from './sprites';
 
+const frameView = createView();
 const projection: Projection = { screenX: 0, depth: 0, size: 0 };
 
 /** Names show only for people this close (6d spec §4): a crowd of 100 labels is unreadable. */
@@ -20,6 +22,7 @@ export function drawLabels(
   hudW: number,
   hudH: number
 ): void {
+  const view = setView(frameView, fb, p);
   const scale = hudW / fb.width;
   // Text scales with the height a 16:9 frame of this width would have: the same as before on desktop, not huge on a
   // tall phone frame.
@@ -30,7 +33,7 @@ export function drawLabels(
   ctx.lineJoin = 'round';
   ctx.lineWidth = Math.max(2, textH * 0.005);
   for (const o of others) {
-    if (!inLabelRange(p, o.x, o.y) || !projectSprite(p, o.x, o.y, fb.width, fb.fov, projection)) {
+    if (!inLabelRange(p, o.x, o.y) || !projectSprite(view, o.x, o.y, projection)) {
       continue;
     }
     const col = Math.round(projection.screenX);

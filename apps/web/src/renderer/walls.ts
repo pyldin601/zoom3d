@@ -4,9 +4,9 @@
 // memory order) from the baked colours (with the glow likewise), plus the lamps' reflections. Allocation-free per frame: scratch buffers are rebuilt only when the
 // frame's size or FOV changes.
 import { castRay, createRayHit, type GameMap, type PlayerState } from '@zoom3d/shared';
-import { EYE_HEIGHT } from './camera';
+import { createView, EYE_HEIGHT, setView } from './camera';
 import { reflectedColour } from './colour';
-import { type Framebuffer, rgb } from './framebuffer';
+import { type Framebuffer, rgb, scaleRgb } from './framebuffer';
 import { GLOW_RADIUS, type Glow, glowLight } from './glow';
 import {
   brightestReflection,
@@ -51,8 +51,8 @@ const FLOOR_SHINE_SCALE = (() => {
 /** Avatar glow is worked out at GLOW_HEIGHTS heights up a wall column, blended per texel row. */
 const GLOW_HEIGHTS = 9;
 
-/** The camera for the frame being drawn: facing (dirX, dirY), the plane to its right, and the projection. */
-const view = { dirX: 0, dirY: 0, planeX: 0, planeY: 0, proj: 0, half: 0 };
+/** The camera for the frame being drawn. */
+const view = createView();
 const hit = createRayHit();
 
 /** Per-frame-size scratch for the lit renderer: rebuilt when the frame's size or FOV changes. */
@@ -121,14 +121,6 @@ let glowTables: {
   light: Float32Array;
 } | null = null;
 
-/** Darkens a colour to 70% (y-side walls), keeping alpha. */
-export function shade(c: number): number {
-  const r = ((c & 0xff) * 0.7) | 0;
-  const g = (((c >>> 8) & 0xff) * 0.7) | 0;
-  const b = (((c >>> 16) & 0xff) * 0.7) | 0;
-  return ((c & 0xff000000) | (b << 16) | (g << 8) | r) >>> 0;
-}
-
 /**
  * Draws the view from `p` into `fb` and fills its z-buffer. With `lighting`, walls, floor and ceiling are lit, show
  * the lamps' reflections on the surfaces `reflections` picks, and the avatars' `glows`.
@@ -142,7 +134,7 @@ export function renderWalls(
   reflections: ReflectionMode = 'both',
   glows: readonly Glow[] = []
 ): void {
-  setView(fb, p);
+  setView(view, fb, p);
   if (lighting) {
     renderLitWalls(fb, map, p, textures, lighting, reflections, glows);
     return;
@@ -177,25 +169,14 @@ export function renderWalls(
         const texY = Math.min(size - 1, texPos | 0);
         texPos += step;
         const c = tex[texY * size + texX] as number;
-        pixels[y * w + col] = hit.side === 1 ? shade(c) : c;
+        // SIDE_SHADE (lighting.ts) as a literal: read from the constant, this loop measured 3% slower (bench:walls).
+        pixels[y * w + col] = hit.side === 1 ? scaleRgb(c, 0.7) : c;
       }
     }
     for (let y = Math.max(end, start); y < h; y++) {
       pixels[y * w + col] = FLOOR;
     }
   }
-}
-
-/** Sets `view` for drawing from `p` into `fb`. */
-function setView(fb: Framebuffer, p: PlayerState): void {
-  const planeLen = Math.tan(fb.fov / 2);
-  view.dirX = Math.cos(p.angle);
-  view.dirY = Math.sin(p.angle);
-  // Camera plane points to the right of facing: (-sin, cos) in y-down coordinates.
-  view.planeX = -view.dirY * planeLen;
-  view.planeY = view.dirX * planeLen;
-  view.proj = fb.width / 2 / planeLen;
-  view.half = fb.height / 2;
 }
 
 /** Walls column by column (cast, reflection, glow, draw), then floor and ceiling row by row. */

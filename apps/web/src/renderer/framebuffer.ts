@@ -22,3 +22,11 @@ export function createFramebuffer(width = INTERNAL_W, height = INTERNAL_H, fov =
 export function rgb(r: number, g: number, b: number): number {
   return ((0xff << 24) | ((b & 0xff) << 16) | ((g & 0xff) << 8) | (r & 0xff)) >>> 0;
 }
+
+/** Scales a packed colour's RGB by k (0..1), each channel rounded down, keeping alpha. */
+export function scaleRgb(c: number, k: number): number {
+  const r = ((c & 0xff) * k) | 0;
+  const g = (((c >>> 8) & 0xff) * k) | 0;
+  const b = (((c >>> 16) & 0xff) * k) | 0;
+  return ((c & 0xff000000) | (b << 16) | (g << 8) | r) >>> 0;
+}

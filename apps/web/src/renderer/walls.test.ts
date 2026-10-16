@@ -1,11 +1,11 @@
 import { LEVEL1, parseMap } from '@zoom3d/shared';
 import { describe, expect, test, vi } from 'vitest';
-import { createFramebuffer, DEFAULT_FOV } from './framebuffer';
+import { createFramebuffer, DEFAULT_FOV, scaleRgb } from './framebuffer';
 import { GLOW_RADIUS, GLOW_STRENGTH, type Glow } from './glow';
-import { bakeLighting, corridorLights, REFLECTION_RANGE } from './lighting';
+import { bakeLighting, corridorLights, REFLECTION_RANGE, SIDE_SHADE } from './lighting';
 import { firstDifference } from './test-helpers';
 import { makeTextures, TEX } from './textures';
-import { CEILING, FLOOR, renderWalls, shade } from './walls';
+import { CEILING, FLOOR, renderWalls } from './walls';
 
 const ROOM = parseMap('11111\n1...1\n1.S.1\n1...1\n11111');
 const PROJ = 320 / Math.tan(DEFAULT_FOV / 2);
@@ -59,16 +59,10 @@ describe('renderWalls', () => {
   test('y-side walls are shaded', () => {
     const south = createFramebuffer();
     renderWalls(south, ROOM, { x: 2.5, y: 2.5, angle: Math.PI / 2 }, textures);
-    const allowed = new Set(textureColumn(1, 32).map(shade));
+    const allowed = new Set(textureColumn(1, 32).map((c) => scaleRgb(c, SIDE_SHADE)));
     const wall = column(south, 320).filter((c) => c !== CEILING && c !== FLOOR);
     expect(wall.length).toBeGreaterThan(300);
     expect(wall.every((c) => allowed.has(c))).toBe(true);
-  });
-});
-
-describe('shade', () => {
-  test('scales channels to 70% and keeps alpha', () => {
-    expect(shade(0xff6464c8)).toBe(0xff4646_8c);
   });
 });
 

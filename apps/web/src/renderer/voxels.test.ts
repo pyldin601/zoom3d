@@ -1,5 +1,6 @@
 import { type PlayerState, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
+import { createView, setView } from './camera';
 import { createFramebuffer, rgb } from './framebuffer';
 import { bakeLighting, type Light } from './lighting';
 import { VACUUM_MODEL } from './models/vacuum';
@@ -8,6 +9,8 @@ import { buildModel, glow, renderVoxel, type VoxelInstance } from './voxels';
 
 // Voxel objects (robot vacuum spec §6): models described in code, drawn depth-correct among walls and discs.
 const player: PlayerState = { x: 1.5, y: 4.5, angle: 0 };
+/** The player's view of a default-size frame, which every test here draws into. */
+const view = setView(createView(), createFramebuffer(), player);
 const RED = rgb(200, 10, 10);
 const scaled = (c: number, k: number) =>
   rgb(((c & 0xff) * k) | 0, (((c >>> 8) & 0xff) * k) | 0, (((c >>> 16) & 0xff) * k) | 0);
@@ -116,7 +119,7 @@ describe('the vacuum model', () => {
 describe('renderVoxel', () => {
   test('draws a vacuum 2 tiles ahead, below the horizon', () => {
     const fb = blank();
-    renderVoxel(fb, player, robot(3.5));
+    renderVoxel(fb, view, robot(3.5));
     const rows = new Set<number>();
     fb.pixels.forEach((px, i) => {
       if (px !== 0) {
@@ -130,21 +133,21 @@ describe('renderVoxel', () => {
   test('voxel faces are depth-tested against walls', () => {
     const fb = blank();
     fb.zbuffer.fill(1);
-    renderVoxel(fb, player, robot(3.5));
+    renderVoxel(fb, view, robot(3.5));
     expect(fb.pixels.every((px) => px === 0)).toBe(true);
   });
 
   test('turning the robot changes what is drawn', () => {
     const a = blank();
     const b = blank();
-    renderVoxel(a, player, robot(3.5, 0));
-    renderVoxel(b, player, robot(3.5, Math.PI / 2));
+    renderVoxel(a, view, robot(3.5, 0));
+    renderVoxel(b, view, robot(3.5, Math.PI / 2));
     expect(a.pixels).not.toEqual(b.pixels);
   });
 
   test('draws nothing for a robot behind the camera', () => {
     const fb = blank();
-    renderVoxel(fb, player, robot(0.5));
+    renderVoxel(fb, view, robot(0.5));
     expect(fb.pixels.every((px) => px === 0)).toBe(true);
   });
 });
@@ -205,16 +208,16 @@ describe('renderVoxel with lighting', () => {
 
   test('with no lamps, faces get only the ambient share of their usual shade', () => {
     const fb = blank();
-    renderVoxel(fb, player, box, bakeLighting(room, [], 0.45, RED, RED));
+    renderVoxel(fb, view, box, bakeLighting(room, [], 0.45, RED, RED));
     // The top and the face turned to the camera.
     expect(drawn(fb)).toEqual(new Set([scaled(RED, 0.45), scaled(RED, 0.45 * 0.8)]));
   });
 
   test('a lamp overhead brightens the top', () => {
     const dark = blank();
-    renderVoxel(dark, player, box, bakeLighting(room, [], 0.45, RED, RED));
+    renderVoxel(dark, view, box, bakeLighting(room, [], 0.45, RED, RED));
     const lit = blank();
-    renderVoxel(lit, player, box, bakeLighting(room, [lamp], 0.45, RED, RED));
+    renderVoxel(lit, view, box, bakeLighting(room, [lamp], 0.45, RED, RED));
     const red = (fb: ReturnType<typeof blank>) => Math.max(...[...drawn(fb)].map((c) => c & 0xff));
     expect(red(lit)).toBeGreaterThan(red(dark));
   });
@@ -223,7 +226,7 @@ describe('renderVoxel with lighting', () => {
     const lit = (l: Light[]) => {
       const fb = blank();
       const model = buildModel(1, 1, 1, 0.2, () => glow(RED, 1));
-      renderVoxel(fb, player, { ...box, model }, bakeLighting(room, l, 0.45, RED, RED));
+      renderVoxel(fb, view, { ...box, model }, bakeLighting(room, l, 0.45, RED, RED));
       return drawn(fb);
     };
     expect(lit([])).toEqual(new Set([RED]));
@@ -233,7 +236,7 @@ describe('renderVoxel with lighting', () => {
   test('half a glow is halfway between lit and its own colour', () => {
     const fb = blank();
     const model = buildModel(1, 1, 1, 0.2, () => glow(RED, 0.5));
-    renderVoxel(fb, player, { ...box, model }, bakeLighting(room, [], 0.45, RED, RED));
+    renderVoxel(fb, view, { ...box, model }, bakeLighting(room, [], 0.45, RED, RED));
     // Top: 0.45 × 0.5 + 0.5; the face to the camera: 0.45 × 0.8 × 0.5 + 0.5.
     expect(drawn(fb)).toEqual(new Set([scaled(RED, 0.725), scaled(RED, 0.68)]));
   });
