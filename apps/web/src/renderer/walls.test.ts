@@ -1,8 +1,9 @@
 import { LEVEL1, parseMap } from '@zoom3d/shared';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { createFramebuffer, DEFAULT_FOV } from './framebuffer';
 import { GLOW_RADIUS, GLOW_STRENGTH, type Glow } from './glow';
 import { bakeLighting, corridorLights, REFLECTION_RANGE } from './lighting';
+import { firstDifference } from './test-helpers';
 import { makeTextures, TEX } from './textures';
 import { CEILING, FLOOR, renderWalls, shade } from './walls';
 
@@ -99,6 +100,22 @@ test('a narrower FOV draws the same wall taller', () => {
   );
 });
 
+test('lit, a frame of a new size and FOV draws as if it were the first', async () => {
+  // The lit renderer keeps per-frame-size scratch buffers: a landscape frame before must not leave them stale.
+  const level = parseMap(LEVEL1);
+  const lit = bakeLighting(level, corridorLights(level), 0.45, FLOOR, CEILING);
+  const pose = { x: 35.26, y: 27.38, angle: 4.48 };
+  const portrait = () => createFramebuffer(296, 640, (50 * Math.PI) / 180);
+  renderWalls(createFramebuffer(), level, pose, textures, lit);
+  const after = portrait();
+  renderWalls(after, level, pose, textures, lit);
+  vi.resetModules();
+  const fresh = await import('./walls');
+  const first = portrait();
+  fresh.renderWalls(first, level, pose, textures, lit);
+  expect(firstDifference(after.pixels, first.pixels)).toBe(-1);
+});
+
 describe('renderWalls reflections', () => {
   // A corridor with a lamp near its east end.
   const corridor = parseMap('11111111111111\n1S...........1\n11111111111111');
@@ -109,7 +126,7 @@ describe('renderWalls reflections', () => {
     FLOOR,
     CEILING
   );
-  const matte = { ...lit, wallLamp: new Int16Array(lit.wallLamp.length).fill(-1) };
+  const matte = { ...lit, wallLamp: new Int8Array(lit.wallLamp.length).fill(-1) };
   const render = (x: number, lighting: typeof lit) => {
     const fb = createFramebuffer();
     renderWalls(fb, corridor, { x, y: 1.5, angle: 0 }, textures, lighting);
@@ -158,7 +175,7 @@ describe('renderWalls reflections', () => {
       FLOOR,
       CEILING
     );
-    const roomMatte = { ...roomLit, wallLamp: new Int16Array(roomLit.wallLamp.length).fill(-1) };
+    const roomMatte = { ...roomLit, wallLamp: new Int8Array(roomLit.wallLamp.length).fill(-1) };
     const pose = { x: 6, y: 2.5, angle: 0 };
     const shiny = createFramebuffer();
     const plain = createFramebuffer();
@@ -174,7 +191,7 @@ describe('renderWalls reflections', () => {
     // line with the eye, so their planes pass close to it, but the faces themselves are far off.
     const level = parseMap(LEVEL1);
     const levelLit = bakeLighting(level, corridorLights(level), 0.45, FLOOR, CEILING);
-    const levelMatte = { ...levelLit, wallLamp: new Int16Array(levelLit.wallLamp.length).fill(-1) };
+    const levelMatte = { ...levelLit, wallLamp: new Int8Array(levelLit.wallLamp.length).fill(-1) };
     const pose = { x: 35.26, y: 27.38, angle: 4.48 };
     const shiny = createFramebuffer();
     const plain = createFramebuffer();
@@ -196,7 +213,7 @@ describe('renderWalls reflections', () => {
       FLOOR,
       CEILING
     );
-    const hallMatte = { ...hallLit, wallLamp: new Int16Array(hallLit.wallLamp.length).fill(-1) };
+    const hallMatte = { ...hallLit, wallLamp: new Int8Array(hallLit.wallLamp.length).fill(-1) };
     // Close to the top wall at its west end, looking east along it.
     const pose = { x: 1.5, y: 1.3, angle: 0.05 };
     const shiny = createFramebuffer();
@@ -222,7 +239,7 @@ describe('renderWalls reflections', () => {
       FLOOR,
       CEILING
     );
-    const roomMatte = { ...roomLit, wallLamp: new Int16Array(roomLit.wallLamp.length).fill(-1) };
+    const roomMatte = { ...roomLit, wallLamp: new Int8Array(roomLit.wallLamp.length).fill(-1) };
     const brightest = (pose: { x: number; y: number; angle: number }) => {
       const a = createFramebuffer();
       const b = createFramebuffer();
@@ -256,7 +273,7 @@ describe('renderWalls reflections', () => {
     renderWalls(shiny, blue, pose, textures, blueLit);
     renderWalls(plain, blue, pose, textures, {
       ...blueLit,
-      wallLamp: new Int16Array(blueLit.wallLamp.length).fill(-1),
+      wallLamp: new Int8Array(blueLit.wallLamp.length).fill(-1),
     });
     let redAdded = 0;
     let greenAdded = 0;
@@ -288,8 +305,8 @@ describe('renderWalls floor reflections', () => {
   );
   const hallMatte = {
     ...hallLit,
-    wallLamp: new Int16Array(hallLit.wallLamp.length).fill(-1),
-    floorLamp: new Int16Array(hallLit.floorLamp.length).fill(-1),
+    wallLamp: new Int8Array(hallLit.wallLamp.length).fill(-1),
+    floorLamp: new Int8Array(hallLit.floorLamp.length).fill(-1),
   };
   const pose = { x: 2.5, y: 2.5, angle: 0 };
   const channels = (c: number) => [c & 0xff, (c >>> 8) & 0xff, (c >>> 16) & 0xff];
@@ -327,8 +344,8 @@ describe('renderWalls reflection modes', () => {
   );
   const hallMatte = {
     ...hallLit,
-    wallLamp: new Int16Array(hallLit.wallLamp.length).fill(-1),
-    floorLamp: new Int16Array(hallLit.floorLamp.length).fill(-1),
+    wallLamp: new Int8Array(hallLit.wallLamp.length).fill(-1),
+    floorLamp: new Int8Array(hallLit.floorLamp.length).fill(-1),
   };
   // Close to the top wall, so the wall shines too.
   const pose = { x: 2.5, y: 1.3, angle: 0 };
@@ -385,8 +402,8 @@ describe('renderWalls floor reflections in shadow', () => {
   const hallLit = bakeLighting(hall, [{ x: 9.5, y: 2.5, z: 0.85, radius: 20, r: 1, g: 1, b: 1 }], 0.45, FLOOR, CEILING);
   const hallMatte = {
     ...hallLit,
-    wallLamp: new Int16Array(hallLit.wallLamp.length).fill(-1),
-    floorLamp: new Int16Array(hallLit.floorLamp.length).fill(-1),
+    wallLamp: new Int8Array(hallLit.wallLamp.length).fill(-1),
+    floorLamp: new Int8Array(hallLit.floorLamp.length).fill(-1),
   };
   // The floor where no lamp reaches: ambient light only.
   const shadow = hallLit.floor[0] as number;

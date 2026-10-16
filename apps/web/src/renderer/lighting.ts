@@ -1,9 +1,11 @@
-// SPIKE: static point lights baked into lightmaps once per map, so a frame pays one table lookup per floor or
-// ceiling pixel and one lookup plus a multiply per wall pixel. Shadows are hard and grid-exact: each sample asks
-// whether its light can see it (2D line of sight), so wall corners throw shadows along walls and floors.
+// Lighting (decision D24): static ceiling lamps baked once per map into lightmaps, so a frame pays one table lookup
+// per floor or ceiling pixel and one lookup plus a multiply per wall texel. Shadows are grid-exact and soft: each
+// sample asks how much of each lamp's disc it can see (2D lines of sight). Ambient is bounce light, what the lit
+// surfaces throw back. The bake also lists, per wall sample column and floor cell, the lamps it can reflect; the
+// reflection model itself (`reflection()`) is pure and runs per frame, sampled sparsely by walls.ts.
 import { type GameMap, hasLineOfSight, tileAt } from '@zoom3d/shared';
 import { rgb } from './framebuffer';
-import { RELIEF_LEVELS } from './textures';
+import { RELIEF_LEVELS, type ReflectionMaterial } from './textures';
 
 export interface Light {
   x: number;
@@ -27,6 +29,7 @@ export const FLOOR_SUB = 8;
 const ONE = 128;
 /** Ceiling cells within this distance (tiles) of a lamp show the lamp itself. */
 const FIXTURE_RADIUS = 0.18;
+/** The colour a lamp's fixture shows on the ceiling. */
 const FIXTURE = rgb(255, 236, 190);
 /**
  * A lamp casts shadows as a disc this wide (radius, tiles), its fixture's size: a wall's edge hides part of it, so
@@ -35,14 +38,19 @@ const FIXTURE = rgb(255, 236, 190);
 const LAMP_RADIUS = FIXTURE_RADIUS;
 /** Halvings to find where a wall's edge cuts a lamp: its share is then known to 1/2^(steps+1) of its width. */
 const SHADOW_STEPS = 5;
+/** North and south faces get this much of the ambient light: the old renderer's fake sun. Lamp light is unshaded. */
+const SIDE_SHADE = 0.7;
 /** The eye's height above the floor: walls are drawn centred on the horizon. */
 const EYE_Z = 0.5;
 /**
- * Walls reflect only this many tiles from the eye, fading to nothing here: a streak along the wall you're by stays
- * near you, and a far wall that lies in line with the eye (close to its plane) barely flashes.
+ * Walls and floor reflect only this many tiles from the eye, fading to nothing here: a streak along the wall you're
+ * by stays near you, and a far wall that lies in line with the eye (close to its plane) barely flashes.
  */
 export const REFLECTION_RANGE = 8;
-/** A wall reflects only while the eye is this close to it (tiles off its face), fading to nothing at this distance. */
+/**
+ * A wall reflects only while the eye is this close to it (tiles off its face), fading to nothing at this distance.
+ * The floor is always half a tile off the eye.
+ */
 export const REFLECTION_NEAR = 4;
 /**
  * Lamps a wall or floor sample can reflect: the LAMPS_PER_DIRECTION nearest in sight in each direction, east, west,
@@ -52,33 +60,29 @@ export const REFLECTION_NEAR = 4;
  */
 const LAMPS_PER_DIRECTION = 2;
 export const REFLECTION_LAMPS = 4 * LAMPS_PER_DIRECTION;
-
-/** The direction of a lamp lying (dx, dy) from a sample: 0 east, 1 west, 2 south, 3 north. */
-function bearing(dx: number, dy: number): number {
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return dx > 0 ? 0 : 1;
-  }
-  return dy > 0 ? 2 : 3;
-}
+/** The lamp lists hold lamp indices as signed bytes (−1 for none), so a map can have this many lamps. */
+const MAX_LAMPS = 127;
 /**
  * A lamp's reflection fades over the whole path its light takes, lamp to surface to eye, to nothing at this many
- * tiles. Not its light's reach: you see a lamp mirrored in the floor however far its own light gets.
+ * tiles. Not its light's reach: you see a lamp mirrored in the floor however far its own light gets. Lamps are listed
+ * within LAMP_SIGHT of a surface, and surfaces reflect within REFLECTION_RANGE of the eye, so in practice this only
+ * dims, never cuts off.
  */
 export const REFLECTION_PATH = 32;
-/** Lamps are listed for reflection up to this far from a surface. */
+/** Lamps are listed for reflection up to this far from a surface (tiles). */
 const LAMP_SIGHT = 16;
 /** A reflection sees a lamp's light this many times further than the lamp lights things: softly, never cut off. */
 const REFLECTION_REACH = 1.5;
 /** Lamp-sight cells per tile edge: past a lamp's light reach, a surface's sight of it is checked this coarsely. */
 const SIGHT_SUB = 2;
-/** Which surfaces reflect the lamps (a console option): nothing, the walls, or the walls and the floor. */
+/** Which surfaces reflect the lamps (a console option): nothing, the walls, or the walls, floor and ceiling. */
 export type ReflectionMode = 'none' | 'walls' | 'both';
 /** A full reflection adds this much of the lamp's colour (×255) on top of the lit texel. */
 export const REFLECTION_STRENGTH = 0.385;
 /** Heights a wall column's reflection is worked out at (0 to 1, evenly), blended between for each texel row. */
 export const REFLECTION_SAMPLES = 17;
 
-/** Bounce light (a console-switchable ambient): what the lit surfaces throw back, spread through the open floor. */
+/** Bounce light: what the lit surfaces throw back, spread through the open floor, on top of the bare ambient. */
 export interface Bounce {
   /** Each wall texture's average colour (index = tile id): the colour its lit faces throw back. */
   wallColours: readonly number[];
@@ -88,7 +92,10 @@ export interface Bounce {
 
 /** Bounce light cells per tile edge: it's soft, so coarse is enough. */
 const BOUNCE_SUB = 2;
-/** Blur rounds spreading bounce light through the open floor: about √rounds cells, so ~3 tiles. */
+/**
+ * Blur rounds spreading bounce light through the open floor. Each round averages a cell with its four neighbours, so
+ * light spreads about √(0.4 · rounds) cells: 4 cells, 2 tiles.
+ */
 const BOUNCE_ROUNDS = 40;
 
 export interface Lighting {
@@ -111,29 +118,50 @@ export interface Lighting {
    * Per face sample column ([face][u][k], so (faceOffset / WALL_V + u) · REFLECTION_LAMPS + k): the nearest lamps in
    * sight in each direction (see REFLECTION_LAMPS), or −1.
    */
-  wallLamp: Int16Array;
+  wallLamp: Int8Array;
   /** Per wallLamp slot: how much of its lamp the sample sees, 0..255 (a lamp part hidden by a wall's edge). */
   wallLampSeen: Uint8Array;
   /**
-   * Per floor cell (like `floor`) × REFLECTION_LAMPS: the nearest lamps in sight in each direction, or −1. The same
-   * cells and sight lines as the floor's light, so a reflection's shadow edge is the floor's.
+   * Per floor cell (like `floor`) × REFLECTION_LAMPS: the nearest lamps in sight in each direction, or −1. Lamps in
+   * their light's reach use the floor light's own cells and sight lines, so a reflection's shadow edge is the floor's;
+   * farther ones the coarse lamp sight (half-tile cells).
    */
-  floorLamp: Int16Array;
+  floorLamp: Int8Array;
   /** Per floorLamp slot: how much of its lamp the cell sees, 0..255. */
   floorLampSeen: Uint8Array;
   /** Final floor / ceiling colours, (map.width·FLOOR_SUB) × (map.height·FLOOR_SUB). */
   floor: Uint32Array;
   ceiling: Uint32Array;
+  /** The floor and ceiling tables' size: cells across (a row's length) and rows. */
   stride: number;
   rows: number;
 }
 
-export const FACES: readonly { dx: number; dy: number }[] = [
-  { dx: -1, dy: 0 },
-  { dx: 1, dy: 0 },
-  { dx: 0, dy: -1 },
-  { dx: 0, dy: 1 },
+/** A surface's unit normal. */
+export interface Normal {
+  dx: number;
+  dy: number;
+  dz: number;
+}
+
+/** A wall face's outward normal, by face number (0 W, 1 E, 2 N, 3 S), as faceOffset numbers them. */
+export const FACE_NORMALS: readonly Normal[] = [
+  { dx: -1, dy: 0, dz: 0 },
+  { dx: 1, dy: 0, dz: 0 },
+  { dx: 0, dy: -1, dz: 0 },
+  { dx: 0, dy: 1, dz: 0 },
 ];
+/** The floor faces up. */
+export const FLOOR_NORMAL: Normal = { dx: 0, dy: 0, dz: 1 };
+
+/** How a surface reflects (see ReflectionMaterial); reflection() doesn't need its tint. */
+type Gloss = Pick<ReflectionMaterial, 'shininess' | 'f0'>;
+
+/** Where the eye stands, in tiles (a PlayerState will do). */
+interface Eye {
+  readonly x: number;
+  readonly y: number;
+}
 
 function pack(r: number, g: number, b: number): number {
   const q = (v: number) => Math.max(0, Math.min(255, Math.round(v * ONE)));
@@ -154,6 +182,45 @@ function falloff(dist: number, radius: number): number {
   return k * k;
 }
 
+/** The direction of a lamp lying (dx, dy) from a sample: 0 east, 1 west, 2 south, 3 north. */
+function bearing(dx: number, dy: number): number {
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx > 0 ? 0 : 1;
+  }
+  return dy > 0 ? 2 : 3;
+}
+
+/** The cell at (x, y) in tiles on a grid of `sub` cells per tile edge, row by row, or −1 off the map. */
+function gridCell(map: GameMap, sub: number, x: number, y: number): number {
+  const across = map.width * sub;
+  const cx = Math.floor(x * sub);
+  const cy = Math.floor(y * sub);
+  return cx < 0 || cy < 0 || cx >= across || cy >= map.height * sub ? -1 : cy * across + cx;
+}
+
+/** The ambient light, r, g, b into `out`, at (x, y): `ambient` plus any `bounce` light there. */
+function ambientInto(
+  map: GameMap,
+  ambient: number,
+  bounce: Float32Array | null,
+  x: number,
+  y: number,
+  out: Float64Array
+): void {
+  out.fill(ambient);
+  const at = bounce ? gridCell(map, BOUNCE_SUB, x, y) : -1;
+  if (bounce && at >= 0) {
+    for (let ch = 0; ch < 3; ch++) {
+      out[ch] = ambient + (bounce[at * 3 + ch] as number);
+    }
+  }
+}
+
+/**
+ * Bakes a map's lighting: its wall faces and their runs, then each wall sample and each floor and ceiling cell lit by
+ * the lamps in sight (soft shadows) over the ambient, with `bounce` light on top if given, and the lamps each can
+ * reflect. About 100 ms for LEVEL1. At most MAX_LAMPS lamps.
+ */
 export function bakeLighting(
   map: GameMap,
   lights: readonly Light[],
@@ -162,26 +229,63 @@ export function bakeLighting(
   ceilingColour: number,
   bounce?: Bounce
 ): Lighting {
+  if (lights.length > MAX_LAMPS) {
+    throw new Error(`bakeLighting: ${lights.length} lamps, at most ${MAX_LAMPS} fit the lamp lists`);
+  }
+  const input: BakeInput = {
+    map,
+    lights,
+    ambient,
+    bounce: bounce ? bakeBounce(map, lights, floorColour, ceilingColour, bounce) : null,
+    sight: bakeLampSight(map, lights),
+  };
+  const { faceOffset, faces } = indexFaces(map);
+  const faceRun = faceRuns(map, faceOffset, faces);
+  const { wall, wallLamp, wallLampSeen } = bakeWalls(input, faceOffset, faces);
+  const { floor, ceiling, floorLamp, floorLampSeen, stride, rows } = bakeFloorAndCeiling(
+    input,
+    floorColour,
+    ceilingColour
+  );
+  return {
+    map,
+    lights,
+    ambient,
+    bounce: input.bounce,
+    faceOffset,
+    faceRun,
+    wall,
+    wallLamp,
+    wallLampSeen,
+    floorLamp,
+    floorLampSeen,
+    floor,
+    ceiling,
+    stride,
+    rows,
+  };
+}
+
+/** The ambient light, r, g, b into `out`, at (x, y): the bare ambient plus any bounce light there. */
+export function ambientAt(lm: Lighting, x: number, y: number, out: Float64Array): void {
+  ambientInto(lm.map, lm.ambient, lm.bounce, x, y, out);
+}
+
+// Bake stages.
+
+/** What every stage of a bake reads: the map, its lamps, the ambient and bounce light, and the coarse lamp sight. */
+interface BakeInput {
+  map: GameMap;
+  lights: readonly Light[];
+  ambient: number;
+  bounce: Float32Array | null;
+  /** bakeLampSight's table. */
+  sight: Uint8Array;
+}
+
+/** Numbers every wall face with floor in front of it: faceOffset per wall cell × face (−1 for none), and the count. */
+function indexFaces(map: GameMap): { faceOffset: Int32Array; faces: number } {
   const { width, height } = map;
-  const bounceLight = bounce ? bakeBounce(map, lights, floorColour, ceilingColour, bounce) : null;
-  const sight = bakeLampSight(map, lights);
-  /** Whether the floor at (x, y) can see lamp i, by the coarse lamp-sight cells. */
-  const sees = (x: number, y: number, i: number) => {
-    const at = sightCell(map, x, y);
-    return at >= 0 && sight[at * lights.length + i] === 1;
-  };
-  /** The ambient light, r, g, b, at (x, y): the bare ambient plus the bounce there. */
-  const ambientRgb = new Float64Array(3);
-  const ambientAround = (x: number, y: number) => {
-    ambientRgb.fill(ambient);
-    const at = bounceLight ? bounceCell(map, x, y) : -1;
-    if (bounceLight && at >= 0) {
-      for (let ch = 0; ch < 3; ch++) {
-        ambientRgb[ch] = ambient + (bounceLight[at * 3 + ch] as number);
-      }
-    }
-    return ambientRgb;
-  };
   const faceOffset = new Int32Array(width * height * 4).fill(-1);
   let faces = 0;
   for (let cy = 0; cy < height; cy++) {
@@ -189,27 +293,31 @@ export function bakeLighting(
       if (tileAt(map, cx, cy) === 0) {
         continue;
       }
-      for (let f = 0; f < 4; f++) {
-        const n = FACES[f] as { dx: number; dy: number };
+      for (const [f, n] of FACE_NORMALS.entries()) {
         if (tileAt(map, cx + n.dx, cy + n.dy) === 0) {
           faceOffset[(cy * width + cx) * 4 + f] = faces++ * WALL_U * WALL_V;
         }
       }
     }
   }
+  return { faceOffset, faces };
+}
 
+/** Each face's run (see Lighting.faceRun): how far the unbroken line of faces on its side reaches either way. */
+function faceRuns(map: GameMap, faceOffset: Int32Array, faces: number): Int16Array {
+  const { width, height } = map;
   const faceRun = new Int16Array(faces * 2);
   const hasFace = (x: number, y: number, f: number) =>
     x >= 0 && y >= 0 && x < width && y < height && (faceOffset[(y * width + x) * 4 + f] as number) >= 0;
   for (let cy = 0; cy < height; cy++) {
     for (let cx = 0; cx < width; cx++) {
-      for (let f = 0; f < 4; f++) {
+      for (const [f, n] of FACE_NORMALS.entries()) {
         const base = faceOffset[(cy * width + cx) * 4 + f] as number;
         if (base < 0) {
           continue;
         }
         // North and south faces run along x, west and east ones along y.
-        const alongX = (FACES[f] as { dy: number }).dy !== 0;
+        const alongX = n.dy !== 0;
         const sx = alongX ? 1 : 0;
         const sy = alongX ? 0 : 1;
         let back = 0;
@@ -227,65 +335,56 @@ export function bakeLighting(
       }
     }
   }
+  return faceRun;
+}
 
+/**
+ * Each wall sample's light per relief level (ambient and bounce from the floor in front of it, plus the lamps in
+ * sight), and the lamps each sample column can reflect.
+ */
+function bakeWalls(
+  input: BakeInput,
+  faceOffset: Int32Array,
+  faces: number
+): { wall: Uint32Array; wallLamp: Int8Array; wallLampSeen: Uint8Array } {
+  const { map, lights } = input;
+  const { width, height } = map;
   const levels = RELIEF_LEVELS.length;
   const wall = new Uint32Array(faces * WALL_U * WALL_V * levels);
-  const wallLamp = new Int16Array(faces * WALL_U * REFLECTION_LAMPS).fill(-1);
+  const wallLamp = new Int8Array(faces * WALL_U * REFLECTION_LAMPS).fill(-1);
   const wallLampSeen = new Uint8Array(wallLamp.length);
-  /**
-   * The sample being listed: per direction, the nearest lamps in sight so far (nearest first), their distances and
-   * how much of each it sees (0..255).
-   */
-  const nearest = new Int16Array(REFLECTION_LAMPS);
-  const nearestDist = new Float64Array(REFLECTION_LAMPS);
-  const nearestSeen = new Uint8Array(REFLECTION_LAMPS);
-  const startListing = () => {
-    nearest.fill(-1);
-    nearestDist.fill(Number.POSITIVE_INFINITY);
-    nearestSeen.fill(0);
-  };
-  const offer = (i: number, dx: number, dy: number, dist: number, seen: number) => {
-    const first = bearing(dx, dy) * LAMPS_PER_DIRECTION;
-    // Insert in distance order, dropping the farthest of the direction's slots.
-    for (let k = first; k < first + LAMPS_PER_DIRECTION; k++) {
-      if (dist < (nearestDist[k] as number)) {
-        for (let m = first + LAMPS_PER_DIRECTION - 1; m > k; m--) {
-          nearestDist[m] = nearestDist[m - 1] as number;
-          nearest[m] = nearest[m - 1] as number;
-          nearestSeen[m] = nearestSeen[m - 1] as number;
-        }
-        nearestDist[k] = dist;
-        nearest[k] = i;
-        nearestSeen[k] = Math.round(seen * 255);
-        return;
-      }
-    }
-  };
+  const list = createLampList();
+  const around = new Float64Array(3);
+  // The lamps' light down the sample column, per WALL_V sample.
+  const r = new Float64Array(WALL_V);
+  const g = new Float64Array(WALL_V);
+  const b = new Float64Array(WALL_V);
   for (let cy = 0; cy < height; cy++) {
     for (let cx = 0; cx < width; cx++) {
-      for (let f = 0; f < 4; f++) {
+      for (const [f, n] of FACE_NORMALS.entries()) {
         const base = faceOffset[(cy * width + cx) * 4 + f] as number;
         if (base < 0) {
           continue;
         }
-        const n = FACES[f] as { dx: number; dy: number };
-        // The old renderer's fake sun: north/south faces at 70%. It now only shades the ambient part.
-        const shade = n.dy !== 0 ? 0.7 : 1;
+        const shade = n.dy !== 0 ? SIDE_SHADE : 1;
         for (let u = 0; u < WALL_U; u++) {
           const along = (u + 0.5) / WALL_U;
           const px = n.dx === 0 ? cx + along : n.dx < 0 ? cx : cx + 1;
           const py = n.dy === 0 ? cy + along : n.dy < 0 ? cy : cy + 1;
           // The ambient of the floor just in front of this sample.
-          const around = ambientAround(px + n.dx * 0.25, py + n.dy * 0.25);
+          ambientInto(map, input.ambient, input.bounce, px + n.dx * 0.25, py + n.dy * 0.25, around);
           const ar = (around[0] as number) * shade;
           const ag = (around[1] as number) * shade;
           const ab = (around[2] as number) * shade;
-          const r = new Float64Array(WALL_V);
-          const g = new Float64Array(WALL_V);
-          const b = new Float64Array(WALL_V);
-          startListing();
+          r.fill(0);
+          g.fill(0);
+          b.fill(0);
+          clearLampList(list);
           for (let i = 0; i < lights.length; i++) {
-            const l = lights[i] as Light;
+            const l = lights.at(i);
+            if (!l) {
+              continue;
+            }
             const dx = l.x - px;
             const dy = l.y - py;
             const facing = dx * n.dx + dy * n.dy;
@@ -297,13 +396,13 @@ export function bakeLighting(
             const lit = flat < l.radius;
             const seen = lit
               ? seenShare(map, px + n.dx * 1e-3, py + n.dy * 1e-3, l)
-              : sees(px + n.dx * 0.25, py + n.dy * 0.25, i)
+              : seesCoarsely(input, px + n.dx * 0.25, py + n.dy * 0.25, i)
                 ? 1
                 : 0;
             if (seen === 0) {
               continue;
             }
-            offer(i, dx, dy, flat, seen);
+            offerLamp(list, i, dx, dy, flat, seen);
             if (!lit) {
               continue;
             }
@@ -316,14 +415,14 @@ export function bakeLighting(
               b[v] = (b[v] as number) + l.b * k;
             }
           }
-          wallLamp.set(nearest, (base / WALL_V + u) * REFLECTION_LAMPS);
-          wallLampSeen.set(nearestSeen, (base / WALL_V + u) * REFLECTION_LAMPS);
+          wallLamp.set(list.lamps, (base / WALL_V + u) * REFLECTION_LAMPS);
+          wallLampSeen.set(list.seen, (base / WALL_V + u) * REFLECTION_LAMPS);
           for (let v = 0; v < WALL_V; v++) {
             const rv = r[v] as number;
             const gv = g[v] as number;
             const bv = b[v] as number;
             for (let k = 0; k < levels; k++) {
-              const lift = 1 + (RELIEF_LEVELS[k] as number);
+              const lift = 1 + (RELIEF_LEVELS.at(k) ?? 0);
               wall[(base + u * WALL_V + v) * levels + k] = pack(ar + rv * lift, ag + gv * lift, ab + bv * lift);
             }
           }
@@ -331,13 +430,31 @@ export function bakeLighting(
       }
     }
   }
+  return { wall, wallLamp, wallLampSeen };
+}
 
-  const stride = width * FLOOR_SUB;
-  const rows = height * FLOOR_SUB;
+/** Each floor and ceiling cell's colour, lit like the walls, and the lamps each floor cell can reflect. */
+function bakeFloorAndCeiling(
+  input: BakeInput,
+  floorColour: number,
+  ceilingColour: number
+): {
+  floor: Uint32Array;
+  ceiling: Uint32Array;
+  floorLamp: Int8Array;
+  floorLampSeen: Uint8Array;
+  stride: number;
+  rows: number;
+} {
+  const { map, lights, ambient } = input;
+  const stride = map.width * FLOOR_SUB;
+  const rows = map.height * FLOOR_SUB;
   const floor = new Uint32Array(stride * rows).fill(tint(floorColour, ambient, ambient, ambient));
   const ceiling = new Uint32Array(stride * rows).fill(tint(ceilingColour, ambient, ambient, ambient));
-  const floorLamp = new Int16Array(stride * rows * REFLECTION_LAMPS).fill(-1);
+  const floorLamp = new Int8Array(stride * rows * REFLECTION_LAMPS).fill(-1);
   const floorLampSeen = new Uint8Array(floorLamp.length);
+  const list = createLampList();
+  const around = new Float64Array(3);
   for (let sy = 0; sy < rows; sy++) {
     for (let sx = 0; sx < stride; sx++) {
       const px = (sx + 0.5) / FLOOR_SUB;
@@ -345,7 +462,7 @@ export function bakeLighting(
       if (tileAt(map, Math.floor(px), Math.floor(py)) !== 0) {
         continue;
       }
-      const around = ambientAround(px, py);
+      ambientInto(map, ambient, input.bounce, px, py, around);
       let fr = around[0] as number;
       let fg = around[1] as number;
       let fb = around[2] as number;
@@ -353,9 +470,12 @@ export function bakeLighting(
       let cg = fg;
       let cb = fb;
       let fixture = false;
-      startListing();
+      clearLampList(list);
       for (let i = 0; i < lights.length; i++) {
-        const l = lights[i] as Light;
+        const l = lights.at(i);
+        if (!l) {
+          continue;
+        }
         const dx = l.x - px;
         const dy = l.y - py;
         const flat = Math.hypot(dx, dy);
@@ -363,11 +483,11 @@ export function bakeLighting(
           continue;
         }
         const lit = flat < l.radius;
-        const seen = lit ? seenShare(map, px, py, l) : sees(px, py, i) ? 1 : 0;
+        const seen = lit ? seenShare(map, px, py, l) : seesCoarsely(input, px, py, i) ? 1 : 0;
         if (seen === 0) {
           continue;
         }
-        offer(i, dx, dy, flat, seen);
+        offerLamp(list, i, dx, dy, flat, seen);
         if (!lit) {
           continue;
         }
@@ -387,29 +507,57 @@ export function bakeLighting(
         cg += l.g * kc;
         cb += l.b * kc;
       }
-      floorLamp.set(nearest, (sy * stride + sx) * REFLECTION_LAMPS);
-      floorLampSeen.set(nearestSeen, (sy * stride + sx) * REFLECTION_LAMPS);
+      floorLamp.set(list.lamps, (sy * stride + sx) * REFLECTION_LAMPS);
+      floorLampSeen.set(list.seen, (sy * stride + sx) * REFLECTION_LAMPS);
       floor[sy * stride + sx] = tint(floorColour, fr, fg, fb);
       ceiling[sy * stride + sx] = fixture ? FIXTURE : tint(ceilingColour, cr, cg, cb);
     }
   }
+  return { floor, ceiling, floorLamp, floorLampSeen, stride, rows };
+}
+
+/**
+ * A sample's lamps being listed for reflection: per direction (`bearing`), the LAMPS_PER_DIRECTION nearest in sight
+ * so far, nearest first, with their distances and how much of each the sample sees (0..255).
+ */
+interface LampList {
+  lamps: Int8Array;
+  dist: Float64Array;
+  seen: Uint8Array;
+}
+
+function createLampList(): LampList {
   return {
-    map,
-    lights,
-    ambient,
-    bounce: bounceLight,
-    faceOffset,
-    faceRun,
-    wall,
-    wallLamp,
-    wallLampSeen,
-    floorLamp,
-    floorLampSeen,
-    floor,
-    ceiling,
-    stride,
-    rows,
+    lamps: new Int8Array(REFLECTION_LAMPS),
+    dist: new Float64Array(REFLECTION_LAMPS),
+    seen: new Uint8Array(REFLECTION_LAMPS),
   };
+}
+
+function clearLampList(list: LampList): void {
+  list.lamps.fill(-1);
+  list.dist.fill(Number.POSITIVE_INFINITY);
+  list.seen.fill(0);
+}
+
+/** Lists lamp i, lying (dx, dy) and `dist` tiles away, `seen` 0..1 of it, if it's among its direction's nearest. */
+function offerLamp(list: LampList, i: number, dx: number, dy: number, dist: number, seen: number): void {
+  const { lamps, dist: dists, seen: seens } = list;
+  const first = bearing(dx, dy) * LAMPS_PER_DIRECTION;
+  // Insert in distance order, dropping the farthest of the direction's slots.
+  for (let k = first; k < first + LAMPS_PER_DIRECTION; k++) {
+    if (dist < (dists[k] as number)) {
+      for (let m = first + LAMPS_PER_DIRECTION - 1; m > k; m--) {
+        dists[m] = dists[m - 1] as number;
+        lamps[m] = lamps[m - 1] as number;
+        seens[m] = seens[m - 1] as number;
+      }
+      dists[k] = dist;
+      lamps[k] = i;
+      seens[k] = Math.round(seen * 255);
+      return;
+    }
+  }
 }
 
 /**
@@ -444,12 +592,10 @@ function seenShare(map: GameMap, x: number, y: number, l: Light): number {
   return left ? 1 - past : past;
 }
 
-/** The lamp-sight cell at (x, y) in tiles, or −1 off the map. */
-function sightCell(map: GameMap, x: number, y: number): number {
-  const across = map.width * SIGHT_SUB;
-  const cx = Math.floor(x * SIGHT_SUB);
-  const cy = Math.floor(y * SIGHT_SUB);
-  return cx < 0 || cy < 0 || cx >= across || cy >= map.height * SIGHT_SUB ? -1 : cy * across + cx;
+/** Whether the floor at (x, y) can see lamp i, by the coarse lamp-sight cells (bakeLampSight). */
+function seesCoarsely(input: BakeInput, x: number, y: number, i: number): boolean {
+  const at = gridCell(input.map, SIGHT_SUB, x, y);
+  return at >= 0 && input.sight[at * input.lights.length + i] === 1;
 }
 
 /**
@@ -475,25 +621,6 @@ function bakeLampSight(map: GameMap, lights: readonly Light[]): Uint8Array {
     }
   }
   return sight;
-}
-
-/** The bounce cell at (x, y) in tiles, or −1 off the map. */
-function bounceCell(map: GameMap, x: number, y: number): number {
-  const across = map.width * BOUNCE_SUB;
-  const cx = Math.floor(x * BOUNCE_SUB);
-  const cy = Math.floor(y * BOUNCE_SUB);
-  return cx < 0 || cy < 0 || cx >= across || cy >= map.height * BOUNCE_SUB ? -1 : cy * across + cx;
-}
-
-/** The ambient light, r, g, b into `out`, at (x, y): the bare ambient plus any bounce light there. */
-export function ambientAt(lm: Lighting, x: number, y: number, out: Float64Array): void {
-  out.fill(lm.ambient);
-  const at = lm.bounce ? bounceCell(lm.map, x, y) : -1;
-  if (lm.bounce && at >= 0) {
-    for (let ch = 0; ch < 3; ch++) {
-      out[ch] = lm.ambient + (lm.bounce[at * 3 + ch] as number);
-    }
-  }
 }
 
 /**
@@ -541,7 +668,7 @@ function bakeBounce(
         surfaces++;
       }
       // Any wall faces bordering the cell, lit at mid height, facing back into it.
-      for (const n of FACES) {
+      for (const n of FACE_NORMALS) {
         if (open(cx + n.dx, cy + n.dy)) {
           continue;
         }
@@ -573,7 +700,7 @@ function bakeBounce(
         let r = light[at] as number;
         let g = light[at + 1] as number;
         let b = light[at + 2] as number;
-        for (const d of FACES) {
+        for (const d of FACE_NORMALS) {
           if (open(cx + d.dx, cy + d.dy)) {
             const there = ((cy + d.dy) * across + cx + d.dx) * 3;
             r += light[there] as number;
@@ -595,6 +722,7 @@ function bakeBounce(
 /**
  * The lamps' direct light, r, g, b into `out`, on a surface at (x, y, z): the floor (z 0) and ceiling (z 1) face up
  * and down; a wall point facing (nx, ny) is lit by what's in front of it. Only lamps in reach and in sight count.
+ * Hard shadows, and no lift for the ceiling (unlike its baked colour): bounce light is soft enough not to show it.
  */
 function lampsOn(
   map: GameMap,
@@ -623,33 +751,41 @@ function lampsOn(
   }
 }
 
+// Reflections, per frame.
+
 /**
- * How brightly lamp `l` reflects at (px, py, pz) on a surface facing (nx, ny, nz) (a wall, or the floor facing up),
- * seen from the eye at (ex, ey), 0..1 before
- * the lamp's colour. One model for every angle: Blinn-Phong, (n·h)^shininess with h halfway between the lamp and the
- * eye, times a boost at shallow angles, f0 + (1 − f0)·(1 − (v·h)²), times how brightly the lamp lights the surface,
- * 1 / (1 + (d / (REFLECTION_REACH × its reach))²): gentle, never cut off at its light's reach, so a far lamp seen
- * through a doorway still leaves a streak, and a streak still grows towards its lamp. A fade over the whole path, lamp to surface to eye, ends it at REFLECTION_PATH. Face-on it's a soft spot where the wall mirrors the lamp, worth f0 of itself; looking along the
- * wall the same reflection stretches into a streak towards the lamp, near full strength. Glossy surfaces (high
- * shininess) give a small spot and a narrow streak, rough ones a faint wide spot and a long streak. Schlick's
- * (1 − v·h)⁵ boost only rises past 80°, and a corridor's reflections sit at 60–70°. Shadows are the caller's
- * (wallLamp). `shininess` is a power of two (it's raised by squaring). Three roots: callers sample a wall column at
- * REFLECTION_SAMPLES heights rather than per texel row.
+ * How brightly lamp `l` reflects at (px, py, pz) on a surface facing `n` (a wall, or the floor facing up), seen from
+ * the eye, 0..1 before the lamp's colour; `lampZ` moves the lamp up or down (the ceiling's mirrored lamps).
+ *
+ * One model for every angle: Blinn-Phong, (n·h)^shininess with h halfway between the lamp and the eye, times a boost
+ * at shallow angles, f0 + (1 − f0)·(1 − (v·h)²), times how brightly the lamp lights the surface,
+ * 1 / (1 + (d / (REFLECTION_REACH × its reach))²), times a fade over the whole path, lamp to surface to eye, to nothing
+ * at REFLECTION_PATH. The lamp term is gentle, never cut off at the light's reach, so a far lamp seen through a
+ * doorway still leaves a streak, and a streak still grows towards its lamp.
+ *
+ * Face-on it's a soft spot where the wall mirrors the lamp, worth f0 of itself; looking along the wall the same
+ * reflection stretches into a streak towards the lamp, near full strength. Glossy surfaces (high shininess) give a
+ * small spot and a narrow streak, rough ones a faint wide spot and a long streak. Schlick's (1 − v·h)⁵ boost only
+ * rises past 80°, and a corridor's reflections sit at 60–70°.
+ *
+ * Shadows are the caller's (wallLampSeen, floorLampSeen). `shininess` is a power of two (it's raised by squaring).
+ * It takes three square roots, so callers sample it sparsely: a wall column at REFLECTION_SAMPLES heights, the floor
+ * every few pixels.
  */
 export function reflection(
   l: Light,
-  shininess: number,
-  f0: number,
-  nx: number,
-  ny: number,
-  nz: number,
+  gloss: Gloss,
+  n: Normal,
   px: number,
   py: number,
   pz: number,
-  ex: number,
-  ey: number,
+  eye: Eye,
   lampZ = l.z
 ): number {
+  const { shininess, f0 } = gloss;
+  const nx = n.dx;
+  const ny = n.dy;
+  const nz = n.dz;
   const lx = l.x - px;
   const ly = l.y - py;
   const lz = lampZ - pz;
@@ -657,8 +793,8 @@ export function reflection(
   if (lx * nx + ly * ny + lz * nz <= 0) {
     return 0;
   }
-  const vx = ex - px;
-  const vy = ey - py;
+  const vx = eye.x - px;
+  const vy = eye.y - py;
   const vz = EYE_Z - pz;
   const lampLen = Math.sqrt(l2);
   const eyeLen = Math.sqrt(vx * vx + vy * vy + vz * vz);
@@ -687,27 +823,17 @@ export function reflection(
 }
 
 /**
- * How far the eye at (ex, ey) is from the wall itself, not its endless plane: from the run of faces (`faceRun`) that
- * the face at `base` (its faceOffset) belongs to, facing (nx, ny), with (px, py) a point on it. Alongside the run it's
- * how far the eye stands off it; past its end, the distance to that end. So a far wall face lying in line with the
- * eye counts as far.
+ * How far the eye is from the wall itself, not its endless plane: from the run of faces (`faceRun`) that the face at
+ * `base` (its faceOffset) belongs to, facing `n`, with (px, py) a point on it. Alongside the run it's how far the eye
+ * stands off it; past its end, the distance to that end. So a far wall face lying in line with the eye counts as far.
  */
-export function distanceToWall(
-  lm: Lighting,
-  base: number,
-  nx: number,
-  ny: number,
-  px: number,
-  py: number,
-  ex: number,
-  ey: number
-): number {
+export function distanceToWall(lm: Lighting, base: number, n: Normal, px: number, py: number, eye: Eye): number {
   const face = base / (WALL_U * WALL_V);
   const start = lm.faceRun[face * 2] as number;
   const end = lm.faceRun[face * 2 + 1] as number;
-  const off = (ex - px) * nx + (ey - py) * ny;
+  const off = (eye.x - px) * n.dx + (eye.y - py) * n.dy;
   // West and east faces run along y, north and south ones along x.
-  const along = nx !== 0 ? ey : ex;
+  const along = n.dx !== 0 ? eye.y : eye.x;
   const gap = along < start ? start - along : along > end ? along - end : 0;
   return Math.hypot(off, gap);
 }
@@ -725,21 +851,18 @@ export function bounceHeight(l: Light, px: number, py: number, ex: number, ey: n
 
 /**
  * Of a wall sample column's lamps (`wallLamp` from `slot`), the one that reflects brightest on the column at (px, py)
- * facing (nx, ny), seen from (ex, ey), for a surface of this shininess and f0: each tried at its bounce height, where
- * its reflection peaks, times how much of it the column sees (`wallLampSeen`), which lands in `peak[0]`. −1 (and a
- * zero peak) if none reflects there.
+ * facing `n`, seen from the eye, for a surface of this gloss: each tried at its bounce height, where its reflection
+ * peaks, times how much of it the column sees (`wallLampSeen`), which lands in `peak[0]`. −1 (and a zero peak) if
+ * none reflects there.
  */
 export function brightestReflection(
   lm: Lighting,
   slot: number,
-  shininess: number,
-  f0: number,
-  nx: number,
-  ny: number,
+  gloss: Gloss,
+  n: Normal,
   px: number,
   py: number,
-  ex: number,
-  ey: number,
+  eye: Eye,
   peak: Float64Array
 ): number {
   let best = -1;
@@ -750,9 +873,8 @@ export function brightestReflection(
     if (i < 0 || !l) {
       continue;
     }
-    const z = bounceHeight(l, px, py, ex, ey);
-    const strength =
-      reflection(l, shininess, f0, nx, ny, 0, px, py, z, ex, ey) * ((lm.wallLampSeen[slot + k] as number) / 255);
+    const z = bounceHeight(l, px, py, eye.x, eye.y);
+    const strength = reflection(l, gloss, n, px, py, z, eye) * ((lm.wallLampSeen[slot + k] as number) / 255);
     if (strength > bestStrength) {
       bestStrength = strength;
       best = i;
@@ -761,6 +883,8 @@ export function brightestReflection(
   peak[0] = bestStrength;
   return best;
 }
+
+// Moving objects, per frame.
 
 /** A voxel face's direction in model space (+x front, +y the model's right, +z up), as voxels.ts orders them. */
 export const DIR_TOP = 0;
@@ -803,7 +927,12 @@ function addLight(out: Float64Array, dir: number, l: Light, k: number): void {
   out[dir * 3 + 2] = (out[dir * 3 + 2] as number) + l.b * k;
 }
 
+// Placing lamps.
+
+/** A corridor lamp's colour × intensity: warm white, a little overbright at the lamp. */
 export const LAMP = { r: 1.25, g: 1.05, b: 0.75 };
+/** Corridor lamps hang this high (0..1, the ceiling is 1). */
+const LAMP_HEIGHT = 0.85;
 
 /**
  * Lamps along every corridor (a floor run at most 3 tiles across and at least 4 long), on its centre line, at
@@ -844,7 +973,7 @@ export function corridorLights(map: GameMap, spacing = 5, radius = 4.5): Light[]
         continue;
       }
       if (far(lx, ly)) {
-        lights.push({ x: lx, y: ly, z: 0.85, radius, ...LAMP });
+        lights.push({ x: lx, y: ly, z: LAMP_HEIGHT, radius, ...LAMP });
       }
     }
   }

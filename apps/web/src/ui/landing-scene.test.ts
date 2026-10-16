@@ -4,6 +4,7 @@ import { FACE_SIZE } from '../media/faces';
 import { createFramebuffer, rgb } from '../renderer/framebuffer';
 import { VACUUM_MODEL } from '../renderer/models/vacuum';
 import { AVATAR_RADIUS, hexToRgb, type Projection, projectSprite } from '../renderer/sprites';
+import { firstDifference } from '../renderer/test-helpers';
 import { makeTextures } from '../renderer/textures';
 import { renderWalls } from '../renderer/walls';
 import {
@@ -145,7 +146,7 @@ test('the parked vacuum is out of sight of both cameras', () => {
       renderLandingScene(without, { lights });
       const parked = frame();
       renderLandingScene(parked, { lights, vacuum: PARKED });
-      expect(parked.pixels, `${frame.name}, lights ${lights}`).toEqual(without.pixels);
+      expect(firstDifference(parked.pixels, without.pixels), `${frame.name}, lights ${lights}`).toBe(-1);
     }
   }
 });
@@ -169,5 +170,5 @@ test('repeated frames draw the same picture', () => {
   renderLandingScene(fb, { lights: true });
   const first = fb.pixels.slice();
   renderLandingScene(fb, { lights: true });
-  expect(fb.pixels).toEqual(first);
+  expect(firstDifference(fb.pixels, first)).toBe(-1);
 });

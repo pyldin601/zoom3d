@@ -108,12 +108,26 @@ const ownGlow: Glow = { x: 0, y: 0, r: 0, g: 0, b: 0 };
 let ownGlowColour: (now: number) => number | null = () => null;
 /** Ambient light is bounce light: what the lamps' lit surfaces throw back, over a bare minimum so no room is black. */
 const BARE_AMBIENT = 0.08;
+/** How much of the light the lamps' lit surfaces throw back comes back as ambient (see `Bounce`). */
 const BOUNCE_STRENGTH = 3.5;
-const wallColours = textures.map((tex) => (tex.length ? averageColour(tex) : 0));
-/** The room's lighting; null with `?lights=off`. */
-const lighting: Lighting | null = LIGHTS
-  ? bakeLighting(map, lamps, BARE_AMBIENT, FLOOR, CEILING, { wallColours, strength: BOUNCE_STRENGTH })
-  : null;
+/**
+ * The room's lighting, null with `?lights=off`. Baked on the room's first frame (about 100 ms), not at load, so the
+ * landing page never waits for it; by then the join is already connecting.
+ */
+const roomLighting = (() => {
+  let baked: { lighting: Lighting | null } | null = null;
+  return (): Lighting | null => {
+    baked ??= {
+      lighting: LIGHTS
+        ? bakeLighting(map, lamps, BARE_AMBIENT, FLOOR, CEILING, {
+            wallColours: textures.map((tex) => (tex.length ? averageColour(tex) : 0)),
+            strength: BOUNCE_STRENGTH,
+          })
+        : null,
+    };
+    return baked.lighting;
+  };
+})();
 let fb: Framebuffer = createFramebuffer();
 let image = imageOf(fb);
 function imageOf(buffer: Framebuffer): ImageData {
@@ -873,6 +887,7 @@ function frame(dt: number): void {
     glowOf(player.x, player.y, null, ownGlowColour(performance.now()) ?? hexToRgb(selfColor), ownGlow);
     avatarGlows.push(ownGlow);
   }
+  const lighting = roomLighting();
   renderWalls(fb, map, player, textures, lighting, renderSettings.reflections, avatarGlows);
   renderSprites(fb, player, sprites, facts, session ? voxels : undefined, lighting);
   if (session) {
