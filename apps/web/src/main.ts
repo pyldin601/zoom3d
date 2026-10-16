@@ -941,10 +941,15 @@ function startLandingShow(): void {
   const show = createLandingShow();
   const vacuum: VoxelInstance = { model: VACUUM_MODEL, ...LANDING_PARK };
   landingVacuum = vacuum;
+  /** The buffer last drawn into: a new one (a resize) needs the picture even if the robot stood still. */
+  let drawnInto: Framebuffer | null = null;
   stopLandingShow = startLoop((dt) => {
     show.advance(dt);
-    show.poseInto(vacuum);
-    drawStill(true);
+    // Only the robot moves: while it waits, scans or pauses, the last picture stands.
+    if (show.poseInto(vacuum) || drawnInto !== fb) {
+      drawnInto = fb;
+      drawStill(true);
+    }
   });
 }
 
