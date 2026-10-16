@@ -326,6 +326,55 @@ describe('connecting and publishing', () => {
   });
 });
 
+describe('which face sizes go out', () => {
+  const [a, b, c] = [track('video', 'c256'), track('video', 'c128'), track('video', 'c64')];
+  /** Sets the one encoding of the published face `name`, as dynacast leaves it. */
+  const encoding = (name: string, e: RTCRtpEncodingParameters) => {
+    const sender = room().localTrack(name)?.sender;
+    if (sender) {
+      sender.encodings = [e];
+    }
+  };
+
+  test('nothing goes out before the faces are published', async () => {
+    const t = transport({ localStream: null });
+    expect(t.sendingFaces()).toEqual({ 256: false, 128: false, 64: false });
+    await flush();
+    expect(t.sendingFaces()).toEqual({ 256: false, 128: false, 64: false });
+  });
+
+  test('a size goes out while dynacast keeps its encoding on, and stops while it is off', async () => {
+    const t = transport();
+    t.setVideoTracks(faceTracks(a, b, c));
+    await flush();
+    encoding('face', { active: true, maxBitrate: VIDEO_MAX_BITRATE });
+    encoding('face-128', { active: false, maxBitrate: FACE_128_MAX_BITRATE });
+    encoding('face-64', { active: true, maxBitrate: FACE_64_MAX_BITRATE });
+    expect(t.sendingFaces()).toEqual({ 256: true, 128: false, 64: true });
+  });
+
+  test('in Firefox, which can’t switch an encoding off, a size LiveKit turned down to its floor counts as paused', async () => {
+    const t = transport();
+    t.setVideoTracks(faceTracks(a, b, c));
+    await flush();
+    encoding('face', { active: true, maxBitrate: 10, scaleResolutionDownBy: 4 });
+    encoding('face-128', { active: true, maxBitrate: FACE_128_MAX_BITRATE });
+    encoding('face-64', { active: true, maxBitrate: 10, scaleResolutionDownBy: 4 });
+    expect(t.sendingFaces()).toEqual({ 256: false, 128: true, 64: false });
+  });
+
+  test('once closed, nothing goes out', async () => {
+    const t = transport();
+    t.setVideoTracks(faceTracks(a, b, c));
+    await flush();
+    for (const name of ['face', 'face-128', 'face-64']) {
+      encoding(name, { active: true, maxBitrate: VIDEO_MAX_BITRATE });
+    }
+    t.close();
+    expect(t.sendingFaces()).toEqual({ 256: false, 128: false, 64: false });
+  });
+});
+
 describe('swapping tracks', () => {
   test('video and mic swaps replace the published track as user-provided, never republish', async () => {
     const t = transport();

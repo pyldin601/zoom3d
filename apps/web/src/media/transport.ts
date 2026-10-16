@@ -9,6 +9,9 @@ export interface FaceTracks {
   64: MediaStreamTrack;
 }
 
+/** Per face size, whether anyone in the room receives it now: dynacast pauses the sizes nobody does. */
+export type FacesSent = Record<keyof FaceTracks, boolean>;
+
 export interface TransportOptions extends LiveKitAccess {
   localStream: MediaStream | null;
   /** A peer's shown face (video only); a new stream whenever it changes (another size), empty when off. */
@@ -26,6 +29,8 @@ export interface MediaTransport {
   stats(peerId: string): Promise<{ bytesReceived: number; boomboxBytesReceived: number } | null>;
   /** Sends our face in its three sizes (the framer's canvases, or the raw camera while the tab is hidden). */
   setVideoTracks(tracks: FaceTracks): void;
+  /** Which of our face sizes someone receives now. */
+  sendingFaces(): FacesSent;
   /** Whether the peer publishes anything in the media room (bots never do). */
   publishes(peerId: string): boolean;
   /** Subscribes to a peer's face (at that size) and voice as wanted; nothing is received until asked for. */
