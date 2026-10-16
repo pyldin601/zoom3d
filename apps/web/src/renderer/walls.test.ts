@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { createFramebuffer, DEFAULT_FOV } from './framebuffer';
 import { GLOW_RADIUS, GLOW_STRENGTH, type Glow } from './glow';
 import { bakeLighting, corridorLights, REFLECTION_RANGE } from './lighting';
+import { firstDifference } from './test-helpers';
 import { makeTextures, TEX } from './textures';
 import { CEILING, FLOOR, renderWalls, shade } from './walls';
 
@@ -112,7 +113,7 @@ test('lit, a frame of a new size and FOV draws as if it were the first', async (
   const fresh = await import('./walls');
   const first = portrait();
   fresh.renderWalls(first, level, pose, textures, lit);
-  expect(after.pixels).toEqual(first.pixels);
+  expect(firstDifference(after.pixels, first.pixels)).toBe(-1);
 });
 
 describe('renderWalls reflections', () => {
