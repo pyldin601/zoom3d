@@ -105,6 +105,10 @@ function fakeLocal(init: { cam?: boolean; mic?: boolean; camWorks?: boolean } = 
 }
 let local: ReturnType<typeof fakeLocal>;
 
+/** A stream as the transport emits it: `tracks` tracks, 0 when the peer's track went away. */
+const fakeStream = (id: string, tracks = 1) =>
+  ({ id, getTracks: () => Array.from({ length: tracks }, (_, i) => ({ id: `${id}-${i}` })) }) as unknown as MediaStream;
+
 function setPeers(...peers: PeerInfo[]) {
   session.peers.clear();
   for (const p of peers) {
@@ -243,9 +247,9 @@ test('a resume keeps the transport even though its welcome carries a fresh token
 test('media that arrives before the game announces the peer is applied once it does', () => {
   const call = makeCall();
   call.listener.welcome?.('me', LK, true);
-  const stream = { id: 'early' } as unknown as MediaStream;
-  const voice = { id: 'early-voice' } as unknown as MediaStream;
-  const music = { id: 'early-music' } as unknown as MediaStream;
+  const stream = fakeStream('early');
+  const voice = fakeStream('early-voice');
+  const music = fakeStream('early-music');
   transports[0]?.opts.onRemoteStream('c', stream);
   transports[0]?.opts.onRemoteVoice('c', voice);
   transports[0]?.opts.onRemoteBoombox('c', music);
@@ -257,6 +261,18 @@ test('media that arrives before the game announces the peer is applied once it d
   expect(remote.attachAudio).toHaveBeenCalledWith('voice:c', voice);
   expect(audio.attach).toHaveBeenCalledWith('c', voice);
   expect(remote.attachAudio).toHaveBeenCalledWith('boombox:c', music);
+});
+
+test('media emptied before the game announces the peer is not kept', () => {
+  const call = makeCall();
+  call.listener.welcome?.('me', LK, true);
+  transports[0]?.opts.onRemoteStream('c', fakeStream('face'));
+  transports[0]?.opts.onRemoteVoice('c', fakeStream('voice'));
+  transports[0]?.opts.onRemoteStream('c', fakeStream('no-face', 0));
+  transports[0]?.opts.onRemoteVoice('c', fakeStream('no-voice', 0));
+  call.listener.peerJoined?.(info('c'));
+  expect(remote.attach).not.toHaveBeenCalled();
+  expect(remote.attachAudio).not.toHaveBeenCalled();
 });
 
 test('a remote face stream is attached to an element that feeds the face, never to the engine', () => {
@@ -393,6 +409,15 @@ test('a peer that leaves is forgotten', () => {
   expect(transports[1]?.setWanted).not.toHaveBeenCalled();
 });
 
+test('a peer that leaves the game is unsubscribed, even if still in the media room', () => {
+  const call = makeCall();
+  setPeers(info('a'));
+  call.listener.welcome?.('me', LK, true);
+  call.setWanted('a', { video: 256, audio: true });
+  call.listener.peerLeft?.('a');
+  expect(transports[0]?.setWanted).toHaveBeenLastCalledWith('a', { video: 'off', audio: false });
+});
+
 test('a replaced mic reaches the current transport', () => {
   const call = makeCall();
   call.listener.welcome?.('me', LK, true);
@@ -416,7 +441,7 @@ test('a boombox stream plays through the engine at its owner', () => {
   const call = makeCall();
   setPeers(info('b'));
   call.listener.welcome?.('me', LK, true);
-  const music = { id: 'music' } as unknown as MediaStream;
+  const music = fakeStream('music');
   transports[0]?.opts.onRemoteBoombox('b', music);
   expect(remote.attachAudio).toHaveBeenCalledWith('boombox:b', music);
   expect(audio.attach).toHaveBeenCalledWith('boombox:b', music, 'b');

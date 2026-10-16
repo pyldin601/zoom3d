@@ -8,7 +8,7 @@
 
 import type { LiveKitAccess } from '@zoom3d/shared';
 import type { RoomConnectOptions, RoomOptions, TrackPublishOptions } from 'livekit-client';
-import type { VideoWant, Want } from './interest';
+import { type VideoWant, WANT_NONE, type Want } from './interest';
 import type { FacesSent, FaceTracks, MediaTransport, TransportOptions } from './transport';
 
 export const VIDEO_MAX_BITRATE = 350_000;
@@ -109,7 +109,6 @@ const FACE_ORDER: Record<Exclude<VideoWant, 'off'>, FaceName[]> = {
 };
 /** The small faces' target sizes: fed the raw camera (hidden tab), their encoder scales it down. */
 const SMALL_SIZE: Partial<Record<TrackName, number>> = { 'face-128': 128, 'face-64': 64 };
-const OFF: Want = { video: 'off', audio: false };
 
 /**
  * Whether a published face goes out: dynacast switches its one encoding off while nobody receives it (LiveKit's
@@ -324,7 +323,7 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
     if (!r) {
       return;
     }
-    const want = wants.get(identity) ?? OFF;
+    const want = wants.get(identity) ?? WANT_NONE;
     const target = want.video === 'off' ? null : (FACE_ORDER[want.video].find((n) => r.pubs.has(n)) ?? null);
     if (target === null || r.tracks.has(target)) {
       r.face = target;
