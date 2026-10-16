@@ -19,13 +19,15 @@
   <body>
     <main>
       <h1>Privacy</h1>
-      <p class="updated">Last updated 10 October 2026</p>
+      <p class="updated">Last updated 17 October 2026</p>
       <p>zoom3d is a small hobby project: a retro 3D room where friends meet as their camera faces. This page says what
         happens to your data when you use it.</p>
 
       <h2>Your camera and microphone</h2>
-      <p>Video and sound go directly between the people in your room (peer to peer, over WebRTC). They do not pass
-        through our server and are never recorded.</p>
+      <p>Video and sound go, encrypted over WebRTC, to our media server (a <a href="https://livekit.io">LiveKit</a>
+        server we run), which passes them on to the others in your room as they arrive. It knows you only by a random
+        id and your room only by a scrambled name, and like any call it needs your IP address to reach you. Nothing
+        is recorded or kept.</p>
 
       <h2>What the server keeps</h2>
       <p>While a room exists, the server holds what the others in it need to see: your display name, your picture
@@ -38,9 +40,10 @@
         servers may also keep standard access logs, including IP addresses, for operation and security.</p>
 
       <h2>What stays in your browser</h2>
-      <p>Your name, picture, camera and microphone choices, volume and drink are remembered in your browser (local
-        storage), so you don't have to set them again. They stay on your device, except your name and picture, which
-        the people in your room see.</p>
+      <p>Your name, picture, camera and microphone choices, how your face is framed in each camera, volume, drink and
+        the lighting setting in the room's console are remembered in your browser (local storage), so you don't have
+        to set them again. They stay on your device, except your name and picture, which the people in your room
+        see.</p>
 
       <h2>Usage statistics</h2>
       <p>To learn how zoom3d is used (for example, whether people find each other, or how often connections drop), the
