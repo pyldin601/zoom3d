@@ -58,8 +58,9 @@ const columnGlows: Glow[] = [];
 let columnGlowCount = 0;
 const columnGlowLight = new Float64Array(GLOW_HEIGHTS * 3);
 /**
- * The floor and ceiling colours with this frame's avatar glow added, per floor cell, copies of a Lighting's; and the
- * cells the glow touched, put back from the Lighting's own next frame.
+ * The floor and ceiling colours with this frame's avatar glow, per floor cell, copies of a Lighting's; the cells the
+ * glow touched, put back from the Lighting's own next frame; and the glow light summed on each, floor r, g, b then
+ * ceiling r, g, b.
  */
 let glowTables: {
   lm: Lighting;
@@ -67,6 +68,7 @@ let glowTables: {
   ceiling: Uint32Array;
   touched: Uint8Array;
   dirty: number[];
+  light: Float32Array;
 } | null = null;
 let floorShineLamp = new Int32Array(0);
 
@@ -217,9 +219,10 @@ function shineFloorPixel(
 }
 
 /**
- * The floor and ceiling colours (one per floor cell, like the Lighting's) with the avatars' glow added: last frame's
- * cells are put back, then each avatar lights the cells within its reach, √(GLOW_RADIUS² − ½²) of its disc. The cost
- * is the cells near avatars, not the pixels showing them; the floor loop reads these as it reads the Lighting's.
+ * The floor and ceiling colours (one per floor cell, like the Lighting's) with the avatars' glow: last frame's cells
+ * are put back, then each avatar lights the cells within its reach, √(GLOW_RADIUS² − ½²) of its disc. Glows add up,
+ * and a cell takes their sum where it's brighter than its baked light (see withGlow). The cost is the cells near
+ * avatars, not the pixels showing them; the floor loop reads these as it reads the Lighting's.
  */
 function glowingTables(lm: Lighting, glows: readonly Glow[]): { floor: Uint32Array; ceiling: Uint32Array } {
   if (glowTables?.lm !== lm) {
@@ -229,6 +232,7 @@ function glowingTables(lm: Lighting, glows: readonly Glow[]): { floor: Uint32Arr
       ceiling: lm.ceiling.slice(),
       touched: new Uint8Array(lm.floor.length),
       dirty: [],
+      light: new Float32Array(lm.floor.length * 6),
     };
   }
   const t = glowTables;
@@ -256,21 +260,47 @@ function glowingTables(lm: Lighting, glows: readonly Glow[]): { floor: Uint32Arr
         if (t.touched[i] === 0) {
           t.touched[i] = 1;
           t.dirty.push(i);
+          t.light.fill(0, i * 6, i * 6 + 6);
         }
-        t.floor[i] = addGlow(t.floor[i] as number, FLOOR, g, onFloor);
-        t.ceiling[i] = addGlow(t.ceiling[i] as number, CEILING, g, glowLight(g, x, y, 1, 0, 0, -1));
+        const onCeiling = glowLight(g, x, y, 1, 0, 0, -1);
+        t.light[i * 6] = (t.light[i * 6] as number) + g.r * onFloor;
+        t.light[i * 6 + 1] = (t.light[i * 6 + 1] as number) + g.g * onFloor;
+        t.light[i * 6 + 2] = (t.light[i * 6 + 2] as number) + g.b * onFloor;
+        t.light[i * 6 + 3] = (t.light[i * 6 + 3] as number) + g.r * onCeiling;
+        t.light[i * 6 + 4] = (t.light[i * 6 + 4] as number) + g.g * onCeiling;
+        t.light[i * 6 + 5] = (t.light[i * 6 + 5] as number) + g.b * onCeiling;
       }
     }
+  }
+  for (const i of t.dirty) {
+    const l = t.light;
+    t.floor[i] = withGlow(
+      lm.floor[i] as number,
+      FLOOR,
+      l[i * 6] as number,
+      l[i * 6 + 1] as number,
+      l[i * 6 + 2] as number
+    );
+    t.ceiling[i] = withGlow(
+      lm.ceiling[i] as number,
+      CEILING,
+      l[i * 6 + 3] as number,
+      l[i * 6 + 4] as number,
+      l[i * 6 + 5] as number
+    );
   }
   return t;
 }
 
-/** Colour `c` with glow `g`, reaching it at strength k (see glowLight), on a surface of colour `albedo` added. */
-function addGlow(c: number, albedo: number, g: Glow, k: number): number {
-  const r = Math.min(255, (c & 0xff) + (((albedo & 0xff) * g.r * k) | 0));
-  const gg = Math.min(255, ((c >>> 8) & 0xff) + ((((albedo >>> 8) & 0xff) * g.g * k) | 0));
-  const b = Math.min(255, ((c >>> 16) & 0xff) + ((((albedo >>> 16) & 0xff) * g.b * k) | 0));
-  return (0xff000000 | (b << 16) | (gg << 8) | r) >>> 0;
+/**
+ * Colour `c` of a surface of colour `albedo` also lit by glow light r, g, b: per channel, whichever is brighter, not
+ * the sum. The avatars' glow shows in the dark and is lost under a lamp, as a screen's is.
+ */
+function withGlow(c: number, albedo: number, r: number, g: number, b: number): number {
+  const rr = Math.min(255, Math.max(c & 0xff, ((albedo & 0xff) * r) | 0));
+  const gg = Math.min(255, Math.max((c >>> 8) & 0xff, (((albedo >>> 8) & 0xff) * g) | 0));
+  const bb = Math.min(255, Math.max((c >>> 16) & 0xff, (((albedo >>> 16) & 0xff) * b) | 0));
+  return (0xff000000 | (bb << 16) | (gg << 8) | rr) >>> 0;
 }
 
 /**
@@ -470,6 +500,22 @@ function renderLitWalls(
       let r = ((c & 0xff) * (l & 0xff)) >> 7;
       let g = (((c >>> 8) & 0xff) * ((l >>> 8) & 0xff)) >> 7;
       let b = (((c >>> 16) & 0xff) * ((l >>> 16) & 0xff)) >> 7;
+      if (columnGlowCount > 0) {
+        // The glow lights the texel if it's brighter than the baked light (blending the two heights either side of
+        // this texel row); the lamps' reflection adds on top.
+        const at = (1 - (texY + 0.5) / size) * (GLOW_HEIGHTS - 1);
+        const below = at | 0;
+        const above = Math.min(below + 1, GLOW_HEIGHTS - 1);
+        const t = at - below;
+        const gr = (columnGlowLight[below * 3] as number) * (1 - t) + (columnGlowLight[above * 3] as number) * t;
+        const gg =
+          (columnGlowLight[below * 3 + 1] as number) * (1 - t) + (columnGlowLight[above * 3 + 1] as number) * t;
+        const gb =
+          (columnGlowLight[below * 3 + 2] as number) * (1 - t) + (columnGlowLight[above * 3 + 2] as number) * t;
+        r = Math.max(r, ((c & 0xff) * gr) | 0);
+        g = Math.max(g, (((c >>> 8) & 0xff) * gg) | 0);
+        b = Math.max(b, (((c >>> 16) & 0xff) * gb) | 0);
+      }
       if (lamp && gloss[t] === 1) {
         // Blend the two samples either side of this texel row's height.
         const at = (1 - (texY + 0.5) / size) * (REFLECTION_SAMPLES - 1);
@@ -480,21 +526,6 @@ function renderLitWalls(
         r += (s * addR) | 0;
         g += (s * addG) | 0;
         b += (s * addB) | 0;
-      }
-      if (columnGlowCount > 0) {
-        // Blend the two heights either side of this texel row.
-        const at = (1 - (texY + 0.5) / size) * (GLOW_HEIGHTS - 1);
-        const below = at | 0;
-        const above = Math.min(below + 1, GLOW_HEIGHTS - 1);
-        const t = at - below;
-        const gr = (columnGlowLight[below * 3] as number) * (1 - t) + (columnGlowLight[above * 3] as number) * t;
-        const gg =
-          (columnGlowLight[below * 3 + 1] as number) * (1 - t) + (columnGlowLight[above * 3 + 1] as number) * t;
-        const gb =
-          (columnGlowLight[below * 3 + 2] as number) * (1 - t) + (columnGlowLight[above * 3 + 2] as number) * t;
-        r += ((c & 0xff) * gr) | 0;
-        g += (((c >>> 8) & 0xff) * gg) | 0;
-        b += (((c >>> 16) & 0xff) * gb) | 0;
       }
       if (r > 255) {
         r = 255;

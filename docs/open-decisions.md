@@ -419,7 +419,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     ceiling and walls around it with its face's average colour (sampled 16×16; ring colour without a face), up to
     2.5 tiles (`renderer/glow.ts`; at 1.5 a person in the middle of a 3-wide corridor lit no wall). Your own face
     glows around you too: the framer's canvas scaled to 16×16 and averaged every 250 ms (`media/own-glow.ts`), or
-    your ring colour with the camera off. Per frame: the floor and ceiling get it per floor cell, added into copies of
+    your ring colour with the camera off. Glows add up with each other, but a surface takes the brighter of their sum
+    and its baked light, per channel, not the two added (2026-10-16): added, a face lit a lamp-lit corridor as
+    brightly as a dark room, and looked like it shone. Now it shows in the dark and is lost under a lamp, like a
+    screen's light. Per frame: the floor and ceiling get it per floor cell, added into copies of
     the baked colours around each avatar and put back next frame, so it costs the cells near avatars, not the pixels
     showing them; walls per column, at 9 heights. About +0.06 ms for 7 avatars, +0.16 ms for 20. The camera colour
     costs ~0.2 µs per avatar per frame over the ring colour: kept for the screen-light look. No shadows: across a
