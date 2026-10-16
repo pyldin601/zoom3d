@@ -7,6 +7,7 @@ import {
   showLanding,
   showMediaControls,
   showNotice,
+  showPeopleCount,
   showSelfPreview,
   showStatus,
 } from './screens';
@@ -39,6 +40,20 @@ test('status overlay shows and clears independently of the screen', () => {
   expect(root.querySelector('.screen')).not.toBeNull();
   clearScreen(root);
   expect(root.querySelector('.screen')).toBeNull();
+});
+
+test('the people count shows the number with a spelled-out title, and null removes it', () => {
+  showPeopleCount(root, 1);
+  const count = root.querySelector('.people') as HTMLElement;
+  expect(count.textContent).toBe('1');
+  expect(count.title).toBe('1 person in the room');
+  expect(count.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+  showPeopleCount(root, 5);
+  expect(root.querySelectorAll('.people')).toHaveLength(1);
+  expect(count.textContent).toBe('5');
+  expect(count.title).toBe('5 people in the room');
+  showPeopleCount(root, null);
+  expect(root.querySelector('.people')).toBeNull();
 });
 
 test('notice screen shows text and a link', () => {

@@ -33,3 +33,13 @@ test('in a room, M mutes and unmutes the mic and C turns the camera off and on',
   await page.keyboard.press('ControlOrMeta+KeyC');
   await expect(cam).toHaveAttribute('aria-label', 'Cam on');
 });
+
+test('in a room, the backquote key toggles the frame rate and renderer panel', async ({ page }) => {
+  await createAndJoin(page, 'Ada');
+  await page.locator('#stage').click();
+  await page.keyboard.press('Backquote');
+  await expect(page.locator('.audio-panel .frame-rate')).toHaveText(/^Frame rate \d+ fps$/);
+  await expect(page.getByText('Lighting')).toBeVisible();
+  await page.keyboard.press('Backquote');
+  await expect(page.locator('.audio-panel')).toHaveCount(0);
+});

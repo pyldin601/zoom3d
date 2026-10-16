@@ -14,8 +14,8 @@ import { preferPlayAndRecord } from './audio/audio-session';
 import { createDoorbell, withDoorbell } from './audio/doorbell';
 import { type AudioEngine, createAudioEngine } from './audio/engine';
 import { createObjectSounds, type ObjectSounds } from './audio/object-sounds';
-import { loadAudioSettings, saveAudioSettings } from './audio/settings-store';
 import { HIDDEN_TICK_MS, startHiddenTicker } from './audio/ticker';
+import { createFrameRateMeter } from './game/frame-rate';
 import { startLoop } from './game/loop';
 import { type Frame, layoutStage, watchLayout } from './game/stage';
 import { createInput } from './input/keyboard';
@@ -63,7 +63,7 @@ import { renderLandingScene } from './ui/landing-scene';
 import { createLandingShow, LANDING_PARK } from './ui/landing-show';
 import { joinBanner, PROBLEM_TEXT, showLobby } from './ui/lobby';
 import { createMicLevel } from './ui/mic-level';
-import { loadRenderSettings, saveRenderSettings } from './ui/render-settings';
+import { litReflections, loadRenderSettings, saveRenderSettings } from './ui/render-settings';
 import { botsParam, parseRoute } from './ui/route';
 import {
   clearScreen,
@@ -71,6 +71,7 @@ import {
   showLanding,
   showMediaControls,
   showNotice,
+  showPeopleCount,
   showSelfPreview,
   showStatus,
 } from './ui/screens';
@@ -230,7 +231,7 @@ for (const type of ['pointerdown', 'keydown'] as const) {
 }
 
 let audioPanelVisible = false;
-/** The renderer's console options (reflections), kept per browser. */
+/** The renderer's console options (the lighting mode), kept per browser. */
 let renderSettings = loadRenderSettings(storage());
 /** The boombox column of the audio panel, while our boombox plays (boombox spec §3.1). */
 function boomboxControls(): BoomboxPanelOptions | null {
@@ -252,23 +253,17 @@ function boomboxControls(): BoomboxPanelOptions | null {
 }
 
 function toggleAudioPanel(): void {
-  const engine = audio;
-  audioPanelVisible = !audioPanelVisible && engine !== null;
-  if (!audioPanelVisible || !engine) {
+  audioPanelVisible = !audioPanelVisible;
+  if (!audioPanelVisible) {
     showAudioPanel(ui, null);
     return;
   }
+  // The panel is worked with the mouse: let go of mouse-look. A click on the view locks it again.
+  if (document.pointerLockElement) {
+    document.exitPointerLock();
+  }
   showAudioPanel(ui, {
-    settings: engine.settings(),
-    onChange(s) {
-      engine.setSettings(s);
-      saveAudioSettings(storage(), s);
-    },
-    levels: () =>
-      [...(session?.peers.values() ?? [])].map((p) => ({
-        name: p.info.name,
-        speaking: engine.speaking(p.info.id),
-      })),
+    frameRate: frameRateMeter.fps,
     render: {
       settings: renderSettings,
       onChange(s) {
@@ -456,6 +451,15 @@ function setStatus(text: string | null): void {
   shownStatus = text;
 }
 
+let shownPeople: number | null = null;
+function setPeopleCount(count: number | null): void {
+  if (count === shownPeople) {
+    return;
+  }
+  showPeopleCount(ui, count);
+  shownPeople = count;
+}
+
 function joinRoom(
   roomId: string,
   name: string,
@@ -463,7 +467,7 @@ function joinRoom(
   local: LocalMediaController,
   audioCtx: AudioContext
 ): void {
-  audio = createAudioEngine({ ctx: audioCtx, map, settings: loadAudioSettings(storage()) });
+  audio = createAudioEngine({ ctx: audioCtx, map });
   const sounds = createObjectSounds(audioCtx, audio);
   objectSounds = sounds;
   saveName(name);
@@ -800,7 +804,11 @@ startHiddenTicker(
   () => document.hidden
 );
 
+/** Counts every drawn room frame; the backtick panel shows the rate. */
+const frameRateMeter = createFrameRateMeter();
+
 function frame(dt: number): void {
+  frameRateMeter.frame(performance.now());
   const mouseTurn = input.consumeMouseTurn();
   if (inRoom()) {
     player.angle += mouseTurn;
@@ -872,6 +880,8 @@ function frame(dt: number): void {
     voxels.length = n;
     objectSounds?.sync(session.objects, objectPoses, dt);
     setStatus(statusText(session));
+    // Bots count too: the client can't tell them from people.
+    setPeopleCount(session.status() === 'open' ? session.peers.size + 1 : null);
     audio?.update(now, player, positions);
   }
 
@@ -887,8 +897,10 @@ function frame(dt: number): void {
     glowOf(player.x, player.y, null, ownGlowColour(performance.now()) ?? hexToRgb(selfColor), ownGlow);
     avatarGlows.push(ownGlow);
   }
-  const lighting = roomLighting();
-  renderWalls(fb, map, player, textures, lighting, renderSettings.reflections, avatarGlows);
+  // The console's lighting mode; flat is drawn unlit, as with `?lights=off`.
+  const reflections = litReflections(renderSettings.mode);
+  const lighting = reflections === null ? null : roomLighting();
+  renderWalls(fb, map, player, textures, lighting, reflections ?? 'none', avatarGlows);
   renderSprites(fb, player, sprites, facts, session ? voxels : undefined, lighting);
   if (session) {
     updateInterest(session, performance.now(), document.hidden);

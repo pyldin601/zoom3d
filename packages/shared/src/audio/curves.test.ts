@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { DEFAULT_AUDIO_SETTINGS as D, normalizeAudioSettings, voiceGains, WET_NEAR } from './curves';
+import { DEFAULT_AUDIO_SETTINGS as D, voiceGains, WET_NEAR } from './curves';
 
 describe('voiceGains', () => {
   test('full dry and near reverb within ref; silent from max', () => {
@@ -43,31 +43,5 @@ describe('voiceGains', () => {
     expect(voiceGains(0, true, D)).toEqual({ dry: 0.5, send: 0.2 });
     expect(voiceGains(Number.NaN, false, D)).toEqual({ dry: 0, send: 0 });
     expect(voiceGains(-1, false, D).dry).toBe(1);
-  });
-});
-
-describe('normalizeAudioSettings', () => {
-  test.each([null, {}, 'x', 42])('%s gives the defaults', (v) => {
-    expect(normalizeAudioSettings(v)).toEqual(D);
-  });
-
-  test('max is kept above ref', () => {
-    expect(normalizeAudioSettings({ ref: 5, max: 3 })).toMatchObject({ ref: 5, max: 5.5 });
-  });
-
-  test.each([
-    [{ reverb: -1 }, 'reverb'],
-    [{ reverb: Number.NaN }, 'reverb'],
-    [{ muffleHz: 50 }, 'muffleHz'],
-    [{ occludedGain: 2 }, 'occludedGain'],
-    [{ panning: 'surround' }, 'panning'],
-    [{ ref: '2' }, 'ref'],
-  ])('invalid %o falls back for %s', (v, key) => {
-    expect(normalizeAudioSettings(v)[key as keyof typeof D]).toEqual(D[key as keyof typeof D]);
-  });
-
-  test('valid custom values are preserved', () => {
-    const custom = { ref: 2, max: 20, reverb: 0.5, muffleHz: 1200, occludedGain: 0.3, panning: 'equalpower' };
-    expect(normalizeAudioSettings(custom)).toEqual(custom);
   });
 });

@@ -33,7 +33,6 @@ export interface AudioEngine {
   /** Latest RMS of the voice before any gain. */
   inputLevel(peerId: string): number;
   settings(): AudioSettings;
-  setSettings(s: AudioSettings): void;
   resume(): Promise<void>;
   dispose(): void;
 }
@@ -97,7 +96,7 @@ interface Voice {
 
 export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; settings?: AudioSettings }): AudioEngine {
   const { ctx, map } = opts;
-  let settings = opts.settings ?? DEFAULT_AUDIO_SETTINGS;
+  const settings = opts.settings ?? DEFAULT_AUDIO_SETTINGS;
   const voices = new Map<string, Voice>();
   let lastUpdate: number | null = null;
   let listenerPlaced = false;
@@ -280,18 +279,6 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
     speaking: (peerId) => voices.get(peerId)?.speaking ?? 0,
     inputLevel: (peerId) => voices.get(peerId)?.rms ?? 0,
     settings: () => settings,
-
-    setSettings(s) {
-      settings = s;
-      const t = ctx.currentTime;
-      reverbGain.gain.setTargetAtTime(s.reverb, t, TAU_POSITION);
-      for (const v of voices.values()) {
-        v.panner.panningModel = s.panning;
-        if (v.occluded) {
-          v.filter.frequency.setTargetAtTime(s.muffleHz, t, TAU_OCCLUSION);
-        }
-      }
-    },
 
     async resume() {
       if (ctx.state === 'suspended') {

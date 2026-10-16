@@ -78,8 +78,11 @@ const LAMP_SIGHT = 16;
 const REFLECTION_REACH = 1.5;
 /** Lamp-sight cells per tile edge: past a lamp's light reach, a surface's sight of it is checked this coarsely. */
 const SIGHT_SUB = 2;
-/** Which surfaces reflect the lamps (a console option): nothing, the walls, or the walls, floor and ceiling. */
-export type ReflectionMode = 'none' | 'walls' | 'both';
+/**
+ * Which surfaces reflect the lamps (a console option): nothing, the walls, or the walls, floor and ceiling. 'only' is
+ * the walls, floor and ceiling's reflections alone on black, with no baked light or avatar glow: a view of just them.
+ */
+export type ReflectionMode = 'none' | 'walls' | 'both' | 'only';
 /** A full reflection adds this much of the lamp's colour (×255) on top of the lit texel. */
 export const REFLECTION_STRENGTH = 0.385;
 /** Heights a wall column's reflection is worked out at (0 to 1, evenly), blended between for each texel row. */
@@ -395,13 +398,10 @@ function bakeWalls(
             if (facing <= 0 || flat >= LAMP_SIGHT) {
               continue;
             }
-            // In its light's reach, exact sight lines (it lights this sample too); past it, the coarse one.
+            // Exact sight lines, past its light's reach too: a far lamp seen through a doorway is shaded softly by the
+            // door's edge, over tiles, and a coarse yes or no would end its reflection at a hard line.
             const lit = flat < l.radius;
-            const seen = lit
-              ? seenShare(map, px + n.dx * 1e-3, py + n.dy * 1e-3, l)
-              : seesCoarsely(input, px + n.dx * 0.25, py + n.dy * 0.25, i)
-                ? 1
-                : 0;
+            const seen = seenShare(map, px + n.dx * 1e-3, py + n.dy * 1e-3, l);
             if (seen === 0) {
               continue;
             }
@@ -850,41 +850,6 @@ export function bounceHeight(l: Light, px: number, py: number, ex: number, ey: n
   const eyeLeg = Math.hypot(px - ex, py - ey);
   const lampLeg = Math.hypot(l.x - px, l.y - py);
   return (EYE_Z * lampLeg + l.z * eyeLeg) / (eyeLeg + lampLeg);
-}
-
-/**
- * Of a wall sample column's lamps (`wallLamp` from `slot`), the one that reflects brightest on the column at (px, py)
- * facing `n`, seen from the eye, for a surface of this gloss: each tried at its bounce height, where its reflection
- * peaks, times how much of it the column sees (`wallLampSeen`), which lands in `peak[0]`. −1 (and a zero peak) if
- * none reflects there.
- */
-export function brightestReflection(
-  lm: Lighting,
-  slot: number,
-  gloss: Gloss,
-  n: Normal,
-  px: number,
-  py: number,
-  eye: Eye,
-  peak: Float64Array
-): number {
-  let best = -1;
-  let bestStrength = 0;
-  for (let k = 0; k < REFLECTION_LAMPS; k++) {
-    const i = lm.wallLamp[slot + k] as number;
-    const l = lm.lights.at(i);
-    if (i < 0 || !l) {
-      continue;
-    }
-    const z = bounceHeight(l, px, py, eye.x, eye.y);
-    const strength = reflection(l, gloss, n, px, py, z, eye) * ((lm.wallLampSeen[slot + k] as number) / 255);
-    if (strength > bestStrength) {
-      bestStrength = strength;
-      best = i;
-    }
-  }
-  peak[0] = bestStrength;
-  return best;
 }
 
 // Moving objects, per frame.

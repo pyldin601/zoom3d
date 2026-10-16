@@ -75,7 +75,7 @@ export function showBoomboxPanel(root: HTMLElement, opts: BoomboxPanelOptions | 
   const volumeRow = make('label');
   volumeRow.append('Volume', volume);
 
-  const stop = make('button', { type: 'button', textContent: 'Stop' });
+  const stop = make('button', { type: 'button', className: 'stop', textContent: 'Stop' });
   stop.addEventListener('click', () => opts.onStop());
 
   panel.append(progressRow, volumeRow, stop);

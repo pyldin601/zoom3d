@@ -13,7 +13,7 @@ import { CEILING, FLOOR, renderWalls } from '../src/renderer/walls';
 /** Frames per mode per round, as multiples of the pose count, and rounds (the median is reported). */
 const FRAMES_PER_POSE = 2;
 const ROUNDS = 7;
-const MODES = ['unlit', 'none', 'walls', 'both', 'both + glow'] as const;
+const MODES = ['unlit', 'none', 'walls', 'both', 'both + glow', 'only'] as const;
 type Mode = (typeof MODES)[number];
 interface Pose {
   x: number;

@@ -1,5 +1,6 @@
-import { LEVEL1, parseMap } from '@zoom3d/shared';
+import { castRay, createRayHit, LEVEL1, parseMap } from '@zoom3d/shared';
 import { describe, expect, test, vi } from 'vitest';
+import { createView, setView } from './camera';
 import { createFramebuffer, DEFAULT_FOV, scaleRgb } from './framebuffer';
 import { GLOW_RADIUS, GLOW_STRENGTH, type Glow } from './glow';
 import { bakeLighting, corridorLights, REFLECTION_RANGE, SIDE_SHADE } from './lighting';
@@ -7,6 +8,8 @@ import { firstDifference } from './test-helpers';
 import { makeTextures, TEX } from './textures';
 import { CEILING, FLOOR, renderWalls } from './walls';
 
+/** Opaque black: what the reflections-only view shows where nothing reflects. */
+const BLACK = 0xff000000;
 const ROOM = parseMap('11111\n1...1\n1.S.1\n1...1\n11111');
 const PROJ = 320 / Math.tan(DEFAULT_FOV / 2);
 const textures = makeTextures(1);
@@ -48,6 +51,35 @@ describe('renderWalls', () => {
 
   test('every pixel is opaque', () => {
     expect(fb.pixels.every((c) => c >>> 24 === 0xff)).toBe(true);
+  });
+
+  test('far walls draw their top row, unlit and lit, from any pose', () => {
+    // A wall under a texture's height on screen steps over a texel per row, so its top row can start over a texel
+    // above the texture: under 64 px it was left transparent, under 32 px drawn black. Lit, nothing here is black.
+    const row = '1'.repeat(25);
+    const hall = parseMap([row, `1S${'.'.repeat(22)}1`, ...Array(2).fill(`1${'.'.repeat(23)}1`), row].join('\n'));
+    const lit = bakeLighting(hall, [{ x: 12.5, y: 2.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 }], 0.45, FLOOR, CEILING);
+    const frame = createFramebuffer();
+    const holes: string[] = [];
+    for (const [x, y] of [
+      [1.5, 1.3],
+      [2.5, 2.5],
+      [4.2, 3.7],
+    ] as const) {
+      for (let k = 0; k < 24; k++) {
+        const pose = { x, y, angle: (k / 24) * Math.PI * 2 };
+        for (const lighting of [null, lit]) {
+          renderWalls(frame, hall, pose, textures, lighting, 'both');
+          const hole = frame.pixels.findIndex((c) => c >>> 24 !== 0xff || (lighting !== null && c === BLACK));
+          if (hole >= 0) {
+            holes.push(
+              `${lighting ? 'lit' : 'unlit'} at ${x},${y},${k}/24: pixel ${hole % 640},${Math.floor(hole / 640)}`
+            );
+          }
+        }
+      }
+    }
+    expect(holes).toEqual([]);
   });
 
   test('x-side walls use unshaded texels (column mirrored when facing +x)', () => {
@@ -343,7 +375,7 @@ describe('renderWalls reflection modes', () => {
   };
   // Close to the top wall, so the wall shines too.
   const pose = { x: 2.5, y: 1.3, angle: 0 };
-  const render = (mode: 'none' | 'walls' | 'both' | 'matte') => {
+  const render = (mode: 'none' | 'walls' | 'both' | 'only' | 'matte') => {
     const fb = createFramebuffer();
     renderWalls(fb, hall, pose, textures, mode === 'matte' ? hallMatte : hallLit, mode === 'matte' ? 'none' : mode);
     return fb;
@@ -384,6 +416,35 @@ describe('renderWalls reflection modes', () => {
 
   test('both reflects on the walls and the floor', () => {
     const { wall, floor } = changed(render('both'));
+    expect(wall).toBeGreaterThan(0);
+    expect(floor).toBeGreaterThan(0);
+  });
+
+  test('only draws the reflections alone: black where none shows, never brighter than with the light', () => {
+    const only = render('only');
+    const both = render('both');
+    const matte = render('matte');
+    let wall = 0;
+    let floor = 0;
+    let wrong = 0;
+    for (let i = 0; i < only.pixels.length; i++) {
+      const c = only.pixels[i] as number;
+      const lit = both.pixels[i] as number;
+      if (lit === matte.pixels[i]) {
+        wrong += c === BLACK ? 0 : 1;
+        continue;
+      }
+      for (const shift of [0, 8, 16]) {
+        wrong += ((c >>> shift) & 0xff) > ((lit >>> shift) & 0xff) ? 1 : 0;
+      }
+      wrong += c === BLACK ? 1 : 0;
+      if (isWallPixel(matte, i)) {
+        wall++;
+      } else {
+        floor++;
+      }
+    }
+    expect(wrong).toBe(0);
     expect(wall).toBeGreaterThan(0);
     expect(floor).toBeGreaterThan(0);
   });
@@ -504,6 +565,12 @@ describe('renderWalls avatar glow', () => {
     expect(changed).toBe(0);
   });
 
+  test('the reflections-only view leaves the glow out: with no lamps it is black', () => {
+    const fb = createFramebuffer();
+    renderWalls(fb, room, pose, textures, roomLit, 'only', [glow]);
+    expect(fb.pixels.every((c) => c === BLACK)).toBe(true);
+  });
+
   test('the ceiling over the avatar glows too', () => {
     let brighter = 0;
     for (let i = 0; i < (dark.height / 2) * dark.width; i++) {
@@ -512,6 +579,99 @@ describe('renderWalls avatar glow', () => {
       }
     }
     expect(brighter).toBeGreaterThan(100);
+  });
+});
+
+describe('renderWalls wall reflections in a doorway’s shadow', () => {
+  // A wood room lit only by a lamp in its south doorway. Past the lamp's reach, the east wall reflects it, and the
+  // door's east jamb shades it: the line from the lamp past the jamb's corner meets the wall at y = 3, a tile corner.
+  // The lamp is a disc, so that shadow is soft, about 4 tiles wide that far from the door.
+  const room = parseMap(
+    [
+      '2222222222222',
+      '2S..........2',
+      ...Array(6).fill('2...........2'),
+      '222222.222222',
+      '2...........2',
+      '2222222222222',
+    ].join('\n')
+  );
+  const lm = bakeLighting(room, [{ x: 6.5, y: 8.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 }], 0.08, FLOOR, CEILING);
+  /** The biggest step in red between neighbouring pixels of a row, anywhere in the reflections-only view. */
+  const biggestStep = (pose: { x: number; y: number; angle: number }) => {
+    const fb = createFramebuffer();
+    renderWalls(fb, room, pose, textures, lm, 'only');
+    let biggest = 0;
+    for (let y = 0; y < fb.height; y++) {
+      for (let x = 1; x < fb.width; x++) {
+        const step =
+          ((fb.pixels[y * fb.width + x] as number) & 0xff) - ((fb.pixels[y * fb.width + x - 1] as number) & 0xff);
+        biggest = Math.max(biggest, Math.abs(step));
+      }
+    }
+    return biggest;
+  };
+
+  test('a wall that sees only part of the lamp reflects only that part', () => {
+    const fullySeen = { ...lm, wallLampSeen: new Uint8Array(lm.wallLampSeen.length).fill(255) };
+    /** The red summed over the reflections-only view. */
+    const total = (lighting: typeof lm) => {
+      const fb = createFramebuffer();
+      renderWalls(fb, room, { x: 10.5, y: 2.5, angle: 0 }, textures, lighting, 'only');
+      return fb.pixels.reduce((sum, c) => sum + (c & 0xff), 0);
+    };
+    // The east wall in view sees 60–90% of the lamp past the jamb, and under half of it beyond y = 3.
+    expect(total(lm)).toBeLessThan(0.8 * total(fullySeen));
+  });
+
+  test('the reflection fades through the shadow instead of stopping at a tile edge', () => {
+    expect(biggestStep({ x: 10.5, y: 2.5, angle: 0 })).toBeLessThanOrEqual(3);
+    expect(biggestStep({ x: 11.25, y: 2.75, angle: 0 })).toBeLessThanOrEqual(3);
+  });
+});
+
+describe('renderWalls wall reflections of two lamps', () => {
+  // A 3-wide wood corridor with two lamps down its middle, the eye at its south end looking up its east wall (LEVEL1's
+  // corridor south of the lower wood room). Along that wall the far lamp's reflection gives way to the near one's.
+  const hall = parseMap(['22222', '2S..2', ...Array(20).fill('2...2'), '22222'].join('\n'));
+  const lamp = { z: 0.85, radius: 4.5, r: 1.25, g: 1.05, b: 0.75 };
+  const lm = bakeLighting(
+    hall,
+    [
+      { ...lamp, x: 2.5, y: 13.5 },
+      { ...lamp, x: 2.5, y: 18.5 },
+    ],
+    0.08,
+    FLOOR,
+    CEILING
+  );
+
+  test('the reflection changes smoothly where one lamp takes over from the other', () => {
+    const pose = { x: 2.26, y: 21.06, angle: 5.45 };
+    const fb = createFramebuffer();
+    renderWalls(fb, hall, pose, textures, lm, 'only');
+    // The columns showing the east wall (its west face), and in each the rows well inside the wall.
+    const view = setView(createView(), fb, pose);
+    const hit = createRayHit();
+    const eastWall = Array.from({ length: fb.width }, (_, col) => {
+      const rayX = view.dirX + view.planeX * ((2 * col) / fb.width - 1);
+      const rayY = view.dirY + view.planeY * ((2 * col) / fb.width - 1);
+      castRay(hall, pose.x, pose.y, rayX, rayY, hit);
+      return hit.side === 0 && rayX > 0;
+    });
+    let biggest = 0;
+    for (let col = 1; col < fb.width; col++) {
+      if (!eastWall[col] || !eastWall[col - 1]) {
+        continue;
+      }
+      const half = view.proj / (fb.zbuffer[col] as number) / 2;
+      for (let y = Math.ceil(fb.height / 2 - half) + 2; y < fb.height / 2 + half - 2; y++) {
+        const step =
+          ((fb.pixels[y * fb.width + col] as number) & 0xff) - ((fb.pixels[y * fb.width + col - 1] as number) & 0xff);
+        biggest = Math.max(biggest, Math.abs(step));
+      }
+    }
+    expect(biggest).toBeLessThanOrEqual(2);
   });
 });
 

@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
-import { DEFAULT_AUDIO_SETTINGS } from '@zoom3d/shared';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { setAudioPanelBoombox, showAudioPanel } from './audio-panel';
+import { type AudioPanelOptions, setAudioPanelBoombox, showAudioPanel } from './audio-panel';
 import { PROGRESS_MS } from './boombox-panel';
 
 let root: HTMLElement;
@@ -10,53 +9,78 @@ beforeEach(() => {
   root = document.getElementById('ui') as HTMLElement;
 });
 
-const input = (label: string) => {
-  const row = [...root.querySelectorAll('label')].find((l) => l.textContent?.startsWith(label));
-  return row?.querySelector('input, select') as HTMLInputElement | HTMLSelectElement;
-};
-
-test('moving a slider reports normalised settings and shows the value', () => {
-  const onChange = vi.fn();
-  showAudioPanel(root, { settings: DEFAULT_AUDIO_SETTINGS, onChange });
-  const max = input('Silent beyond') as HTMLInputElement;
-  max.value = '20';
-  max.dispatchEvent(new Event('input'));
-  expect(onChange).toHaveBeenLastCalledWith({ ...DEFAULT_AUDIO_SETTINGS, max: 20 });
-  expect(root.textContent).toContain('20');
+const options = (overrides: Partial<AudioPanelOptions> = {}): AudioPanelOptions => ({
+  frameRate: () => null,
+  render: { settings: { mode: 'reflections' }, onChange: () => {} },
+  ...overrides,
 });
 
-test('the output select switches panning', () => {
-  const onChange = vi.fn();
-  showAudioPanel(root, { settings: DEFAULT_AUDIO_SETTINGS, onChange });
-  const select = input('Output') as HTMLSelectElement;
-  select.value = 'equalpower';
-  select.dispatchEvent(new Event('change'));
-  expect(onChange).toHaveBeenLastCalledWith({ ...DEFAULT_AUDIO_SETTINGS, panning: 'equalpower' });
+test('the frame rate comes first, then the renderer options, with no audio tuning or speaking list', () => {
+  showAudioPanel(root, options());
+  const column = root.querySelector('.audio-panel > .renderer') as HTMLElement;
+  expect(column.firstElementChild?.className).toBe('frame-rate');
+  expect(column.textContent).toContain('Lighting');
+  expect(root.querySelector('input[type=range]')).toBeNull();
+  expect(root.querySelector('.levels')).toBeNull();
 });
 
-test('reset restores the defaults', () => {
-  const onChange = vi.fn();
-  showAudioPanel(root, { settings: { ...DEFAULT_AUDIO_SETTINGS, reverb: 0.2 }, onChange });
-  (root.querySelector('button') as HTMLButtonElement).click();
-  expect(onChange).toHaveBeenLastCalledWith(DEFAULT_AUDIO_SETTINGS);
-  expect((input('Reverb') as HTMLInputElement).value).toBe('1');
+test('the frame rate is refreshed while the panel is open and coloured by band', () => {
+  vi.useFakeTimers();
+  try {
+    let fps: number | null = null;
+    showAudioPanel(root, options({ frameRate: () => fps }));
+    const rate = root.querySelector('.frame-rate span') as HTMLElement;
+    expect(rate.parentElement?.textContent).toContain('Frame rate');
+    expect(rate.textContent).toBe('–');
+    fps = 42;
+    vi.advanceTimersByTime(1000);
+    expect(rate.textContent).toBe('42 fps');
+    expect(rate.className).toBe('fair');
+    fps = 60;
+    vi.advanceTimersByTime(1000);
+    expect(rate.className).toBe('good');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('closing the panel stops refreshing the frame rate', () => {
+  vi.useFakeTimers();
+  try {
+    const frameRate = vi.fn(() => 60);
+    showAudioPanel(root, options({ frameRate }));
+    showAudioPanel(root, null);
+    frameRate.mockClear();
+    vi.advanceTimersByTime(1000);
+    expect(frameRate).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test('null removes the panel', () => {
-  showAudioPanel(root, { settings: DEFAULT_AUDIO_SETTINGS, onChange: () => {} });
+  showAudioPanel(root, options());
   expect(root.querySelector('.audio-panel')).not.toBeNull();
   showAudioPanel(root, null);
   expect(root.querySelector('.audio-panel')).toBeNull();
 });
 
-test('speaking levels are listed by name as text', () => {
-  showAudioPanel(root, {
-    settings: DEFAULT_AUDIO_SETTINGS,
-    onChange: () => {},
-    levels: () => [{ name: '<b>Bob</b>', speaking: 0.5 }],
-  });
-  expect(root.querySelector('b')).toBeNull();
-  expect(root.textContent).toContain('<b>Bob</b>');
+test('the renderer section switches the lighting mode', () => {
+  const onRender = vi.fn();
+  showAudioPanel(root, options({ render: { settings: { mode: 'reflections' }, onChange: onRender } }));
+  expect(root.textContent).toContain('Renderer');
+  const select = root.querySelector('.renderer select') as HTMLSelectElement;
+  expect(select.parentElement?.textContent).toContain('Lighting');
+  expect(select.value).toBe('reflections');
+  expect([...select.options].map((o) => [o.value, o.textContent])).toEqual([
+    ['flat', 'No shadows (classic)'],
+    ['shadows', 'Shadows'],
+    ['reflections', 'Shadows and reflections'],
+    ['reflections-only', 'Reflections only'],
+  ]);
+  select.value = 'reflections-only';
+  select.dispatchEvent(new Event('change'));
+  expect(onRender).toHaveBeenLastCalledWith({ mode: 'reflections-only' });
 });
 
 describe('boombox column', () => {
@@ -69,31 +93,30 @@ describe('boombox column', () => {
     onStop: vi.fn(),
   });
 
-  test('sits to the right of the tuning settings, empty until filled', () => {
-    showAudioPanel(root, { settings: DEFAULT_AUDIO_SETTINGS, onChange: vi.fn() });
+  test('sits to the right of the renderer settings, empty until filled', () => {
+    showAudioPanel(root, options());
     const children = [...(root.querySelector('.audio-panel') as HTMLElement).children].map((c) => c.className);
-    expect(children).toEqual(['tuning', 'boombox-slot']);
-    expect(root.querySelector('.tuning')?.textContent).toContain('Silent beyond');
+    expect(children).toEqual(['renderer', 'boombox-slot']);
     expect(root.querySelector('.boombox-slot')?.children).toHaveLength(0);
   });
 
   test('setAudioPanelBoombox fills and clears the column', () => {
-    showAudioPanel(root, { settings: DEFAULT_AUDIO_SETTINGS, onChange: vi.fn() });
+    showAudioPanel(root, options());
     setAudioPanelBoombox(root, boombox());
     expect(root.querySelector('.boombox-slot .boombox-panel')?.textContent).toContain('song.mp3');
     setAudioPanelBoombox(root, null);
     expect(root.querySelector('.boombox-panel')).toBeNull();
   });
 
-  test('with the audio panel closed, setAudioPanelBoombox does nothing', () => {
+  test('with the panel closed, setAudioPanelBoombox does nothing', () => {
     setAudioPanelBoombox(root, boombox());
     expect(root.children).toHaveLength(0);
   });
 
-  test('closing the audio panel stops the boombox column updating', () => {
+  test('closing the panel stops the boombox column updating', () => {
     vi.useFakeTimers();
     try {
-      showAudioPanel(root, { settings: DEFAULT_AUDIO_SETTINGS, onChange: vi.fn() });
+      showAudioPanel(root, options());
       const progress = vi.fn(() => ({ current: 0, duration: 0 }));
       setAudioPanelBoombox(root, boombox(progress));
       showAudioPanel(root, null);
@@ -104,25 +127,4 @@ describe('boombox column', () => {
       vi.useRealTimers();
     }
   });
-});
-
-test('the renderer section switches reflections', () => {
-  const onRender = vi.fn();
-  showAudioPanel(root, {
-    settings: DEFAULT_AUDIO_SETTINGS,
-    onChange: () => {},
-    render: { settings: { reflections: 'both' }, onChange: onRender },
-  });
-  expect(root.textContent).toContain('Renderer');
-  const select = input('Reflections') as HTMLSelectElement;
-  expect(select.value).toBe('both');
-  expect([...select.options].map((o) => o.value)).toEqual(['none', 'walls', 'both']);
-  select.value = 'walls';
-  select.dispatchEvent(new Event('change'));
-  expect(onRender).toHaveBeenLastCalledWith({ reflections: 'walls' });
-});
-
-test('without render options there is no renderer section', () => {
-  showAudioPanel(root, { settings: DEFAULT_AUDIO_SETTINGS, onChange: () => {} });
-  expect(root.textContent).not.toContain('Renderer');
 });

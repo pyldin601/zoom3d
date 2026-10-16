@@ -45,6 +45,16 @@ export function touchIcon(kind: keyof typeof TOUCH_ICONS): SVGSVGElement {
   return icon(TOUCH_ICONS[kind]);
 }
 
+/** Two people, one behind the other: the room's people count. */
+export function peopleIcon(): SVGSVGElement {
+  return icon([
+    'M9 4a3.5 3.5 0 1 0 0 7a3.5 3.5 0 1 0 0-7',
+    'M2 20v-1a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1',
+    'M16 4.1a3.5 3.5 0 0 1 0 6.8',
+    'M19 14.2a5 5 0 0 1 3 4.8v1',
+  ]);
+}
+
 /** Adds the lobby's level fill to a mic icon, under the outline; `setMeter` sets its height. */
 export function addMeter(svg: SVGSVGElement): SVGRectElement {
   const rect = document.createElementNS(SVG, 'rect');

@@ -1,34 +1,25 @@
-// Live tuning panel for spatial audio (spec §9.3). All text goes through textContent.
-import { type AudioSettings, DEFAULT_AUDIO_SETTINGS, normalizeAudioSettings } from '@zoom3d/shared';
-import type { ReflectionMode } from '../renderer/lighting';
+// The backtick panel: the frame rate at the top, the renderer's lighting mode under it, and the boombox's controls on the
+// right while it plays (boombox spec §3.1). All text goes through textContent.
+import { frameRateBand } from '../game/frame-rate';
 import { type BoomboxPanelOptions, showBoomboxPanel } from './boombox-panel';
-import { normalizeRenderSettings, type RenderSettings } from './render-settings';
+import { normalizeRenderSettings, type RenderMode, type RenderSettings } from './render-settings';
 
 export interface AudioPanelOptions {
-  settings: AudioSettings;
-  onChange(s: AudioSettings): void;
-  levels?: () => { name: string; speaking: number }[];
-  /** The renderer's options, in their own section under the audio tuning. */
-  render?: { settings: RenderSettings; onChange(s: RenderSettings): void };
+  /** Frames per second, or null before it is measured; refreshed while the panel is open. */
+  frameRate: () => number | null;
+  /** The renderer's options. */
+  render: { settings: RenderSettings; onChange(s: RenderSettings): void };
 }
 
-const REFLECTIONS: readonly [ReflectionMode, string][] = [
-  ['none', 'None'],
-  ['walls', 'Walls'],
-  ['both', 'Walls, floor and ceiling'],
+const MODES: readonly [RenderMode, string][] = [
+  ['flat', 'No shadows (classic)'],
+  ['shadows', 'Shadows'],
+  ['reflections', 'Shadows and reflections'],
+  ['reflections-only', 'Reflections only'],
 ];
 
-type NumericKey = 'ref' | 'max' | 'reverb' | 'muffleHz' | 'occludedGain';
-
-const SLIDERS: { key: NumericKey; label: string; min: number; max: number; step: number; unit: string }[] = [
-  { key: 'ref', label: 'Full volume within', min: 0.5, max: 5, step: 0.1, unit: ' tiles' },
-  { key: 'max', label: 'Silent beyond', min: 4, max: 30, step: 0.5, unit: ' tiles' },
-  { key: 'reverb', label: 'Reverb', min: 0, max: 2, step: 0.05, unit: '' },
-  { key: 'muffleHz', label: 'Wall muffle cutoff', min: 200, max: 4000, step: 50, unit: ' Hz' },
-  { key: 'occludedGain', label: 'Wall attenuation', min: 0, max: 1, step: 0.05, unit: '' },
-];
-
-const LEVELS_MS = 200;
+/** How often the frame rate is redrawn while the panel is open. */
+const REFRESH_MS = 200;
 const timers = new WeakMap<HTMLElement, ReturnType<typeof setInterval>>();
 
 function make<K extends keyof HTMLElementTagNameMap>(
@@ -54,105 +45,43 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
     return;
   }
 
-  let current = opts.settings;
   const panel = make('div', { className: 'audio-panel' });
-  // Tuning on the left; the boombox's controls on the right while it plays (boombox spec §3.1).
-  const tuning = make('div', { className: 'tuning' });
+  // The renderer on the left; the boombox's controls on the right while it plays.
+  const renderer = make('div', { className: 'renderer' });
   const slot = make('div', { className: 'boombox-slot' });
-  const inputs = new Map<NumericKey, { input: HTMLInputElement; value: HTMLSpanElement }>();
-  const output = make('select');
-  const commit = (next: unknown) => {
-    current = normalizeAudioSettings(next);
-    render();
-    opts.onChange(current);
+  const rate = make('span');
+  const refresh = () => {
+    const fps = opts.frameRate();
+    rate.textContent = fps === null ? '–' : `${fps} fps`;
+    rate.className = fps === null ? '' : frameRateBand(fps);
   };
-  const render = () => {
-    for (const { key, unit } of SLIDERS) {
-      const row = inputs.get(key);
-      if (!row) {
-        continue;
-      }
-      row.input.value = String(current[key]);
-      row.value.textContent = `${current[key]}${unit}`;
-    }
-    output.value = current.panning;
-  };
+  const frameRateRow = make('div', { className: 'frame-rate' });
+  frameRateRow.append('Frame rate ', rate);
+  renderer.append(frameRateRow, make('h2', { textContent: 'Renderer' }), lightingRow(opts.render));
+  refresh();
+  timers.set(panel, setInterval(refresh, REFRESH_MS));
 
-  tuning.append(make('h2', { textContent: 'Audio tuning' }));
-  for (const { key, label, min, max, step } of SLIDERS) {
-    const input = make('input', { type: 'range', min: String(min), max: String(max), step: String(step) });
-    const value = make('span', { className: 'value' });
-    input.addEventListener('input', () => commit({ ...current, [key]: Number(input.value) }));
-    const row = make('label');
-    row.append(label, input, value);
-    tuning.append(row);
-    inputs.set(key, { input, value });
-  }
-  for (const [value, text] of [
-    ['HRTF', 'Headphones (HRTF)'],
-    ['equalpower', 'Speakers'],
-  ] as const) {
-    output.append(make('option', { value, textContent: text }));
-  }
-  output.addEventListener('change', () => commit({ ...current, panning: output.value }));
-  const outputRow = make('label');
-  outputRow.append('Output', output);
-  tuning.append(outputRow);
-
-  const reset = make('button', { type: 'button', textContent: 'Reset' });
-  reset.addEventListener('click', () => commit(DEFAULT_AUDIO_SETTINGS));
-  tuning.append(reset);
-
-  if (opts.levels) {
-    const list = make('ul', { className: 'levels' });
-    const levels = opts.levels;
-    const draw = () => {
-      list.replaceChildren(
-        ...levels().map(({ name, speaking }) => {
-          const bar = make('span', { className: 'bar' });
-          bar.style.width = `${Math.round(speaking * 100)}%`;
-          const item = make('li');
-          item.append(make('span', { textContent: name }), bar);
-          return item;
-        })
-      );
-    };
-    draw();
-    timers.set(panel, setInterval(draw, LEVELS_MS));
-    tuning.append(list);
-  }
-
-  if (opts.render) {
-    tuning.append(renderSection(opts.render));
-  }
-
-  panel.append(tuning, slot);
-  render();
+  panel.append(renderer, slot);
   root.append(panel);
 }
 
-function renderSection(opts: NonNullable<AudioPanelOptions['render']>): HTMLElement {
+function lightingRow(opts: AudioPanelOptions['render']): HTMLElement {
   let current = opts.settings;
-  const commit = (next: unknown) => {
-    current = normalizeRenderSettings(next);
-    opts.onChange(current);
-  };
-  const section = make('div', { className: 'renderer' });
-
-  const reflections = make('select');
-  for (const [value, text] of REFLECTIONS) {
-    reflections.append(make('option', { value, textContent: text }));
+  const mode = make('select');
+  for (const [value, text] of MODES) {
+    mode.append(make('option', { value, textContent: text }));
   }
-  reflections.value = current.reflections;
-  reflections.addEventListener('change', () => commit({ ...current, reflections: reflections.value }));
-  const reflectionsRow = make('label');
-  reflectionsRow.append('Reflections', reflections);
-
-  section.append(make('h2', { textContent: 'Renderer' }), reflectionsRow);
-  return section;
+  mode.value = current.mode;
+  mode.addEventListener('change', () => {
+    current = normalizeRenderSettings({ ...current, mode: mode.value });
+    opts.onChange(current);
+  });
+  const row = make('label');
+  row.append('Lighting', mode);
+  return row;
 }
 
-/** Shows (or with null, clears) the boombox controls in the open audio panel; no-op when it's closed. */
+/** Shows (or with null, clears) the boombox controls in the open panel; no-op when it's closed. */
 export function setAudioPanelBoombox(root: HTMLElement, opts: BoomboxPanelOptions | null): void {
   const slot = root.querySelector<HTMLElement>(':scope > .audio-panel > .boombox-slot');
   if (slot) {
