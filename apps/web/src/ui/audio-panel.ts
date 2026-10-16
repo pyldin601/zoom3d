@@ -1,9 +1,8 @@
-// The backtick panel: the frame rate at the top, the renderer's options under it, and the boombox's controls on the
+// The backtick panel: the frame rate at the top, the renderer's lighting mode under it, and the boombox's controls on the
 // right while it plays (boombox spec §3.1). All text goes through textContent.
 import { frameRateBand } from '../game/frame-rate';
-import type { ReflectionMode } from '../renderer/lighting';
 import { type BoomboxPanelOptions, showBoomboxPanel } from './boombox-panel';
-import { normalizeRenderSettings, type RenderSettings } from './render-settings';
+import { normalizeRenderSettings, type RenderMode, type RenderSettings } from './render-settings';
 
 export interface AudioPanelOptions {
   /** Frames per second, or null before it is measured; refreshed while the panel is open. */
@@ -12,10 +11,11 @@ export interface AudioPanelOptions {
   render: { settings: RenderSettings; onChange(s: RenderSettings): void };
 }
 
-const REFLECTIONS: readonly [ReflectionMode, string][] = [
-  ['none', 'None'],
-  ['walls', 'Walls'],
-  ['both', 'Walls, floor and ceiling'],
+const MODES: readonly [RenderMode, string][] = [
+  ['flat', 'No shadows (classic)'],
+  ['shadows', 'Shadows'],
+  ['reflections', 'Shadows and reflections'],
+  ['reflections-only', 'Reflections only'],
 ];
 
 /** How often the frame rate is redrawn while the panel is open. */
@@ -57,7 +57,7 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
   };
   const frameRateRow = make('div', { className: 'frame-rate' });
   frameRateRow.append('Frame rate ', rate);
-  renderer.append(frameRateRow, make('h2', { textContent: 'Renderer' }), reflectionsRow(opts.render));
+  renderer.append(frameRateRow, make('h2', { textContent: 'Renderer' }), lightingRow(opts.render));
   refresh();
   timers.set(panel, setInterval(refresh, REFRESH_MS));
 
@@ -65,19 +65,19 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
   root.append(panel);
 }
 
-function reflectionsRow(opts: AudioPanelOptions['render']): HTMLElement {
+function lightingRow(opts: AudioPanelOptions['render']): HTMLElement {
   let current = opts.settings;
-  const reflections = make('select');
-  for (const [value, text] of REFLECTIONS) {
-    reflections.append(make('option', { value, textContent: text }));
+  const mode = make('select');
+  for (const [value, text] of MODES) {
+    mode.append(make('option', { value, textContent: text }));
   }
-  reflections.value = current.reflections;
-  reflections.addEventListener('change', () => {
-    current = normalizeRenderSettings({ ...current, reflections: reflections.value });
+  mode.value = current.mode;
+  mode.addEventListener('change', () => {
+    current = normalizeRenderSettings({ ...current, mode: mode.value });
     opts.onChange(current);
   });
   const row = make('label');
-  row.append('Reflections', reflections);
+  row.append('Lighting', mode);
   return row;
 }
 

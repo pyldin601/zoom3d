@@ -5,7 +5,6 @@ import {
   ambientAt,
   bakeLighting,
   bounceHeight,
-  brightestReflection,
   DIR_BACK,
   DIR_FRONT,
   DIR_TOP,
@@ -205,25 +204,6 @@ describe('bakeLighting reflection lamps', () => {
     expect([...lm.wallLamp.subarray(behind, behind + WALL_U * REFLECTION_LAMPS)]).toEqual(
       new Array(WALL_U * REFLECTION_LAMPS).fill(-1)
     );
-  });
-});
-
-describe('brightestReflection', () => {
-  const corridor = parseMap(`
-1111111111
-1S.......1
-1........1
-1111111111
-`);
-
-  test('picks the lamp you look towards along the wall, not the one beside you', () => {
-    // Close to the top wall at x = 2.5, under the near lamp, looking east to the far one.
-    const lm = bakeLighting(corridor, [lamp(2.5, 2.5), lamp(7.5, 2.5)], 0.45, GREY, GREY);
-    const at = ((lm.faceOffset[(0 * corridor.width + 5) * 4 + 3] as number) / WALL_V) * REFLECTION_LAMPS;
-    const peak = new Float64Array(1);
-    const wood = { shininess: 16, f0: 0.4 };
-    expect(brightestReflection(lm, at, wood, FACING_SOUTH, 5, 1, { x: 2.5, y: 1.3 }, peak)).toBe(1);
-    expect(peak[0] as number).toBeGreaterThan(0);
   });
 });
 

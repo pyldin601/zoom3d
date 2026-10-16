@@ -139,7 +139,7 @@ test('the audio panel shows boombox controls while playing, and its volume reach
 
   await panel.getByRole('button', { name: 'Stop' }).click();
   await expect(panel).toHaveCount(0);
-  await expect(a.getByText('Reflections')).toBeVisible();
+  await expect(a.getByText('Lighting')).toBeVisible();
   await expect.poll(() => boomboxOf(b, 'Ada'), { timeout: 10_000 }).toBe(false);
 });
 

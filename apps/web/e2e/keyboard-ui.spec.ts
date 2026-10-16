@@ -39,7 +39,7 @@ test('in a room, the backquote key toggles the frame rate and renderer panel', a
   await page.locator('#stage').click();
   await page.keyboard.press('Backquote');
   await expect(page.locator('.audio-panel .frame-rate')).toHaveText(/^Frame rate \d+ fps$/);
-  await expect(page.getByText('Reflections')).toBeVisible();
+  await expect(page.getByText('Lighting')).toBeVisible();
   await page.keyboard.press('Backquote');
   await expect(page.locator('.audio-panel')).toHaveCount(0);
 });

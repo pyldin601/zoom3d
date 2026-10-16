@@ -11,7 +11,7 @@ beforeEach(() => {
 
 const options = (overrides: Partial<AudioPanelOptions> = {}): AudioPanelOptions => ({
   frameRate: () => null,
-  render: { settings: { reflections: 'both' }, onChange: () => {} },
+  render: { settings: { mode: 'reflections' }, onChange: () => {} },
   ...overrides,
 });
 
@@ -19,7 +19,7 @@ test('the frame rate comes first, then the renderer options, with no audio tunin
   showAudioPanel(root, options());
   const column = root.querySelector('.audio-panel > .renderer') as HTMLElement;
   expect(column.firstElementChild?.className).toBe('frame-rate');
-  expect(column.textContent).toContain('Reflections');
+  expect(column.textContent).toContain('Lighting');
   expect(root.querySelector('input[type=range]')).toBeNull();
   expect(root.querySelector('.levels')).toBeNull();
 });
@@ -65,17 +65,22 @@ test('null removes the panel', () => {
   expect(root.querySelector('.audio-panel')).toBeNull();
 });
 
-test('the renderer section switches reflections', () => {
+test('the renderer section switches the lighting mode', () => {
   const onRender = vi.fn();
-  showAudioPanel(root, options({ render: { settings: { reflections: 'both' }, onChange: onRender } }));
+  showAudioPanel(root, options({ render: { settings: { mode: 'reflections' }, onChange: onRender } }));
   expect(root.textContent).toContain('Renderer');
   const select = root.querySelector('.renderer select') as HTMLSelectElement;
-  expect(select.parentElement?.textContent).toContain('Reflections');
-  expect(select.value).toBe('both');
-  expect([...select.options].map((o) => o.value)).toEqual(['none', 'walls', 'both']);
-  select.value = 'walls';
+  expect(select.parentElement?.textContent).toContain('Lighting');
+  expect(select.value).toBe('reflections');
+  expect([...select.options].map((o) => [o.value, o.textContent])).toEqual([
+    ['flat', 'No shadows (classic)'],
+    ['shadows', 'Shadows'],
+    ['reflections', 'Shadows and reflections'],
+    ['reflections-only', 'Reflections only'],
+  ]);
+  select.value = 'reflections-only';
   select.dispatchEvent(new Event('change'));
-  expect(onRender).toHaveBeenLastCalledWith({ reflections: 'walls' });
+  expect(onRender).toHaveBeenLastCalledWith({ mode: 'reflections-only' });
 });
 
 describe('boombox column', () => {

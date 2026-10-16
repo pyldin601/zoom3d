@@ -63,7 +63,7 @@ import { renderLandingScene } from './ui/landing-scene';
 import { createLandingShow, LANDING_PARK } from './ui/landing-show';
 import { joinBanner, PROBLEM_TEXT, showLobby } from './ui/lobby';
 import { createMicLevel } from './ui/mic-level';
-import { loadRenderSettings, saveRenderSettings } from './ui/render-settings';
+import { litReflections, loadRenderSettings, saveRenderSettings } from './ui/render-settings';
 import { botsParam, parseRoute } from './ui/route';
 import {
   clearScreen,
@@ -231,7 +231,7 @@ for (const type of ['pointerdown', 'keydown'] as const) {
 }
 
 let audioPanelVisible = false;
-/** The renderer's console options (reflections), kept per browser. */
+/** The renderer's console options (the lighting mode), kept per browser. */
 let renderSettings = loadRenderSettings(storage());
 /** The boombox column of the audio panel, while our boombox plays (boombox spec §3.1). */
 function boomboxControls(): BoomboxPanelOptions | null {
@@ -897,8 +897,10 @@ function frame(dt: number): void {
     glowOf(player.x, player.y, null, ownGlowColour(performance.now()) ?? hexToRgb(selfColor), ownGlow);
     avatarGlows.push(ownGlow);
   }
-  const lighting = roomLighting();
-  renderWalls(fb, map, player, textures, lighting, renderSettings.reflections, avatarGlows);
+  // The console's lighting mode; flat is drawn unlit, as with `?lights=off`.
+  const reflections = litReflections(renderSettings.mode);
+  const lighting = reflections === null ? null : roomLighting();
+  renderWalls(fb, map, player, textures, lighting, reflections ?? 'none', avatarGlows);
   renderSprites(fb, player, sprites, facts, session ? voxels : undefined, lighting);
   if (session) {
     updateInterest(session, performance.now(), document.hidden);
