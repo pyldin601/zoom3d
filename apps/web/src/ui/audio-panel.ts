@@ -22,7 +22,7 @@ const MODES: readonly [RenderMode, string][] = [
   ['reflections-only', 'Reflections only'],
 ];
 
-/** The face sizes, biggest first: one dot each, the biggest dot for the biggest face. */
+/** The face sizes, biggest first: a dot and the size's number each. */
 const FACE_SIZES: readonly (keyof FacesSent)[] = [256, 128, 64];
 
 /** How often the frame rate and the face dots are redrawn while the panel is open. */
@@ -57,7 +57,7 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
   const renderer = make('div', { className: 'renderer' });
   const slot = make('div', { className: 'boombox-slot' });
   const rate = make('span');
-  const dots = FACE_SIZES.map(() => make('span'));
+  const dots = FACE_SIZES.map((size) => make('span', { textContent: String(size) }));
   const refresh = () => {
     const fps = opts.frameRate();
     rate.textContent = fps === null ? '–' : `${fps} fps`;

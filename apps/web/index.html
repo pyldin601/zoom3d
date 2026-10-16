@@ -128,13 +128,14 @@
       #ui .audio-panel .frame-rate .good { color: #6c6; }
       #ui .audio-panel .frame-rate .fair { color: #eb4; }
       #ui .audio-panel .frame-rate .poor { color: #f77; }
-      /* Which of your face sizes others receive (6c): one dot per size, the biggest first; green while someone does. */
+      /* Which of your face sizes others receive (6c): a dot and number per size, the biggest first; green while
+         someone does. */
       #ui .audio-panel .face-sent { display: flex; justify-content: space-between; align-items: center; gap: 1em; margin-top: 0.3em; color: #aaa; }
-      #ui .audio-panel .face-sent .dots { display: flex; align-items: center; gap: 0.35em; }
-      #ui .audio-panel .face-sent .dots span { width: 0.5em; height: 0.5em; border-radius: 50%; background: #3a4a3a; }
-      #ui .audio-panel .face-sent .dots span:first-child { width: 0.9em; height: 0.9em; }
-      #ui .audio-panel .face-sent .dots span:nth-child(2) { width: 0.7em; height: 0.7em; }
-      #ui .audio-panel .face-sent .dots span.on { background: #5fd35f; }
+      #ui .audio-panel .face-sent .dots { display: flex; align-items: center; gap: 0.6em; }
+      #ui .audio-panel .face-sent .dots span { display: flex; align-items: center; gap: 0.25em; color: #777; font-variant-numeric: tabular-nums; }
+      #ui .audio-panel .face-sent .dots span::before { content: ''; width: 0.6em; height: 0.6em; border-radius: 50%; background: #3a4a3a; }
+      #ui .audio-panel .face-sent .dots span.on { color: #ddd; }
+      #ui .audio-panel .face-sent .dots span.on::before { background: #5fd35f; }
       #ui .boombox-panel .title { margin-bottom: 0.7em; color: #eee; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       #ui .boombox-panel .stop { width: 100%; padding: 0.35em; color: #ddd; background: #2e2e2e; border: 0.06em solid #555; border-radius: 0.25em; }
       #ui .boombox-panel .stop:hover { background: #3a3a3a; }

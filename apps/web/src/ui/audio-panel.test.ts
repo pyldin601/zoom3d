@@ -45,14 +45,15 @@ test('the frame rate is refreshed while the panel is open and coloured by band',
   }
 });
 
-test('under the frame rate, three dots show which face sizes others receive, biggest first, kept up to date', () => {
+test('under the frame rate, a dot and number per face size show which ones others receive, kept up to date', () => {
   vi.useFakeTimers();
   try {
     let sent = { 256: true, 128: false, 64: true };
     showAudioPanel(root, options({ facesSent: () => sent }));
     const row = root.querySelector('.renderer .frame-rate + .face-sent') as HTMLElement;
-    expect(row.textContent).toBe('Face sent');
+    expect(row.firstChild?.textContent).toBe('Face sent');
     const dots = [...row.querySelectorAll('.dots > span')];
+    expect(dots.map((d) => d.textContent)).toEqual(['256', '128', '64']);
     expect(dots.map((d) => d.classList.contains('on'))).toEqual([true, false, true]);
     sent = { 256: false, 128: true, 64: false };
     vi.advanceTimersByTime(1000);
