@@ -38,37 +38,44 @@ export function logoColour(y: number): number {
   return rgb(mix(240, 110, t), mix(70, 12, t), mix(60, 12, t));
 }
 
+/** The outline and the shadow pad the letters on every side of the logo's box. */
+const PAD = LOGO_OUTLINE + LOGO_SHADOW;
+const BOX_WIDTH = LOGO_WIDTH * LOGO_CELL + 2 * PAD;
+const BOX_HEIGHT = LOGO_ROWS * LOGO_CELL + 2 * PAD;
+/** The logo's box, built on first draw: one colour per pixel, 0 where the scene shows through (rgb() is opaque). */
+let box: Uint32Array | null = null;
+
 /**
  * Draws the logo `margin` pixels from the top of `fb`: in the top-right corner, `margin` from the right, or centred
- * (a portrait phone frame, mobile spec §3).
+ * (a portrait phone frame, mobile spec §3). The landing show draws it every frame, so it only copies a box built once.
  */
 export function drawLogo(fb: Framebuffer, margin: number, align: 'right' | 'center' = 'right'): void {
-  const pad = LOGO_OUTLINE + LOGO_SHADOW;
-  const w = LOGO_WIDTH * LOGO_CELL + 2 * pad;
-  const h = LOGO_ROWS * LOGO_CELL + 2 * pad;
   const letters = LOGO_WIDTH * LOGO_CELL;
-  const left = (align === 'center' ? Math.round((fb.width - letters) / 2) : fb.width - margin - letters) - pad;
-  const top = margin - pad;
-  // Which pixels of the padded box the letters cover.
-  const ink = new Uint8Array(w * h);
-  let cellX = 0;
-  for (const ch of LOGO_TEXT) {
-    const rows = LOGO_GLYPHS[ch] as readonly string[];
-    const dropped = LOGO_ROWS - rows.length;
-    rows.forEach((row, r) => {
-      for (let c = 0; c < row.length; c++) {
-        if (row[c] !== '#') {
-          continue;
-        }
-        for (let dy = 0; dy < LOGO_CELL; dy++) {
-          for (let dx = 0; dx < LOGO_CELL; dx++) {
-            ink[(pad + (dropped + r) * LOGO_CELL + dy) * w + pad + (cellX + c) * LOGO_CELL + dx] = 1;
-          }
-        }
+  const left = (align === 'center' ? Math.round((fb.width - letters) / 2) : fb.width - margin - letters) - PAD;
+  const top = margin - PAD;
+  box ??= buildBox();
+  // The part of the box inside the frame.
+  const x0 = Math.max(0, -left);
+  const x1 = Math.min(BOX_WIDTH, fb.width - left);
+  const y0 = Math.max(0, -top);
+  const y1 = Math.min(BOX_HEIGHT, fb.height - top);
+  for (let y = y0; y < y1; y++) {
+    const from = y * BOX_WIDTH;
+    const to = (top + y) * fb.width + left;
+    for (let x = x0; x < x1; x++) {
+      const c = box[from + x] as number;
+      if (c !== 0) {
+        fb.pixels[to + x] = c;
       }
-    });
-    cellX += (rows[0] as string).length + GAP;
+    }
   }
+}
+
+/** The letters in their gradient, their black outline, then the drop shadow, in a box padded by PAD all round. */
+function buildBox(): Uint32Array {
+  const w = BOX_WIDTH;
+  const h = BOX_HEIGHT;
+  const ink = inkMask();
   const inked = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h && ink[y * w + x] === 1;
   const near = (x: number, y: number, r: number) => {
     for (let dy = -r; dy <= r; dy++) {
@@ -82,24 +89,41 @@ export function drawLogo(fb: Framebuffer, margin: number, align: 'right' | 'cent
   };
   const black = rgb(0, 0, 0);
   const shadow = rgb(16, 16, 20);
+  const out = new Uint32Array(w * h);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      const fx = left + x;
-      const fy = top + y;
-      if (fx < 0 || fy < 0 || fx >= fb.width || fy >= fb.height) {
-        continue;
-      }
-      let c: number | null = null;
       if (inked(x, y)) {
-        c = logoColour(y - pad);
+        out[y * w + x] = logoColour(y - PAD);
       } else if (near(x, y, LOGO_OUTLINE)) {
-        c = black;
+        out[y * w + x] = black;
       } else if (near(x - LOGO_SHADOW, y - LOGO_SHADOW, LOGO_OUTLINE)) {
-        c = shadow;
-      }
-      if (c !== null) {
-        fb.pixels[fy * fb.width + fx] = c;
+        out[y * w + x] = shadow;
       }
     }
   }
+  return out;
+}
+
+/** Which pixels of the padded box the letters cover: 1, else 0. */
+function inkMask(): Uint8Array {
+  const ink = new Uint8Array(BOX_WIDTH * BOX_HEIGHT);
+  let cellX = 0;
+  for (const ch of LOGO_TEXT) {
+    const rows = LOGO_GLYPHS[ch] ?? [];
+    const dropped = LOGO_ROWS - rows.length;
+    for (const [r, row] of rows.entries()) {
+      for (let c = 0; c < row.length; c++) {
+        if (row[c] !== '#') {
+          continue;
+        }
+        for (let dy = 0; dy < LOGO_CELL; dy++) {
+          for (let dx = 0; dx < LOGO_CELL; dx++) {
+            ink[(PAD + (dropped + r) * LOGO_CELL + dy) * BOX_WIDTH + PAD + (cellX + c) * LOGO_CELL + dx] = 1;
+          }
+        }
+      }
+    }
+    cellX += (rows.at(0)?.length ?? 0) + GAP;
+  }
+  return ink;
 }
