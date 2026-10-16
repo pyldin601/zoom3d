@@ -165,43 +165,66 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
   let closed = false;
   let retryMs = RETRY_MIN_MS;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** A reconcile that failed for some track tries again after this, doubling up to RETRY_MAX_MS. */
+  let republishMs = RETRY_MIN_MS;
+  let republishTimer: ReturnType<typeof setTimeout> | null = null;
   // Publishing is serialized: every change reconciles what is published with what is wanted.
   let queue = Promise.resolve();
 
-  async function reconcile(r: LiveKitRoomLike) {
+  /**
+   * Brings every track in line with what is wanted; false when one of them failed. Each track is tried on its own,
+   * so a face that times out doesn't keep the mic from going out.
+   */
+  async function reconcile(r: LiveKitRoomLike): Promise<boolean> {
+    // This room's record, even if a newer room replaces `published` while a call is pending.
+    const record = published;
+    let ok = true;
     for (const name of NAMES) {
       if (r !== room || closed) {
-        return;
+        return true;
       }
-      const want = wanted[name];
-      let lt = published[name];
-      if (!want) {
-        if (lt) {
-          await r.localParticipant.unpublishTrack(lt, false);
-        }
-        published[name] = null;
-        continue;
+      try {
+        await reconcileTrack(r, record, name);
+      } catch (err) {
+        console.warn(`livekit publish of ${name} failed`, err);
+        ok = false;
       }
-      if (lt?.mediaStreamTrack === want) {
-        continue;
+    }
+    return ok;
+  }
+
+  async function reconcileTrack(r: LiveKitRoomLike, record: typeof published, name: TrackName) {
+    const want = wanted[name];
+    let lt = record[name];
+    if (!want) {
+      if (lt) {
+        await r.localParticipant.unpublishTrack(lt, false);
       }
-      const enabled = want.enabled;
+      record[name] = null;
+      return;
+    }
+    if (lt?.mediaStreamTrack === want) {
+      return;
+    }
+    const enabled = want.enabled;
+    try {
       if (lt) {
         await lt.replaceTrack(want, { userProvidedTrack: true });
       } else {
         lt = (await r.localParticipant.publishTrack(want, PUBLISH[name])).track ?? null;
-        published[name] = lt;
+        record[name] = lt;
       }
-      // Undo LiveKit's say over the track: unmute a publication it muted (its old track ended), and keep the
-      // controller's mute (a muted mic must stay silent).
+      // Undo LiveKit's say over the track: unmute a publication it muted (its old track ended)...
       if (lt?.isMuted) {
         await lt.unmute();
       }
+    } finally {
+      // ...and keep the controller's mute, also when LiveKit failed half-way: a muted mic must stay silent.
       want.enabled = enabled;
-      const size = SMALL_SIZE[name];
-      if (lt && size) {
-        await scaleTo(lt, want, size);
-      }
+    }
+    const size = SMALL_SIZE[name];
+    if (lt && size) {
+      await scaleTo(lt, want, size);
     }
   }
 
@@ -225,8 +248,30 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
 
   const update = () => {
     queue = queue
-      .then(() => (room && connected ? reconcile(room) : undefined))
+      .then(async () => {
+        const r = room;
+        if (!r || !connected) {
+          return;
+        }
+        if (await reconcile(r)) {
+          republishMs = RETRY_MIN_MS;
+        } else {
+          republishLater();
+        }
+      })
       .catch((err) => console.warn('livekit publish failed', err));
+  };
+
+  /** Nothing else re-runs a failed publish until a track changes, which may be never: retry on a timer. */
+  const republishLater = () => {
+    if (closed || republishTimer !== null) {
+      return;
+    }
+    republishTimer = setTimeout(() => {
+      republishTimer = null;
+      update();
+    }, republishMs);
+    republishMs = Math.min(republishMs * 2, RETRY_MAX_MS);
   };
 
   const remoteOf = (identity: string): Remote => {
@@ -418,6 +463,9 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
       closed = true;
       if (retryTimer) {
         clearTimeout(retryTimer);
+      }
+      if (republishTimer) {
+        clearTimeout(republishTimer);
       }
       const r = room;
       room = null;

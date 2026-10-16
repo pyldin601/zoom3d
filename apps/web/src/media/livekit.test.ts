@@ -324,6 +324,33 @@ describe('connecting and publishing', () => {
     expect(room().localTrack('mic')).toBeDefined();
     expect(mic.enabled).toBe(false);
   });
+
+  test('a failed publish holds back no other track, and is retried after a backoff', async () => {
+    FakeRoom.onConnect = (r) => r.localParticipant.publishTrack.mockRejectedValueOnce(new Error('publish timed out'));
+    transport();
+    await flush();
+    expect(room().publications.map((p) => p.trackName)).toEqual(['mic']);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(room().publications.map((p) => p.trackName)).toEqual(['mic', 'face']);
+  });
+
+  test('a muted mic stays muted when its publish fails after LiveKit re-enabled it', async () => {
+    mic.enabled = false;
+    FakeRoom.onConnect = (r) =>
+      r.localParticipant.publishTrack
+        .mockImplementationOnce(async (t: Track, opts: { name: string }) => {
+          const pub = { trackName: opts.name, track: new FakeLocalTrack(t) };
+          r.publications.push(pub);
+          return pub;
+        })
+        .mockImplementationOnce(async (t: Track) => {
+          t.enabled = true;
+          throw new Error('pcManager is not ready');
+        });
+    transport();
+    await flush();
+    expect(mic.enabled).toBe(false);
+  });
 });
 
 describe('which face sizes go out', () => {
