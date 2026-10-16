@@ -1,7 +1,8 @@
 # Roadmap
 
 Authoritative order: §12 of the [design spec](superpowers/specs/2026-10-08-zoom3d-design.md).
-Each step gets its own implementation plan in `docs/superpowers/plans/`.
+Each step gets its own implementation plan in `docs/superpowers/plans/`. Parked, unscheduled ideas are in
+[ideas.md](ideas.md).
 
 | # | Step | Outcome |
 |---|------|---------|
