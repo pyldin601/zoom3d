@@ -91,6 +91,19 @@ export function hexToRgb(hex: string): number {
   return rgb((n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff);
 }
 
+/** Ring colours parsed so far: a room has a handful, and each is drawn every frame. */
+const ringColours = new Map<string, number>();
+
+/** hexToRgb for a ring colour, parsed once and then remembered. */
+export function ringRgb(hex: string): number {
+  let c = ringColours.get(hex);
+  if (c === undefined) {
+    c = hexToRgb(hex);
+    ringColours.set(hex, c);
+  }
+  return c;
+}
+
 /** Where (x, y) shows through `view`, matching renderWalls. Returns false when behind the camera. */
 export function projectSprite(view: View, x: number, y: number, out: Projection): boolean {
   const { dirX, dirY, planeX, planeY, invDet } = view;

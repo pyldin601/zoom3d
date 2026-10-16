@@ -1,11 +1,11 @@
+// The page: the landing picture, the lobby, then the room loop. It wires the modules together and owns the page's
+// state; what can be pure lives in the modules (the other people in game/remote-world.ts, the room's keys in
+// input/room-keys.ts, the drink key in input/drink-key.ts).
 import {
   DEFAULT_AUDIO_SETTINGS,
   type HeldItem,
-  INTERP_DELAY_MS,
   LEVEL1,
-  MAX_PEERS,
   newRoomId,
-  type PlayerState,
   parseMap,
   spawnPoint,
   stepPlayer,
@@ -17,10 +17,12 @@ import { createObjectSounds, type ObjectSounds } from './audio/object-sounds';
 import { HIDDEN_TICK_MS, startHiddenTicker } from './audio/ticker';
 import { createFrameRateMeter } from './game/frame-rate';
 import { startLoop } from './game/loop';
+import { createRemoteWorld, type PeerMedia } from './game/remote-world';
 import { type Frame, layoutStage, watchLayout } from './game/stage';
+import { createDrinkKey } from './input/drink-key';
 import { createInput } from './input/keyboard';
-import { mediaKey } from './input/media-keys';
 import { lockPointer } from './input/pointer-lock';
+import { type RoomKey, roomKey } from './input/room-keys';
 import { createTouchInput } from './input/touch';
 import { loadAvatar, saveAvatar } from './media/avatar';
 import { type Boombox, createBoombox } from './media/boombox';
@@ -34,19 +36,18 @@ import { createLocalMedia, type LocalMediaController } from './media/local-media
 import { loadMediaPrefs, saveMediaPrefs } from './media/media-prefs';
 import { createOwnGlowSampler } from './media/own-glow';
 import { createRemoteMedia } from './media/remote-media';
-import { nearTier } from './net/peer-delay';
-import { createSession, objectKey, type Session } from './net/session';
-import { type AutomapPeer, drawAutomap } from './renderer/automap';
-import { type Bob, createBob } from './renderer/bob';
+import { createSession, type Session } from './net/session';
+import { drawAutomap } from './renderer/automap';
+import { createBob } from './renderer/bob';
 import { createFramebuffer, type Framebuffer } from './renderer/framebuffer';
-import { createAvatarGlows } from './renderer/glow';
+import { createAvatarGlows, type GlowSource } from './renderer/glow';
 import { drawLabels } from './renderer/labels';
 import { bakeLighting, corridorLights, type Lighting } from './renderer/lighting';
 import { VACUUM_MODEL } from './renderer/models/vacuum';
 import { renderOwnBoombox } from './renderer/own-boombox';
 import { renderOwnHeld } from './renderer/own-held';
-import { cheersPose, createGestureClock, sipPose } from './renderer/sip';
-import { hexToRgb, renderSprites, type Sprite } from './renderer/sprites';
+import { createGestureClock } from './renderer/sip';
+import { renderSprites, ringRgb } from './renderer/sprites';
 import { averageColour, makeTextures } from './renderer/textures';
 import type { VoxelInstance } from './renderer/voxels';
 import { CEILING, FLOOR, renderWalls } from './renderer/walls';
@@ -57,13 +58,14 @@ import { initSentry } from './telemetry/sentry';
 import { setAudioPanelBoombox, showAudioPanel } from './ui/audio-panel';
 import type { BoomboxPanelOptions } from './ui/boombox-panel';
 import { loadBoomboxVolume, saveBoomboxVolume } from './ui/boombox-store';
-import { CHEERS_HOLD_MS, createDrinkPress } from './ui/drink-press';
-import { heldForKey, heldKeyAction, loadHeld, saveHeld } from './ui/held-store';
+import { heldKeyAction, loadHeld, saveHeld } from './ui/held-store';
 import { renderLandingScene } from './ui/landing-scene';
 import { createLandingShow, LANDING_PARK } from './ui/landing-show';
 import { joinBanner, PROBLEM_TEXT, showLobby } from './ui/lobby';
 import { createMicLevel } from './ui/mic-level';
+import { loadName, saveName } from './ui/name-store';
 import { litReflections, loadRenderSettings, saveRenderSettings } from './ui/render-settings';
+import { statusText } from './ui/room-status';
 import { botsParam, parseRoute } from './ui/route';
 import {
   clearScreen,
@@ -80,34 +82,58 @@ import { showTouchControls, type TouchControls } from './ui/touch-controls';
 initSentry(import.meta.env.VITE_SENTRY_DSN, import.meta.env.VITE_RELEASE);
 initAnalytics(import.meta.env.VITE_AMPLITUDE_API_KEY, import.meta.env.VITE_RELEASE);
 
-const PIXEL_PERFECT = new URLSearchParams(location.search).has('pixelperfect');
+// Page flags, read once at load.
+
+const LOAD_PARAMS = new URLSearchParams(location.search);
+const PIXEL_PERFECT = LOAD_PARAMS.has('pixelperfect');
+/** SPIKE: baked corridor lamps; `?lights=off` shows the old flat look. */
+const LIGHTS = LOAD_PARAMS.get('lights') !== 'off';
 /** Touch mode (mobile spec §2.0): decided once at load, never re-evaluated, so the frame never flips mid-visit. */
 const TOUCH = matchMedia('(pointer: coarse)').matches;
 document.documentElement.classList.toggle('touch', TOUCH);
 /** Reduced motion (landing vacuum spec §2.5): read once at load; the landing picture then stays still. */
 const REDUCED_MOTION = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const NAME_KEY = 'zoom3d.name';
 
-const stage = document.getElementById('stage') as HTMLDivElement;
-const game = document.getElementById('game') as HTMLCanvasElement;
-const hud = document.getElementById('hud') as HTMLCanvasElement;
-const ui = document.getElementById('ui') as HTMLDivElement;
-const mediaContainer = document.getElementById('media') as HTMLDivElement;
-const localMediaContainer = document.getElementById('local-media') as HTMLDivElement;
-const gameCtx = game.getContext('2d') as CanvasRenderingContext2D;
-const hudCtx = hud.getContext('2d') as CanvasRenderingContext2D;
+// The page's elements: index.html has them all.
+
+const stage = element('stage', HTMLDivElement);
+const game = element('game', HTMLCanvasElement);
+const hud = element('hud', HTMLCanvasElement);
+const ui = element('ui', HTMLDivElement);
+const mediaContainer = element('media', HTMLDivElement);
+const localMediaContainer = element('local-media', HTMLDivElement);
+const gameCtx = context2d(game);
+const hudCtx = context2d(hud);
+
+function element<T extends HTMLElement>(id: string, type: { new (): T; prototype: T }): T {
+  const el = document.getElementById(id);
+  if (!(el instanceof type)) {
+    throw new Error(`index.html has no ${type.name} #${id}`);
+  }
+  return el;
+}
+
+function context2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error(`no 2d context for #${canvas.id}`);
+  }
+  return ctx;
+}
+
+const storage = (): Storage | null => {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+};
+
+// The world and what draws it.
 
 const map = parseMap(LEVEL1);
 const textures = makeTextures(1);
-/** SPIKE: baked corridor lamps; `?lights=off` shows the old flat look. */
-const LIGHTS = new URLSearchParams(location.search).get('lights') !== 'off';
 const lamps = corridorLights(map);
-/** Each avatar's glow: its face lights the floor and walls around it like a screen. Yours too, last. */
-const avatarGlows = createAvatarGlows();
-/** Your own disc as a glow source, moved to you each frame. */
-const selfDisc = { x: 0, y: 0, face: null, color: 0 };
-/** Your face's average colour while the camera is on, null otherwise; set once local media exists. */
-let ownGlowColour: (now: number) => number | null = () => null;
 /** Ambient light is bounce light: what the lamps' lit surfaces throw back, over a bare minimum so no room is black. */
 const BARE_AMBIENT = 0.08;
 /** How much of the light the lamps' lit surfaces throw back comes back as ambient (see `Bounce`). */
@@ -130,45 +156,83 @@ const roomLighting = (() => {
     return baked.lighting;
   };
 })();
+/** The renderer's console options (the lighting mode), kept per browser. */
+let renderSettings = loadRenderSettings(storage());
+/** Each avatar's glow: its face lights the floor and walls around it like a screen. Yours too, last. */
+const avatarGlows = createAvatarGlows();
+/** Your own disc as a glow source, moved to you each frame. */
+const selfDisc = { x: 0, y: 0, face: null, color: 0 };
+/** Your face's average colour while the camera is on, null otherwise; set once local media exists. */
+let ownGlowColour: (now: number) => number | null = () => null;
 let fb: Framebuffer = createFramebuffer();
 let image = imageOf(fb);
 function imageOf(buffer: Framebuffer): ImageData {
   return new ImageData(new Uint8ClampedArray(buffer.pixels.buffer as ArrayBuffer), buffer.width, buffer.height);
 }
+/** Counts every drawn room frame and times its drawing; the backtick panel shows the rate and the render time. */
+const frameRateMeter = createFrameRateMeter();
+
+// You.
+
 const player = spawnPoint(map, Math.random);
+const selfBob = createBob();
 const touch = createTouchInput({ surface: game, win: window, doc: document, surfaceWidth: () => game.clientWidth });
 const input = createInput(window, document, touch);
+/** What the local player holds, drawn in first person. */
+let ownHeld: HeldItem | null = null;
+/** Whether our boombox is playing, drawn in first person. */
+let ownBoombox = false;
+/** The local player's sip or cheers, on the performance.now() clock (held items spec §2.3–2.4). */
+const ownGesture = createGestureClock();
+/** The held drink's key or touch button: a tap sips, a long press cheers (held items spec §2.4). */
+const drinkKey = createDrinkKey({
+  gesture: ownGesture,
+  // Nothing during a reconnect: the others would never see it.
+  canGesture: inRoom,
+  onGesture(kind) {
+    if (kind === 'sip') {
+      session?.sendDrink();
+    } else {
+      session?.sendCheers();
+    }
+    track({ name: kind });
+  },
+});
+
+// The room, from Join on.
+
 let session: Session | null = null;
 let roomTracker: RoomTracker | null = null;
+let call: Call | null = null;
+let audio: AudioEngine | null = null;
+/** The robot vacuum's hum (and any later object's sound), made when the room is joined. */
+let objectSounds: ObjectSounds | null = null;
+let boombox: Boombox | null = null;
+/** Everyone else and the world objects, as this frame draws them. */
+const world = createRemoteWorld();
+/** What the world shows of each peer's media. */
+const peerMedia: PeerMedia = {
+  faceOf: (id) => call?.faceOf(id) ?? null,
+  speaking: (id) => audio?.speaking(id) ?? 0,
+};
+
+function inRoom(): boolean {
+  return session?.status() === 'open';
+}
+
 // pagehide, not unload: it fires on mobile and for pages entering the back/forward cache.
 window.addEventListener('pagehide', () => {
   roomTracker?.leave();
   flushOnHide();
 });
-/** What the local player holds, drawn in first person. */
-let ownHeld: HeldItem | null = null;
-/** The local player's sip or cheers, on the performance.now() clock (held items spec §2.3–2.4). */
-const ownGesture = createGestureClock();
-/** The held drink's key: a tap sips on release, a press held CHEERS_HOLD_MS raises a cheers (spec §2.4). */
-const drinkPress = createDrinkPress();
-/** The `e.code` of the key being pressed, and the timer that turns a long press into a cheers. */
-let pressKey: string | null = null;
-let pressTimer: ReturnType<typeof setTimeout> | null = null;
-function cancelPress(): void {
-  drinkPress.cancel();
-  pressKey = null;
-  if (pressTimer !== null) {
-    clearTimeout(pressTimer);
-    pressTimer = null;
-  }
-}
+
 /** The one path for changing the drink in hand, from a number key. */
 function chooseHeld(item: HeldItem | null): void {
   if (item === ownHeld) {
     return;
   }
   ownHeld = item;
-  cancelPress();
+  drinkKey.cancel();
   refreshTouchControls();
   if (item === null) {
     ownGesture.cancel();
@@ -179,21 +243,8 @@ function chooseHeld(item: HeldItem | null): void {
     track({ name: 'drink_picked', item });
   }
 }
-let call: Call | null = null;
-let audio: AudioEngine | null = null;
-/** The robot vacuum's hum (and any later object's sound), made when the room is joined. */
-let objectSounds: ObjectSounds | null = null;
-let boombox: Boombox | null = null;
-/** Whether our boombox is playing, drawn in first person. */
-let ownBoombox = false;
 
-const storage = (): Storage | null => {
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-};
+// The stage: the frame's size follows the window.
 
 /** Whether the frame loop runs; before that the stage shows a still that a new frame size must redraw. */
 let looping = false;
@@ -218,7 +269,6 @@ const relayout = () => rebuildFrame(layoutStage(stage, hud, { touch: TOUCH, pixe
 relayout();
 watchLayout(relayout, { skipWhileTyping: TOUCH });
 
-const inRoom = () => session?.status() === 'open';
 // Mouse-look only: iOS has no pointer lock, and a finger on the view turns by dragging instead (mobile spec §4.1).
 game.addEventListener('pointerdown', (e) => {
   if (inRoom() && e.pointerType === 'mouse' && e.button === 0) {
@@ -231,9 +281,9 @@ for (const type of ['pointerdown', 'keydown'] as const) {
   window.addEventListener(type, () => void audio?.resume());
 }
 
+// The backtick console.
+
 let audioPanelVisible = false;
-/** The renderer's console options (the lighting mode), kept per browser. */
-let renderSettings = loadRenderSettings(storage());
 /** The boombox column of the audio panel, while our boombox plays (boombox spec §3.1). */
 function boomboxControls(): BoomboxPanelOptions | null {
   const box = boombox;
@@ -277,98 +327,57 @@ function toggleAudioPanel(): void {
   });
   setAudioPanelBoombox(ui, boomboxControls());
 }
+
+// The room's keys; walking is keyboard.ts's.
+
 window.addEventListener('keydown', (e) => {
-  if (e.code !== 'Backquote' || e.repeat || !inRoom() || e.target instanceof HTMLInputElement) {
-    return;
+  // A modifier mid-press means a shortcut, and macOS never reports a key released while Cmd is held: forget the press.
+  if (e.key === 'Meta' || e.key === 'Control' || e.key === 'Alt') {
+    drinkKey.cancel();
   }
-  e.preventDefault();
-  toggleAudioPanel();
+  const key = roomKey(e, { inRoom: inRoom(), hasBoombox: boombox !== null });
+  if (key) {
+    onRoomKey(key, e);
+  }
 });
-
-// 1–3 pick a drink, 0 puts it down.
-window.addEventListener('keydown', (e) => {
-  const item = heldForKey(e.code);
-  if (item === undefined || e.repeat || e.metaKey || e.ctrlKey || e.altKey) {
-    return;
-  }
-  if (!inRoom() || e.target instanceof HTMLInputElement) {
-    return;
-  }
-  e.preventDefault();
-  if (heldKeyAction(item, ownHeld) === 'pick') {
-    chooseHeld(item);
-    return;
-  }
-  beginDrinkPress(e.timeStamp, e.code);
-});
-window.addEventListener('keyup', (e) => {
-  endDrinkPress(e.timeStamp, e.code);
-});
-
-/**
- * A press of the held drink, from its number key or the touch drink button (`source`: the key's code, or 'touch'):
- * nothing while a gesture plays, else a sip or a cheers by its length, timed by the input events themselves
- * (`timeStamp`, the performance.now() clock) so a busy main thread can't stretch a tap.
- */
-function beginDrinkPress(downAt: number, source: string): void {
-  if (ownGesture.kind(performance.now()) !== null || pressKey !== null) {
-    return;
-  }
-  drinkPress.down(downAt);
-  pressKey = source;
-  pressTimer = setTimeout(() => {
-    pressTimer = null;
-    // A timer can fire a hair before the clock reads CHEERS_HOLD_MS; it is due either way.
-    const now = Math.max(performance.now(), downAt + CHEERS_HOLD_MS);
-    if (drinkPress.due(now) === 'cheers') {
-      pressKey = null;
-      // Like a sip, nothing during a reconnect: the others would never see it.
-      if (inRoom() && ownGesture.start('cheers', now)) {
-        session?.sendCheers();
-        track({ name: 'cheers' });
-      }
-    }
-  }, CHEERS_HOLD_MS);
-}
-
-function endDrinkPress(upAt: number, source: string): void {
-  if (source !== pressKey) {
-    return;
-  }
-  // A cheers here means the hold timer is running late; the release settles it instead.
-  const kind = drinkPress.up(upAt);
-  cancelPress();
-  const now = performance.now();
-  if (kind && inRoom() && ownGesture.start(kind, now)) {
-    if (kind === 'sip') {
-      session?.sendDrink();
-    } else {
-      session?.sendCheers();
-    }
-    track({ name: kind });
-  }
-}
+window.addEventListener('keyup', (e) => drinkKey.up(e.timeStamp, e.code));
 // A key released in another window never reports keyup here: forget the press.
-window.addEventListener('blur', cancelPress);
-// Nor does one released while Cmd is held, on macOS; a modifier mid-press means a shortcut anyway.
-window.addEventListener('keydown', (e) => {
-  if (pressKey !== null && (e.key === 'Meta' || e.key === 'Control' || e.key === 'Alt')) {
-    cancelPress();
-  }
-});
+window.addEventListener('blur', () => drinkKey.cancel());
 
-// B opens the boombox's file picker, or stops the music (boombox spec §3).
-window.addEventListener('keydown', (e) => {
-  if (e.code !== 'KeyB' || e.repeat || e.metaKey || e.ctrlKey || e.altKey) {
-    return;
+function onRoomKey(key: RoomKey, e: KeyboardEvent): void {
+  switch (key.kind) {
+    case 'console':
+      e.preventDefault();
+      toggleAudioPanel();
+      break;
+    case 'map':
+      e.preventDefault();
+      if (!key.repeat) {
+        toggleAutomap();
+      }
+      break;
+    case 'boombox':
+      e.preventDefault();
+      toggleBoombox();
+      break;
+    case 'drink':
+      // 1–3 pick a drink, 0 puts it down; the drink in hand's own key sips or cheers it.
+      e.preventDefault();
+      if (heldKeyAction(key.item, ownHeld) === 'pick') {
+        chooseHeld(key.item);
+      } else {
+        drinkKey.down(e.timeStamp, key.code);
+      }
+      break;
+    case 'media':
+      // The same as pressing the mic button or your own circle (feedback, a camera that can't start, a missing device
+      // and all).
+      ui.querySelector<HTMLButtonElement>(`button[data-control="${key.control}"]`)?.click();
+      break;
   }
-  // Stopping works even while reconnecting: the music is local and peers may still hear it.
-  if (!boombox || e.target instanceof HTMLInputElement) {
-    return;
-  }
-  e.preventDefault();
-  toggleBoombox();
-});
+}
+
+/** B opens the boombox's file picker, or stops the music (boombox spec §3); stopping works while reconnecting. */
 function toggleBoombox(): void {
   boombox?.toggle(inRoom());
 }
@@ -378,28 +387,8 @@ function toggleAutomap(): void {
   automapVisible = !automapVisible;
   refreshTouchControls();
 }
-// M mutes or unmutes, C turns the camera off or on: the same as pressing the mic button or your own circle (feedback,
-// a camera that can't start, a missing device and all).
-window.addEventListener('keydown', (e) => {
-  const kind = inRoom() ? mediaKey(e) : null;
-  if (kind) {
-    ui.querySelector<HTMLButtonElement>(`button[data-control="${kind}"]`)?.click();
-  }
-});
 
-window.addEventListener('keydown', (e) => {
-  if (e.code !== 'Tab') {
-    return;
-  }
-  // Outside the room Tab keeps its keyboard-navigation meaning.
-  if (!inRoom() || e.target instanceof HTMLInputElement) {
-    return;
-  }
-  e.preventDefault();
-  if (!e.repeat) {
-    toggleAutomap();
-  }
-});
+// Touch controls.
 
 /** The room's touch controls (mobile spec §5): from Join in touch mode, else from the first touch in the room. */
 let touchControls: TouchControls | null = null;
@@ -418,15 +407,11 @@ function showTouch(): void {
     },
     onDrinkDown: (t) => {
       if (inRoom()) {
-        beginDrinkPress(t, 'touch');
+        drinkKey.down(t, 'touch');
       }
     },
-    onDrinkUp: (t) => endDrinkPress(t, 'touch'),
-    onDrinkCancel: () => {
-      if (pressKey === 'touch') {
-        cancelPress();
-      }
-    },
+    onDrinkUp: (t) => drinkKey.up(t, 'touch'),
+    onDrinkCancel: () => drinkKey.cancel('touch'),
     onBoombox: toggleBoombox,
     onMap: () => {
       if (inRoom()) {
@@ -444,6 +429,8 @@ window.addEventListener('pointerdown', (e) => {
     showTouch();
   }
 });
+
+// The room's status line and head count, written only when they change.
 
 let shownStatus: string | null = null;
 function setStatus(text: string | null): void {
@@ -463,6 +450,8 @@ function setPeopleCount(count: number | null): void {
   shownPeople = count;
 }
 
+// Joining.
+
 function joinRoom(
   roomId: string,
   name: string,
@@ -473,7 +462,7 @@ function joinRoom(
   audio = createAudioEngine({ ctx: audioCtx, map });
   const sounds = createObjectSounds(audioCtx, audio);
   objectSounds = sounds;
-  saveName(name);
+  saveName(storage(), name);
   saveAvatar(storage(), avatar);
   clearScreen(ui);
   call = createCall({
@@ -550,21 +539,7 @@ function joinRoom(
   }
 }
 
-function loadName(): string {
-  try {
-    return localStorage.getItem(NAME_KEY) ?? '';
-  } catch {
-    return '';
-  }
-}
-
-function saveName(name: string): void {
-  try {
-    localStorage.setItem(NAME_KEY, name);
-  } catch {
-    // Storage unavailable (private mode): the name just isn't remembered.
-  }
-}
+// The route: the landing page, a lobby, or a bad link.
 
 const route = parseRoute(location.pathname);
 /** The room this page load created with "Start a party": its lobby counts as the host's, any other as an invite. */
@@ -614,7 +589,12 @@ function openLobby(roomId: string): void {
     loadMediaPrefs(storage())
   );
   const ownFace = createOwnGlowSampler(local.framer.canvas, document);
-  ownGlowColour = (now) => (local.state().cam ? ownFace.colour(now) : null);
+  // Kept from the controller's notifications (every camera change notifies), not asked of it every frame.
+  let camOn = local.state().cam;
+  local.subscribe(() => {
+    camOn = local.state().cam;
+  });
+  ownGlowColour = (now) => (camOn ? ownFace.colour(now) : null);
   track({ name: 'lobby_viewed', entry: roomId === hostedRoom ? 'host' : 'invite' });
   void local.ready.then(() => track({ name: 'media_permission', ...mediaOutcome(local.state()) }));
   // Saved for the whole visit, so the room's Cam/Mic buttons are remembered too.
@@ -624,7 +604,7 @@ function openLobby(roomId: string): void {
   const stopMetering = local.subscribe(() => meter.setTrack(local.micTrack()));
   const closeLobby = showLobby(ui, {
     media: local,
-    defaultName: loadName(),
+    defaultName: loadName(storage()),
     defaultAvatar: loadAvatar(storage()),
     level: meter.level,
     inviteUrl: location.href,
@@ -638,26 +618,6 @@ function openLobby(roomId: string): void {
       joinRoom(roomId, name, avatar, local, audioCtx);
     },
   });
-}
-
-function statusText(s: Session): string | null {
-  switch (s.status()) {
-    case 'open':
-      return null;
-    case 'connecting':
-      return 'Connecting…';
-    case 'reconnecting':
-      return 'Reconnecting…';
-    case 'failed':
-      switch (s.error()) {
-        case 'room_full':
-          return `This room is full (${MAX_PEERS} people)`;
-        case 'outdated':
-          return 'zoom3d was updated: reload the page';
-        default:
-          return "Couldn't join this room";
-      }
-  }
 }
 
 // Dev-only inspection hook for manual checks and e2e tests.
@@ -680,62 +640,7 @@ if (import.meta.env.DEV) {
   });
 }
 
-const sprites: Sprite[] = [];
-const others: (AutomapPeer & { mic: boolean })[] = [];
-const sample = { x: 0, y: 0, angle: 0 };
-const colors = new Map<string, number>();
-const positions = new Map<string, { x: number; y: number }>();
-/** Each world object's interpolated pose, by objectKey(id); the same objects are in `positions`, for the audio. */
-const objectPoses = new Map<string, PlayerState>();
-/** Voxel objects to draw this frame (reused instances). */
-const voxels: VoxelInstance[] = [];
-const selfBob = createBob();
-const peerBobs = new Map<string, Bob>();
-
-/** Samples every peer's and object's interpolated position into `positions` (reused objects). */
-function refreshPositions(s: Session, now: number): void {
-  // Objects come every tick; each peer is drawn as late as its updates need (6d spec §2.3).
-  const renderTime = now - INTERP_DELAY_MS;
-  for (const key of objectPoses.keys()) {
-    if (!s.objects.has(key.slice('object:'.length))) {
-      objectPoses.delete(key);
-    }
-  }
-  for (const id of positions.keys()) {
-    if (!s.peers.has(id) && !objectPoses.has(id)) {
-      positions.delete(id);
-    }
-  }
-  for (const obj of s.objects.values()) {
-    if (!obj.buffer.sample(renderTime, sample)) {
-      continue;
-    }
-    const key = objectKey(obj.info.id);
-    const pose = objectPoses.get(key);
-    if (pose) {
-      pose.x = sample.x;
-      pose.y = sample.y;
-      pose.angle = sample.angle;
-    } else {
-      const fresh = { x: sample.x, y: sample.y, angle: sample.angle };
-      objectPoses.set(key, fresh);
-      positions.set(key, fresh);
-    }
-  }
-  for (const peer of s.peers.values()) {
-    const delay = peer.delay.update(now, nearTier(player.x, player.y, peer.info.x, peer.info.y));
-    if (!peer.buffer.sample(now - delay, sample)) {
-      continue;
-    }
-    const pos = positions.get(peer.info.id);
-    if (pos) {
-      pos.x = sample.x;
-      pos.y = sample.y;
-    } else {
-      positions.set(peer.info.id, { x: sample.x, y: sample.y });
-    }
-  }
-}
+// Dynamic subscription.
 
 /** Per peer, what the last frame drew of them (written by renderSprites into reused objects). */
 const facts = new Map<string, PeerFacts>();
@@ -756,6 +661,7 @@ function updateInterest(s: Session, now: number, hidden: boolean): void {
     sentWants.clear();
   }
   const media = call;
+  const { positions } = world;
   for (const id of facts.keys()) {
     if (!positions.has(id)) {
       facts.delete(id);
@@ -792,6 +698,8 @@ function updateInterest(s: Session, now: number, hidden: boolean): void {
   }
 }
 
+// The room loop.
+
 // rAF stops while the tab is hidden: keep voices (and newcomers) audible from a timer meanwhile.
 startHiddenTicker(
   () => {
@@ -799,110 +707,63 @@ startHiddenTicker(
       return;
     }
     const now = performance.now();
-    refreshPositions(session, now);
-    objectSounds?.sync(session.objects, objectPoses, HIDDEN_TICK_MS / 1000);
-    audio?.update(now, player, positions);
+    world.sample(session, player, now);
+    objectSounds?.sync(session.objects, world.objectPoses, HIDDEN_TICK_MS / 1000);
+    audio?.update(now, player, world.positions);
     updateInterest(session, now, true);
   },
   () => document.hidden
 );
 
-/** Counts every drawn room frame and times its drawing; the backtick panel shows the rate and the render time. */
-const frameRateMeter = createFrameRateMeter();
-
 function frame(dt: number): void {
-  const mouseTurn = input.consumeMouseTurn();
-  if (inRoom()) {
-    player.angle += mouseTurn;
-    stepPlayer(map, player, input.state(), dt, player);
-    selfBob.update(player.x, player.y, dt);
-  }
-
-  sprites.length = 0;
-  others.length = 0;
-  call?.update(performance.now());
+  stepSelf(dt);
+  const now = performance.now();
+  call?.update(now);
   if (session) {
-    const now = performance.now();
-    refreshPositions(session, now);
-    for (const id of peerBobs.keys()) {
-      if (!positions.has(id)) {
-        peerBobs.delete(id);
-      }
-    }
-    for (const peer of session.peers.values()) {
-      const pos = positions.get(peer.info.id);
-      if (!pos) {
-        continue;
-      }
-      let bob = peerBobs.get(peer.info.id);
-      if (!bob) {
-        bob = createBob();
-        peerBobs.set(peer.info.id, bob);
-      }
-      bob.update(pos.x, pos.y, dt);
-      let color = colors.get(peer.info.color);
-      if (color === undefined) {
-        color = hexToRgb(peer.info.color);
-        colors.set(peer.info.color, color);
-      }
-      const gesture = peer.gesture;
-      // cheersPose returns a reused object: read it before the next call.
-      const raised = gesture?.kind === 'cheers' ? cheersPose(now - gesture.at) : null;
-      sprites.push({
-        key: peer.info.id,
-        x: pos.x,
-        y: pos.y,
-        color,
-        face: call?.faceOf(peer.info.id) ?? null,
-        speaking: audio?.speaking(peer.info.id) ?? 0,
-        bob: bob.lift,
-        itemBob: bob.itemLift,
-        sip: gesture?.kind === 'sip' ? sipPose(now - gesture.at) : 0,
-        cheers: raised ? raised.lift : 0,
-        wobble: raised ? raised.wobble : 0,
-        held: peer.info.held,
-        boombox: peer.info.boombox,
-      });
-      others.push({
-        x: pos.x,
-        y: pos.y,
-        color: peer.info.color,
-        name: peer.info.name,
-        mic: peer.info.mic,
-      });
-    }
-    let n = 0;
-    for (const pose of objectPoses.values()) {
-      const v = voxels[n] ?? { model: VACUUM_MODEL, x: 0, y: 0, angle: 0 };
-      v.x = pose.x;
-      v.y = pose.y;
-      v.angle = pose.angle;
-      voxels[n++] = v;
-    }
-    voxels.length = n;
-    objectSounds?.sync(session.objects, objectPoses, dt);
-    setStatus(statusText(session));
-    // Bots count too: the client can't tell them from people.
-    setPeopleCount(session.status() === 'open' ? session.peers.size + 1 : null);
-    audio?.update(now, player, positions);
+    updateWorld(session, now, dt);
   }
-
-  // Drawing starts here: the glows, walls, sprites, your own items, the canvas and the HUD.
   const drawStart = performance.now();
-  // Your own face glows around you too: its camera colour, else your ring colour.
-  const selfColor = session?.selfColor();
-  if (selfColor) {
-    selfDisc.x = player.x;
-    selfDisc.y = player.y;
-    selfDisc.color = ownGlowColour(performance.now()) ?? hexToRgb(selfColor);
+  drawView();
+  gameCtx.putImageData(image, 0, 0);
+  drawHud();
+  const drawnAt = performance.now();
+  // dt comes from rAF's timestamps, which fall on the screen's refreshes.
+  frameRateMeter.frame(drawnAt, dt * 1000, drawnAt - drawStart);
+}
+
+/** Your own move this frame: the mouse or drag turn, keys or pad, and your walking bob. */
+function stepSelf(dt: number): void {
+  // Consumed outside the room too, so a turn made before it doesn't land on the first frame in it.
+  const mouseTurn = input.consumeMouseTurn();
+  if (!inRoom()) {
+    return;
   }
-  const glows = avatarGlows.update(sprites, selfColor ? selfDisc : null);
+  player.angle += mouseTurn;
+  stepPlayer(map, player, input.state(), dt, player);
+  selfBob.update(player.x, player.y, dt);
+}
+
+/** Everyone else and the world objects this frame, their sounds, and the room's status line and head count. */
+function updateWorld(s: Session, now: number, dt: number): void {
+  world.sample(s, player, now);
+  world.collect(s, peerMedia, now, dt);
+  objectSounds?.sync(s.objects, world.objectPoses, dt);
+  setStatus(statusText(s.status(), s.error()));
+  // Bots count too: the client can't tell them from people.
+  setPeopleCount(s.status() === 'open' ? s.peers.size + 1 : null);
+  audio?.update(now, player, world.positions);
+}
+
+/** The view into the framebuffer: walls lit by lamps and glows, the people and objects, then what you hold. */
+function drawView(): void {
+  const glows = avatarGlows.update(world.sprites, ownDisc());
   // The console's lighting mode; flat is drawn unlit, as with `?lights=off`.
   const reflections = litReflections(renderSettings.mode);
   const lighting = reflections === null ? null : roomLighting();
   renderWalls(fb, map, player, textures, lighting, reflections ?? 'none', glows);
-  renderSprites(fb, player, sprites, facts, session ? voxels : undefined, lighting);
+  renderSprites(fb, player, world.sprites, facts, world.voxels, lighting);
   if (session) {
+    // After the sprites: it reads what they drew of each peer.
     updateInterest(session, performance.now(), document.hidden);
   }
   if (inRoom()) {
@@ -910,16 +771,30 @@ function frame(dt: number): void {
     renderOwnBoombox(fb, ownBoombox, selfBob.itemLift, selfBob.sway);
     renderOwnHeld(fb, ownHeld, selfBob.itemLift, selfBob.sway, ownGesture.pose(performance.now()));
   }
-  gameCtx.putImageData(image, 0, 0);
-  hudCtx.clearRect(0, 0, hud.width, hud.height);
-  drawLabels(hudCtx, fb, player, others, hud.width, hud.height);
-  if (automapVisible) {
-    drawAutomap(hudCtx, map, player, hud.width, hud.height, others);
-  }
-  const drawnAt = performance.now();
-  // dt comes from rAF's timestamps, which fall on the screen's refreshes.
-  frameRateMeter.frame(drawnAt, dt * 1000, drawnAt - drawStart);
 }
+
+/** Your own disc as a glow source: your camera's colour, else your ring's; null before a welcome gives you one. */
+function ownDisc(): GlowSource | null {
+  const color = session?.selfColor();
+  if (!color) {
+    return null;
+  }
+  selfDisc.x = player.x;
+  selfDisc.y = player.y;
+  selfDisc.color = ownGlowColour(performance.now()) ?? ringRgb(color);
+  return selfDisc;
+}
+
+/** Name labels, and the automap while it is open, over the view. */
+function drawHud(): void {
+  hudCtx.clearRect(0, 0, hud.width, hud.height);
+  drawLabels(hudCtx, fb, player, world.labels, hud.width, hud.height);
+  if (automapVisible) {
+    drawAutomap(hudCtx, map, player, hud.width, hud.height, world.labels);
+  }
+}
+
+// Stills and the landing show.
 
 /** One still from the renderer: the title picture on the landing page, the same corridor without the title behind
  * the lobby. The room loop starts on Join. */
@@ -934,8 +809,8 @@ function drawStill(logo: boolean): void {
 }
 
 /**
- * The landing show (landing vacuum spec §2): the title picture redrawn every frame with the robot vacuum, which comes
- * out after 10 s. Its own small loop, not the room loop, and no input reaches it.
+ * The landing show (landing vacuum spec §2): the title picture redrawn with the robot vacuum, which comes out after
+ * 10 s. Its own small loop, not the room loop, and no input reaches it.
  */
 function startLandingShow(): void {
   const show = createLandingShow();

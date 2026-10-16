@@ -72,6 +72,16 @@ export interface GestureClock {
 
 const durationOf = (kind: Gesture) => (kind === 'sip' ? SIP_MS : CHEERS_MS);
 
+/** Writes the pose of gesture `kind` (null for none) `elapsedMs` after it started into `out`, and returns `out`. */
+export function gesturePose(kind: Gesture | null, elapsedMs: number, out: HeldPose): HeldPose {
+  out.sip = kind === 'sip' ? sipPose(elapsedMs) : 0;
+  // cheersPose returns a reused object: read it before the next call.
+  const raised = kind === 'cheers' ? cheersPose(elapsedMs) : null;
+  out.cheers = raised ? raised.lift : 0;
+  out.wobble = raised ? raised.wobble : 0;
+  return out;
+}
+
 export function createGestureClock(): GestureClock {
   let kind: Gesture = 'sip';
   let startedAt = Number.NEGATIVE_INFINITY;
@@ -90,13 +100,6 @@ export function createGestureClock(): GestureClock {
       startedAt = Number.NEGATIVE_INFINITY;
     },
     kind: (now) => (playing(now) ? kind : null),
-    pose(now) {
-      const elapsed = now - startedAt;
-      pose.sip = kind === 'sip' ? sipPose(elapsed) : 0;
-      const c = kind === 'cheers' ? cheersPose(elapsed) : null;
-      pose.cheers = c ? c.lift : 0;
-      pose.wobble = c ? c.wobble : 0;
-      return pose;
-    },
+    pose: (now) => gesturePose(kind, now - startedAt, pose),
   };
 }

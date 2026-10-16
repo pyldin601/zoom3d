@@ -1,0 +1,155 @@
+import { type ObjectInfo, type PeerInfo, SnapshotBuffer } from '@zoom3d/shared';
+import { beforeEach, describe, expect, test } from 'vitest';
+import { PeerDelay } from '../net/peer-delay';
+import { objectKey, type RemoteObject, type RemotePeer, type Session } from '../net/session';
+import { hexToRgb } from '../renderer/sprites';
+import { createRemoteWorld, type PeerMedia } from './remote-world';
+
+const NOW = 10_000;
+const player = { x: 0, y: 0 };
+const FACE = new Uint32Array(4);
+const media: PeerMedia = { faceOf: (id) => (id === 'ada' ? FACE : null), speaking: (id) => (id === 'ada' ? 0.5 : 0) };
+
+const info = (id: string, x: number, y: number): PeerInfo => ({
+  id,
+  slot: 0,
+  name: id,
+  color: '#ff0000',
+  x,
+  y,
+  angle: 0,
+  cam: true,
+  mic: id !== 'bob',
+  avatar: null,
+  held: 'beer',
+  boombox: false,
+});
+
+/** A session whose peers and objects stand still where given. */
+function fakeSession() {
+  const peers = new Map<string, RemotePeer>();
+  const objects = new Map<string, RemoteObject>();
+  const standing = (x: number, y: number, angle = 0) => {
+    const buffer = new SnapshotBuffer();
+    buffer.push({ t: 0, x, y, angle });
+    return buffer;
+  };
+  return {
+    session: { peers, objects } as unknown as Session,
+    addPeer(id: string, x: number, y: number) {
+      peers.set(id, { info: info(id, x, y), buffer: standing(x, y), delay: new PeerDelay(), gesture: null });
+    },
+    addObject(id: string, x: number, y: number, angle: number) {
+      const objectInfo = { id, kind: 'vacuum', x, y, angle } as unknown as ObjectInfo;
+      objects.set(id, { info: objectInfo, buffer: standing(x, y, angle), lastSeq: 0 });
+    },
+    peers,
+    objects,
+  };
+}
+
+let room: ReturnType<typeof fakeSession>;
+beforeEach(() => {
+  room = fakeSession();
+});
+
+describe('sample', () => {
+  test('places every peer, by id, and every object, by objectKey', () => {
+    const world = createRemoteWorld();
+    room.addPeer('ada', 2, 3);
+    room.addObject('v1', 4, 5, 1);
+    world.sample(room.session, player, NOW);
+    expect(world.positions.get('ada')).toEqual({ x: 2, y: 3 });
+    expect(world.positions.get(objectKey('v1'))).toEqual({ x: 4, y: 5, angle: 1 });
+    expect(world.objectPoses.get(objectKey('v1'))).toBe(world.positions.get(objectKey('v1')));
+  });
+
+  test('forgets peers and objects the session no longer has', () => {
+    const world = createRemoteWorld();
+    room.addPeer('ada', 2, 3);
+    room.addObject('v1', 4, 5, 1);
+    world.sample(room.session, player, NOW);
+    room.peers.delete('ada');
+    room.objects.delete('v1');
+    world.sample(room.session, player, NOW);
+    expect(world.positions.size).toBe(0);
+    expect(world.objectPoses.size).toBe(0);
+  });
+
+  test('moves the same position objects from sample to sample', () => {
+    const world = createRemoteWorld();
+    room.addPeer('ada', 2, 3);
+    world.sample(room.session, player, NOW);
+    const first = world.positions.get('ada');
+    room.peers.get('ada')?.buffer.push({ t: NOW, x: 6, y: 3, angle: 0 });
+    world.sample(room.session, player, NOW + 1000);
+    expect(world.positions.get('ada')).toBe(first);
+    expect(first).toEqual({ x: 6, y: 3 });
+  });
+});
+
+describe('collect', () => {
+  test('one disc and one label per placed peer, with their face, ring, voice and drink', () => {
+    const world = createRemoteWorld();
+    room.addPeer('ada', 2, 3);
+    room.addPeer('bob', 7, 1);
+    world.sample(room.session, player, NOW);
+    world.collect(room.session, media, NOW, 0);
+    expect(world.sprites.map((s) => [s.key, s.x, s.y])).toEqual([
+      ['ada', 2, 3],
+      ['bob', 7, 1],
+    ]);
+    expect(world.sprites.at(0)).toMatchObject({ face: FACE, speaking: 0.5, color: hexToRgb('#ff0000'), held: 'beer' });
+    expect(world.sprites.at(1)).toMatchObject({ face: null, speaking: 0 });
+    expect(world.labels).toEqual([
+      { x: 2, y: 3, color: '#ff0000', name: 'ada', mic: true },
+      { x: 7, y: 1, color: '#ff0000', name: 'bob', mic: false },
+    ]);
+  });
+
+  test("a peer's sip or cheers shows on their disc", () => {
+    const world = createRemoteWorld();
+    room.addPeer('ada', 2, 3);
+    const ada = room.peers.get('ada') as RemotePeer;
+    ada.gesture = { kind: 'cheers', at: NOW - 1000 };
+    world.sample(room.session, player, NOW);
+    world.collect(room.session, media, NOW, 0);
+    expect(world.sprites.at(0)).toMatchObject({ sip: 0, cheers: 1 });
+    ada.gesture = { kind: 'sip', at: NOW - 1000 };
+    world.collect(room.session, media, NOW, 0);
+    expect(world.sprites.at(0)).toMatchObject({ sip: 1, cheers: 0, wobble: 0 });
+  });
+
+  test('frames reuse the same disc and label objects', () => {
+    const world = createRemoteWorld();
+    room.addPeer('ada', 2, 3);
+    world.sample(room.session, player, NOW);
+    world.collect(room.session, media, NOW, 0);
+    const [sprite, label] = [world.sprites.at(0), world.labels.at(0)];
+    world.collect(room.session, media, NOW + 16, 0.016);
+    expect(world.sprites.at(0)).toBe(sprite);
+    expect(world.labels.at(0)).toBe(label);
+  });
+
+  test('a peer who left is gone from the discs and labels', () => {
+    const world = createRemoteWorld();
+    room.addPeer('ada', 2, 3);
+    room.addPeer('bob', 7, 1);
+    world.sample(room.session, player, NOW);
+    world.collect(room.session, media, NOW, 0);
+    room.peers.delete('ada');
+    world.sample(room.session, player, NOW);
+    world.collect(room.session, media, NOW, 0);
+    expect(world.sprites.map((s) => s.key)).toEqual(['bob']);
+    expect(world.labels.map((l) => l.name)).toEqual(['bob']);
+  });
+
+  test('one voxel model per object, at its pose', () => {
+    const world = createRemoteWorld();
+    room.addObject('v1', 4, 5, 1);
+    world.sample(room.session, player, NOW);
+    world.collect(room.session, media, NOW, 0);
+    expect(world.voxels).toHaveLength(1);
+    expect(world.voxels.at(0)).toMatchObject({ x: 4, y: 5, angle: 1 });
+  });
+});
