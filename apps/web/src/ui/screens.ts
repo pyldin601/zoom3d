@@ -1,6 +1,6 @@
 // DOM screens and overlays inside the stage. User-provided text only ever goes through textContent.
 import { initials } from '../media/faces';
-import { deviceIcon } from './icons';
+import { deviceIcon, peopleIcon } from './icons';
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -63,6 +63,22 @@ export function showStatus(root: HTMLElement, text: string | null): void {
     return;
   }
   slot(root, 'status').textContent = text;
+}
+
+/** The room's people count, top right: everyone in the room, you included. null removes it. */
+export function showPeopleCount(root: HTMLElement, count: number | null): void {
+  if (count === null) {
+    root.querySelector(':scope > .people')?.remove();
+    return;
+  }
+  const box = slot(root, 'people');
+  let number = box.querySelector('span');
+  if (!number) {
+    number = el('span');
+    box.append(peopleIcon(), number);
+  }
+  number.textContent = String(count);
+  box.title = `${count} ${count === 1 ? 'person' : 'people'} in the room`;
 }
 
 export interface MediaControls {

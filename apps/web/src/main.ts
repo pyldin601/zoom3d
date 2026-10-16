@@ -14,8 +14,8 @@ import { preferPlayAndRecord } from './audio/audio-session';
 import { createDoorbell, withDoorbell } from './audio/doorbell';
 import { type AudioEngine, createAudioEngine } from './audio/engine';
 import { createObjectSounds, type ObjectSounds } from './audio/object-sounds';
-import { loadAudioSettings, saveAudioSettings } from './audio/settings-store';
 import { HIDDEN_TICK_MS, startHiddenTicker } from './audio/ticker';
+import { createFrameRateMeter } from './game/frame-rate';
 import { startLoop } from './game/loop';
 import { type Frame, layoutStage, watchLayout } from './game/stage';
 import { createInput } from './input/keyboard';
@@ -71,6 +71,7 @@ import {
   showLanding,
   showMediaControls,
   showNotice,
+  showPeopleCount,
   showSelfPreview,
   showStatus,
 } from './ui/screens';
@@ -252,23 +253,17 @@ function boomboxControls(): BoomboxPanelOptions | null {
 }
 
 function toggleAudioPanel(): void {
-  const engine = audio;
-  audioPanelVisible = !audioPanelVisible && engine !== null;
-  if (!audioPanelVisible || !engine) {
+  audioPanelVisible = !audioPanelVisible;
+  if (!audioPanelVisible) {
     showAudioPanel(ui, null);
     return;
   }
+  // The panel is worked with the mouse: let go of mouse-look. A click on the view locks it again.
+  if (document.pointerLockElement) {
+    document.exitPointerLock();
+  }
   showAudioPanel(ui, {
-    settings: engine.settings(),
-    onChange(s) {
-      engine.setSettings(s);
-      saveAudioSettings(storage(), s);
-    },
-    levels: () =>
-      [...(session?.peers.values() ?? [])].map((p) => ({
-        name: p.info.name,
-        speaking: engine.speaking(p.info.id),
-      })),
+    frameRate: frameRateMeter.fps,
     render: {
       settings: renderSettings,
       onChange(s) {
@@ -456,6 +451,15 @@ function setStatus(text: string | null): void {
   shownStatus = text;
 }
 
+let shownPeople: number | null = null;
+function setPeopleCount(count: number | null): void {
+  if (count === shownPeople) {
+    return;
+  }
+  showPeopleCount(ui, count);
+  shownPeople = count;
+}
+
 function joinRoom(
   roomId: string,
   name: string,
@@ -463,7 +467,7 @@ function joinRoom(
   local: LocalMediaController,
   audioCtx: AudioContext
 ): void {
-  audio = createAudioEngine({ ctx: audioCtx, map, settings: loadAudioSettings(storage()) });
+  audio = createAudioEngine({ ctx: audioCtx, map });
   const sounds = createObjectSounds(audioCtx, audio);
   objectSounds = sounds;
   saveName(name);
@@ -800,7 +804,11 @@ startHiddenTicker(
   () => document.hidden
 );
 
+/** Counts every drawn room frame; the backtick panel shows the rate. */
+const frameRateMeter = createFrameRateMeter();
+
 function frame(dt: number): void {
+  frameRateMeter.frame(performance.now());
   const mouseTurn = input.consumeMouseTurn();
   if (inRoom()) {
     player.angle += mouseTurn;
@@ -872,6 +880,8 @@ function frame(dt: number): void {
     voxels.length = n;
     objectSounds?.sync(session.objects, objectPoses, dt);
     setStatus(statusText(session));
+    // Bots count too: the client can't tell them from people.
+    setPeopleCount(session.status() === 'open' ? session.peers.size + 1 : null);
     audio?.update(now, player, positions);
   }
 

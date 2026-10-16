@@ -41,6 +41,9 @@
       #ui a { color: #8cf; display: inline-block; margin-top: 0.6em; }
       #ui .error { color: #f88; min-height: 1.2em; margin: 0.5em 0 0; }
       #ui .status { position: absolute; top: 40%; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.75); padding: 0.4em 1em; }
+      /* The room's people count, top right: the one thing always on over the view (decided 2026-10-16). */
+      #ui .people { position: absolute; top: 0.6em; right: 0.6em; display: flex; align-items: center; gap: 0.3em; padding: 0.15em 0.5em; background: rgba(0, 0, 0, 0.55); border-radius: 0.25em; font-size: 0.75em; font-variant-numeric: tabular-nums; }
+      #ui .people svg { width: 1.2em; height: 1.2em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
       #ui .banner { position: absolute; bottom: 0.6em; left: 50%; transform: translateX(-50%); background: rgba(80, 40, 0, 0.85); padding: 0.4em 1em; font-size: 0.75em; }
       #ui .avatar { flex: none; width: 3.5em; height: 3.5em; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: #444; font-weight: bold; font-size: 1.2em; }
       #ui .avatar img { width: 100%; height: 100%; object-fit: cover; }
@@ -106,18 +109,28 @@
       #ui .selfview .face { width: 100%; height: 100%; display: grid; place-items: center; background: #444; font-weight: bold; font-size: 1.3em; }
       #ui .selfview .face img { width: 100%; height: 100%; object-fit: cover; }
       #ui .selfview .face[hidden] { display: none; }
-      #ui .audio-panel { position: absolute; top: 2.2em; left: 0.6em; display: flex; gap: 1.2em; align-items: flex-start; pointer-events: auto; background: rgba(15, 15, 15, 0.92); border: 0.1em solid #555; padding: 0.6em 0.8em; font-size: 0.6em; }
-      #ui .audio-panel h2 { margin: 0 0 0.5em; font-size: 1.1em; }
-      #ui .audio-panel .tuning { width: 16em; }
-      #ui .audio-panel .boombox-slot { width: 14em; }
+      /* The backtick panel (frame rate, renderer, boombox): the lobby's dark controls, small uppercase section labels, and
+         the frame rate as a big coloured number. color-scheme makes the native select and sliders dark too. */
+      #ui .audio-panel { position: absolute; top: 0.6em; left: 0.6em; display: flex; gap: 1em; align-items: stretch; pointer-events: auto; color: #ddd; background: rgba(15, 15, 15, 0.94); border: 0.06em solid #555; border-radius: 0.35em; padding: 0.8em 0.9em; font-size: 0.6em; line-height: 1.3; color-scheme: dark; accent-color: #6aa8ff; }
+      #ui .audio-panel h2 { margin: 0 0 0.6em; color: #888; font-size: 0.8em; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+      #ui .audio-panel .frame-rate + h2 { margin-top: 0.8em; padding-top: 0.8em; border-top: 0.06em solid #333; }
+      #ui .audio-panel .renderer { min-width: 12em; }
+      #ui .audio-panel .boombox-slot { width: 14em; padding-left: 1em; border-left: 0.06em solid #333; }
       #ui .audio-panel .boombox-slot:empty { display: none; }
-      #ui .audio-panel label { display: grid; grid-template-columns: 1fr; margin-bottom: 0.4em; }
-      #ui .audio-panel input[type=range] { width: 100%; margin: 0.2em 0 0; padding: 0; }
-      #ui .audio-panel .value { opacity: 0.75; }
-      #ui .audio-panel .levels { list-style: none; padding: 0; margin: 0.6em 0 0; }
-      #ui .audio-panel .levels li { display: grid; grid-template-columns: 6em 1fr; align-items: center; gap: 0.4em; }
-      #ui .audio-panel .bar { height: 0.5em; background: #6c6; }
-      #ui .boombox-panel .title { margin-bottom: 0.4em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #ui .audio-panel label { display: grid; grid-template-columns: 1fr; gap: 0.3em; margin-bottom: 0.7em; color: #aaa; }
+      #ui .audio-panel label:last-child { margin-bottom: 0; }
+      #ui .audio-panel select { width: 100%; padding: 0.3em 0.4em; color: #eee; background: #0f0f0f; border: 0.06em solid #555; border-radius: 0.25em; outline: none; }
+      #ui .audio-panel select:focus-visible { border-color: #6aa8ff; }
+      #ui .audio-panel input[type=range] { width: 100%; margin: 0; padding: 0; }
+      #ui .audio-panel .value { color: #888; font-variant-numeric: tabular-nums; }
+      #ui .audio-panel .frame-rate { display: flex; justify-content: space-between; align-items: baseline; gap: 1em; color: #aaa; }
+      #ui .audio-panel .frame-rate span { color: #eee; font-size: 1.4em; font-weight: 600; font-variant-numeric: tabular-nums; }
+      #ui .audio-panel .frame-rate .good { color: #6c6; }
+      #ui .audio-panel .frame-rate .fair { color: #eb4; }
+      #ui .audio-panel .frame-rate .poor { color: #f77; }
+      #ui .boombox-panel .title { margin-bottom: 0.7em; color: #eee; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #ui .boombox-panel .stop { width: 100%; padding: 0.35em; color: #ddd; background: #2e2e2e; border: 0.06em solid #555; border-radius: 0.25em; }
+      #ui .boombox-panel .stop:hover { background: #3a3a3a; }
       /* visibility:hidden, not opacity: a visible playing <video> makes Chrome pace the page to the
          video's 30 fps. Hidden elements keep decoding, firing requestVideoFrameCallback and feeding Web Audio. */
       /* Touch mode (mobile spec §2.4): no page gestures on the stage, readable inputs (iOS zooms below 16 px), and room
@@ -127,6 +140,7 @@
       html.touch #ui .selfview { right: calc(0.6em + env(safe-area-inset-right)); bottom: calc(0.6em + env(safe-area-inset-bottom)); }
       html.touch #ui .mic-toggle { right: calc(5.6em + env(safe-area-inset-right)); bottom: calc(0.6em + env(safe-area-inset-bottom)); width: max(44px, 2.2em); height: max(44px, 2.2em); }
       html.touch #ui .banner { bottom: calc(0.6em + env(safe-area-inset-bottom)); }
+      html.touch #ui .people { top: calc(0.6em + env(safe-area-inset-top)); right: calc(0.6em + env(safe-area-inset-right)); }
       html.touch #ui .status, html.touch #ui .banner { max-width: calc(100% - 32px); box-sizing: border-box; text-align: center; }
       /* Touch landing and lobby (mobile spec §3): the panel spans the bottom under the centred title, tap targets are
          at least 44 px, and the picture menu opens below the disc instead of off the right edge. */

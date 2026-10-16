@@ -99,16 +99,6 @@ describe('createAudioEngine', () => {
     expect(ctx.byKind('source').every((n) => n.disconnected)).toBe(true);
   });
 
-  test('settings change panning and reverb level', () => {
-    const e = engine();
-    e.attach('b', stream());
-    e.setSettings({ ...DEFAULT_AUDIO_SETTINGS, panning: 'equalpower', reverb: 0 });
-    expect(one('panner').panningModel).toBe('equalpower');
-    const reverbGain = ctx.byKind('gain').find((g) => g.connections[0] === ctx.destination);
-    expect((reverbGain?.gain as FakeParam | undefined)?.last?.[0]).toBe(0);
-    expect(e.settings().panning).toBe('equalpower');
-  });
-
   test('a suspended context never makes update throw, and resume resumes it', async () => {
     ctx.state = 'suspended';
     const e = engine();

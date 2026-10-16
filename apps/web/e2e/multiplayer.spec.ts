@@ -22,11 +22,14 @@ test('two people see each other, movement syncs, and leaving is noticed', async 
   const b = await bContext.newPage();
 
   const url = await createAndJoin(a, 'Ada');
+  await expect(a.getByTitle('1 person in the room')).toHaveText('1');
   await b.goto(url);
   await joinAs(b, 'Bob');
 
   await expect.poll(() => peerNames(a), { timeout: 5000 }).toEqual(['Bob']);
   await expect.poll(() => peerNames(b), { timeout: 5000 }).toEqual(['Ada']);
+  await expect(a.getByTitle('2 people in the room')).toHaveText('2');
+  await expect(b.getByTitle('2 people in the room')).toHaveText('2');
 
   // Step Bob 0.4 tiles onto a free tile (inside the server's per-update slack).
   const target = await b.evaluate(() => {
@@ -62,6 +65,7 @@ test('two people see each other, movement syncs, and leaving is noticed', async 
 
   await bContext.close();
   await expect.poll(() => peerNames(a), { timeout: 4000 }).toEqual([]);
+  await expect(a.getByTitle('1 person in the room')).toHaveText('1');
 });
 
 test('a malformed room link shows a notice', async ({ page }) => {

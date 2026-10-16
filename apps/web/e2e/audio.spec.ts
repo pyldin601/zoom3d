@@ -45,12 +45,3 @@ test('voices flow into the spatial engine and remote elements stay muted', async
   const elements = a.locator('#media video, #media audio');
   expect(await elements.evaluateAll((els) => els.every((el) => (el as HTMLMediaElement).muted))).toBe(true);
 });
-
-test('the backquote key toggles the audio tuning panel in a room', async ({ page }) => {
-  await createAndJoin(page, 'Ada');
-  await page.locator('#stage').click();
-  await page.keyboard.press('Backquote');
-  await expect(page.getByText('Silent beyond')).toBeVisible();
-  await page.keyboard.press('Backquote');
-  await expect(page.getByText('Silent beyond')).toHaveCount(0);
-});
