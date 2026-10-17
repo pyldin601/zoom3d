@@ -47,7 +47,7 @@ export function renderView(fb: Framebuffer, scene: RoomScene, seen?: Map<string,
 export function renderHud(hud: CanvasRenderingContext2D, fb: Framebuffer, scene: RoomScene, showMap: boolean): void {
   const { width, height } = hud.canvas;
   hud.clearRect(0, 0, width, height);
-  drawLabels(hud, fb, scene.eye, scene.labels, width, height);
+  drawLabels(hud, fb, scene.eye, scene.labels);
   if (showMap) {
     drawAutomap(hud, scene.map, scene.eye, width, height, scene.labels);
   }
