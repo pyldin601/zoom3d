@@ -1,12 +1,12 @@
 // Glue between the session (presence) and media: the LiveKit transport, remote elements, faces.
-import { avatarPath, type PeerInfo } from '@zoom3d/shared';
+import { avatarPath, type LiveKitAccess, type PeerInfo } from '@zoom3d/shared';
 import type { AudioEngine } from '../audio/engine';
 import type { Session, SessionListener } from '../net/session';
 import type { createFace as CreateFace, FaceSource } from './faces';
 import { WANT_NONE, type Want } from './interest';
 import type { LocalMediaController } from './local-media';
 import type { RemoteMedia } from './remote-media';
-import type { FacesSent, MediaTransport, TransportOptions } from './transport';
+import { type FacesSent, type MediaTransport, NO_FACES_SENT, type TransportOptions } from './transport';
 
 export interface Call {
   /** Pass to createSession, then call attach() with the session. */
@@ -57,8 +57,9 @@ export const voiceKey = (peerId: string) => `voice:${peerId}`;
 export function createCall(opts: CallOptions): Call {
   const { local, remote } = opts;
   const faces = new Map<string, FaceSource>();
-  const wants = new Map<string, Want>();
-  const state = { cam: local.state().cam, mic: local.state().mic };
+  const wantedFrom = new Map<string, Want>();
+  /** Our camera and mic as last told to the session. */
+  const ourMedia = { cam: local.state().cam, mic: local.state().mic };
   let session: Session | null = null;
   let transport: MediaTransport | null = null;
   let boomboxTrack: MediaStreamTrack | null = null;
@@ -96,35 +97,41 @@ export function createCall(opts: CallOptions): Call {
   };
 
   const ensureFace = (peer: PeerInfo) => {
-    let face = faces.get(peer.id);
-    if (!face) {
-      face = opts.createFace({
-        name: peer.name,
-        color: peer.color,
-        avatar: peer.avatar === null ? null : avatarPath(peer.avatar),
-        document: opts.document,
-      });
-      faces.set(peer.id, face);
-      const want = wants.get(peer.id);
-      if (want) {
-        face.setPaused(want.video === 'off');
-      }
-      const pending = early.get(peer.id);
-      early.delete(peer.id);
-      if (pending?.stream) {
-        applyStream(peer.id, pending.stream);
-      }
-      if (pending?.voice) {
-        applyVoice(peer.id, pending.voice);
-      }
-      if (pending?.boombox) {
-        applyBoombox(peer.id, pending.boombox);
-      }
-    }
+    const face = faces.get(peer.id) ?? createPeerFace(peer);
     face.setCam(peer.cam);
   };
 
-  const drop = (peerId: string) => {
+  const createPeerFace = (peer: PeerInfo): FaceSource => {
+    const face = opts.createFace({
+      name: peer.name,
+      color: peer.color,
+      avatar: peer.avatar === null ? null : avatarPath(peer.avatar),
+      document: opts.document,
+    });
+    faces.set(peer.id, face);
+    const want = wantedFrom.get(peer.id);
+    if (want) {
+      face.setPaused(want.video === 'off');
+    }
+    applyEarlyMedia(peer.id);
+    return face;
+  };
+
+  const applyEarlyMedia = (peerId: string) => {
+    const kept = early.get(peerId);
+    early.delete(peerId);
+    if (kept?.stream) {
+      applyStream(peerId, kept.stream);
+    }
+    if (kept?.voice) {
+      applyVoice(peerId, kept.voice);
+    }
+    if (kept?.boombox) {
+      applyBoombox(peerId, kept.boombox);
+    }
+  };
+
+  const forgetPeer = (peerId: string) => {
     // Gone from the game but maybe still in the media room (a dropped game connection): stop receiving them.
     transport?.setWanted(peerId, WANT_NONE);
     remote.detach(peerId);
@@ -135,10 +142,11 @@ export function createCall(opts: CallOptions): Call {
     faces.get(peerId)?.dispose();
     faces.delete(peerId);
     early.delete(peerId);
-    wants.delete(peerId);
+    wantedFrom.delete(peerId);
   };
 
-  const teardown = () => {
+  /** Closes the transport and forgets every peer's media. */
+  const closeTransport = () => {
     transport?.close();
     transport = null;
     early.clear();
@@ -153,11 +161,11 @@ export function createCall(opts: CallOptions): Call {
     faces.clear();
   };
 
-  const publish = () => session?.setMedia(state.cam, state.mic);
+  const tellSessionOurMedia = () => session?.setMedia(ourMedia.cam, ourMedia.mic);
 
   /** Picks up the controller's state, publishing only when it changed (a camera restart, an unplugged mic). */
   let micTrack = local.micTrack();
-  const sync = () => {
+  const followLocalMedia = () => {
     // A replaced mic (unplugged headset) must reach senders that already exist.
     const track = local.micTrack();
     if (track !== micTrack) {
@@ -167,54 +175,64 @@ export function createCall(opts: CallOptions): Call {
       }
     }
     const { cam, mic } = local.state();
-    if (cam !== state.cam || mic !== state.mic) {
-      state.cam = cam;
-      state.mic = mic;
-      publish();
+    if (cam !== ourMedia.cam || mic !== ourMedia.mic) {
+      ourMedia.cam = cam;
+      ourMedia.mic = mic;
+      tellSessionOurMedia();
     }
   };
-  const unsubscribe = local.subscribe(sync);
+  const unsubscribe = local.subscribe(followLocalMedia);
+
+  const openTransport = (livekit: LiveKitAccess) => {
+    closeTransport();
+    const opened = opts.createTransport({
+      url: livekit.url,
+      token: livekit.token,
+      localStream: local.stream,
+      onRemoteStream: (peerId, stream) =>
+        faces.has(peerId) ? applyStream(peerId, stream) : keepEarly(peerId, 'stream', stream),
+      onRemoteVoice: (peerId, stream) =>
+        faces.has(peerId) ? applyVoice(peerId, stream) : keepEarly(peerId, 'voice', stream),
+      onRemoteBoombox: (peerId, stream) =>
+        faces.has(peerId) ? applyBoombox(peerId, stream) : keepEarly(peerId, 'boombox', stream),
+    });
+    transport = opened;
+    opened.setBoomboxTrack(boomboxTrack);
+    // The tab may already be hidden, in which case peers get the raw camera track.
+    opened.setVideoTracks(framer.sendTracks());
+    for (const [id, want] of wantedFrom) {
+      opened.setWanted(id, want);
+    }
+  };
+
+  /** A face for everyone the session has, and none for anyone it doesn't. */
+  const matchFacesToPeers = () => {
+    const present = session?.peers ?? new Map();
+    for (const id of [...faces.keys()]) {
+      if (!present.has(id)) {
+        forgetPeer(id);
+      }
+    }
+    for (const peer of present.values()) {
+      ensureFace(peer.info);
+    }
+  };
 
   const listener: SessionListener = {
     welcome(_selfId, livekit, identityChanged) {
       // A resume keeps the transport (LiveKit reconnects by itself); only a new identity needs a new one.
       if (identityChanged || !transport) {
-        teardown();
-        transport = opts.createTransport({
-          url: livekit.url,
-          token: livekit.token,
-          localStream: local.stream,
-          onRemoteStream: (peerId, stream) =>
-            faces.has(peerId) ? applyStream(peerId, stream) : keepEarly(peerId, 'stream', stream),
-          onRemoteVoice: (peerId, stream) =>
-            faces.has(peerId) ? applyVoice(peerId, stream) : keepEarly(peerId, 'voice', stream),
-          onRemoteBoombox: (peerId, stream) =>
-            faces.has(peerId) ? applyBoombox(peerId, stream) : keepEarly(peerId, 'boombox', stream),
-        });
-        transport.setBoomboxTrack(boomboxTrack);
-        // The tab may already be hidden, in which case peers get the raw camera track.
-        transport.setVideoTracks(framer.sendTracks());
-        for (const [id, want] of wants) {
-          transport.setWanted(id, want);
-        }
+        openTransport(livekit);
       } else {
         // A resume's fresh token: LiveKit's own reconnects outlast the first one's 6 h.
         transport.setAccess(livekit);
       }
-      const present = session?.peers ?? new Map();
-      for (const id of [...faces.keys()]) {
-        if (!present.has(id)) {
-          drop(id);
-        }
-      }
-      for (const peer of present.values()) {
-        ensureFace(peer.info);
-      }
+      matchFacesToPeers();
     },
     peerJoined(peer) {
       ensureFace(peer);
     },
-    peerLeft: drop,
+    peerLeft: forgetPeer,
     peerMedia(id, cam) {
       faces.get(id)?.setCam(cam);
     },
@@ -224,15 +242,15 @@ export function createCall(opts: CallOptions): Call {
     listener,
     attach(s) {
       session = s;
-      publish();
+      tellSessionOurMedia();
     },
     faceOf: (id) => faces.get(id)?.texels ?? null,
     isLive: (id) => faces.get(id)?.live() ?? false,
     stats: async (id) => (transport ? transport.stats(id) : null),
-    sendingFaces: () => transport?.sendingFaces() ?? { 256: false, 128: false, 64: false },
+    sendingFaces: () => transport?.sendingFaces() ?? NO_FACES_SENT,
     publishes: (id) => transport?.publishes(id) ?? false,
     setWanted(peerId, want) {
-      wants.set(peerId, want);
+      wantedFrom.set(peerId, want);
       transport?.setWanted(peerId, want);
       faces.get(peerId)?.setPaused(want.video === 'off');
     },
@@ -242,15 +260,15 @@ export function createCall(opts: CallOptions): Call {
     },
     async setCam(on) {
       await local.setCam(on);
-      sync();
-      return state.cam;
+      followLocalMedia();
+      return ourMedia.cam;
     },
     setMic(on) {
       local.setMic(on);
-      sync();
-      return state.mic;
+      followLocalMedia();
+      return ourMedia.mic;
     },
-    localState: () => ({ ...state }),
+    localState: () => ({ ...ourMedia }),
     update(now) {
       for (const face of faces.values()) {
         face.update(now);
@@ -258,7 +276,7 @@ export function createCall(opts: CallOptions): Call {
     },
     dispose() {
       unsubscribe();
-      teardown();
+      closeTransport();
     },
   };
 }

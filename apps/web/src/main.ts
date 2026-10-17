@@ -15,6 +15,7 @@ import { createInput } from './input/keyboard';
 import { lockPointer } from './input/pointer-lock';
 import { createTouchInput } from './input/touch';
 import { saveAvatar } from './media/avatar';
+import { NO_FACES_SENT } from './media/transport';
 import { bakeRoomLightingOnce } from './renderer/room-lighting';
 import type { Gesture } from './renderer/sip';
 import { makeTextures } from './renderer/textures';
@@ -59,7 +60,7 @@ const backtickConsole = createBacktickConsole(page.ui, {
   panel: () => ({
     frameRate: frameRateMeter.fps,
     renderLoad: frameRateMeter.renderLoad,
-    facesSent: () => room?.call.sendingFaces() ?? { 256: false, 128: false, 64: false },
+    facesSent: () => room?.call.sendingFaces() ?? NO_FACES_SENT,
     render: {
       settings: renderSettings,
       onChange(s) {
