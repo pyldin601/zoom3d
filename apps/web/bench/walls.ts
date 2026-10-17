@@ -9,7 +9,7 @@ import { createFramebuffer } from '../src/renderer/framebuffer';
 import type { Glow } from '../src/renderer/glow';
 import { bakeLighting, corridorLights, type Lighting } from '../src/renderer/lighting';
 import { averageColour, makeTextures } from '../src/renderer/textures';
-import { CEILING, FLOOR, renderWalls } from '../src/renderer/walls';
+import { CEILING, FLOOR, type Room, renderWalls } from '../src/renderer/walls';
 
 /** Frames per mode per round, as multiples of the pose count, and rounds (the median is reported). */
 const FRAMES_PER_POSE = 2;
@@ -35,6 +35,8 @@ const bakeMs = performance.now() - bakeStart;
 const fb = createFramebuffer(640, 360);
 const poses = posesNearLamps();
 const crowd = crowdGlows();
+/** The room every frame draws, re-aimed and re-lit per frame: a new object per frame would count in the timings. */
+const room: Room = { map, textures, eye: { x: 0, y: 0, angle: 0 }, lighting: null };
 
 let pixelHash = 0;
 for (const mode of MODES) {
@@ -61,14 +63,19 @@ for (const mode of MODES) {
 }
 
 function draw(mode: Mode, p: Pose): void {
+  room.eye = p;
+  room.lighting = mode === 'unlit' ? null : lighting;
   if (mode === 'unlit') {
-    renderWalls(fb, map, p, textures);
+    renderWalls(fb, room);
   } else if (mode === 'both + glow') {
-    renderWalls(fb, map, p, textures, lighting, 'both', p.glows);
+    room.reflections = 'both';
+    renderWalls(fb, room, p.glows);
   } else if (mode === 'both + crowd') {
-    renderWalls(fb, map, p, textures, lighting, 'both', crowd);
+    room.reflections = 'both';
+    renderWalls(fb, room, crowd);
   } else {
-    renderWalls(fb, map, p, textures, lighting, mode);
+    room.reflections = mode;
+    renderWalls(fb, room);
   }
 }
 

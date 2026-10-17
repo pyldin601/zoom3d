@@ -5,7 +5,7 @@ import { MOUTH_Y_IN_CROP } from '../media/framing';
 import type { PeerFacts } from '../media/interest';
 import { BOOMBOX_LEFT, BOOMBOX_SPRITE, BOOMBOX_TOP } from './boombox';
 import { createView, setView } from './camera';
-import { createFramebuffer, DEFAULT_FOV, rgb, scaleRgb } from './framebuffer';
+import { createFramebuffer, DEFAULT_FOV, type Framebuffer, rgb, scaleRgb } from './framebuffer';
 import {
   CHEERS_LEFT,
   CHEERS_TOP,
@@ -30,6 +30,7 @@ import {
   renderSprites,
   SHADOW_LEVELS,
   SHADOW_RADIUS,
+  type Sprite,
 } from './sprites';
 import { makeTextures } from './textures';
 import { FLOOR, renderWalls } from './walls';
@@ -57,15 +58,18 @@ const BLUE = rgb(0, 0, 255);
 
 function frame(map = OPEN) {
   const fb = createFramebuffer();
-  renderWalls(fb, map, player, textures);
+  renderWalls(fb, { map, eye: player, textures, lighting: null });
   return fb;
 }
 const px = (fb: ReturnType<typeof frame>, x: number, y: number) => fb.pixels[y * fb.width + x];
+/** renderSprites of `people` seen by `player`, with no objects. */
+const drawPeople = (fb: Framebuffer, people: readonly Sprite[], facts?: Map<string, PeerFacts>) =>
+  renderSprites(fb, { eye: player, people, objects: [], lighting: null }, facts);
 
 describe('renderSprites', () => {
   test('a sprite straight ahead is drawn centred with diameter 2R·PROJ/depth', () => {
     const fb = frame();
-    renderSprites(fb, player, [
+    drawPeople(fb, [
       {
         x: 3.5,
         y: 4.5,
@@ -95,7 +99,7 @@ describe('renderSprites', () => {
 
   test('the outer ring is shaded', () => {
     const fb = frame();
-    renderSprites(fb, player, [
+    drawPeople(fb, [
       {
         x: 3.5,
         y: 4.5,
@@ -119,7 +123,7 @@ describe('renderSprites', () => {
   test('a sprite behind the camera draws nothing', () => {
     const fb = frame();
     const before = fb.pixels.slice();
-    renderSprites(fb, player, [
+    drawPeople(fb, [
       {
         x: 0.5,
         y: 4.5,
@@ -155,7 +159,7 @@ describe('renderSprites', () => {
     );
     const fb = frame(walled);
     const wallPixel = px(fb, 320, 180);
-    renderSprites(fb, player, [
+    drawPeople(fb, [
       {
         x: 5.5,
         y: 4.5,
@@ -177,7 +181,7 @@ describe('renderSprites', () => {
 
   test('the nearer of two overlapping sprites wins regardless of input order', () => {
     const fb = frame();
-    renderSprites(fb, player, [
+    drawPeople(fb, [
       {
         x: 3.5,
         y: 4.5,
@@ -258,7 +262,7 @@ describe('facts for dynamic subscription', () => {
 
   test('in open view: drawn columns and the projected size', () => {
     const facts = new Map<string, PeerFacts>();
-    renderSprites(frame(), player, [disc('a', 3.5, 4.5)], facts);
+    drawPeople(frame(), [disc('a', 3.5, 4.5)], facts);
     const size = (2 * AVATAR_RADIUS * PROJ) / 2;
     expect(facts.get('a')?.projectedSize).toBeCloseTo(size);
     expect(Math.abs((facts.get('a')?.drawnColumns ?? 0) - size)).toBeLessThanOrEqual(3);
@@ -266,15 +270,15 @@ describe('facts for dynamic subscription', () => {
 
   test('behind a wall: no columns', () => {
     const facts = new Map<string, PeerFacts>();
-    renderSprites(frame(WALLED), player, [disc('a', 5.5, 4.5)], facts);
+    drawPeople(frame(WALLED), [disc('a', 5.5, 4.5)], facts);
     expect(facts.get('a')?.drawnColumns).toBe(0);
   });
 
   test('half behind a corner: some columns', () => {
     const open = new Map<string, PeerFacts>();
-    renderSprites(frame(), player, [disc('a', 5.5, 3.6)], open);
+    drawPeople(frame(), [disc('a', 5.5, 3.6)], open);
     const corner = new Map<string, PeerFacts>();
-    renderSprites(frame(CORNER), player, [disc('a', 5.5, 3.6)], corner);
+    drawPeople(frame(CORNER), [disc('a', 5.5, 3.6)], corner);
     const columns = corner.get('a')?.drawnColumns ?? 0;
     expect(columns).toBeGreaterThan(0);
     expect(columns).toBeLessThan(open.get('a')?.drawnColumns ?? 0);
@@ -282,13 +286,13 @@ describe('facts for dynamic subscription', () => {
 
   test('behind the camera: 0 columns and 0 size', () => {
     const facts = new Map<string, PeerFacts>();
-    renderSprites(frame(), player, [disc('a', 0.5, 4.5)], facts);
+    drawPeople(frame(), [disc('a', 0.5, 4.5)], facts);
     expect(facts.get('a')).toEqual({ drawnColumns: 0, projectedSize: 0 });
   });
 
   test('a disc right behind a nearer one: no columns (it is not seen)', () => {
     const facts = new Map<string, PeerFacts>();
-    renderSprites(frame(), player, [disc('near', 3.5, 4.5), disc('far', 5.5, 4.5)], facts);
+    drawPeople(frame(), [disc('near', 3.5, 4.5), disc('far', 5.5, 4.5)], facts);
     expect(facts.get('far')?.drawnColumns).toBe(0);
     expect(facts.get('far')?.projectedSize).toBeGreaterThan(0);
     expect(Math.abs((facts.get('near')?.drawnColumns ?? 0) - (2 * AVATAR_RADIUS * PROJ) / 2)).toBeLessThanOrEqual(3);
@@ -296,9 +300,9 @@ describe('facts for dynamic subscription', () => {
 
   test('a disc half behind a nearer one: some columns, fewer than in the open', () => {
     const alone = new Map<string, PeerFacts>();
-    renderSprites(frame(), player, [disc('far', 5.5, 3.9)], alone);
+    drawPeople(frame(), [disc('far', 5.5, 3.9)], alone);
     const both = new Map<string, PeerFacts>();
-    renderSprites(frame(), player, [disc('near', 3.5, 4.5), disc('far', 5.5, 3.9)], both);
+    drawPeople(frame(), [disc('near', 3.5, 4.5), disc('far', 5.5, 3.9)], both);
     const columns = both.get('far')?.drawnColumns ?? 0;
     expect(columns).toBeGreaterThan(0);
     expect(columns).toBeLessThan(alone.get('far')?.drawnColumns ?? 0);
@@ -306,20 +310,20 @@ describe('facts for dynamic subscription', () => {
 
   test('covering does not depend on the order sprites are listed in', () => {
     const a = new Map<string, PeerFacts>();
-    renderSprites(frame(), player, [disc('near', 3.5, 4.5), disc('far', 5.5, 3.9)], a);
+    drawPeople(frame(), [disc('near', 3.5, 4.5), disc('far', 5.5, 3.9)], a);
     const b = new Map<string, PeerFacts>();
-    renderSprites(frame(), player, [disc('far', 5.5, 3.9), disc('near', 3.5, 4.5)], b);
+    drawPeople(frame(), [disc('far', 5.5, 3.9), disc('near', 3.5, 4.5)], b);
     expect(b.get('far')).toEqual(a.get('far'));
     expect(b.get('near')).toEqual(a.get('near'));
   });
 
   test('a key gets one facts object, reused every frame and zeroed when it leaves the frame', () => {
     const facts = new Map<string, PeerFacts>();
-    renderSprites(frame(), player, [disc('a', 3.5, 4.5)], facts);
+    drawPeople(frame(), [disc('a', 3.5, 4.5)], facts);
     const first = facts.get('a');
-    renderSprites(frame(), player, [disc('a', 4.5, 4.5)], facts);
+    drawPeople(frame(), [disc('a', 4.5, 4.5)], facts);
     expect(facts.get('a')).toBe(first);
-    renderSprites(frame(), player, [], facts);
+    drawPeople(frame(), [], facts);
     expect(facts.get('a')).toEqual({ drawnColumns: 0, projectedSize: 0 });
   });
 });
@@ -358,7 +362,7 @@ describe('face sprites', () => {
 
   test('the disc centre shows the centre of the face texture', () => {
     const fb = frame();
-    renderSprites(fb, player, [
+    drawPeople(fb, [
       {
         x: 3.5,
         y: 4.5,
@@ -382,7 +386,7 @@ describe('face sprites', () => {
 
   test('the outer ring is the peer colour, unshaded', () => {
     const fb = frame();
-    renderSprites(fb, player, [
+    drawPeople(fb, [
       {
         x: 3.5,
         y: 4.5,
@@ -405,7 +409,7 @@ describe('face sprites', () => {
 
   test('the face is not mirrored: left of centre samples a smaller column', () => {
     const fb = frame();
-    renderSprites(fb, player, [
+    drawPeople(fb, [
       {
         x: 3.5,
         y: 4.5,
@@ -437,7 +441,7 @@ describe('speaking ring', () => {
     const face = new Uint32Array(FACE_SIZE * FACE_SIZE).fill(rgb(1, 2, 3));
     const r = (AVATAR_RADIUS * PROJ) / 2;
     const quiet = frame();
-    renderSprites(quiet, player, [
+    drawPeople(quiet, [
       {
         x: 3.5,
         y: 4.5,
@@ -456,7 +460,7 @@ describe('speaking ring', () => {
     ]);
     expect(px(quiet, Math.floor(320 + 0.92 * r), 180)).toBe(RED);
     const loud = frame();
-    renderSprites(loud, player, [
+    drawPeople(loud, [
       {
         x: 3.5,
         y: 4.5,
@@ -499,7 +503,7 @@ describe('floor shadows', () => {
 
   test('the floor right under an avatar is darkened, most at the centre', () => {
     const fb = frame();
-    renderSprites(fb, player, [sprite(3.5)]);
+    drawPeople(fb, [sprite(3.5)]);
     const centre = px(fb, 320, floorRow(2));
     const nearEdge = px(fb, 320, floorRow(2 - SHADOW_RADIUS * 0.8));
     expect(red(centre)).toBe(Math.floor(red(FLOOR) * (1 - 0.33)));
@@ -510,7 +514,7 @@ describe('floor shadows', () => {
   test('the shadow is pixelated: a few flat bands, blocky in world space', () => {
     const fb = frame();
     const before = fb.pixels.slice();
-    renderSprites(fb, player, [sprite(3.5)]);
+    drawPeople(fb, [sprite(3.5)]);
     const shades = new Set<number>();
     fb.pixels.forEach((c, i) => {
       if (before[i] === FLOOR && c !== FLOOR && c !== RED && c !== shade(RED)) {
@@ -532,7 +536,7 @@ describe('floor shadows', () => {
 
   test('there is a gap of floor between the floating disc and its shadow', () => {
     const fb = frame();
-    renderSprites(fb, player, [sprite(3.5)]);
+    drawPeople(fb, [sprite(3.5)]);
     const discBottom = Math.ceil(180 + (AVATAR_RADIUS * PROJ) / 2);
     const shadowTop = floorRow(2 + SHADOW_RADIUS);
     expect(shadowTop).toBeGreaterThan(discBottom + 2);
@@ -542,7 +546,7 @@ describe('floor shadows', () => {
   test('only floor under the shadow changes: walls, ceiling and other floor are untouched', () => {
     const fb = frame();
     const before = fb.pixels.slice();
-    renderSprites(fb, player, [sprite(3.5)]);
+    drawPeople(fb, [sprite(3.5)]);
     for (let i = 0; i < before.length; i++) {
       if (fb.pixels[i] === before[i]) {
         continue;
@@ -570,13 +574,13 @@ describe('floor shadows', () => {
     );
     const fb = frame(walled);
     const before = fb.pixels.slice();
-    renderSprites(fb, player, [sprite(5.5)]);
+    drawPeople(fb, [sprite(5.5)]);
     expect(fb.pixels).toEqual(before);
   });
 
   test("a nearer disc covers a farther avatar's shadow", () => {
     const fb = frame();
-    renderSprites(fb, player, [sprite(4.5, 4.5, BLUE), sprite(2.5)]);
+    drawPeople(fb, [sprite(4.5, 4.5, BLUE), sprite(2.5)]);
     expect(px(fb, 320, floorRow(3))).toBe(RED);
   });
 });
@@ -626,7 +630,7 @@ describe('held items', () => {
 
   test("a held beer is drawn to the viewer's right of the disc", () => {
     const fb = frame();
-    renderSprites(fb, player, [beer(3.5)]);
+    drawPeople(fb, [beer(3.5)]);
     for (const [u, v] of SAMPLES) {
       expect(px(fb, ...itemPx(u, v, 2))).toBe(tex(u, v));
     }
@@ -634,7 +638,7 @@ describe('held items', () => {
 
   test('the item scales with distance', () => {
     const fb = frame();
-    renderSprites(fb, player, [beer(5.5)]);
+    drawPeople(fb, [beer(5.5)]);
     for (const [u, v] of SAMPLES) {
       expect(px(fb, ...itemPx(u, v, 4))).toBe(tex(u, v));
     }
@@ -643,20 +647,20 @@ describe('held items', () => {
   test('held null draws nothing beyond the disc', () => {
     const empty = frame();
     const fb = frame();
-    renderSprites(fb, player, [{ ...beer(3.5), held: null, boombox: false }]);
+    drawPeople(fb, [{ ...beer(3.5), held: null, boombox: false }]);
     expect(px(fb, ...itemPx(7, 5, 2))).toBe(px(empty, ...itemPx(7, 5, 2)));
   });
 
   test('walls in front hide the item too', () => {
     const fb = frame(WALLED);
     const before = fb.pixels.slice();
-    renderSprites(fb, player, [beer(5.5)]);
+    drawPeople(fb, [beer(5.5)]);
     expect(fb.pixels).toEqual(before);
   });
 
   test("a cheers raises the drink over the disc's upper right", () => {
     const fb = frame();
-    renderSprites(fb, player, [{ ...beer(3.5), cheers: 1 }]);
+    drawPeople(fb, [{ ...beer(3.5), cheers: 1 }]);
     const r = (AVATAR_RADIUS * PROJ) / 2;
     const t = HELD_TEXEL * r;
     const x = Math.floor(320 + CHEERS_LEFT * r + 0.5 * t);
@@ -666,7 +670,7 @@ describe('held items', () => {
 
   test('the wobble moves the raised drink sideways', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ ...beer(3.5), cheers: 1, wobble: 1 }]);
+    drawPeople(fb, [{ ...beer(3.5), cheers: 1, wobble: 1 }]);
     const r = (AVATAR_RADIUS * PROJ) / 2;
     const t = HELD_TEXEL * r;
     const x = Math.floor(320 + (CHEERS_LEFT + CHEERS_WOBBLE) * r + 0.5 * t);
@@ -676,7 +680,7 @@ describe('held items', () => {
 
   test("the held item covers the disc's lower right, in front of the body", () => {
     const fb = frame();
-    renderSprites(fb, player, [beer(3.5)]);
+    drawPeople(fb, [beer(3.5)]);
     const r = (AVATAR_RADIUS * PROJ) / 2;
     // Inside the disc (0.71 r from its centre), so without the item this pixel is the disc.
     const [x, y] = [Math.floor(320 + 0.5 * r), Math.floor(180 + 0.5 * r)];
@@ -697,9 +701,9 @@ describe('held items', () => {
       return -1;
     };
     const still = frame();
-    renderSprites(still, player, [{ ...beer(3.5), held: null, boombox: false }]);
+    drawPeople(still, [{ ...beer(3.5), held: null, boombox: false }]);
     const up = frame();
-    renderSprites(up, player, [{ ...beer(3.5), held: null, bob: 1 }]);
+    drawPeople(up, [{ ...beer(3.5), held: null, bob: 1 }]);
     const r = (AVATAR_RADIUS * PROJ) / 2;
     expect(Math.abs(topRow(still) - topRow(up) - BOB_HEIGHT * r)).toBeLessThanOrEqual(1);
     const floor = Math.floor(180 + (0.5 * PROJ) / 2);
@@ -710,7 +714,7 @@ describe('held items', () => {
 
   test('the drink lifts by itemBob, on its own', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ ...beer(3.5), itemBob: 1 }]);
+    drawPeople(fb, [{ ...beer(3.5), itemBob: 1 }]);
     const r = (AVATAR_RADIUS * PROJ) / 2;
     const t = HELD_TEXEL * r;
     const lifted = (u: number, v: number) =>
@@ -739,7 +743,7 @@ describe('held items', () => {
     const hand = ['#f2c29b', '#c98d6a', '#8a5236'].map(hexToRgb);
     for (const item of ['beer', 'coffee', 'wine'] as const) {
       const fb = frame();
-      renderSprites(fb, player, [{ ...beer(3.5), held: item, sip: 1 }]);
+      drawPeople(fb, [{ ...beer(3.5), held: item, sip: 1 }]);
       expect(hand).not.toContain(px(fb, ...mouth));
       if (item === 'beer') {
         expect(px(fb, ...mouth)).toBe(tex(3, 2));
@@ -749,7 +753,7 @@ describe('held items', () => {
 
   test('half a sip is halfway', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ ...beer(3.5), sip: 0.5 }]);
+    drawPeople(fb, [{ ...beer(3.5), sip: 0.5 }]);
     const r = (AVATAR_RADIUS * PROJ) / 2;
     const t = HELD_TEXEL * r;
     const left = (HELD_LEFT + sipLeft('beer')) / 2;
@@ -759,9 +763,9 @@ describe('held items', () => {
 
   test('a very near item crossing the right edge does not wrap into the next row', () => {
     const plain = frame();
-    renderSprites(plain, player, [{ ...beer(2.0, 4.48), held: null, boombox: false }]);
+    drawPeople(plain, [{ ...beer(2.0, 4.48), held: null, boombox: false }]);
     const fb = frame();
-    renderSprites(fb, player, [beer(2.0, 4.48)]);
+    drawPeople(fb, [beer(2.0, 4.48)]);
     for (let y = 0; y < fb.height; y++) {
       expect(px(fb, 0, y)).toBe(px(plain, 0, y));
     }
@@ -792,7 +796,7 @@ describe('held item shadows', () => {
   };
   const render = (held: 'beer' | 'wine' | null) => {
     const fb = frame();
-    renderSprites(fb, player, [holding(held)]);
+    drawPeople(fb, [holding(held)]);
     return fb;
   };
   /** Pixels of row `row` that differ between two frames (the item's shadow may overlap the avatar's). */
@@ -814,14 +818,14 @@ describe('held item shadows', () => {
   test('at full sip the item casts no extra shadow (it would double the disc shadow)', () => {
     const row = floorRow(2);
     const sipping = frame();
-    renderSprites(sipping, player, [{ ...holding('beer'), sip: 1 }]);
+    drawPeople(sipping, [{ ...holding('beer'), sip: 1 }]);
     expect(changed(sipping, render(null), row)).toBe(0);
   });
 
   test('raised in a cheers, the item casts no extra shadow', () => {
     const row = floorRow(2);
     const raised = frame();
-    renderSprites(raised, player, [{ ...holding('beer'), cheers: 1 }]);
+    drawPeople(raised, [{ ...holding('beer'), cheers: 1 }]);
     expect(changed(raised, render(null), row)).toBe(0);
   });
 
@@ -830,7 +834,7 @@ describe('held item shadows', () => {
     const none = render(null);
     const rightmost = (sip: number) => {
       const fb = frame();
-      renderSprites(fb, player, [{ ...holding('beer'), sip }]);
+      drawPeople(fb, [{ ...holding('beer'), sip }]);
       let last = -1;
       for (let x = 0; x < fb.width; x++) {
         if (px(fb, x, row) !== px(none, x, row)) {
@@ -921,7 +925,7 @@ describe('boombox', () => {
   test("a boombox is drawn to the viewer's left of the disc, scaled with distance", () => {
     for (const depth of [2, 4]) {
       const fb = frame();
-      renderSprites(fb, player, [carrier(1.5 + depth)]);
+      drawPeople(fb, [carrier(1.5 + depth)]);
       for (const [u, v] of SAMPLES) {
         expect(px(fb, ...boxPx(u, v, depth))).toBe(tex(u, v));
       }
@@ -930,7 +934,7 @@ describe('boombox', () => {
 
   test('boombox false draws none of it', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ ...carrier(3.5), boombox: false }]);
+    drawPeople(fb, [{ ...carrier(3.5), boombox: false }]);
     // Skin and the cassette label: colours neither the disc nor the room has.
     for (const [u, v] of [
       [7, 1],
@@ -944,7 +948,7 @@ describe('boombox', () => {
   test('walls in front hide it', () => {
     const fb = frame(WALLED);
     const before = fb.pixels.slice();
-    renderSprites(fb, player, [carrier(5.5)]);
+    drawPeople(fb, [carrier(5.5)]);
     expect(fb.pixels).toEqual(before);
   });
 
@@ -954,23 +958,23 @@ describe('boombox', () => {
     const x = Math.floor(320 - (0.45 * PROJ) / 2);
     const row = Math.floor(180 + (0.5 * PROJ) / 2);
     const without = frame();
-    renderSprites(without, player, [{ ...carrier(3.5), boombox: false }]);
+    drawPeople(without, [{ ...carrier(3.5), boombox: false }]);
     const fb = frame();
-    renderSprites(fb, player, [carrier(3.5)]);
+    drawPeople(fb, [carrier(3.5)]);
     expect(red(px(fb, x, row))).toBeLessThan(red(px(without, x, row)));
   });
 
   test('it lifts by itemBob', () => {
     const fb = frame();
-    renderSprites(fb, player, [{ ...carrier(3.5), itemBob: 1 }]);
+    drawPeople(fb, [{ ...carrier(3.5), itemBob: 1 }]);
     expect(px(fb, ...boxPx(7, 8, 2, 1))).toBe(tex(7, 8));
   });
 
   test('a sip moves only the drink', () => {
     const still = frame();
-    renderSprites(still, player, [{ ...carrier(3.5), held: 'beer' as const }]);
+    drawPeople(still, [{ ...carrier(3.5), held: 'beer' as const }]);
     const sipping = frame();
-    renderSprites(sipping, player, [{ ...carrier(3.5), held: 'beer' as const, sip: 1 }]);
+    drawPeople(sipping, [{ ...carrier(3.5), held: 'beer' as const, sip: 1 }]);
     for (const [u, v] of SAMPLES) {
       expect(px(sipping, ...boxPx(u, v, 2))).toBe(px(still, ...boxPx(u, v, 2)));
     }

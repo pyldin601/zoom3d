@@ -12,7 +12,7 @@ let angle = 0;
 test('renderWalls 640x360 on LEVEL1 from spawn', async ({ bench }) => {
   await bench('renderWalls', () => {
     angle += 0.05;
-    renderWalls(fb, map, { x: map.spawn.x + 0.5, y: map.spawn.y + 0.5, angle }, textures);
+    renderWalls(fb, { map, eye: { x: map.spawn.x + 0.5, y: map.spawn.y + 0.5, angle }, textures, lighting: null });
   }).run();
 });
 
@@ -21,7 +21,12 @@ const portrait = createFramebuffer(296, 640, fovForAspect(296 / 640));
 test('renderWalls 296x640 portrait on LEVEL1 from spawn', async ({ bench }) => {
   await bench('renderWalls portrait', () => {
     angle += 0.05;
-    renderWalls(portrait, map, { x: map.spawn.x + 0.5, y: map.spawn.y + 0.5, angle }, textures);
+    renderWalls(portrait, {
+      map,
+      eye: { x: map.spawn.x + 0.5, y: map.spawn.y + 0.5, angle },
+      textures,
+      lighting: null,
+    });
   }).run();
 });
 
@@ -48,8 +53,8 @@ test('renderWalls + 7 face avatars around the player', async ({ bench }) => {
   await bench('walls+7 sprites', () => {
     angle += 0.05;
     const p = { x: cx, y: cy, angle };
-    renderWalls(fb, map, p, textures);
-    renderSprites(fb, p, sprites, facts);
+    renderWalls(fb, { map, eye: p, textures, lighting: null });
+    renderSprites(fb, { eye: p, people: sprites, objects: [], lighting: null }, facts);
   }).run();
 });
 
@@ -79,7 +84,7 @@ test('renderWalls + 7 face avatars + the robot vacuum', async ({ bench }) => {
     angle += 0.05;
     const p = { x: cx, y: cy, angle };
     voxels[0] = { model: VACUUM_MODEL, x: cx + 1.2, y: cy, angle: angle * 0.3 };
-    renderWalls(fb, map, p, textures);
-    renderSprites(fb, p, sprites, facts, voxels);
+    renderWalls(fb, { map, eye: p, textures, lighting: null });
+    renderSprites(fb, { eye: p, people: sprites, objects: voxels, lighting: null }, facts);
   }).run();
 });

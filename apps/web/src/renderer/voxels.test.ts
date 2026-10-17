@@ -166,11 +166,11 @@ describe('renderSprites with voxels', () => {
 
   test('a nearer disc covers the robot', () => {
     const discOnly = blank();
-    renderSprites(discOnly, player, [disc(3.0)]);
+    renderSprites(discOnly, { eye: player, people: [disc(3.0)], objects: [], lighting: null });
     const both = blank();
-    renderSprites(both, player, [disc(3.0)], undefined, [robot(4.0)]);
+    renderSprites(both, { eye: player, people: [disc(3.0)], objects: [robot(4.0)], lighting: null });
     const robotOnly = blank();
-    renderSprites(robotOnly, player, [], undefined, [robot(4.0)]);
+    renderSprites(robotOnly, { eye: player, people: [], objects: [robot(4.0)], lighting: null });
     const shownDisc = painted(discOnly);
     // The disc wins every pixel it paints, and the robot really was behind some of them.
     for (const [i, px] of shownDisc) {
@@ -182,9 +182,9 @@ describe('renderSprites with voxels', () => {
 
   test('a nearer robot covers the disc', () => {
     const discOnly = blank();
-    renderSprites(discOnly, player, [disc(4.0)]);
+    renderSprites(discOnly, { eye: player, people: [disc(4.0)], objects: [], lighting: null });
     const both = blank();
-    renderSprites(both, player, [disc(4.0)], undefined, [robot(3.9)]);
+    renderSprites(both, { eye: player, people: [disc(4.0)], objects: [robot(3.9)], lighting: null });
     const changed = [...painted(discOnly)].filter(([i, px]) => both.pixels[i] !== px);
     expect(changed.length).toBeGreaterThan(0);
   });
@@ -243,7 +243,7 @@ describe('renderVoxel with lighting', () => {
 
   test('renderSprites passes the lighting on to voxels', () => {
     const fb = blank();
-    renderSprites(fb, player, [], undefined, [box], bakeLighting(room, [], 0.45, RED, RED));
+    renderSprites(fb, { eye: player, people: [], objects: [box], lighting: bakeLighting(room, [], 0.45, RED, RED) });
     expect(drawn(fb).has(scaled(RED, 0.45))).toBe(true);
   });
 });

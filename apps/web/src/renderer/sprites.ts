@@ -196,20 +196,24 @@ function zeroFacts(f: PeerFacts): void {
   f.projectedSize = 0;
 }
 
+/** Who and what renderSprites draws in the room, seen from `eye`. */
+export interface PeopleAndObjects {
+  eye: PlayerState;
+  people: readonly Sprite[];
+  /** Voxel objects (the robot vacuum), drawn among the people. */
+  objects: readonly VoxelInstance[];
+  /** null draws the objects unlit. */
+  lighting: Lighting | null;
+}
+
 /**
- * Draws the discs, and `voxels` interleaved with them far to near. With `facts`, also writes, per sprite key, how many
- * of its disc's columns are seen (in front of the walls and not hidden behind a nearer disc) and the disc's diameter
- * (both 0 when not drawn); every key in the map is zeroed first, and objects are reused.
+ * Draws the people's discs, and the objects interleaved with them far to near. With `facts`, also writes, per sprite
+ * key, how many of its disc's columns are seen (in front of the walls and not hidden behind a nearer disc) and the
+ * disc's diameter (both 0 when not drawn); every key in the map is zeroed first, and objects are reused.
  */
-export function renderSprites(
-  fb: Framebuffer,
-  p: PlayerState,
-  sprites: readonly Sprite[],
-  facts?: Map<string, PeerFacts>,
-  voxels: readonly VoxelInstance[] = [],
-  lighting: Lighting | null = null
-): void {
-  const view = setView(frameView, fb, p);
+export function renderSprites(fb: Framebuffer, scene: PeopleAndObjects, facts?: Map<string, PeerFacts>): void {
+  const { people: sprites, objects: voxels, lighting } = scene;
+  const view = setView(frameView, fb, scene.eye);
   bindFacts(sprites, facts);
   projectVisible(view, sprites);
   if (facts) {

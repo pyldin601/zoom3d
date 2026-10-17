@@ -54,18 +54,27 @@ const BLACK = 0xff000000;
 const X_SIDE = 0;
 const Y_SIDE = 1;
 
-/** What a lit frame is drawn from, set once per frame by `litRoomFor`. */
-interface LitRoom {
+/** The room renderWalls draws: `map` with its wall `textures`, seen from `eye`. */
+export interface Room {
   map: GameMap;
-  eye: PlayerState;
-  lighting: Lighting;
   textures: Uint32Array[];
+  eye: PlayerState;
+  /** null draws the room unlit. */
+  lighting: Lighting | null;
+  /** The surfaces that show the lamps' reflections in a lit room; 'both' when left out. */
+  reflections?: ReflectionMode;
+}
+
+/** What a lit frame is drawn from, set once per frame by `litRoomFor`. */
+interface LitRoom extends Room {
+  lighting: Lighting;
   reflections: ReflectionMode;
   glows: readonly Glow[];
   /** What one unit of each lamp's reflection adds, r, g, b, per texture then the floor (see reflectionColours). */
   reflectionColours: Float64Array;
 }
 
+const NO_GLOWS: readonly Glow[] = [];
 const view = createView();
 const hit = createRayHit();
 let litRoom: LitRoom | null = null;
@@ -135,23 +144,15 @@ let glowTables: {
 } | null = null;
 
 /**
- * Draws the room seen from `eye` into `fb` and fills its z-buffer. With `lighting`, walls, floor and ceiling are lit
- * and show the lamps' reflections on the surfaces `reflections` picks, and the avatars' `glows`.
+ * Draws `room` into `fb` and fills its z-buffer. A lit room's walls, floor and ceiling show the lamps' reflections on
+ * the surfaces `room.reflections` picks, and the avatars' `glows`.
  */
-export function renderWalls(
-  fb: Framebuffer,
-  map: GameMap,
-  eye: PlayerState,
-  textures: Uint32Array[],
-  lighting: Lighting | null = null,
-  reflections: ReflectionMode = 'both',
-  glows: readonly Glow[] = []
-): void {
-  setView(view, fb, eye);
-  if (lighting) {
-    drawLitRoom(fb, litRoomFor(map, eye, textures, lighting, reflections, glows));
+export function renderWalls(fb: Framebuffer, room: Room, glows: readonly Glow[] = NO_GLOWS): void {
+  setView(view, fb, room.eye);
+  if (room.lighting) {
+    drawLitRoom(fb, litRoomFor(room, room.lighting, glows));
   } else {
-    drawUnlitRoom(fb, map, eye, textures);
+    drawUnlitRoom(fb, room);
   }
 }
 
@@ -162,11 +163,11 @@ const lampsLightTheRoom = (mode: ReflectionMode) => mode !== 'only';
 
 // The unlit room.
 
-function drawUnlitRoom(fb: Framebuffer, map: GameMap, eye: PlayerState, textures: Uint32Array[]): void {
+function drawUnlitRoom(fb: Framebuffer, room: Room): void {
   for (let col = 0; col < fb.width; col++) {
-    castColumnRay(fb, map, eye, col);
+    castColumnRay(fb, room, col);
     fillColumn(fb, col, 0, column.start, CEILING);
-    drawPlainWallSlice(fb, textures, column.side === Y_SIDE ? 'shaded' : 'unshaded');
+    drawPlainWallSlice(fb, room.textures, column.side === Y_SIDE ? 'shaded' : 'unshaded');
     fillColumn(fb, col, column.end, fb.height, FLOOR);
   }
 }
@@ -215,14 +216,8 @@ function drawLitRoom(fb: Framebuffer, room: LitRoom): void {
   }
 }
 
-function litRoomFor(
-  map: GameMap,
-  eye: PlayerState,
-  textures: Uint32Array[],
-  lighting: Lighting,
-  reflections: ReflectionMode,
-  glows: readonly Glow[]
-): LitRoom {
+function litRoomFor(room: Room, lighting: Lighting, glows: readonly Glow[]): LitRoom {
+  const { map, eye, textures, reflections = 'both' } = room;
   const reflectionColours = reflectionColoursOf(textures, lighting);
   if (!litRoom) {
     litRoom = { map, eye, lighting, textures, reflections, glows, reflectionColours };
@@ -303,7 +298,7 @@ function meanShinyTexel(tex: Uint32Array, gloss: Uint8Array | undefined): readon
 function drawWallColumns(fb: Framebuffer, room: LitRoom): void {
   const glowsLightWalls = lampsLightTheRoom(room.reflections) && room.glows.length > 0;
   for (let col = 0; col < fb.width; col++) {
-    castColumnRay(fb, room.map, room.eye, col);
+    castColumnRay(fb, room, col);
     if (column.end === column.start) {
       continue;
     }
@@ -320,7 +315,7 @@ function drawWallColumns(fb: Framebuffer, room: LitRoom): void {
 }
 
 /** Casts screen column `col` into `column`: what the ray hit, the rows its wall covers, and the z-buffer. */
-function castColumnRay(fb: Framebuffer, map: GameMap, eye: PlayerState, col: number): void {
+function castColumnRay(fb: Framebuffer, { map, eye }: Room, col: number): void {
   const { width: w, height: h } = fb;
   const { dirX, dirY, planeX, planeY, proj, half } = view;
   const cameraX = (2 * col) / w - 1;
