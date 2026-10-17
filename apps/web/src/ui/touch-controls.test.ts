@@ -13,12 +13,14 @@ function options(overrides: Partial<TouchControlsOptions> = {}): TouchControlsOp
     held: null,
     boombox: false,
     map: false,
+    lighting: 'reflections',
     onPick: vi.fn(),
     onDrinkDown: vi.fn(),
     onDrinkUp: vi.fn(),
     onDrinkCancel: vi.fn(),
     onBoombox: vi.fn(),
     onMap: vi.fn(),
+    onLighting: vi.fn(),
     ...overrides,
   };
 }
@@ -76,7 +78,7 @@ test('a tap inside the tray does not close it before the click lands', () => {
 test('the drink button shows only while holding, with the drink in its name', () => {
   const controls = showTouchControls(root, options());
   expect($('.drink').hidden).toBe(true);
-  controls.update({ held: 'beer', boombox: false, map: false });
+  controls.update({ held: 'beer', boombox: false, map: false, lighting: 'reflections' });
   expect($('.drink').hidden).toBe(false);
   expect($('.drink').getAttribute('aria-label')).toBe('Sip beer (hold to cheers)');
 });
@@ -115,12 +117,24 @@ test('boombox and map buttons call their handlers, close the tray and reflect st
   $('.more').click();
   $('[data-action="map"]').click();
   expect(opts.onMap).toHaveBeenCalledTimes(1);
-  controls.update({ held: null, boombox: true, map: true });
+  controls.update({ held: null, boombox: true, map: true, lighting: 'reflections' });
   expect($('[data-action="boombox"]').getAttribute('aria-label')).toBe('Stop music');
   expect($('[data-action="map"]').getAttribute('aria-pressed')).toBe('true');
-  controls.update({ held: null, boombox: false, map: false });
+  controls.update({ held: null, boombox: false, map: false, lighting: 'reflections' });
   expect($('[data-action="boombox"]').getAttribute('aria-label')).toBe('Boombox');
   expect($('[data-action="map"]').getAttribute('aria-pressed')).toBe('false');
+});
+
+test('the Lighting button steps the mode, keeps the tray open and names the mode', () => {
+  const opts = options();
+  const controls = showTouchControls(root, opts);
+  $('.more').click();
+  $('[data-action="lighting"]').click();
+  expect(opts.onLighting).toHaveBeenCalledTimes(1);
+  expect(tray().hidden).toBe(false);
+  expect($('[data-action="lighting"]').textContent).toContain('Shadows and reflections');
+  controls.update({ held: null, boombox: false, map: false, lighting: 'traced' });
+  expect($('[data-action="lighting"]').textContent).toContain('Ray traced');
 });
 
 test('the held drink is marked in the tray', () => {

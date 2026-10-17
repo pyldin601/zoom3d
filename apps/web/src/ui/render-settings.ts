@@ -26,6 +26,12 @@ export const RENDER_MODE_NAMES: Record<RenderMode, string> = {
   traced: 'Ray traced',
 };
 
+/** The mode after `mode` in the console's order, wrapping from the last back to the first: the tray's one button. */
+export function nextRenderMode(mode: RenderMode): RenderMode {
+  const following = RENDER_MODES.at((RENDER_MODES.indexOf(mode) + 1) % RENDER_MODES.length);
+  return following ?? DEFAULT_RENDER_SETTINGS.mode;
+}
+
 /** Whether `mode` draws the room with rays instead of the lit renderer's baked lighting. */
 export function tracesRays(mode: RenderMode): boolean {
   return mode === 'traced';

@@ -3,6 +3,7 @@ import {
   DEFAULT_RENDER_SETTINGS,
   litReflections,
   loadRenderSettings,
+  nextRenderMode,
   RENDER_MODE_NAMES,
   RENDER_MODES,
   RENDER_SETTINGS_KEY,
@@ -39,6 +40,12 @@ test('each mode picks what the lit renderer reflects; flat is drawn unlit', () =
 test('only the traced mode traces rays', () => {
   expect(RENDER_MODES.filter(tracesRays)).toEqual(['traced']);
   expect(RENDER_MODE_NAMES.traced).toBe('Ray traced');
+});
+
+test('the next mode follows the console order and wraps around', () => {
+  expect(nextRenderMode('flat')).toBe('shadows');
+  expect(nextRenderMode('reflections-only')).toBe('traced');
+  expect(nextRenderMode('traced')).toBe('flat');
 });
 
 test('round-trips through storage', () => {
