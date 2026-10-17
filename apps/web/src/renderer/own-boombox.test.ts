@@ -34,7 +34,7 @@ describe('renderOwnBoombox', () => {
 
   test('draws it peeking in at the bottom-right', () => {
     const fb = createFramebuffer();
-    renderOwnBoombox(fb, true, 0, 0);
+    renderOwnBoombox(fb, true, { itemLift: 0, sway: 0 });
     for (const [u, v] of [
       [7, 1],
       [7, 4],
@@ -45,14 +45,14 @@ describe('renderOwnBoombox', () => {
 
   test('off draws nothing', () => {
     const fb = createFramebuffer();
-    renderOwnBoombox(fb, false, 1, 1);
+    renderOwnBoombox(fb, false, { itemLift: 1, sway: 1 });
     expect(fb.pixels.every((c) => c === 0)).toBe(true);
   });
 
   test('it stays clear of the self-view', () => {
     for (const sway of [-1, 0, 1]) {
       const fb = createFramebuffer();
-      renderOwnBoombox(fb, true, 0, sway);
+      renderOwnBoombox(fb, true, { itemLift: 0, sway });
       const limit = sway === 0 ? Math.ceil(OWN_BOOMBOX_RIGHT * W) : 0.9 * W;
       expect(Math.max(...drawnColumns(fb.pixels))).toBeLessThan(limit);
     }
@@ -60,15 +60,15 @@ describe('renderOwnBoombox', () => {
 
   test('it never overlaps the resting drink', () => {
     const drink = createFramebuffer();
-    renderOwnHeld(drink, 'beer', 0, 0, { sip: 0, cheers: 0, wobble: 0 });
+    renderOwnHeld(drink, 'beer', { itemLift: 0, sway: 0 }, { sip: 0, cheers: 0, wobble: 0 });
     const box = createFramebuffer();
-    renderOwnBoombox(box, true, 0, 0);
+    renderOwnBoombox(box, true, { itemLift: 0, sway: 0 });
     expect(drink.pixels.some((c, i) => c !== 0 && box.pixels[i] !== 0)).toBe(false);
   });
 
   test('walking drops it with the bob and sways it opposite to the drink', () => {
     const fb = createFramebuffer();
-    renderOwnBoombox(fb, true, 1, 1);
+    renderOwnBoombox(fb, true, { itemLift: 1, sway: 1 });
     expect(fb.pixels[at(7, 1, 1, 1)]).toBe(tex(7, 1));
     expect(at(7, 1, 1, 1) % W).toBeLessThan(at(7, 1) % W);
   });

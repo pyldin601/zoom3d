@@ -3,22 +3,22 @@
 import { BOOMBOX_SPRITE } from './boombox';
 import type { Framebuffer } from './framebuffer';
 import { blitHeldSprite, OVER_EVERYTHING } from './held-items';
-import { OWN_BOB, OWN_SWAY, ownTexel } from './own-held';
+import { type HeldStep, OWN_BOB, OWN_SWAY, ownTexel } from './own-held';
 
 /** Right edge as a fraction of the width: clear of the mic button and self-view (~0.86 onward at 16:9). */
 export const OWN_BOOMBOX_RIGHT = 0.84;
 /** Fraction of the sprite's height hidden below the bottom edge: the fist, handle and body top show. */
 export const OWN_BOOMBOX_CROP = 0.5;
 
-/** Draws over the scene; `bob` 0..1 drops it, `sway` −1..1 shifts it the other way from the drink. */
-export function renderOwnBoombox(fb: Framebuffer, on: boolean, bob: number, sway: number): void {
+/** Draws over the scene, moved by the step: it sways the other way from the drink. */
+export function renderOwnBoombox(fb: Framebuffer, on: boolean, step: HeldStep): void {
   if (!on) {
     return;
   }
   const { width: w, height: h } = fb;
   const { w: tw, h: th } = BOOMBOX_SPRITE;
   const t = ownTexel(fb);
-  const left = OWN_BOOMBOX_RIGHT * w - tw * t - sway * OWN_SWAY * w;
-  const top = h - (1 - OWN_BOOMBOX_CROP) * th * t + bob * OWN_BOB * h;
+  const left = OWN_BOOMBOX_RIGHT * w - tw * t - step.sway * OWN_SWAY * w;
+  const top = h - (1 - OWN_BOOMBOX_CROP) * th * t + step.itemLift * OWN_BOB * h;
   blitHeldSprite(fb, BOOMBOX_SPRITE, left, top, t, OVER_EVERYTHING);
 }

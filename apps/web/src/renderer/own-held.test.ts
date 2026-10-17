@@ -37,7 +37,7 @@ describe('renderOwnHeld', () => {
 
   test('draws the drink peeking in at the bottom-left', () => {
     const fb = createFramebuffer();
-    renderOwnHeld(fb, 'beer', 0, 0, { sip: 0, cheers: 0, wobble: 0 });
+    renderOwnHeld(fb, 'beer', { itemLift: 0, sway: 0 }, { sip: 0, cheers: 0, wobble: 0 });
     // Foam, beer and fist.
     for (const [u, v] of [
       [7, 1],
@@ -50,15 +50,15 @@ describe('renderOwnHeld', () => {
 
   test('nothing in hand draws nothing', () => {
     const fb = createFramebuffer();
-    renderOwnHeld(fb, null, 1, 1, { sip: 1, cheers: 0, wobble: 0 });
+    renderOwnHeld(fb, null, { itemLift: 1, sway: 1 }, { sip: 1, cheers: 0, wobble: 0 });
     expect(fb.pixels.every((c) => c === 0)).toBe(true);
   });
 
   test('walking moves it down with the bob and sideways with the sway', () => {
     const still = createFramebuffer();
-    renderOwnHeld(still, 'beer', 0, 0, { sip: 0, cheers: 0, wobble: 0 });
+    renderOwnHeld(still, 'beer', { itemLift: 0, sway: 0 }, { sip: 0, cheers: 0, wobble: 0 });
     const moved = createFramebuffer();
-    renderOwnHeld(moved, 'beer', 1, -1, { sip: 0, cheers: 0, wobble: 0 });
+    renderOwnHeld(moved, 'beer', { itemLift: 1, sway: -1 }, { sip: 0, cheers: 0, wobble: 0 });
     for (const [u, v] of [
       [7, 1],
       [5, 3],
@@ -71,7 +71,7 @@ describe('renderOwnHeld', () => {
 
   test('raised in a cheers, the drink comes fully into view at the left', () => {
     const fb = createFramebuffer();
-    renderOwnHeld(fb, 'beer', 0, 0, { sip: 0, cheers: 1, wobble: 0 });
+    renderOwnHeld(fb, 'beer', { itemLift: 0, sway: 0 }, { sip: 0, cheers: 1, wobble: 0 });
     const { w: tw, h: th } = OWN_HELD_SPRITES.beer;
     const t = OWN_TEXEL * H;
     const left = OWN_CHEERS_LEFT * W;
@@ -113,7 +113,7 @@ describe('renderOwnHeld', () => {
 
   test('at full sip the drink is centred and lower', () => {
     const fb = createFramebuffer();
-    renderOwnHeld(fb, 'beer', 0, 0, { sip: 1, cheers: 0, wobble: 0 });
+    renderOwnHeld(fb, 'beer', { itemLift: 0, sway: 0 }, { sip: 1, cheers: 0, wobble: 0 });
     // Only the top 30% shows: rows 0–2 of the sprite.
     for (const [u, v] of [
       [7, 1],
@@ -131,7 +131,7 @@ describe('renderOwnHeld', () => {
   ])('stays in the bottom-left corner (bob %d, sway %d)', (bob, sway) => {
     for (const item of ['beer', 'coffee', 'wine'] as const) {
       const fb = createFramebuffer();
-      renderOwnHeld(fb, item, bob, sway, { sip: 0, cheers: 0, wobble: 0 });
+      renderOwnHeld(fb, item, { itemLift: bob, sway }, { sip: 0, cheers: 0, wobble: 0 });
       fb.pixels.forEach((c, i) => {
         if (c !== 0) {
           expect(i % W).toBeLessThan(W / 2);

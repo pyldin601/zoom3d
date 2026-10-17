@@ -2,13 +2,12 @@
 import type { HeldItem } from '@zoom3d/shared';
 import type { PeerFacts } from '../media/interest';
 import { type AutomapPeer, drawAutomap } from './automap';
-import type { Bob } from './bob';
 import type { Framebuffer } from './framebuffer';
 import { createAvatarGlows, type Glow, type GlowSource } from './glow';
 import { drawLabels } from './labels';
 import type { ReflectionMode } from './lighting';
 import { renderOwnBoombox } from './own-boombox';
-import { renderOwnHeld } from './own-held';
+import { type HeldStep, renderOwnHeld } from './own-held';
 import type { HeldPose } from './sip';
 import { type PeopleAndObjects, renderSprites } from './sprites';
 import { type Room, renderWalls } from './walls';
@@ -29,7 +28,7 @@ export type PersonLabel = AutomapPeer & { mic: boolean };
 export interface InYourHands {
   drink: HeldItem | null;
   boombox: boolean;
-  step: Pick<Bob, 'itemLift' | 'sway'>;
+  step: HeldStep;
   gesture: HeldPose;
 }
 
@@ -63,8 +62,7 @@ function drawPeopleAndObjects(fb: Framebuffer, scene: RoomScene, seen: Map<strin
 }
 
 function drawWhatYouHold(fb: Framebuffer, hands: InYourHands): void {
-  const { itemLift, sway } = hands.step;
   // The boombox first: a sip swings the drink across it, and the drink must stay in front.
-  renderOwnBoombox(fb, hands.boombox, itemLift, sway);
-  renderOwnHeld(fb, hands.drink, itemLift, sway, hands.gesture);
+  renderOwnBoombox(fb, hands.boombox, hands.step);
+  renderOwnHeld(fb, hands.drink, hands.step, hands.gesture);
 }
