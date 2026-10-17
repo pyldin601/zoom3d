@@ -34,8 +34,11 @@ export interface LandingShow {
   readonly bumps: number;
   /** Adds one frame's time, clamped to MAX_FRAME_S, then runs any whole steps due after the wait. */
   advance(frameS: number): void;
-  /** Writes the pose to draw now: LANDING_PARK before the wait ends, else interpolated between the last two steps. */
-  poseInto(out: { x: number; y: number; angle: number }): void;
+  /**
+   * Writes the pose to draw now: LANDING_PARK before the wait ends, else interpolated between the last two steps.
+   * Returns whether that moved `out`: the rest of the picture is still, so an unmoved robot needs no redraw.
+   */
+  poseInto(out: { x: number; y: number; angle: number }): boolean;
 }
 
 export function createLandingShow(): LandingShow {
@@ -77,8 +80,10 @@ export function createLandingShow(): LandingShow {
       }
     },
     poseInto(out) {
+      const { x, y, angle } = out;
       // One step behind, so there is always a step to interpolate towards.
       poses.sample(timeS - STEP_S, out);
+      return out.x !== x || out.y !== y || out.angle !== angle;
     },
   };
 }

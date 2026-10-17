@@ -1,6 +1,7 @@
 // Spatial voice engine (spec §9): per-peer source → lowpass → (dry → HRTF panner) + (send → shared reverb). Synthesised
 // sources, like the robot vacuum's hum, take the same path without the speaking analyser.
 // Distance comes from our own curve (the panner only gives direction); walls muffle and attenuate.
+// It runs every frame, so a param is only sent a new target when it changes (see `glide`).
 import {
   type AudioSettings,
   DEFAULT_AUDIO_SETTINGS,
@@ -15,11 +16,16 @@ import {
 } from '@zoom3d/shared';
 
 const ANALYSER_SIZE = 512;
+/** RMS at or below this reads as silence. */
 const SPEAKING_FLOOR = 0.01;
+/** RMS this far above the floor reads as fully speaking. */
 const SPEAKING_RANGE = 0.09;
+/** Seconds for the speaking level to fall by a factor of e once the voice goes quiet. */
 const SPEAKING_RELEASE_S = 0.3;
 /** About 3 time constants: the occlusion glide is ~95% done. */
 const OCCLUSION_SETTLE_MS = TAU_OCCLUSION * 3000;
+/** About ln(1000): an exponential decay is down 60 dB after this many time constants. */
+const DECAY_60_DB = 6.91;
 
 export interface AudioEngine {
   /** `owner` is whose position the voice plays from (default: `key`), e.g. a peer's boombox. */
@@ -50,7 +56,7 @@ export function makeImpulse(ctx: BaseAudioContext, seconds = 0.8, preDelay = 0.0
     let energy = 0;
     for (let i = offset; i < data.length; i++) {
       const t = (i - offset) / rate;
-      const v = (Math.random() * 2 - 1) * Math.exp((-6.91 * t) / seconds);
+      const v = (Math.random() * 2 - 1) * Math.exp((-DECAY_60_DB * t) / seconds);
       data[i] = v;
       energy += v * v;
     }
@@ -71,19 +77,59 @@ export function speakingLevel(prev: number, rms: number, dtSeconds: number): num
   return Math.max(target, prev * Math.exp(-Math.max(dtSeconds, 0) / SPEAKING_RELEASE_S));
 }
 
+/** The value a param was last sent towards, and with which time constant. */
+interface Target {
+  value: number;
+  tau: number;
+}
+
+/** A param at rest at `value`: its default, or where a jump put it. */
+const restingAt = (value: number): Target => ({ value, tau: TAU_POSITION });
+
+/**
+ * Glides `param` towards `value` with time constant `tau`, unless that is already its target. setTargetAtTime is
+ * memoryless (from wherever the curve is, it approaches the target the same way), so sending the same target again
+ * changes nothing but adds an event to the param's timeline, every frame.
+ */
+function glide(param: AudioParam, last: Target, value: number, t: number, tau: number): void {
+  if (value === last.value && tau === last.tau) {
+    return;
+  }
+  last.value = value;
+  last.tau = tau;
+  param.setTargetAtTime(value, t, tau);
+}
+
+/** Glides a position param, or jumps on the first placement so nothing sweeps in from the origin. */
+function move(param: AudioParam, last: Target, value: number, t: number, jump: boolean): void {
+  if (jump) {
+    param.setValueAtTime(value, t);
+    last.value = value;
+    last.tau = TAU_POSITION;
+  } else {
+    glide(param, last, value, t, TAU_POSITION);
+  }
+}
+
+/** Where a voice's sound comes from: a stream, measured for speaking, or a synthesised node. */
+type VoiceInput =
+  | { kind: 'stream'; stream: MediaStream; analyser: AnalyserNode; samples: Float32Array<ArrayBuffer> }
+  | { kind: 'node' };
+
 interface Voice {
-  /** The voice's stream, or null for a synthesised node source. */
-  stream: MediaStream | null;
+  input: VoiceInput;
   /** Key of the position in update's `sources`. */
   owner: string;
   source: AudioNode;
-  /** Measures speaking; null for a synthesised source. */
-  analyser: AnalyserNode | null;
   filter: BiquadFilterNode;
   dry: GainNode;
   send: GainNode;
   panner: PannerNode;
-  samples: Float32Array<ArrayBuffer>;
+  /** The last targets of the gains and of the panner's x and z (its y stays 0). */
+  dryTarget: Target;
+  sendTarget: Target;
+  panX: Target;
+  panZ: Target;
   occluded: boolean;
   lastOcclusionAt: number;
   /** Gains keep the slow occlusion time constant this long after a change. */
@@ -100,6 +146,8 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
   const voices = new Map<string, Voice>();
   let lastUpdate: number | null = null;
   let listenerPlaced = false;
+  /** The last targets of the listener's position (x, z) and facing (x, z); the rest of its pose is constant. */
+  const heard = { x: restingAt(0), z: restingAt(0), forwardX: restingAt(0), forwardZ: restingAt(0) };
 
   const reverb = ctx.createConvolver();
   // The browser's own normalization takes ~13 dB off; makeImpulse is already unit energy.
@@ -109,35 +157,29 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
   reverbGain.gain.value = settings.reverb;
   reverb.connect(reverbGain).connect(ctx.destination);
 
-  /** Glides a param, or jumps on the first placement so nothing sweeps in from the origin. */
-  const move = (param: AudioParam, value: number, t: number, jump: boolean) => {
-    if (jump) {
-      param.setValueAtTime(value, t);
-    } else {
-      param.setTargetAtTime(value, t, TAU_POSITION);
-    }
-  };
-
   const setListener = (p: PlayerState, t: number) => {
     const l = ctx.listener;
     const fx = Math.cos(p.angle);
     const fz = Math.sin(p.angle);
-    if (l.positionX) {
-      const jump = !listenerPlaced;
-      move(l.positionX, p.x, t, jump);
-      move(l.positionY, 0, t, jump);
-      move(l.positionZ, p.y, t, jump);
-      move(l.forwardX, fx, t, jump);
-      move(l.forwardY, 0, t, jump);
-      move(l.forwardZ, fz, t, jump);
-      move(l.upX, 0, t, jump);
-      move(l.upY, 1, t, jump);
-      move(l.upZ, 0, t, jump);
-      listenerPlaced = true;
-    } else {
+    if (!l.positionX) {
       l.setPosition(p.x, 0, p.y);
       l.setOrientation(fx, 0, fz, 0, 1, 0);
+      return;
     }
+    const jump = !listenerPlaced;
+    if (jump) {
+      // At ear height 0, facing level with the head up: set once, they never change.
+      l.positionY.setValueAtTime(0, t);
+      l.forwardY.setValueAtTime(0, t);
+      l.upX.setValueAtTime(0, t);
+      l.upY.setValueAtTime(1, t);
+      l.upZ.setValueAtTime(0, t);
+    }
+    move(l.positionX, heard.x, p.x, t, jump);
+    move(l.positionZ, heard.z, p.y, t, jump);
+    move(l.forwardX, heard.forwardX, fx, t, jump);
+    move(l.forwardZ, heard.forwardZ, fz, t, jump);
+    listenerPlaced = true;
   };
 
   const detach = (peerId: string) => {
@@ -145,20 +187,15 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
     if (!v) {
       return;
     }
-    for (const node of [v.source, v.analyser, v.filter, v.dry, v.send, v.panner]) {
+    const analyser = v.input.kind === 'stream' ? v.input.analyser : null;
+    for (const node of [v.source, analyser, v.filter, v.dry, v.send, v.panner]) {
       node?.disconnect();
     }
     voices.delete(peerId);
   };
 
-  /** Builds the spatial chain behind `source` (plus an analyser tap for a voice) and registers it. */
-  const addVoice = (
-    key: string,
-    owner: string,
-    source: AudioNode,
-    stream: MediaStream | null,
-    analyser: AnalyserNode | null
-  ) => {
+  /** Builds the spatial chain behind `source` (plus an analyser tap for a stream) and registers it. */
+  const addVoice = (key: string, owner: string, source: AudioNode, input: VoiceInput) => {
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.value = MUFFLE_OPEN_HZ;
@@ -171,8 +208,8 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
     panner.distanceModel = 'linear';
     panner.rolloffFactor = 0;
 
-    if (analyser) {
-      source.connect(analyser);
+    if (input.kind === 'stream') {
+      source.connect(input.analyser);
     }
     source.connect(filter);
     filter.connect(dry);
@@ -182,15 +219,17 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
     send.connect(reverb);
 
     voices.set(key, {
-      stream,
+      input,
       owner,
       source,
-      analyser,
       filter,
       dry,
       send,
       panner,
-      samples: new Float32Array(ANALYSER_SIZE),
+      dryTarget: restingAt(0),
+      sendTarget: restingAt(0),
+      panX: restingAt(0),
+      panZ: restingAt(0),
       occluded: false,
       lastOcclusionAt: Number.NEGATIVE_INFINITY,
       occlusionChangedAt: Number.NEGATIVE_INFINITY,
@@ -200,10 +239,56 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
     });
   };
 
+  /** The voice's RMS and speaking level from its analyser; synthesised sources have none. */
+  const measure = (v: Voice, dt: number) => {
+    if (v.input.kind !== 'stream') {
+      return;
+    }
+    const { analyser, samples } = v.input;
+    analyser.getFloatTimeDomainData(samples);
+    let sum = 0;
+    for (let i = 0; i < samples.length; i++) {
+      sum += (samples[i] as number) ** 2;
+    }
+    v.rms = Math.sqrt(sum / samples.length);
+    v.speaking = speakingLevel(v.speaking, v.rms, dt);
+  };
+
+  /** Muffles the voice behind a wall, checked every OCCLUSION_INTERVAL_MS. */
+  const occlude = (v: Voice, now: number, t: number, listener: PlayerState, pos: { x: number; y: number }) => {
+    if (now - v.lastOcclusionAt < OCCLUSION_INTERVAL_MS) {
+      return;
+    }
+    v.lastOcclusionAt = now;
+    const occluded = !hasLineOfSight(map, listener.x, listener.y, pos.x, pos.y);
+    if (occluded !== v.occluded) {
+      v.occluded = occluded;
+      v.occlusionChangedAt = now;
+      v.filter.frequency.setTargetAtTime(occluded ? settings.muffleHz : MUFFLE_OPEN_HZ, t, TAU_OCCLUSION);
+    }
+  };
+
+  /** The voice's gains from its distance and occlusion, and its pan from where it is. */
+  const place = (v: Voice, now: number, t: number, listener: PlayerState, pos: { x: number; y: number }) => {
+    // Each setTargetAtTime replaces the running curve, so keep the slow constant until it settles.
+    const tau = now - v.occlusionChangedAt < OCCLUSION_SETTLE_MS ? TAU_OCCLUSION : TAU_POSITION;
+    const g = voiceGains(Math.hypot(pos.x - listener.x, pos.y - listener.y), v.occluded, settings);
+    glide(v.dry.gain, v.dryTarget, g.dry, t, tau);
+    glide(v.send.gain, v.sendTarget, g.send, t, tau);
+    const jump = !v.positioned;
+    if (jump) {
+      // Ear height, like the listener: set once.
+      v.panner.positionY.setValueAtTime(0, t);
+    }
+    move(v.panner.positionX, v.panX, pos.x, t, jump);
+    move(v.panner.positionZ, v.panZ, pos.y, t, jump);
+    v.positioned = true;
+  };
+
   return {
     attach(peerId, stream, owner = peerId) {
       const existing = voices.get(peerId);
-      if (existing?.stream === stream) {
+      if (existing?.input.kind === 'stream' && existing.input.stream === stream) {
         return;
       }
       if (existing) {
@@ -216,7 +301,12 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
 
       const analyser = ctx.createAnalyser();
       analyser.fftSize = ANALYSER_SIZE;
-      addVoice(peerId, owner, ctx.createMediaStreamSource(stream), stream, analyser);
+      addVoice(peerId, owner, ctx.createMediaStreamSource(stream), {
+        kind: 'stream',
+        stream,
+        analyser,
+        samples: new Float32Array(ANALYSER_SIZE),
+      });
     },
 
     attachNode(key, node, owner = key) {
@@ -224,7 +314,7 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
         return;
       }
       detach(key);
-      addVoice(key, owner, node, null, null);
+      addVoice(key, owner, node, { kind: 'node' });
     },
 
     detach,
@@ -236,43 +326,15 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
       setListener(listener, t);
 
       for (const v of voices.values()) {
-        if (v.analyser) {
-          v.analyser.getFloatTimeDomainData(v.samples);
-          let sum = 0;
-          for (let i = 0; i < v.samples.length; i++) {
-            sum += (v.samples[i] as number) ** 2;
-          }
-          v.rms = Math.sqrt(sum / v.samples.length);
-          v.speaking = speakingLevel(v.speaking, v.rms, dt);
-        }
-
+        measure(v, dt);
         const pos = sources.get(v.owner);
         if (!pos) {
-          v.dry.gain.setTargetAtTime(0, t, TAU_POSITION);
-          v.send.gain.setTargetAtTime(0, t, TAU_POSITION);
+          glide(v.dry.gain, v.dryTarget, 0, t, TAU_POSITION);
+          glide(v.send.gain, v.sendTarget, 0, t, TAU_POSITION);
           continue;
         }
-
-        if (now - v.lastOcclusionAt >= OCCLUSION_INTERVAL_MS) {
-          v.lastOcclusionAt = now;
-          const occluded = !hasLineOfSight(map, listener.x, listener.y, pos.x, pos.y);
-          if (occluded !== v.occluded) {
-            v.occluded = occluded;
-            v.occlusionChangedAt = now;
-            v.filter.frequency.setTargetAtTime(occluded ? settings.muffleHz : MUFFLE_OPEN_HZ, t, TAU_OCCLUSION);
-          }
-        }
-
-        // Each setTargetAtTime replaces the running curve, so keep the slow constant until it settles.
-        const tau = now - v.occlusionChangedAt < OCCLUSION_SETTLE_MS ? TAU_OCCLUSION : TAU_POSITION;
-        const g = voiceGains(Math.hypot(pos.x - listener.x, pos.y - listener.y), v.occluded, settings);
-        v.dry.gain.setTargetAtTime(g.dry, t, tau);
-        v.send.gain.setTargetAtTime(g.send, t, tau);
-        const jump = !v.positioned;
-        move(v.panner.positionX, pos.x, t, jump);
-        move(v.panner.positionY, 0, t, jump);
-        move(v.panner.positionZ, pos.y, t, jump);
-        v.positioned = true;
+        occlude(v, now, t, listener, pos);
+        place(v, now, t, listener, pos);
       }
     },
 

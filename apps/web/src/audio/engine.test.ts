@@ -76,13 +76,54 @@ describe('createAudioEngine', () => {
     expect(dry?.gain.last?.[2]).toBe(0.15);
   });
 
-  test('a voice with no known position is ramped to silence', () => {
+  test('a voice that loses its position is ramped to silence', () => {
     const e = engine();
     e.attach('b', stream());
-    e.update(0, listener, new Map());
+    e.update(0, listener, at(3.5, 1.5));
+    e.update(16, listener, new Map());
     const [dry, send] = one('biquad').connections as (FakeNode & { gain: FakeParam })[];
     expect(dry?.gain.last?.[0]).toBe(0);
     expect(send?.gain.last?.[0]).toBe(0);
+  });
+
+  test('a voice never placed stays silent without sending anything', () => {
+    const e = engine();
+    e.attach('b', stream());
+    e.update(0, listener, new Map());
+    e.update(16, listener, new Map());
+    for (const g of gains()) {
+      expect((g.gain as FakeParam).targets).toEqual([]);
+      expect((g.gain as FakeParam).value).toBe(0);
+    }
+  });
+
+  test('an update that changes nothing sends nothing: the same target again would only grow the timeline', () => {
+    const e = engine();
+    e.attach('b', stream());
+    e.update(0, listener, at(4.5, 1.5));
+    e.update(16, { ...listener, x: 1.6 }, at(4.6, 1.5));
+    const params = [
+      ...gains().map((g) => g.gain as FakeParam),
+      param('panner', 'positionX'),
+      param('panner', 'positionZ'),
+      ...Object.values(ctx.listener),
+    ];
+    const sent = params.map((p) => p.targets.length);
+    e.update(32, { ...listener, x: 1.6 }, at(4.6, 1.5));
+    expect(params.map((p) => p.targets.length)).toEqual(sent);
+  });
+
+  test("the listener's height and head, and each voice's height, are set once, never glided", () => {
+    const e = engine();
+    e.attach('b', stream());
+    for (const now of [0, 16, 32]) {
+      e.update(now, { ...listener, x: 1.5 + now / 100 }, at(4.5 + now / 100, 1.5));
+    }
+    const l = ctx.listener;
+    for (const p of [l.positionY, l.forwardY, l.upX, l.upY, l.upZ, param('panner', 'positionY')]) {
+      expect(p.targets).toEqual([]);
+    }
+    expect(l.upY.value).toBe(1);
   });
 
   test('detach and stream replacement disconnect the whole chain', () => {

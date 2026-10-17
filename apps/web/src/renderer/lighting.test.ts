@@ -120,7 +120,7 @@ describe('reflection', () => {
   const peak = (x: number, ex: number, ey: number, m = WOOD, light: Light = l) => {
     let most = 0;
     for (let z = 0; z <= 1; z += 0.01) {
-      most = Math.max(most, reflection(light, m, FACING_SOUTH, x, 0, z, { x: ex, y: ey }));
+      most = Math.max(most, reflection(light, m, FACING_SOUTH, x, 0, z, { x: ex, y: ey }, light.z));
     }
     return most;
   };
@@ -212,7 +212,7 @@ describe('reflection on the floor', () => {
   const l = { ...lamp(5, 0), radius: 4.5 };
   const FLOOR = { shininess: 16, f0: 0.1 };
   const EYE = { x: 0, y: 0 };
-  const at = (x: number, y = 0) => reflection(l, FLOOR, FLOOR_NORMAL, x, y, 0, EYE);
+  const at = (x: number, y = 0) => reflection(l, FLOOR, FLOOR_NORMAL, x, y, 0, EYE, l.z);
 
   test('smears from near the eye towards the lamp, strongest part way, gone under it', () => {
     expect(at(3)).toBeGreaterThan(0.5);
@@ -225,7 +225,7 @@ describe('reflection on the floor', () => {
   });
 
   test('is zero once the path, eye to floor to lamp, is past REFLECTION_PATH', () => {
-    expect(reflection({ ...l, x: REFLECTION_PATH + 1 }, FLOOR, FLOOR_NORMAL, 3, 0, 0, EYE)).toBe(0);
+    expect(reflection({ ...l, x: REFLECTION_PATH + 1 }, FLOOR, FLOOR_NORMAL, 3, 0, 0, EYE, l.z)).toBe(0);
   });
 });
 

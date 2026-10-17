@@ -4,7 +4,9 @@ import { isTextEntry } from './keyboard';
 const MEDIA_KEYS: Record<string, 'mic' | 'cam'> = { KeyM: 'mic', KeyC: 'cam' };
 
 /** Which room-bar toggle a key press means, if any. Repeats, shortcuts (Cmd+C) and typing don't count. */
-export function mediaKey(e: KeyboardEvent): 'mic' | 'cam' | null {
+export function mediaKey(
+  e: Pick<KeyboardEvent, 'code' | 'repeat' | 'metaKey' | 'ctrlKey' | 'altKey' | 'target'>
+): 'mic' | 'cam' | null {
   if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || isTextEntry(e.target)) {
     return null;
   }

@@ -113,15 +113,17 @@ const columnGlowLight = new Float64Array(GLOW_HEIGHTS * 3);
 
 /**
  * The floor and ceiling colours with this frame's avatar glow, per floor cell, copies of a Lighting's; the cells the
- * glow touched, put back from the Lighting's own next frame; and the glow light summed on each, floor r, g, b then
- * ceiling r, g, b.
+ * glow touched (the first `dirtyCount` of `dirty`), put back from the Lighting's own next frame; and the glow light
+ * summed on each, r, g, b, the same on the floor and on the ceiling above it (see glowingTables).
  */
 let glowTables: {
   lm: Lighting;
   floor: Uint32Array;
   ceiling: Uint32Array;
   touched: Uint8Array;
-  dirty: number[];
+  /** A typed array and a count, not an array emptied each frame: V8 drops an array's storage at `length = 0`. */
+  dirty: Int32Array;
+  dirtyCount: number;
   light: Float32Array;
 } | null = null;
 
@@ -169,14 +171,22 @@ export function renderWalls(
       }
       const step = size / lineH;
       let texPos = (start - half + lineH / 2) * step;
+      const shade = hit.side === 1;
+      // Shaded once per texel, not per pixel: a near wall shows each texel on many rows.
+      let shadedY = -1;
+      let shaded = 0;
       for (let y = start; y < end; y++) {
         // A wall under a texture's height steps over a texel per row, so its top row can start over a texel above
         // the texture (texPos < −1): it shows the top texel.
         const texY = texPos < 0 ? 0 : Math.min(size - 1, texPos | 0);
         texPos += step;
-        const c = tex[texY * size + texX] as number;
-        // SIDE_SHADE (lighting.ts) as a literal: read from the constant, this loop measured 3% slower (bench:walls).
-        pixels[y * w + col] = hit.side === 1 ? scaleRgb(c, 0.7) : c;
+        if (texY !== shadedY) {
+          shadedY = texY;
+          const c = tex[texY * size + texX] as number;
+          // SIDE_SHADE (lighting.ts) as a literal: read from the constant, this loop measured 3% slower (bench:walls).
+          shaded = shade ? scaleRgb(c, 0.7) : c;
+        }
+        pixels[y * w + col] = shaded;
       }
     }
     for (let y = Math.max(end, start); y < h; y++) {
@@ -289,7 +299,10 @@ function reflectedRgbTable(textures: Uint32Array[], lm: Lighting): Float64Array 
  * The floor and ceiling colours (one per floor cell, like the Lighting's) with the avatars' glow: last frame's cells
  * are put back, then each avatar lights the cells within its reach, √(GLOW_RADIUS² − ½²) of its disc. Glows add up,
  * and a cell takes their sum where it's brighter than its baked light (see withGlow). The cost is the cells near
- * avatars, not the pixels showing them; the floor loop reads these as it reads the Lighting's.
+ * avatars in view, not the pixels showing them; the floor loop reads these as it reads the Lighting's.
+ *
+ * The disc sits at eye height, half way between floor and ceiling, so the ceiling above a cell gets exactly the glow
+ * its floor does: it is worked out once.
  */
 function glowingTables(lm: Lighting, glows: readonly Glow[]): { floor: Uint32Array; ceiling: Uint32Array } {
   if (glowTables?.lm !== lm) {
@@ -298,21 +311,28 @@ function glowingTables(lm: Lighting, glows: readonly Glow[]): { floor: Uint32Arr
       floor: lm.floor.slice(),
       ceiling: lm.ceiling.slice(),
       touched: new Uint8Array(lm.floor.length),
-      dirty: [],
-      light: new Float32Array(lm.floor.length * 6),
+      dirty: new Int32Array(lm.floor.length),
+      dirtyCount: 0,
+      light: new Float32Array(lm.floor.length * 3),
     };
   }
   const t = glowTables;
-  for (const i of t.dirty) {
+  for (let j = 0; j < t.dirtyCount; j++) {
+    const i = t.dirty[j] as number;
     t.floor[i] = lm.floor[i] as number;
     t.ceiling[i] = lm.ceiling[i] as number;
     t.touched[i] = 0;
   }
-  t.dirty.length = 0;
+  t.dirtyCount = 0;
   const { stride, rows } = lm;
   const reach = Math.sqrt(GLOW_RADIUS * GLOW_RADIUS - EYE_HEIGHT * EYE_HEIGHT);
   const span = Math.ceil(reach * FLOOR_SUB);
+  // Every point of the cells a glow lights is at most this far from its disc.
+  const cellsReach = ((span + 1) * Math.SQRT2) / FLOOR_SUB;
   for (const g of glows) {
+    if (outOfView(g.x, g.y, cellsReach)) {
+      continue;
+    }
     const gx = Math.floor(g.x * FLOOR_SUB);
     const gy = Math.floor(g.y * FLOOR_SUB);
     for (let cy = Math.max(0, gy - span); cy <= Math.min(rows - 1, gy + span); cy++) {
@@ -326,37 +346,43 @@ function glowingTables(lm: Lighting, glows: readonly Glow[]): { floor: Uint32Arr
         const i = cy * stride + cx;
         if (t.touched[i] === 0) {
           t.touched[i] = 1;
-          t.dirty.push(i);
-          t.light.fill(0, i * 6, i * 6 + 6);
+          t.dirty[t.dirtyCount++] = i;
+          t.light.fill(0, i * 3, i * 3 + 3);
         }
-        const onCeiling = glowLight(g, x, y, 1, 0, 0, -1);
-        t.light[i * 6] = (t.light[i * 6] as number) + g.r * onFloor;
-        t.light[i * 6 + 1] = (t.light[i * 6 + 1] as number) + g.g * onFloor;
-        t.light[i * 6 + 2] = (t.light[i * 6 + 2] as number) + g.b * onFloor;
-        t.light[i * 6 + 3] = (t.light[i * 6 + 3] as number) + g.r * onCeiling;
-        t.light[i * 6 + 4] = (t.light[i * 6 + 4] as number) + g.g * onCeiling;
-        t.light[i * 6 + 5] = (t.light[i * 6 + 5] as number) + g.b * onCeiling;
+        t.light[i * 3] = (t.light[i * 3] as number) + g.r * onFloor;
+        t.light[i * 3 + 1] = (t.light[i * 3 + 1] as number) + g.g * onFloor;
+        t.light[i * 3 + 2] = (t.light[i * 3 + 2] as number) + g.b * onFloor;
       }
     }
   }
   const l = t.light;
-  for (const i of t.dirty) {
-    t.floor[i] = withGlow(
-      lm.floor[i] as number,
-      FLOOR,
-      l[i * 6] as number,
-      l[i * 6 + 1] as number,
-      l[i * 6 + 2] as number
-    );
-    t.ceiling[i] = withGlow(
-      lm.ceiling[i] as number,
-      CEILING,
-      l[i * 6 + 3] as number,
-      l[i * 6 + 4] as number,
-      l[i * 6 + 5] as number
-    );
+  for (let j = 0; j < t.dirtyCount; j++) {
+    const i = t.dirty[j] as number;
+    const r = l[i * 3] as number;
+    const g = l[i * 3 + 1] as number;
+    const b = l[i * 3 + 2] as number;
+    t.floor[i] = withGlow(lm.floor[i] as number, FLOOR, r, g, b);
+    t.ceiling[i] = withGlow(lm.ceiling[i] as number, CEILING, r, g, b);
   }
   return t;
+}
+
+/**
+ * Whether everything within `reach` tiles of (x, y) lies outside this frame's view: behind the eye, or past the left
+ * or right edge of the frame. Then no pixel drawn this frame shows it.
+ */
+function outOfView(x: number, y: number, reach: number): boolean {
+  const ox = x - view.x;
+  const oy = y - view.y;
+  const depth = ox * view.dirX + oy * view.dirY;
+  if (depth < -reach) {
+    return true;
+  }
+  // The frame's edges run ±planeLen across per tile of depth: how far past each edge the point is.
+  const planeLen = Math.sqrt(view.planeX * view.planeX + view.planeY * view.planeY);
+  const across = (ox * view.planeX + oy * view.planeY) / planeLen;
+  const pastEdge = (Math.abs(across) - planeLen * depth) / Math.sqrt(1 + planeLen * planeLen);
+  return pastEdge > reach;
 }
 
 /**
@@ -445,7 +471,7 @@ function aimReflection(lm: Lighting, p: PlayerState): boolean {
     // Dimmed by how much of the lamp the column sees: a lamp half hidden by a door's edge reflects half as brightly.
     const strength = scale * ((lm.wallLampSeen[slot + k] as number) / 255);
     const z = bounceHeight(lamp, hitX, hitY, p.x, p.y);
-    if (reflection(lamp, material, normal, hitX, hitY, z, p) * strength < VISIBLE_SHINE) {
+    if (reflection(lamp, material, normal, hitX, hitY, z, p, lamp.z) * strength < VISIBLE_SHINE) {
       continue;
     }
     if (!shows) {
@@ -454,7 +480,8 @@ function aimReflection(lm: Lighting, p: PlayerState): boolean {
       reflectedLamp.fill(index);
     }
     for (let i = 0; i < REFLECTION_SAMPLES; i++) {
-      const shine = reflection(lamp, material, normal, hitX, hitY, i / (REFLECTION_SAMPLES - 1), p) * strength;
+      const height = i / (REFLECTION_SAMPLES - 1);
+      const shine = reflection(lamp, material, normal, hitX, hitY, height, p, lamp.z) * strength;
       if (shine > (reflected[i] as number)) {
         reflected[i] = shine;
         reflectedLamp[i] = index;

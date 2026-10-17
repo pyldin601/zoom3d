@@ -9,6 +9,9 @@ export interface Want {
   audio: boolean;
 }
 
+/** Receive nothing from a peer: no face, no voice, no boombox. */
+export const WANT_NONE: Readonly<Want> = { video: 'off', audio: false };
+
 /** Written by the renderer's sprite pass each frame. */
 export interface PeerFacts {
   /** Disc columns seen: in front of the walls and not behind a nearer disc (0 = not on screen, or fully hidden). */

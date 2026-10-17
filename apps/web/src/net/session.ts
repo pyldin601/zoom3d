@@ -138,7 +138,9 @@ export function createSession(opts: SessionOptions): Session {
           buffer.push({ t: now(), x: o.x, y: o.y, angle: o.angle });
           objects.set(o.id, { info: { ...o }, buffer, lastSeq: -1 });
         }
-        Object.assign(lastSent, { x: player.x, y: player.y, angle: player.angle, at: now() });
+        // Our pose goes out on the next tick: after a resume the server only has the one from before the outage
+        // (moves sent into a dying socket were lost), and a fresh spawn costs one message.
+        lastSent.at = Number.NEGATIVE_INFINITY;
         // The server forgets media state on a fresh identity; resending on resume is harmless.
         if (media) {
           conn.send({ type: 'media', ...media });

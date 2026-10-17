@@ -222,6 +222,19 @@ test('state is sent from a timer when moving and as an idle heartbeat', () => {
   expect(states(ws)[1]).toMatchObject({ seq: 2 });
 });
 
+test('a resume sends the current pose on the next tick: the server has the one from before the outage', () => {
+  const { ws } = joinedSession();
+  // Moved, but the old socket died before the next tick could send it.
+  player.x = 9.5;
+  ws.serverClose(1006);
+  vi.advanceTimersByTime(500);
+  const ws2 = FakeWebSocket.latest();
+  ws2.open();
+  ws2.receive(welcome());
+  vi.advanceTimersByTime(66);
+  expect(states(ws2)).toEqual([expect.objectContaining({ x: 9.5 })]);
+});
+
 test('a correction snaps the player', () => {
   const { ws } = joinedSession();
   ws.receive({ type: 'correction', x: 2.5, y: 3.5, angle: 0.5, seq: 1 });

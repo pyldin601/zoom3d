@@ -18,6 +18,7 @@ export interface PointerTarget extends Listenable {
 }
 
 export interface TouchSource {
+  /** The pad's move now; one reused object, read every frame: read it before the next call. */
   state(): MoveInput;
   /** Radians of drag turn since the last call. */
   consumeTurn(): number;
@@ -124,8 +125,13 @@ export function createTouchInput({ surface, win, doc, surfaceWidth }: TouchInput
     }
   });
 
+  const move: MoveInput = { forward: 0, strafe: 0, turn: 0 };
   return {
-    state: () => ({ forward, strafe, turn: 0 }),
+    state() {
+      move.forward = forward;
+      move.strafe = strafe;
+      return move;
+    },
     consumeTurn() {
       const t = turn;
       turn = 0;

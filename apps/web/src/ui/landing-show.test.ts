@@ -37,6 +37,16 @@ test('it drives off after the wait', () => {
   expect(Math.hypot(pose.x - LANDING_PARK.x, pose.y - LANDING_PARK.y)).toBeGreaterThan(0.1);
 });
 
+test('poseInto says whether the pose moved, so a still picture needs no redraw', () => {
+  const show = createLandingShow();
+  const out = { ...LANDING_PARK };
+  runUntil(show, 5);
+  expect(show.poseInto(out)).toBe(false);
+  runUntil(show, 15);
+  expect(show.poseInto(out)).toBe(true);
+  expect(show.poseInto(out)).toBe(false);
+});
+
 test('a long frame counts as at most MAX_FRAME_S', () => {
   const show = createLandingShow();
   show.advance(300);

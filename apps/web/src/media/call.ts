@@ -3,7 +3,7 @@ import { avatarPath, type PeerInfo } from '@zoom3d/shared';
 import type { AudioEngine } from '../audio/engine';
 import type { Session, SessionListener } from '../net/session';
 import type { createFace as CreateFace, FaceSource } from './faces';
-import type { Want } from './interest';
+import { WANT_NONE, type Want } from './interest';
 import type { LocalMediaController } from './local-media';
 import type { RemoteMedia } from './remote-media';
 import type { FacesSent, MediaTransport, TransportOptions } from './transport';
@@ -42,6 +42,13 @@ export interface CallOptions {
   createTransport: (opts: TransportOptions) => MediaTransport;
 }
 
+/** A peer's face, voice and boombox streams, each as last delivered. */
+interface EarlyMedia {
+  stream?: MediaStream;
+  voice?: MediaStream;
+  boombox?: MediaStream;
+}
+
 /** Engine and element key of a peer's boombox music (boombox spec §4). */
 export const boomboxKey = (peerId: string) => `boombox:${peerId}`;
 /** Element key of a peer's voice; the engine keys it by the peer id itself. */
@@ -60,7 +67,17 @@ export function createCall(opts: CallOptions): Call {
   framer.onSendTrackChange = () => transport?.setVideoTracks(framer.sendTracks());
 
   /** Media LiveKit delivered before the game announced its peer (it is never sent again). */
-  const early = new Map<string, { stream?: MediaStream; voice?: MediaStream; boombox?: MediaStream }>();
+  const early = new Map<string, EarlyMedia>();
+  /** Keeps a stream for a peer not announced yet; an emptied one (their track went) just drops what was kept. */
+  const keepEarly = (peerId: string, kind: keyof EarlyMedia, stream: MediaStream) => {
+    const kept = early.get(peerId) ?? {};
+    kept[kind] = stream.getTracks().length > 0 ? stream : undefined;
+    if (kept.stream || kept.voice || kept.boombox) {
+      early.set(peerId, kept);
+    } else {
+      early.delete(peerId);
+    }
+  };
 
   const applyStream = (peerId: string, stream: MediaStream) => {
     faces.get(peerId)?.setVideo(remote.attach(peerId, stream));
@@ -108,6 +125,8 @@ export function createCall(opts: CallOptions): Call {
   };
 
   const drop = (peerId: string) => {
+    // Gone from the game but maybe still in the media room (a dropped game connection): stop receiving them.
+    transport?.setWanted(peerId, WANT_NONE);
     remote.detach(peerId);
     remote.detach(voiceKey(peerId));
     remote.detach(boomboxKey(peerId));
@@ -165,27 +184,12 @@ export function createCall(opts: CallOptions): Call {
           url: livekit.url,
           token: livekit.token,
           localStream: local.stream,
-          onRemoteStream: (peerId, stream) => {
-            if (faces.has(peerId)) {
-              applyStream(peerId, stream);
-            } else {
-              early.set(peerId, { ...early.get(peerId), stream });
-            }
-          },
-          onRemoteVoice: (peerId, stream) => {
-            if (faces.has(peerId)) {
-              applyVoice(peerId, stream);
-            } else {
-              early.set(peerId, { ...early.get(peerId), voice: stream });
-            }
-          },
-          onRemoteBoombox: (peerId, stream) => {
-            if (faces.has(peerId)) {
-              applyBoombox(peerId, stream);
-            } else {
-              early.set(peerId, { ...early.get(peerId), boombox: stream });
-            }
-          },
+          onRemoteStream: (peerId, stream) =>
+            faces.has(peerId) ? applyStream(peerId, stream) : keepEarly(peerId, 'stream', stream),
+          onRemoteVoice: (peerId, stream) =>
+            faces.has(peerId) ? applyVoice(peerId, stream) : keepEarly(peerId, 'voice', stream),
+          onRemoteBoombox: (peerId, stream) =>
+            faces.has(peerId) ? applyBoombox(peerId, stream) : keepEarly(peerId, 'boombox', stream),
         });
         transport.setBoomboxTrack(boomboxTrack);
         // The tab may already be hidden, in which case peers get the raw camera track.

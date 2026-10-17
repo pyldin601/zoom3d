@@ -29,6 +29,7 @@ const BINDINGS: Record<string, Action> = {
 };
 
 export interface Input {
+  /** Keys and touch merged; one reused object, read every frame: read it before the next call. */
   state(): MoveInput;
   /** Radians of mouse turn since the last call. */
   consumeMouseTurn(): number;
@@ -87,14 +88,14 @@ export function createInput(win: Listenable, doc: InputDocument, touch?: TouchSo
     }
   });
 
+  const move: MoveInput = { forward: 0, strafe: 0, turn: 0 };
   return {
     state() {
       const t = touch?.state();
-      return {
-        forward: clamp(axis('forward', 'back') + (t?.forward ?? 0)),
-        strafe: clamp(axis('right', 'left') + (t?.strafe ?? 0)),
-        turn: clamp(axis('turnRight', 'turnLeft') + (t?.turn ?? 0)),
-      };
+      move.forward = clamp(axis('forward', 'back') + (t?.forward ?? 0));
+      move.strafe = clamp(axis('right', 'left') + (t?.strafe ?? 0));
+      move.turn = clamp(axis('turnRight', 'turnLeft') + (t?.turn ?? 0));
+      return move;
     },
     consumeMouseTurn() {
       const turn = mouseTurn + (touch?.consumeTurn() ?? 0);
