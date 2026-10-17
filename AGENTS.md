@@ -25,8 +25,11 @@ decisions are recorded there with date and rationale; update it when a decision 
   commas, matching the Prettier style of github.com/pyldin601/maisumtuga. Run `pnpm exec biome check --write .`.
 - Every `if`/`else`/`for`/`while` body is a braced block, even one-liners (`style/useBlockStatements`):
   write `if (x) {\n  y();\n}`, never `if (x) y();`.
-- Readability conventions are in [docs/code-style.md](docs/code-style.md): names with units, tagged unions over
-  mode flags, `.at()` over `arr[i] as T`, small named stages, and behaviour-preserving refactors proven by a trace.
+- Readability conventions are in [docs/code-style.md](docs/code-style.md). Above all, the code explains itself:
+  names, types and top-down named stages say what it does, and a comment only says why (a constraint, a measurement,
+  a decision). Before writing a comment, rename, extract, or name the condition or value instead. Also: names with
+  units, tagged unions over mode flags, `.at()` over `arr[i] as T`, and behaviour-preserving refactors proven by a
+  trace.
 - Commit small, imperative-mood messages. Don't commit secrets or `.env`.
 - Never block the render loop: no allocations in the per-frame/per-column hot path.
 
