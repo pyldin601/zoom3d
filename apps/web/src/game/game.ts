@@ -17,7 +17,7 @@ import { createBacktickConsole } from '../ui/backtick-console';
 import { loadBoomboxVolume, saveBoomboxVolume } from '../ui/boombox-store';
 import { loadHeld, saveHeld } from '../ui/held-store';
 import { saveName } from '../ui/name-store';
-import { loadRenderSettings, type RenderMode, saveRenderSettings } from '../ui/render-settings';
+import { loadRenderSettings, type RenderMode, saveRenderSettings, tracesRays } from '../ui/render-settings';
 import { showRoomScreen } from '../ui/room-screen';
 import { createStatusLine } from '../ui/room-status';
 import { botsParam, type Route } from '../ui/route';
@@ -116,6 +116,10 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
       },
       get call() {
         return room?.call ?? null;
+      },
+      /** Whether the room is drawn by rays: the mode is traced and its bake is done. */
+      get tracedReady() {
+        return tracesRays(renderSettings.mode) && tracedRoom.lighting() !== null;
       },
       get audio() {
         return room?.audio ?? null;

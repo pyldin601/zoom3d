@@ -1,15 +1,14 @@
 import { type Browser, expect, type Page, test } from '@playwright/test';
+import { RENDER_SETTINGS_KEY, type RenderSettings } from '../src/ui/render-settings';
 import { createAndJoin, joinAs, lookAt } from './join';
 
-const RENDER_SETTINGS_KEY = 'zoom3d.render.v1';
-/** The traced room is baked over about 2 s of frames after joining: its frames are timed once that is done. */
-const LIGHTING_SETTLE_MS = 2000;
 // In a parallel run that oversubscribes the CPU, a frame that costs a third of the frame budget (the traced room's, in
 // Chrome) can slip past its vsync and the interval snaps to 33 ms, and getting two people into a room took up to 30 s
-// (the default timeout). A real regression fails every try.
-const SLOW_SUITE_TIMEOUT_MS = 60_000;
-const SLOW_SUITE_RETRIES = 2;
-test.describe.configure({ retries: SLOW_SUITE_RETRIES });
+// (the default timeout). A real regression fails every try. Only the traced test is given this slack.
+const TRACED_TIMEOUT_MS = 60_000;
+const TRACED_RETRIES = 2;
+const BAKE_TIMEOUT_MS = 20_000;
+const SETTLE_MS = 2000;
 
 async function medianFrameIntervalMs(page: Page): Promise<number> {
   return page.evaluate(
@@ -33,11 +32,13 @@ async function medianFrameIntervalMs(page: Page): Promise<number> {
   );
 }
 
+type TracedGame = { __game: { tracedReady: boolean } };
+
 /**
- * Ada and Bob in one room, Bob's face playing at Ada's; returns the median frame interval at Ada's once the lighting
- * has had time to settle. `savedLighting` is stored in Ada's browser before the page loads.
+ * Ada and Bob in one room, Bob's face playing at Ada's; returns the median frame interval at Ada's once the room is
+ * drawn in the saved lighting. `savedLighting` is stored in Ada's browser before the page loads.
  */
-async function medianFrameIntervalWithAPeer(browser: Browser, savedLighting: { mode: string } | null): Promise<number> {
+async function medianFrameIntervalWithAPeer(browser: Browser, savedLighting: RenderSettings | null): Promise<number> {
   const a = await (await browser.newContext()).newPage();
   const b = await (await browser.newContext()).newPage();
   if (savedLighting) {
@@ -57,18 +58,27 @@ async function medianFrameIntervalWithAPeer(browser: Browser, savedLighting: { m
     })
     .toBeGreaterThan(0);
   await a.bringToFront();
-  await a.waitForTimeout(LIGHTING_SETTLE_MS);
+  if (savedLighting?.mode === 'traced') {
+    // Not the lit room drawn until the bake is done: the median would pass for either.
+    await expect
+      .poll(() => a.evaluate(() => (window as unknown as TracedGame).__game.tracedReady), { timeout: BAKE_TIMEOUT_MS })
+      .toBe(true);
+  }
+  await a.waitForTimeout(SETTLE_MS);
   return medianFrameIntervalMs(a);
 }
 
 // A visible, playing remote <video> (even 1×1 at opacity 0.01) makes Chrome pace the page to the
 // video's 30 fps. Measure the game's frame interval with a connected peer.
 test('the game keeps ~60 fps while a peer is connected', async ({ browser }) => {
-  test.setTimeout(SLOW_SUITE_TIMEOUT_MS);
   expect(await medianFrameIntervalWithAPeer(browser, null)).toBeLessThan(20);
 });
 
-test('the ray traced room keeps ~60 fps while a peer is connected', async ({ browser }) => {
-  test.setTimeout(SLOW_SUITE_TIMEOUT_MS);
-  expect(await medianFrameIntervalWithAPeer(browser, { mode: 'traced' })).toBeLessThan(20);
+test.describe('ray traced', () => {
+  test.describe.configure({ retries: TRACED_RETRIES });
+
+  test('the ray traced room keeps ~60 fps while a peer is connected', async ({ browser }) => {
+    test.setTimeout(TRACED_TIMEOUT_MS);
+    expect(await medianFrameIntervalWithAPeer(browser, { mode: 'traced' })).toBeLessThan(20);
+  });
 });
