@@ -1,23 +1,13 @@
 // The page: the landing picture, the lobby, then the room loop. It wires the modules together and owns the page's
 // state; what can be pure lives in the modules (the other people in game/remote-world.ts, the room's keys in
 // input/room-keys.ts, the drink key in input/drink-key.ts).
-import {
-  DEFAULT_AUDIO_SETTINGS,
-  type HeldItem,
-  LEVEL1,
-  newRoomId,
-  parseMap,
-  spawnPoint,
-  stepPlayer,
-} from '@zoom3d/shared';
+import { type HeldItem, LEVEL1, newRoomId, parseMap, spawnPoint, stepPlayer } from '@zoom3d/shared';
 import { preferPlayAndRecord } from './audio/audio-session';
-import { createDoorbell, withDoorbell } from './audio/doorbell';
-import { type AudioEngine, createAudioEngine } from './audio/engine';
-import { createObjectSounds, type ObjectSounds } from './audio/object-sounds';
 import { HIDDEN_TICK_MS, startHiddenTicker } from './audio/ticker';
 import { createFrameRateMeter } from './game/frame-rate';
 import { findPageElements, pageStorage, readPageFlags } from './game/page';
 import { createRemoteWorld, type PeerMedia } from './game/remote-world';
+import { isConnected, joinRoom, type Room } from './game/room';
 import { createScreen } from './game/screen';
 import { createDrinkKey } from './input/drink-key';
 import { createInput } from './input/keyboard';
@@ -25,18 +15,12 @@ import { lockPointer } from './input/pointer-lock';
 import { type RoomKey, roomKey } from './input/room-keys';
 import { createTouchInput } from './input/touch';
 import { loadAvatar, saveAvatar } from './media/avatar';
-import { type Boombox, createBoombox } from './media/boombox';
-import { type Call, createCall } from './media/call';
-import { createFace } from './media/faces';
 import { createFramer } from './media/framer';
 import { createFramingMemory } from './media/framing-memory';
-import { createLiveKitTransport } from './media/livekit';
 import { createLocalMedia, type LocalMediaController } from './media/local-media';
 import { loadMediaPrefs, saveMediaPrefs } from './media/media-prefs';
 import { createOwnGlowSampler } from './media/own-glow';
-import { createRemoteMedia } from './media/remote-media';
 import { createSubscription } from './media/subscription';
-import { createSession, type Session } from './net/session';
 import { createBob } from './renderer/bob';
 import { type InYourHands, type RoomScene, renderHud, renderView } from './renderer/frame';
 import type { GlowSource } from './renderer/glow';
@@ -46,7 +30,6 @@ import { ringRgb } from './renderer/sprites';
 import { makeTextures } from './renderer/textures';
 import { flushOnHide, initAnalytics, track } from './telemetry/analytics';
 import { mediaOutcome } from './telemetry/onboarding';
-import { createRoomTracker, type RoomTracker, withRoomTracker } from './telemetry/room-tracker';
 import { initSentry } from './telemetry/sentry';
 import { createBacktickConsole } from './ui/backtick-console';
 import { loadBoomboxVolume, saveBoomboxVolume } from './ui/boombox-store';
@@ -109,9 +92,9 @@ const drinkKey = createDrinkKey({
   canGesture: inRoom,
   onGesture(kind) {
     if (kind === 'sip') {
-      session?.sendDrink();
+      room?.session.sendDrink();
     } else {
-      session?.sendCheers();
+      room?.session.sendCheers();
     }
     track({ name: kind });
   },
@@ -119,28 +102,22 @@ const drinkKey = createDrinkKey({
 
 // The room, from Join on.
 
-let session: Session | null = null;
-let roomTracker: RoomTracker | null = null;
-let call: Call | null = null;
-let audio: AudioEngine | null = null;
-/** The robot vacuum's hum (and any later object's sound), made when the room is joined. */
-let objectSounds: ObjectSounds | null = null;
-let boombox: Boombox | null = null;
+let room: Room | null = null;
 /** Everyone else and the world objects, as this frame draws them. */
 const world = createRemoteWorld();
 /** What the world shows of each peer's media. */
 const peerMedia: PeerMedia = {
-  faceOf: (id) => call?.faceOf(id) ?? null,
-  speaking: (id) => audio?.speaking(id) ?? 0,
+  faceOf: (id) => room?.call.faceOf(id) ?? null,
+  speaking: (id) => room?.audio.speaking(id) ?? 0,
 };
 
 function inRoom(): boolean {
-  return session?.status() === 'open';
+  return isConnected(room);
 }
 
 // pagehide, not unload: it fires on mobile and for pages entering the back/forward cache.
 window.addEventListener('pagehide', () => {
-  roomTracker?.leave();
+  room?.tracker.leave();
   flushOnHide();
 });
 
@@ -156,7 +133,7 @@ function chooseHeld(item: HeldItem | null): void {
     ownGesture.cancel();
   }
   saveHeld(pageStorage(), item);
-  session?.setHeld(item);
+  room?.session.setHeld(item);
   if (item !== null) {
     track({ name: 'drink_picked', item });
   }
@@ -171,14 +148,14 @@ game.addEventListener('pointerdown', (e) => {
 
 // Browsers may suspend audio until a gesture (autoplay policy, backgrounded tab): resume on the next one.
 for (const type of ['pointerdown', 'keydown'] as const) {
-  window.addEventListener(type, () => void audio?.resume());
+  window.addEventListener(type, () => void room?.audio.resume());
 }
 
 const backtickConsole = createBacktickConsole(ui, {
   panel: () => ({
     frameRate: frameRateMeter.fps,
     renderLoad: frameRateMeter.renderLoad,
-    facesSent: () => call?.sendingFaces() ?? { 256: false, 128: false, 64: false },
+    facesSent: () => room?.call.sendingFaces() ?? { 256: false, 128: false, 64: false },
     render: {
       settings: renderSettings,
       onChange(s) {
@@ -187,7 +164,7 @@ const backtickConsole = createBacktickConsole(ui, {
       },
     },
   }),
-  boombox: () => boombox,
+  boombox: () => room?.boombox ?? null,
   saveBoomboxVolume: (volume) => saveBoomboxVolume(pageStorage(), volume),
 });
 
@@ -198,7 +175,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Meta' || e.key === 'Control' || e.key === 'Alt') {
     drinkKey.cancel();
   }
-  const key = roomKey(e, { inRoom: inRoom(), hasBoombox: boombox !== null });
+  const key = roomKey(e, { inRoom: inRoom(), hasBoombox: room !== null });
   if (key) {
     onRoomKey(key, e);
   }
@@ -242,7 +219,7 @@ function onRoomKey(key: RoomKey, e: KeyboardEvent): void {
 
 /** B opens the boombox's file picker, or stops the music (boombox spec §3); stopping works while reconnecting. */
 function toggleBoombox(): void {
-  boombox?.toggle(inRoom());
+  room?.boombox.toggle(inRoom());
 }
 
 let automapVisible = false;
@@ -256,7 +233,7 @@ function toggleAutomap(): void {
 /** The room's touch controls (mobile spec §5): from Join in touch mode, else from the first touch in the room. */
 let touchControls: TouchControls | null = null;
 function showTouch(): void {
-  if (touchControls || !session) {
+  if (touchControls || !room) {
     return;
   }
   touchControls = showTouchControls(ui, {
@@ -315,67 +292,41 @@ function setPeopleCount(count: number | null): void {
 
 // Joining.
 
-function joinRoom(
+function enterRoom(
   roomId: string,
   name: string,
   avatar: string | null,
   local: LocalMediaController,
   audioCtx: AudioContext
 ): void {
-  audio = createAudioEngine({ ctx: audioCtx, map });
-  const sounds = createObjectSounds(audioCtx, audio);
-  objectSounds = sounds;
   saveName(pageStorage(), name);
   saveAvatar(pageStorage(), avatar);
   clearScreen(ui);
-  call = createCall({
-    local,
-    remote: createRemoteMedia(page.media),
-    audio,
-    document,
-    createFace,
-    createTransport: createLiveKitTransport,
-  });
-  const tracker = createRoomTracker(track, () => performance.now());
-  roomTracker = tracker;
-  session = createSession({
-    url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
+  ownHeld = loadHeld(pageStorage());
+  const joined = joinRoom({
     roomId,
     name,
     avatar,
-    bots: botsParam(location.search),
+    local,
+    audioCtx,
+    map,
     player,
-    now: () => performance.now(),
-    listener: {
-      ...withRoomTracker(withDoorbell(call.listener, createDoorbell(audioCtx)), tracker, () => session),
-      objectEvent: (id, e) => sounds.event(id, e),
+    mediaContainer: page.media,
+    localMediaContainer: page.localMedia,
+    drink: ownHeld,
+    boomboxVolume: loadBoomboxVolume(pageStorage()),
+    onBoomboxChange(on) {
+      ownBoombox = on;
+      refreshTouchControls();
+      backtickConsole.refreshBoombox();
     },
   });
-  const held = loadHeld(pageStorage());
-  ownHeld = held;
-  session.setHeld(held);
-  session.setBoombox(false);
-  call.attach(session);
+  room = joined;
   const banner = joinBanner(local.state());
   if (banner) {
     showBanner(ui, banner);
   }
-  const activeCall = call;
-  boombox = createBoombox({
-    ctx: audioCtx,
-    container: page.localMedia,
-    onTrack: (track) => activeCall.setBoomboxTrack(track),
-    onChange(on) {
-      if (on) {
-        track({ name: 'boombox_started' });
-      }
-      ownBoombox = on;
-      refreshTouchControls();
-      session?.setBoombox(on);
-      backtickConsole.refreshBoombox();
-    },
-  });
-  boombox.setVolume(loadBoomboxVolume(pageStorage()));
+  const activeCall = joined.call;
   const media = local.state();
   showMediaControls(ui, {
     cam: media.cam,
@@ -475,7 +426,7 @@ function openLobby(roomId: string): void {
       stopMetering();
       meter.dispose();
       screen.runRoom(frame);
-      joinRoom(roomId, name, avatar, local, audioCtx);
+      enterRoom(roomId, name, avatar, local, audioCtx);
     },
   });
 }
@@ -488,13 +439,13 @@ if (import.meta.env.DEV) {
       player,
       input,
       get session() {
-        return session;
+        return room?.session ?? null;
       },
       get call() {
-        return call;
+        return room?.call ?? null;
       },
       get audio() {
-        return audio;
+        return room?.audio ?? null;
       },
     },
   });
@@ -503,18 +454,15 @@ if (import.meta.env.DEV) {
 const subscription = createSubscription();
 
 /** Dynamic subscription (6c spec §4): whose face and voice to receive. */
-function chooseWhatToReceive(s: Session, now: number, hidden: boolean): void {
-  if (!call) {
-    return;
-  }
+function chooseWhatToReceive(r: Room, now: number, hidden: boolean): void {
   subscription.choose(now, {
-    call,
-    people: s.peers,
+    call: r.call,
+    people: r.session.peers,
     positions: world.positions,
     player,
     fov: screen.fb.fov,
     map,
-    maxDistance: audio?.settings().max ?? DEFAULT_AUDIO_SETTINGS.max,
+    maxDistance: r.audio.settings().max,
     hidden,
   });
 }
@@ -524,14 +472,14 @@ function chooseWhatToReceive(s: Session, now: number, hidden: boolean): void {
 // rAF stops while the tab is hidden: keep voices (and newcomers) audible from a timer meanwhile.
 startHiddenTicker(
   () => {
-    if (!session) {
+    if (!room) {
       return;
     }
     const now = performance.now();
-    world.sample(session, player, now);
-    objectSounds?.sync(session.objects, world.objectPoses, HIDDEN_TICK_MS / 1000);
-    audio?.update(now, player, world.positions);
-    chooseWhatToReceive(session, now, true);
+    world.sample(room.session, player, now);
+    room.objectSounds.sync(room.session.objects, world.objectPoses, HIDDEN_TICK_MS / 1000);
+    room.audio.update(now, player, world.positions);
+    chooseWhatToReceive(room, now, true);
   },
   () => document.hidden
 );
@@ -539,9 +487,9 @@ startHiddenTicker(
 function frame(dt: number): void {
   stepSelf(dt);
   const now = performance.now();
-  call?.update(now);
-  if (session) {
-    updateWorld(session, now, dt);
+  if (room) {
+    room.call.update(now);
+    updateWorld(room, now, dt);
   }
   const drawStart = performance.now();
   const shown = describeScene(drawStart);
@@ -551,8 +499,8 @@ function frame(dt: number): void {
   const drawnAt = performance.now();
   // dt comes from rAF's timestamps, which fall on the screen's refreshes.
   frameRateMeter.frame(drawnAt, dt * 1000, drawnAt - drawStart);
-  if (session) {
-    chooseWhatToReceive(session, drawnAt, document.hidden);
+  if (room) {
+    chooseWhatToReceive(room, drawnAt, document.hidden);
   }
 }
 
@@ -569,14 +517,15 @@ function stepSelf(dt: number): void {
 }
 
 /** Everyone else and the world objects this frame, their sounds, and the room's status line and head count. */
-function updateWorld(s: Session, now: number, dt: number): void {
-  world.sample(s, player, now);
-  world.collect(s, peerMedia, now, dt);
-  objectSounds?.sync(s.objects, world.objectPoses, dt);
-  setStatus(statusText(s.status(), s.error()));
+function updateWorld(r: Room, now: number, dt: number): void {
+  const { session } = r;
+  world.sample(session, player, now);
+  world.collect(session, peerMedia, now, dt);
+  r.objectSounds.sync(session.objects, world.objectPoses, dt);
+  setStatus(statusText(session.status(), session.error()));
   // Bots count too: the client can't tell them from people.
-  setPeopleCount(s.status() === 'open' ? s.peers.size + 1 : null);
-  audio?.update(now, player, world.positions);
+  setPeopleCount(session.status() === 'open' ? session.peers.size + 1 : null);
+  r.audio.update(now, player, world.positions);
 }
 
 const yourHands: InYourHands = { drink: null, boombox: false, step: selfBob, gesture: ownGesture.pose(0) };
@@ -606,7 +555,7 @@ function describeScene(now: number): RoomScene {
 
 /** Your camera's colour, else your ring's. */
 function yourGlow(now: number): GlowSource | null {
-  const color = session?.selfColor();
+  const color = room?.session.selfColor();
   if (!color) {
     return null;
   }
