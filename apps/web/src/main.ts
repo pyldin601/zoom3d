@@ -48,8 +48,7 @@ import { flushOnHide, initAnalytics, track } from './telemetry/analytics';
 import { mediaOutcome } from './telemetry/onboarding';
 import { createRoomTracker, type RoomTracker, withRoomTracker } from './telemetry/room-tracker';
 import { initSentry } from './telemetry/sentry';
-import { setAudioPanelBoombox, showAudioPanel } from './ui/audio-panel';
-import type { BoomboxPanelOptions } from './ui/boombox-panel';
+import { createBacktickConsole } from './ui/backtick-console';
 import { loadBoomboxVolume, saveBoomboxVolume } from './ui/boombox-store';
 import { heldKeyAction, loadHeld, saveHeld } from './ui/held-store';
 import { joinBanner, PROBLEM_TEXT, showLobby } from './ui/lobby';
@@ -175,39 +174,8 @@ for (const type of ['pointerdown', 'keydown'] as const) {
   window.addEventListener(type, () => void audio?.resume());
 }
 
-// The backtick console.
-
-let audioPanelVisible = false;
-/** The boombox column of the audio panel, while our boombox plays (boombox spec §3.1). */
-function boomboxControls(): BoomboxPanelOptions | null {
-  const box = boombox;
-  if (!box?.playing()) {
-    return null;
-  }
-  return {
-    title: box.title() ?? '',
-    volume: box.volume(),
-    progress: () => box.progress(),
-    onVolume(v) {
-      box.setVolume(v);
-      saveBoomboxVolume(pageStorage(), box.volume());
-    },
-    onSeek: (seconds) => box.seek(seconds),
-    onStop: () => box.toggle(true),
-  };
-}
-
-function toggleAudioPanel(): void {
-  audioPanelVisible = !audioPanelVisible;
-  if (!audioPanelVisible) {
-    showAudioPanel(ui, null);
-    return;
-  }
-  // The panel is worked with the mouse: let go of mouse-look. A click on the view locks it again.
-  if (document.pointerLockElement) {
-    document.exitPointerLock();
-  }
-  showAudioPanel(ui, {
+const backtickConsole = createBacktickConsole(ui, {
+  panel: () => ({
     frameRate: frameRateMeter.fps,
     renderLoad: frameRateMeter.renderLoad,
     facesSent: () => call?.sendingFaces() ?? { 256: false, 128: false, 64: false },
@@ -218,9 +186,10 @@ function toggleAudioPanel(): void {
         saveRenderSettings(pageStorage(), s);
       },
     },
-  });
-  setAudioPanelBoombox(ui, boomboxControls());
-}
+  }),
+  boombox: () => boombox,
+  saveBoomboxVolume: (volume) => saveBoomboxVolume(pageStorage(), volume),
+});
 
 // The room's keys; walking is keyboard.ts's.
 
@@ -242,7 +211,7 @@ function onRoomKey(key: RoomKey, e: KeyboardEvent): void {
   switch (key.kind) {
     case 'console':
       e.preventDefault();
-      toggleAudioPanel();
+      backtickConsole.toggle();
       break;
     case 'map':
       e.preventDefault();
@@ -403,7 +372,7 @@ function joinRoom(
       ownBoombox = on;
       refreshTouchControls();
       session?.setBoombox(on);
-      setAudioPanelBoombox(ui, boomboxControls());
+      backtickConsole.refreshBoombox();
     },
   });
   boombox.setVolume(loadBoomboxVolume(pageStorage()));
@@ -429,7 +398,7 @@ function joinRoom(
     showTouch();
   }
   if (new URLSearchParams(location.search).has('debug')) {
-    toggleAudioPanel();
+    backtickConsole.toggle();
   }
 }
 
