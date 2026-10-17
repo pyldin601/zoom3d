@@ -53,12 +53,13 @@ const RANK: Record<VideoWant, number> = { off: 0, 64: 1, 128: 2, 256: 3 };
 interface State {
   video: VideoWant;
   audio: boolean;
-  /** Since when a lower video than `video` has been wanted without a break; -1 when not. */
-  lowerSince: number;
+  /** Since when a lower video than `video` has been wanted without a break; null when it isn't. */
+  lowerSince: number | null;
 }
 
 interface Candidate {
   id: string;
+  state: State;
   distance: number;
   video: VideoWant;
   audio: boolean;
@@ -110,50 +111,55 @@ export function createInterest(): { update(input: InterestInput): ReadonlyMap<st
     return hasLineOfSight(input.map, player.x, player.y, peer.x, peer.y) ? 64 : 'off';
   }
 
+  /** Everyone listed, with what they'd get with no caps, nearest first; forgets anyone no longer listed. */
+  function candidatesFor(input: InterestInput): Candidate[] {
+    const { player, maxDistance } = input;
+    const listed = new Set<string>();
+    const candidates: Candidate[] = [];
+    for (const peer of input.peers) {
+      listed.add(peer.id);
+      let state = states.get(peer.id);
+      if (!state) {
+        state = { video: 'off', audio: false, lowerSince: null };
+        states.set(peer.id, state);
+      }
+      const distance = Math.hypot(peer.x - player.x, peer.y - player.y);
+      const audio = distance <= maxDistance + (state.audio ? AUDIO_OFF_MARGIN : AUDIO_ON_MARGIN);
+      candidates.push({ id: peer.id, state, distance, video: target(input, peer, distance, state), audio });
+    }
+    for (const id of states.keys()) {
+      if (!listed.has(id)) {
+        states.delete(id);
+      }
+    }
+    return candidates.sort((a, b) => a.distance - b.distance);
+  }
+
+  /** A bigger face is taken at once; a smaller one only after it has been wanted for HOLD_MS (hidden: at once). */
+  function settleVideo(state: State, video: VideoWant, input: InterestInput): void {
+    if (input.hidden || RANK[video] >= RANK[state.video]) {
+      state.video = video;
+      state.lowerSince = null;
+    } else if (state.lowerSince === null) {
+      state.lowerSince = input.now;
+    } else if (input.now - state.lowerSince >= HOLD_MS) {
+      state.video = video;
+      state.lowerSince = null;
+    }
+  }
+
   return {
     update(input) {
-      const { player, maxDistance } = input;
-      const listed = new Set<string>();
-      const candidates: Candidate[] = [];
-      for (const peer of input.peers) {
-        listed.add(peer.id);
-        let s = states.get(peer.id);
-        if (!s) {
-          s = { video: 'off', audio: false, lowerSince: -1 };
-          states.set(peer.id, s);
-        }
-        const distance = Math.hypot(peer.x - player.x, peer.y - player.y);
-        const audio = distance <= maxDistance + (s.audio ? AUDIO_OFF_MARGIN : AUDIO_ON_MARGIN);
-        candidates.push({ id: peer.id, distance, video: target(input, peer, distance, s), audio });
-      }
-      for (const id of states.keys()) {
-        if (!listed.has(id)) {
-          states.delete(id);
-        }
-      }
-
-      candidates.sort((a, b) => a.distance - b.distance);
       let videos = 0;
       let voices = 0;
       const out = new Map<string, Want>();
-      for (const c of candidates) {
-        let video = c.video;
-        if (video !== 'off' && ++videos > MAX_VIDEOS) {
-          video = 'off';
-        }
+      // The nearest MAX_VIDEOS faces and MAX_VOICES voices win.
+      for (const c of candidatesFor(input)) {
+        const video = c.video !== 'off' && ++videos > MAX_VIDEOS ? 'off' : c.video;
         const audio = c.audio && ++voices <= MAX_VOICES;
-        const s = states.get(c.id) as State;
-        if (input.hidden || RANK[video] >= RANK[s.video]) {
-          s.video = video;
-          s.lowerSince = -1;
-        } else if (s.lowerSince < 0) {
-          s.lowerSince = input.now;
-        } else if (input.now - s.lowerSince >= HOLD_MS) {
-          s.video = video;
-          s.lowerSince = -1;
-        }
-        s.audio = audio;
-        out.set(c.id, { video: s.video, audio });
+        settleVideo(c.state, video, input);
+        c.state.audio = audio;
+        out.set(c.id, { video: c.state.video, audio });
       }
       return out;
     },

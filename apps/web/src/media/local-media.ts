@@ -85,7 +85,7 @@ export function createLocalMedia(env: LocalMediaEnv, initial: MediaPrefs): Local
   const camConstraints = (id: string | null): MediaTrackConstraints =>
     id ? constraints(VIDEO_CONSTRAINTS, id) : { ...VIDEO_CONSTRAINTS, facingMode: { ideal: 'user' } };
 
-  async function open(kind: Kind, id: string | null): Promise<MediaStreamTrack> {
+  async function openDevice(kind: Kind, id: string | null): Promise<MediaStreamTrack> {
     const s = await env.getUserMedia(
       kind === 'cam' ? { video: camConstraints(id) } : { audio: constraints(AUDIO_CONSTRAINTS, id) }
     );
@@ -96,30 +96,30 @@ export function createLocalMedia(env: LocalMediaEnv, initial: MediaPrefs): Local
     return track;
   }
 
-  async function request(kind: Kind, id: string | null): Promise<MediaStreamTrack> {
+  /** The chosen device, or the default one if the chosen one is gone (unplugged since it was saved). */
+  async function requestDevice(kind: Kind, id: string | null): Promise<MediaStreamTrack> {
     inFlight++;
     notify();
     try {
       try {
-        return await open(kind, id);
+        return await openDevice(kind, id);
       } catch (err) {
-        // The chosen device is gone (unplugged since it was saved): use the default instead.
         if (id === null || deviceProblem(err) !== 'missing') {
           throw err;
         }
-        return await open(kind, null);
+        return await openDevice(kind, null);
       }
     } finally {
       inFlight--;
     }
   }
 
-  function fail(kind: Kind, err: unknown) {
+  function noteFailure(kind: Kind, err: unknown) {
     problem[kind] = deviceProblem(err);
     available[kind] = problem[kind] === 'busy';
   }
 
-  function succeed(kind: Kind) {
+  function noteSuccess(kind: Kind) {
     problem[kind] = null;
     available[kind] = true;
   }
@@ -127,31 +127,35 @@ export function createLocalMedia(env: LocalMediaEnv, initial: MediaPrefs): Local
   async function openCamera(id: string | null): Promise<void> {
     const mine = ++seq.cam;
     try {
-      const track = await request('cam', id);
+      const track = await requestDevice('cam', id);
       if (mine !== seq.cam) {
         track.stop();
         return;
       }
-      const old = camera;
-      camera = track;
-      track.addEventListener('ended', () => {
-        if (camera === track) {
-          // Unplugged: come back on whatever the default is now.
-          camera = null;
-          framer.setCamera(null);
-          void openCamera(null);
-        }
-      });
-      framer.setCamera(track);
-      old?.stop();
-      succeed('cam');
+      useCameraTrack(track);
+      noteSuccess('cam');
     } catch (err) {
       if (mine === seq.cam) {
-        fail('cam', err);
+        noteFailure('cam', err);
       }
     } finally {
       notify();
     }
+  }
+
+  function useCameraTrack(track: MediaStreamTrack) {
+    const old = camera;
+    camera = track;
+    track.addEventListener('ended', () => {
+      if (camera === track) {
+        // Unplugged: come back on whatever the default is now.
+        camera = null;
+        framer.setCamera(null);
+        void openCamera(null);
+      }
+    });
+    framer.setCamera(track);
+    old?.stop();
   }
 
   function stopCamera() {
@@ -166,30 +170,16 @@ export function createLocalMedia(env: LocalMediaEnv, initial: MediaPrefs): Local
   async function openMic(id: string | null): Promise<void> {
     const mine = ++seq.mic;
     try {
-      const track = await request('mic', id);
+      const track = await requestDevice('mic', id);
       if (mine !== seq.mic) {
         track.stop();
         return;
       }
-      track.enabled = prefs.mic;
-      const old = mic;
-      if (old) {
-        stream.removeTrack(old);
-      }
-      stream.addTrack(track);
-      mic = track;
-      track.addEventListener('ended', () => {
-        if (mic === track) {
-          stream.removeTrack(track);
-          mic = null;
-          void openMic(null);
-        }
-      });
-      old?.stop();
-      succeed('mic');
+      useMicTrack(track);
+      noteSuccess('mic');
     } catch (err) {
       if (mine === seq.mic) {
-        fail('mic', err);
+        noteFailure('mic', err);
       }
     } finally {
       if (mine === seq.mic) {
@@ -199,16 +189,37 @@ export function createLocalMedia(env: LocalMediaEnv, initial: MediaPrefs): Local
     }
   }
 
-  let ready: Promise<void>;
-  if (!env.isSecureContext) {
-    for (const kind of ['cam', 'mic'] as const) {
-      available[kind] = false;
-      problem[kind] = 'insecure';
+  function useMicTrack(track: MediaStreamTrack) {
+    track.enabled = prefs.mic;
+    const old = mic;
+    if (old) {
+      stream.removeTrack(old);
     }
-    ready = Promise.resolve();
-  } else {
-    ready = Promise.all([prefs.cam ? openCamera(prefs.camId) : null, openMic(prefs.micId)]).then(() => {});
+    stream.addTrack(track);
+    mic = track;
+    track.addEventListener('ended', () => {
+      if (mic === track) {
+        stream.removeTrack(track);
+        mic = null;
+        void openMic(null);
+      }
+    });
+    old?.stop();
   }
+
+  /** The preferred devices, unless the page isn't secure: then getUserMedia is missing and nothing can open. */
+  function openPreferredDevices(): Promise<void> {
+    if (!env.isSecureContext) {
+      for (const kind of ['cam', 'mic'] as const) {
+        available[kind] = false;
+        problem[kind] = 'insecure';
+      }
+      return Promise.resolve();
+    }
+    return Promise.all([prefs.cam ? openCamera(prefs.camId) : null, openMic(prefs.micId)]).then(() => {});
+  }
+
+  const ready = openPreferredDevices();
   env.onDeviceChange(notify);
 
   return {
