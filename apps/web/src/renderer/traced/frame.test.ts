@@ -93,6 +93,29 @@ function opaqueEverywhere(fb: Framebuffer): boolean {
   return fb.pixels.findIndex((pixel) => pixel >>> 24 !== 0xff) === -1;
 }
 
+/**
+ * Draws a frame, then draws it again over buffers and a z-buffer full of NaN: what the passes skip stays NaN. The frame's
+ * own pixels can't show a gap, since the tone map writes every pixel from whatever light is there.
+ */
+function drawOverNaN(fb: Framebuffer, eye: PlayerState, traced: TracedLighting): void {
+  draw(fb, eye, traced);
+  const { hdr, spec } = lastTracedBuffers();
+  hdr.fill(Number.NaN);
+  spec.fill(Number.NaN);
+  fb.zbuffer.fill(Number.NaN);
+  fb.pixels.fill(0);
+  draw(fb, eye, traced);
+}
+
+/** For a frame drawn by `drawOverNaN`: every pixel opaque, every light and weight a number, every column a distance. */
+function expectEveryPixelWritten(fb: Framebuffer): void {
+  const { hdr, spec } = lastTracedBuffers();
+  expect(opaqueEverywhere(fb)).toBe(true);
+  expect(hdr.findIndex((light) => !Number.isFinite(light))).toBe(-1);
+  expect(spec.findIndex((weight) => !Number.isFinite(weight))).toBe(-1);
+  expect(fb.zbuffer.findIndex((distance) => !(distance > 0))).toBe(-1);
+}
+
 describe('renderTraced on LEVEL1', () => {
   let traced: TracedLighting;
   const fb = createFramebuffer();
@@ -248,30 +271,22 @@ describe('renderTraced on LEVEL1', () => {
   });
 
   describe('every pixel is written', () => {
-    function expectComplete(frame: Framebuffer): void {
-      expect(opaqueEverywhere(frame)).toBe(true);
-      expect(lastTracedBuffers().hdr.every(Number.isFinite)).toBe(true);
-      expect(frame.zbuffer.every((distance) => distance > 0)).toBe(true);
-    }
-
     test.each(POSES)('at 640×360, %s', (_, eye) => {
-      fb.pixels.fill(0);
-      draw(fb, eye, traced);
-      expectComplete(fb);
+      drawOverNaN(fb, eye, traced);
+      expectEveryPixelWritten(fb);
     });
 
     test.each(POSES)('at 296×640 with FOV_TALL, %s', (_, eye) => {
       const portrait = createFramebuffer(296, 640, FOV_TALL);
-      draw(portrait, eye, traced);
-      expectComplete(portrait);
+      drawOverNaN(portrait, eye, traced);
+      expectEveryPixelWritten(portrait);
     });
 
     test('in a frame whose height is odd, which puts a row on the horizon', () => {
       const odd = createFramebuffer(301, 361, fovForAspect(301 / 361));
       for (const [, eye] of POSES) {
-        odd.pixels.fill(0);
-        draw(odd, eye, traced);
-        expectComplete(odd);
+        drawOverNaN(odd, eye, traced);
+        expectEveryPixelWritten(odd);
       }
     });
 
@@ -279,9 +294,9 @@ describe('renderTraced on LEVEL1', () => {
       const switching = createFramebuffer();
       draw(switching, SPAWN_EAST, traced);
       Object.assign(switching, createFramebuffer(296, 640, FOV_TALL));
-      draw(switching, SPAWN_SOUTH, traced);
+      drawOverNaN(switching, SPAWN_SOUTH, traced);
       expect([switching.width, switching.height]).toEqual([296, 640]);
-      expectComplete(switching);
+      expectEveryPixelWritten(switching);
     });
   });
 
@@ -516,9 +531,8 @@ describe("a wall out of the ray walk's reach", () => {
     const world = buildTracedWorld(corridor, TEXTURES, []);
     const traced = { world, maps: createLightmaps(world) };
     const odd = createFramebuffer(301, 361, fovForAspect(301 / 361));
-    draw(odd, { x: 1.5, y: 1.5, angle: 0 }, traced);
+    drawOverNaN(odd, { x: 1.5, y: 1.5, angle: 0 }, traced);
     expect(Math.max(...odd.zbuffer)).toBe(Number.POSITIVE_INFINITY);
-    expect(opaqueEverywhere(odd)).toBe(true);
-    expect(lastTracedBuffers().hdr.every(Number.isFinite)).toBe(true);
+    expectEveryPixelWritten(odd);
   });
 });
