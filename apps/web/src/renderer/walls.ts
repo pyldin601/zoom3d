@@ -65,6 +65,16 @@ export interface Room {
   reflections?: ReflectionMode;
 }
 
+/** The floor (or ceiling) points along one screen row, in lightmap cells. */
+interface FloorRow {
+  /** Under pixel column 0. */
+  x: number;
+  y: number;
+  /** Per pixel column. */
+  stepX: number;
+  stepY: number;
+}
+
 /** What a lit frame is drawn from, set once per frame by `litRoomFor`. */
 interface LitRoom extends Room {
   lighting: Lighting;
@@ -89,6 +99,8 @@ let wallEnd = new Int32Array(0);
 /** One floor or ceiling row's reflection every FLOOR_REFLECTION_STEP_PX (0 where it doesn't show), and its lamp. */
 let rowShine = new Float64Array(0);
 let rowShineLamp = new Int32Array(0);
+/** The row aimFloorRow last aimed at. */
+const floorRow: FloorRow = { x: 0, y: 0, stepX: 0, stepY: 0 };
 
 let reflectionColoursFor: { lm: Lighting; textures: Uint32Array[] } | null = null;
 let reflectionColourTable = new Float64Array(0);
@@ -631,44 +643,54 @@ function packClamped(r: number, g: number, b: number): number {
   return (0xff000000 | (Math.min(255, b) << 16) | (Math.min(255, g) << 8) | Math.min(255, r)) >>> 0;
 }
 
-/** Along a screen row the floor point moves linearly, so it's stepped, not re-projected. */
+/** Each floor and ceiling pixel the walls leave, in its cell's colour. */
 function drawFloorAndCeiling(fb: Framebuffer, room: LitRoom, floor: Uint32Array, ceiling: Uint32Array): void {
   const { width: w, height: h, pixels } = fb;
-  const { dirX, dirY, planeX, planeY, half } = view;
   const { stride, rows } = room.lighting;
-  const eyeX = room.eye.x * FLOOR_SUB;
-  const eyeY = room.eye.y * FLOOR_SUB;
-  const maxX = stride - 1;
-  const maxY = rows - 1;
+  const lastCellX = stride - 1;
+  const lastCellY = rows - 1;
   for (let y = 0; y < h; y++) {
-    const d = rowDistance[y] as number;
-    const above = y < half;
+    const above = y < view.half;
     const colours = above ? ceiling : floor;
-    let fx = eyeX + d * (dirX - planeX);
-    let fy = eyeY + d * (dirY - planeY);
-    const stepX = (d * 2 * planeX) / w;
-    const stepY = (d * 2 * planeY) / w;
+    const { x: startX, y: startY, stepX, stepY } = aimFloorRow(room.eye, y, w);
+    let fx = startX;
+    let fy = startY;
     const row = y * w;
     for (let col = 0; col < w; col++, fx += stepX, fy += stepY) {
       if (above ? y >= (wallStart[col] as number) : y < (wallEnd[col] as number)) {
         continue;
       }
+      // clampCell written out: called here, this loop measured 3% slower (bench:walls).
       let ix = fx | 0;
       let iy = fy | 0;
       if (ix < 0) {
         ix = 0;
-      } else if (ix > maxX) {
-        ix = maxX;
+      } else if (ix > lastCellX) {
+        ix = lastCellX;
       }
       if (iy < 0) {
         iy = 0;
-      } else if (iy > maxY) {
-        iy = maxY;
+      } else if (iy > lastCellY) {
+        iy = lastCellY;
       }
       pixels[row + col] = colours[iy * stride + ix] as number;
     }
   }
 }
+
+/** Aims floorRow at screen row `y`: along a row the floor point moves linearly, so it's stepped, not re-projected. */
+function aimFloorRow(eye: PlayerState, y: number, w: number): FloorRow {
+  const { dirX, dirY, planeX, planeY } = view;
+  const d = rowDistance[y] as number;
+  floorRow.x = eye.x * FLOOR_SUB + d * (dirX - planeX);
+  floorRow.y = eye.y * FLOOR_SUB + d * (dirY - planeY);
+  floorRow.stepX = (d * 2 * planeX) / w;
+  floorRow.stepY = (d * 2 * planeY) / w;
+  return floorRow;
+}
+
+/** A cell coordinate clamped to the lightmap, 0..last: guards rounding at the map's edge. */
+const clampCell = (cell: number, last: number) => (cell < 0 ? 0 : cell > last ? last : cell);
 
 /**
  * The lamps' reflections on the drawn floor, and their light off the floor on the ceiling: worked out every
@@ -677,21 +699,14 @@ function drawFloorAndCeiling(fb: Framebuffer, room: LitRoom, floor: Uint32Array,
  */
 function addFloorAndCeilingReflections(fb: Framebuffer, room: LitRoom): void {
   const { width: w, height: h } = fb;
-  const { dirX, dirY, planeX, planeY, half } = view;
+  const { half } = view;
   const floorTop = Math.ceil(half);
   let shows = false;
   for (let y = 0; y < h; y++) {
-    const d = rowDistance[y] as number;
     const above = y < half;
     if ((above ? y : y - floorTop) % 2 === 0) {
-      const stepX = (d * 2 * planeX) / w;
-      const stepY = (d * 2 * planeY) / w;
-      const fx = room.eye.x * FLOOR_SUB + d * (dirX - planeX);
-      const fy = room.eye.y * FLOOR_SUB + d * (dirY - planeY);
-      const sub = FLOOR_SUB;
-      shows =
-        d / sub < REFLECTION_RANGE &&
-        reflectionAlongRow(room, fx / sub, fy / sub, stepX / sub, stepY / sub, above ? 'ceiling' : 'floor');
+      const inRange = (rowDistance[y] as number) / FLOOR_SUB < REFLECTION_RANGE;
+      shows = inRange && reflectionAlongRow(room, aimFloorRow(room.eye, y, w), above ? 'ceiling' : 'floor');
     }
     if (shows) {
       addRowReflection(fb, room, y);
@@ -700,21 +715,18 @@ function addFloorAndCeilingReflections(fb: Framebuffer, room: LitRoom): void {
 }
 
 /**
- * The floor's reflection along one screen row, every FLOOR_REFLECTION_STEP_PX, into rowShine and rowShineLamp: the
- * row's floor point at pixel col is (x0 + dx·col, y0 + dy·col) in tiles. Returns whether any of it shows. On the
- * ceiling it's the lamps mirrored in the floor: the ceiling, the eye and those lamps mirrored over the eye's height make
- * the floor, the eye and lamps 1 + z high.
+ * The floor's reflection along `row`, every FLOOR_REFLECTION_STEP_PX, into rowShine and rowShineLamp. Returns whether
+ * any of it shows. On the ceiling it's the lamps mirrored in the floor: the ceiling, the eye and those lamps mirrored
+ * over the eye's height make the floor, the eye and lamps 1 + z high.
  */
-function reflectionAlongRow(
-  room: LitRoom,
-  x0: number,
-  y0: number,
-  dx: number,
-  dy: number,
-  surface: 'floor' | 'ceiling'
-): boolean {
+function reflectionAlongRow(room: LitRoom, row: FloorRow, surface: 'floor' | 'ceiling'): boolean {
   const { lighting: lm, eye } = room;
   const { stride: across, rows: down } = lm;
+  // In tiles: reflection() works in tiles, the floor row in lightmap cells.
+  const x0 = row.x / FLOOR_SUB;
+  const y0 = row.y / FLOOR_SUB;
+  const dx = row.stepX / FLOOR_SUB;
+  const dy = row.stepY / FLOOR_SUB;
   let shows = false;
   for (let i = 0; i < rowShine.length; i++) {
     const x = x0 + dx * i * FLOOR_REFLECTION_STEP_PX;
@@ -753,19 +765,14 @@ function reflectionAlongRow(
  */
 function addRowReflection(fb: Framebuffer, room: LitRoom, y: number): void {
   const { width: w, pixels } = fb;
-  const { dirX, dirY, planeX, planeY, half } = view;
   const { stride, rows, floorLamp, floorLampSeen, lights } = room.lighting;
   const colours = room.reflectionColours;
   const floorTexture = room.textures.length;
-  const above = y < half;
+  const above = y < view.half;
   const share = above ? CEILING_SHINE : 1;
-  const d = rowDistance[y] as number;
-  const fx = room.eye.x * FLOOR_SUB + d * (dirX - planeX);
-  const fy = room.eye.y * FLOOR_SUB + d * (dirY - planeY);
-  const stepX = (d * 2 * planeX) / w;
-  const stepY = (d * 2 * planeY) / w;
-  const maxX = stride - 1;
-  const maxY = rows - 1;
+  const { x: startX, y: startY, stepX, stepY } = aimFloorRow(room.eye, y, w);
+  const lastCellX = stride - 1;
+  const lastCellY = rows - 1;
   const row = y * w;
   for (let i = 0; i * FLOOR_REFLECTION_STEP_PX < w; i++) {
     const left = rowShine[i] as number;
@@ -786,19 +793,9 @@ function addRowReflection(fb: Framebuffer, room: LitRoom, y: number): void {
       if (blended < VISIBLE_SHINE) {
         continue;
       }
-      let ix = (fx + stepX * col) | 0;
-      let iy = (fy + stepY * col) | 0;
-      if (ix < 0) {
-        ix = 0;
-      } else if (ix > maxX) {
-        ix = maxX;
-      }
-      if (iy < 0) {
-        iy = 0;
-      } else if (iy > maxY) {
-        iy = maxY;
-      }
-      const cell = (iy * stride + ix) * REFLECTION_LAMPS;
+      const cellX = clampCell((startX + stepX * col) | 0, lastCellX);
+      const cellY = clampCell((startY + stepY * col) | 0, lastCellY);
+      const cell = (cellY * stride + cellX) * REFLECTION_LAMPS;
       let seen = 0;
       for (let k = 0; k < REFLECTION_LAMPS; k++) {
         if (floorLamp[cell + k] === lamp) {
