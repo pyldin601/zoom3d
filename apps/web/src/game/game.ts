@@ -23,12 +23,12 @@ import { botsParam, type Route } from '../ui/route';
 import { clearScreen, showLanding, showNotice } from '../ui/screens';
 import { createFrameRateMeter } from './frame-rate';
 import { type LobbyJoin, openLobby } from './lobby-flow';
+import { createLocalPlayer } from './local-player';
 import { type PageElements, type PageFlags, pageStorage } from './page';
 import { isConnected, joinRoom, type Room } from './room';
 import { createRoomControls } from './room-controls';
 import { createRoomLoop } from './room-loop';
 import { createScreen } from './screen';
-import { createYou } from './you';
 
 export interface Game {
   /** Shows what the page's URL asks for: the landing page, a room's lobby, or a bad link. */
@@ -46,7 +46,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
   /** The lighting mode, chosen in the backtick console and kept per browser. */
   let renderSettings = loadRenderSettings(pageStorage());
 
-  const you = createYou(map, Math.random);
+  const localPlayer = createLocalPlayer(map, Math.random);
   const touch = createTouchInput({
     surface: page.game,
     win: window,
@@ -54,7 +54,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     surfaceWidth: () => page.game.clientWidth,
   });
   const input = createInput(window, document, touch);
-  const drinkKey = createDrinkKey({ gesture: you.gesture, canGesture: inRoom, onGesture: sendGesture });
+  const drinkKey = createDrinkKey({ gesture: localPlayer.gesture, canGesture: inRoom, onGesture: sendGesture });
 
   let room: Room | null = null;
   const backtickConsole = createBacktickConsole(page.ui, {
@@ -76,7 +76,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
   const controls = createRoomControls({
     ui: page.ui,
     touch,
-    you,
+    localPlayer,
     drinkKey,
     room: () => room,
     chooseDrink,
@@ -85,7 +85,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
   const roomLoop = createRoomLoop({
     map,
     textures,
-    you,
+    localPlayer,
     input,
     screen,
     hud: page.hudCtx,
@@ -104,7 +104,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     show,
     forTests: {
       map,
-      player: you.player,
+      player: localPlayer.pose,
       input,
       get session() {
         return room?.session ?? null;
@@ -147,7 +147,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
 
   function showLobbyFor(roomId: string, entry: 'host' | 'invite'): void {
     screen.showLobbyPicture();
-    openLobby({ page, you, entry, onJoin: (join) => enterRoom(roomId, join) });
+    openLobby({ page, localPlayer, entry, onJoin: (join) => enterRoom(roomId, join) });
   }
 
   function enterRoom(roomId: string, { name, avatar, local, audioCtx }: LobbyJoin): void {
@@ -155,7 +155,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     saveName(pageStorage(), name);
     saveAvatar(pageStorage(), avatar);
     clearScreen(page.ui);
-    you.takeDrink(loadHeld(pageStorage()));
+    localPlayer.takeDrink(loadHeld(pageStorage()));
     room = joinRoom({
       roomId,
       name,
@@ -163,13 +163,13 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
       local,
       audioCtx,
       map,
-      player: you.player,
+      player: localPlayer.pose,
       mediaContainer: page.media,
       localMediaContainer: page.localMedia,
-      drink: you.drink,
+      drink: localPlayer.drink,
       boomboxVolume: loadBoomboxVolume(pageStorage()),
       onBoomboxChange(on) {
-        you.boombox = on;
+        localPlayer.boombox = on;
         controls.refresh();
         backtickConsole.refreshBoombox();
       },
@@ -189,7 +189,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
 
   /** The one path for changing the drink in hand, from a number key or the touch tray. */
   function chooseDrink(item: HeldItem | null): void {
-    if (!you.takeDrink(item)) {
+    if (!localPlayer.takeDrink(item)) {
       return;
     }
     drinkKey.cancel();

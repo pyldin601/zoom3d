@@ -1,5 +1,5 @@
-// Your own face's glow colour (avatar glow, D24): the framer's canvas scaled down to SAMPLE² and averaged, a few
-// times a second. A full 256² read-back every frame would cost more than the whole glow.
+// The local player's face glow colour (avatar glow, D24): the framer's canvas scaled down to SAMPLE² and averaged, a
+// few times a second. A full 256² read-back every frame would cost more than the whole glow.
 import { rgb } from '../renderer/framebuffer';
 
 /** The colour is read again at most this often (ms): a face's average changes slowly. */

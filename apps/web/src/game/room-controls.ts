@@ -6,13 +6,13 @@ import { type RoomKey, roomKey } from '../input/room-keys';
 import type { TouchSource } from '../input/touch';
 import { heldKeyAction } from '../ui/held-store';
 import { showTouchControls, type TouchControls } from '../ui/touch-controls';
+import type { LocalPlayer } from './local-player';
 import { isConnected, type Room } from './room';
-import type { You } from './you';
 
 export interface RoomControlsOptions {
   ui: HTMLElement;
   touch: TouchSource;
-  you: You;
+  localPlayer: LocalPlayer;
   drinkKey: DrinkKey;
   room(): Room | null;
   chooseDrink(item: HeldItem | null): void;
@@ -23,17 +23,17 @@ export interface RoomControls {
   readonly mapShown: boolean;
   /** From Join in touch mode; otherwise they come with the first touch in the room. */
   showTouchControls(): void;
-  /** Your drink, your boombox or the map changed. */
+  /** The local player's drink, boombox or the map changed. */
   refresh(): void;
 }
 
 export function createRoomControls(o: RoomControlsOptions): RoomControls {
-  const { you, drinkKey } = o;
+  const { localPlayer, drinkKey } = o;
   let mapShown = false;
   let touchControls: TouchControls | null = null;
   const inRoom = () => isConnected(o.room());
 
-  const refresh = () => touchControls?.update({ held: you.drink, boombox: you.boombox, map: mapShown });
+  const refresh = () => touchControls?.update({ held: localPlayer.drink, boombox: localPlayer.boombox, map: mapShown });
 
   const toggleMap = () => {
     mapShown = !mapShown;
@@ -62,14 +62,14 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
       case 'drink':
         // 1–3 pick a drink, 0 puts it down; the drink in hand's own key sips or cheers it.
         e.preventDefault();
-        if (heldKeyAction(key.item, you.drink) === 'pick') {
+        if (heldKeyAction(key.item, localPlayer.drink) === 'pick') {
           o.chooseDrink(key.item);
         } else {
           drinkKey.down(e.timeStamp, key.code);
         }
         break;
       case 'media':
-        // The same as pressing the mic button or your own circle (feedback, a camera that can't start, a missing
+        // The same as pressing the mic button or the self-view circle (feedback, a camera that can't start, a missing
         // device and all).
         o.ui.querySelector<HTMLButtonElement>(`button[data-control="${key.control}"]`)?.click();
         break;
@@ -81,8 +81,8 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
       return;
     }
     touchControls = showTouchControls(o.ui, {
-      held: you.drink,
-      boombox: you.boombox,
+      held: localPlayer.drink,
+      boombox: localPlayer.boombox,
       map: mapShown,
       onPick(item) {
         if (inRoom()) {
@@ -107,7 +107,8 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
   };
 
   window.addEventListener('keydown', (e) => {
-    // A modifier mid-press means a shortcut, and macOS never reports a key released while Cmd is held: forget the press.
+    // A modifier mid-press means a shortcut, and macOS never reports a key released while Cmd is held: forget the
+    // press.
     if (e.key === 'Meta' || e.key === 'Control' || e.key === 'Alt') {
       drinkKey.cancel();
     }

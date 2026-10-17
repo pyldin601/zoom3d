@@ -50,8 +50,11 @@ Try these first, in this order, and write the comment only if none of them can c
   else in a one-line doc comment.
 - **Functions that act are verbs** (`planLeg`, `startLeg`, `expirePeer`, `drawWallColumn`); **queries are nouns or
   questions** (`nearestTile`, `personInFront`, `bodyFits`, `outOfView`).
-- **A stage is named for what it produces or draws**, so a caller reads as the steps: `stepYou`,
-  `placeEveryoneElse`, `drawRoom`, `drawPeopleAndObjects`, `drawWhatYouHold`.
+- **A stage is named for what it produces or draws**, so a caller reads as the steps: `stepLocalPlayer`,
+  `placeEveryoneElse`, `drawRoom`, `drawPeopleAndObjects`, `drawFirstPerson`.
+- **Third person, never "you".** Code and comments talk about the local player (`localPlayer`, `ownGlow`,
+  `firstPerson`; "the player's drink", "towards the eye"), not `you`, `yourGlow` or "your drink": read cold, "you"
+  could be the player, the reader or the code. Text shown to the player is the one place that says "you".
 - **No near-synonyms side by side.** `phase` and `mode` on one object made readers guess which was which; the vacuum
   now has `phase` (its goal) and `activity` (what it does this step).
 - **No terse helpers.** `wrap` → `normalizeAngle`, `turnTo` → `shortestTurn` (it returns a difference, it doesn't
@@ -84,9 +87,9 @@ Try these first, in this order, and write the comment only if none of them can c
 ## Functions
 
 - **Read top-down.** A function reads as a list of named steps at one level of detail, one call each: the room
-  loop's `frame()` (`game/room-loop.ts`) is `stepYou` → `placeEveryoneElse` → `describeScene` → `renderView` →
-  `renderHud`. Following a name takes you one level down. Don't
-  mix levels: a loop over pixels doesn't sit beside calls to whole stages; it goes into a stage of its own.
+  loop's `frame()` (`game/room-loop.ts`) is `stepLocalPlayer` → `placeEveryoneElse` → `describeScene` →
+  `renderView` → `renderHud`. Following a name takes you one level down. Don't mix levels: a loop over pixels doesn't
+  sit beside calls to whole stages; it goes into a stage of its own.
 - **A step function dispatches; each stage is a named function.** `stepVacuum` is a switch over `stepPause`,
   `stepScan` and `stepMove`; `Lobby.join` reads as check → resume → admit. Aim for functions that fit on one screen
   (~30 lines); past that, look for the stages hiding inside.

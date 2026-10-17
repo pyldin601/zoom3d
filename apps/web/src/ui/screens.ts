@@ -65,7 +65,7 @@ export function showStatus(root: HTMLElement, text: string | null): void {
   slot(root, 'status').textContent = text;
 }
 
-/** The room's people count, top right: everyone in the room, you included. null removes it. */
+/** The room's people count, top right: everyone in the room, the local player included. null removes it. */
 export function showPeopleCount(root: HTMLElement, count: number | null): void {
   if (count === null) {
     root.querySelector(':scope > .people')?.remove();
@@ -98,7 +98,7 @@ interface ToggleOptions {
   available: boolean;
   /** Resolves to whether it is on now: the handler has the last word. */
   onChange(on: boolean): boolean | Promise<boolean>;
-  /** The mic button shows the device icon; your own circle shows your face, with a hover hint of what a click does. */
+  /** The mic button shows the device icon; the self-view shows the player's face, with a hover hint of what a click does. */
   look: 'icon' | 'hint';
 }
 
@@ -132,7 +132,7 @@ function makeToggle(
   render();
 }
 
-/** Bottom right: a round mic button, and your own circle, which turns the camera off and on when clicked. */
+/** Bottom right: a round mic button, and the self-view circle, which turns the camera off and on when clicked. */
 export function showMediaControls(root: HTMLElement, controls: MediaControls): void {
   makeToggle(slot(root, 'mic-toggle', 'button'), {
     kind: 'mic',
@@ -179,7 +179,7 @@ export interface SelfView {
   avatar: string | null;
 }
 
-/** Your own circle: the camera while it is on, else your picture or initials, as others see you. */
+/** The self-view circle: the camera while it is on, else the player's picture or initials, as others see them. */
 export function showSelfPreview(root: HTMLElement, stream: MediaStream | null, self: SelfView): void {
   const box = slot(root, 'selfview', 'button');
   let video = box.querySelector('video');

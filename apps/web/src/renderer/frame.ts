@@ -17,15 +17,15 @@ export interface RoomScene extends Room, PeopleAndObjects {
   reflections: ReflectionMode;
   /** Each person's name label and automap dot. */
   labels: readonly PersonLabel[];
-  /** Your own face lights the room round you, as everyone's does; null until the room gives you a colour. */
-  yourGlow: GlowSource | null;
-  /** null while you aren't in the room (reconnecting). */
-  inYourHands: InYourHands | null;
+  /** The local player's own face lights the room round them, as everyone's does; null until they have a colour. */
+  ownGlow: GlowSource | null;
+  /** What the local player holds; null while they aren't in the room (reconnecting). */
+  firstPerson: FirstPerson | null;
 }
 
 export type PersonLabel = AutomapPeer & { mic: boolean };
 
-export interface InYourHands {
+export interface FirstPerson {
   drink: HeldItem | null;
   boombox: boolean;
   step: HeldStep;
@@ -36,11 +36,11 @@ const avatarGlows = createAvatarGlows();
 
 /** `seen` gets, per person, how much of them this frame drew (dynamic subscription reads it). */
 export function renderView(fb: Framebuffer, scene: RoomScene, seen?: Map<string, PeerFacts>): void {
-  const glows = avatarGlows.update(scene.people, scene.yourGlow);
+  const glows = avatarGlows.update(scene.people, scene.ownGlow);
   drawRoom(fb, scene, glows);
   drawPeopleAndObjects(fb, scene, seen);
-  if (scene.inYourHands) {
-    drawWhatYouHold(fb, scene.inYourHands);
+  if (scene.firstPerson) {
+    drawFirstPerson(fb, scene.firstPerson);
   }
 }
 
@@ -61,7 +61,7 @@ function drawPeopleAndObjects(fb: Framebuffer, scene: RoomScene, seen: Map<strin
   renderSprites(fb, scene, seen);
 }
 
-function drawWhatYouHold(fb: Framebuffer, hands: InYourHands): void {
+function drawFirstPerson(fb: Framebuffer, hands: FirstPerson): void {
   // The boombox first: a sip swings the drink across it, and the drink must stay in front.
   renderOwnBoombox(fb, hands.boombox, hands.step);
   renderOwnHeld(fb, hands.drink, hands.step, hands.gesture);

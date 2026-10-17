@@ -80,7 +80,7 @@ test('a face out of view stops arriving and comes back, never as initials, when 
   expect(await growth(b, 'Ada', 1000)).toBeGreaterThan(2000);
 });
 
-test('the backtick panel’s face dots show whether anyone receives your face', async ({ browser }) => {
+test('the backtick panel’s face dots show whether anyone receives the player’s face', async ({ browser }) => {
   test.setTimeout(60_000);
   const a = await (await browser.newContext()).newPage();
   const b = await (await browser.newContext()).newPage();

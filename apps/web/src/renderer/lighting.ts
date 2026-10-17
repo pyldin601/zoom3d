@@ -45,8 +45,8 @@ const SHADOW_STEPS = 5;
  */
 export const SIDE_SHADE = 0.7;
 /**
- * Walls and floor reflect only this many tiles from the eye, fading to nothing here: a streak along the wall you're
- * by stays near you, and a far wall that lies in line with the eye (close to its plane) barely flashes.
+ * Walls and floor reflect only this many tiles from the eye, fading to nothing here: a streak along the wall the eye
+ * is by stays near it, and a far wall that lies in line with the eye (close to its plane) barely flashes.
  */
 export const REFLECTION_RANGE = 8;
 /**
@@ -66,7 +66,7 @@ export const REFLECTION_LAMPS = 4 * LAMPS_PER_DIRECTION;
 const MAX_LAMPS = 127;
 /**
  * A lamp's reflection fades over the whole path its light takes, lamp to surface to eye, to nothing at this many
- * tiles. Not its light's reach: you see a lamp mirrored in the floor however far its own light gets. Lamps are listed
+ * tiles. Not its light's reach: a lamp shows mirrored in the floor however far its own light gets. Lamps are listed
  * within LAMP_SIGHT of a surface, and surfaces reflect within REFLECTION_RANGE of the eye, so in practice this only
  * dims, never cuts off.
  */

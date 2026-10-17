@@ -1,5 +1,5 @@
-// What the room shows over the view once you join: any camera or mic problem, the Cam and Mic buttons, and your own
-// circle (lobby spec §4).
+// What the room shows over the view once the player joins: any camera or mic problem, the Cam and Mic buttons, and
+// the self-view circle (lobby spec §4).
 import type { Call } from '../media/call';
 import type { LocalMediaController } from '../media/local-media';
 import { joinBanner, PROBLEM_TEXT } from './lobby';

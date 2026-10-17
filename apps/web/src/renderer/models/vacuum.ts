@@ -1,5 +1,5 @@
 // The robot vacuum (robot vacuum spec §2, variant C "chunky retro toy"): an orange D shape, flat at the front, with two
-// bright eyes on its bumper so you can tell which way it's heading. Model +x is the front.
+// bright eyes on its bumper so its heading shows. Model +x is the front.
 import { rgb } from '../framebuffer';
 import { buildModel, glowing } from '../voxels';
 

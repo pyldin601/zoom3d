@@ -214,7 +214,7 @@ function splitButton(
   };
 }
 
-/** Your disc: the camera's preview, else your picture or initials, with the pencil menu to pick a picture. */
+/** The player's disc: the camera's preview, else their picture or initials, with the pencil menu to pick a picture. */
 function createPicture(opts: LobbyOptions, closeOthers: (except: HTMLElement | null) => void, render: () => void) {
   const { media } = opts;
   const pickAvatar = opts.pickAvatar ?? ((file: File) => makeAvatar(file));

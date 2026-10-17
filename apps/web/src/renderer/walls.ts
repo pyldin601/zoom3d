@@ -30,7 +30,7 @@ import { GLOSS, REFLECTION_MATERIAL, RELIEF, RELIEF_LEVELS, type ReflectionMater
 export const CEILING = rgb(0x38, 0x38, 0x38);
 /** The unlit floor's colour, and the colour the lit one is baked from. */
 export const FLOOR = rgb(0x70, 0x70, 0x70);
-/** A smooth, semi-glossy floor: lamps smear along it towards you. */
+/** A smooth, semi-glossy floor: lamps smear along it towards the eye. */
 const FLOOR_MATERIAL: ReflectionMaterial = { shininess: 16, f0: 0.1, tint: 0 };
 /** Floor reflections are worked out every this many pixels along every other row, and blended between. */
 const FLOOR_REFLECTION_STEP_PX = 16;
@@ -376,7 +376,7 @@ function findColumnFace(room: LitRoom): void {
  * the brightest of the lamps it can reflect, each one tried if it shows at its own bounce height (a soft spot face-on,
  * a streak towards the lamp seen along the wall). Per height, not one lamp per column: where one lamp's reflection
  * takes over from another's along a wall, a whole column switched lamps at once and left a seam. Returns whether
- * anything shows. It fades as you step away from the wall itself (not its endless plane), with distance along it, and
+ * anything shows. It fades as the eye steps away from the wall itself (not its endless plane), with distance along it, and
  * in each lamp's shadow.
  */
 function findColumnReflections(room: LitRoom): boolean {

@@ -16,7 +16,7 @@ const MIN_NAME_SIZE_PX = 10;
 const NAME_GAP_PX = 2;
 const ARROW_LENGTH = 0.9;
 const MIN_ARROW_LENGTH_PX = 6;
-/** The arrow's two back corners, each this fraction of its length behind you and to one side. */
+/** The arrow's two back corners, each this fraction of its length behind its tip and to one side. */
 const ARROW_BACK = 0.6;
 
 export interface AutomapLayout {
@@ -41,7 +41,7 @@ export function automapLayout(map: GameMap, hudW: number, hudH: number): Automap
   };
 }
 
-/** The map over a dimmed HUD canvas: its walls, everyone's dot (named when near) and your arrow. */
+/** The map over a dimmed HUD canvas: its walls, everyone's dot (named when near) and the local player's arrow. */
 export function drawAutomap(
   ctx: CanvasRenderingContext2D,
   map: GameMap,
@@ -54,7 +54,7 @@ export function drawAutomap(
   ctx.fillRect(0, 0, width, height);
   drawWalls(ctx, map, layout);
   drawPeople(ctx, p, others, layout);
-  drawYourArrow(ctx, p, layout);
+  drawPlayerArrow(ctx, p, layout);
 }
 
 function drawWalls(ctx: CanvasRenderingContext2D, map: GameMap, { originX, originY, cell }: AutomapLayout): void {
@@ -96,7 +96,7 @@ function touchesFloor(map: GameMap, x: number, y: number): boolean {
   return false;
 }
 
-/** Everyone's dot in their colour, with their name over it while they're within LABEL_TILES of you. */
+/** Everyone's dot in their colour, with their name over it while they're within LABEL_TILES of the local player. */
 function drawPeople(
   ctx: CanvasRenderingContext2D,
   p: PlayerState,
@@ -121,8 +121,12 @@ function drawPeople(
   }
 }
 
-/** A triangle at your place, pointing the way you face. */
-function drawYourArrow(ctx: CanvasRenderingContext2D, p: PlayerState, { originX, originY, cell }: AutomapLayout): void {
+/** A triangle where the local player stands, pointing the way they face. */
+function drawPlayerArrow(
+  ctx: CanvasRenderingContext2D,
+  p: PlayerState,
+  { originX, originY, cell }: AutomapLayout
+): void {
   const size = Math.max(cell * ARROW_LENGTH, MIN_ARROW_LENGTH_PX);
   const px = originX + p.x * cell;
   const py = originY + p.y * cell;

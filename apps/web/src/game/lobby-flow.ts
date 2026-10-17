@@ -12,8 +12,8 @@ import { mediaOutcome } from '../telemetry/onboarding';
 import { showLobby } from '../ui/lobby';
 import { createMicLevel } from '../ui/mic-level';
 import { loadName } from '../ui/name-store';
+import type { LocalPlayer } from './local-player';
 import { type PageElements, pageStorage } from './page';
-import type { You } from './you';
 
 export interface LobbyJoin {
   name: string;
@@ -24,7 +24,7 @@ export interface LobbyJoin {
 
 export interface LobbyOptions {
   page: PageElements;
-  you: You;
+  localPlayer: LocalPlayer;
   /** The host is whoever started the party in this page; anyone else came by a link. */
   entry: 'host' | 'invite';
   onJoin(join: LobbyJoin): void;
@@ -33,7 +33,7 @@ export interface LobbyOptions {
 export function openLobby(o: LobbyOptions): void {
   const audioCtx = openAudio();
   const local = openLocalMedia(o.page);
-  shareYourCameraColour(local, o.you);
+  shareCameraColour(local, o.localPlayer);
   track({ name: 'lobby_viewed', entry: o.entry });
   void local.ready.then(() => track({ name: 'media_permission', ...mediaOutcome(local.state()) }));
   // Saved for the whole visit, so the room's Cam/Mic buttons are remembered too.
@@ -82,13 +82,13 @@ function openLocalMedia(page: PageElements): LocalMediaController {
   );
 }
 
-/** Your face glows in your camera's colour while the camera is on. */
-function shareYourCameraColour(local: LocalMediaController, you: You): void {
+/** The local player's face glows in their camera's colour while the camera is on. */
+function shareCameraColour(local: LocalMediaController, localPlayer: LocalPlayer): void {
   const ownFace = createOwnGlowSampler(local.framer.canvas, document);
   // Kept from the controller's notifications (every camera change notifies), not asked of it every frame.
   let camOn = local.state().cam;
   local.subscribe(() => {
     camOn = local.state().cam;
   });
-  you.useCameraColour((now) => (camOn ? ownFace.colour(now) : null));
+  localPlayer.useCameraColour((now) => (camOn ? ownFace.colour(now) : null));
 }

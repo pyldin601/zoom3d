@@ -87,7 +87,7 @@ export function createFrameStep(
 export interface Framer {
   /** The framed OUTPUT_SIZE² canvas track; exists with or without a camera, disabled without one. */
   readonly track: MediaStreamTrack;
-  /** The canvas `track` captures: your face as peers get it (its colour is your own glow). */
+  /** The canvas `track` captures: the player's face as peers get it (its colour is their own glow). */
   readonly canvas: HTMLCanvasElement;
   /** `track` plus its 128² and 64² copies; all three enabled only with a camera. */
   readonly tracks: FaceTracks;
