@@ -204,14 +204,16 @@ function zeroFacts(f: PeerFacts): void {
 
 /** Projects every sprite into `projections` and lists those in front of the camera in `visible`, far to near. */
 function projectVisible(view: View, sprites: readonly Sprite[]): void {
-  visible.length = 0;
+  let count = 0;
   for (let i = 0; i < sprites.length; i++) {
     const s = sprites[i] as Sprite;
     projections[i] ??= { screenX: 0, depth: 0, size: 0 };
     if (projectSprite(view, s.x, s.y, projections[i] as Projection)) {
-      visible.push(i);
+      visible[count++] = i;
     }
   }
+  // Written by index and trimmed after: `length = 0` would make V8 drop the array's storage every frame.
+  visible.length = count;
   visible.sort(spritesFarFirst);
 }
 
@@ -257,13 +259,15 @@ function countSeenColumns(fb: Framebuffer): void {
 
 /** Lists the objects in front of the camera in `voxelOrder`, far to near, with their depths in `voxelDepths`. */
 function orderVoxels(view: View, voxels: readonly VoxelInstance[]): void {
-  voxelOrder.length = 0;
+  let count = 0;
   for (let i = 0; i < voxels.length; i++) {
     voxelDepths[i] = voxelDepth(view, voxels[i] as VoxelInstance);
     if ((voxelDepths[i] as number) > 0) {
-      voxelOrder.push(i);
+      voxelOrder[count++] = i;
     }
   }
+  // Written by index and trimmed after: `length = 0` would make V8 drop the array's storage every frame.
+  voxelOrder.length = count;
   voxelOrder.sort(voxelsFarFirst);
 }
 
