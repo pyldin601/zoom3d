@@ -30,12 +30,12 @@ import { type Call, createCall } from './media/call';
 import { createFace } from './media/faces';
 import { createFramer } from './media/framer';
 import { createFramingMemory } from './media/framing-memory';
-import { createInterest, INTEREST_MS, type PeerFacts, type Want } from './media/interest';
 import { createLiveKitTransport } from './media/livekit';
 import { createLocalMedia, type LocalMediaController } from './media/local-media';
 import { loadMediaPrefs, saveMediaPrefs } from './media/media-prefs';
 import { createOwnGlowSampler } from './media/own-glow';
 import { createRemoteMedia } from './media/remote-media';
+import { createSubscription } from './media/subscription';
 import { createSession, type Session } from './net/session';
 import { createBob } from './renderer/bob';
 import { type InYourHands, type RoomScene, renderHud, renderView } from './renderer/frame';
@@ -531,62 +531,23 @@ if (import.meta.env.DEV) {
   });
 }
 
-// Dynamic subscription.
+const subscription = createSubscription();
 
-/** Per peer, what the last frame drew of them (written by renderView into reused objects). */
-const seen = new Map<string, PeerFacts>();
-const interest = createInterest();
-/** The wants last handed to `wantsCall`, so only changes are sent. */
-const sentWants = new Map<string, Want>();
-let wantsCall: Call | null = null;
-let interestAt = Number.NEGATIVE_INFINITY;
-
-/** Dynamic subscription (6c spec §4): every INTEREST_MS, decides whose face and voice to receive. */
+/** Dynamic subscription (6c spec §4): whose face and voice to receive. */
 function chooseWhatToReceive(s: Session, now: number, hidden: boolean): void {
-  if (!call || now - interestAt < INTEREST_MS) {
+  if (!call) {
     return;
   }
-  interestAt = now;
-  if (call !== wantsCall) {
-    wantsCall = call;
-    sentWants.clear();
-  }
-  const media = call;
-  const { positions } = world;
-  for (const id of seen.keys()) {
-    if (!positions.has(id)) {
-      seen.delete(id);
-    }
-  }
-  const peers: { id: string; x: number; y: number }[] = [];
-  for (const [id, pos] of positions) {
-    // Bots publish nothing: they must not take anyone's video or voice slot.
-    if (s.peers.has(id) && media.publishes(id)) {
-      peers.push({ id, x: pos.x, y: pos.y });
-    }
-  }
-  const wants = interest.update({
-    now,
-    hidden,
+  subscription.choose(now, {
+    call,
+    people: s.peers,
+    positions: world.positions,
     player,
     fov: screen.fb.fov,
     map,
     maxDistance: audio?.settings().max ?? DEFAULT_AUDIO_SETTINGS.max,
-    peers,
-    facts: (id) => seen.get(id),
+    hidden,
   });
-  for (const [id, want] of wants) {
-    const sent = sentWants.get(id);
-    if (!sent || sent.video !== want.video || sent.audio !== want.audio) {
-      sentWants.set(id, want);
-      media.setWanted(id, want);
-    }
-  }
-  for (const id of sentWants.keys()) {
-    if (!wants.has(id)) {
-      sentWants.delete(id);
-    }
-  }
 }
 
 // The room loop.
@@ -615,7 +576,7 @@ function frame(dt: number): void {
   }
   const drawStart = performance.now();
   const shown = describeScene(drawStart);
-  renderView(screen.fb, shown, seen);
+  renderView(screen.fb, shown, subscription.seen);
   screen.present();
   renderHud(hudCtx, screen.fb, shown, automapVisible);
   const drawnAt = performance.now();
