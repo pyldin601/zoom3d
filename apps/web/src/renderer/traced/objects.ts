@@ -55,15 +55,23 @@ export function tracedObjectLight({ world, maps }: TracedLighting): VoxelLight {
       facing.ny = face.x * sin + face.y * cos;
       facing.nz = face.z;
       lampLight(world, facing, lamps);
-      for (let channel = 0; channel < CHANNELS; channel++) {
-        out[face.dir * CHANNELS + channel] = multiplierUnder((lamps[channel] ?? 0) + (bounce[channel] ?? 0));
-      }
+      writeMultipliers(out, face.dir * CHANNELS, lamps, bounce);
     }
   };
 }
 
-/** The multiplier on one channel of a face's colour under this irradiance: a mid grey's shown byte over its own. */
-function multiplierUnder(irradiance: number): number {
-  const radiance = MID_GREY * irradiance;
-  return (shownPixel(radiance, radiance, radiance) & 0xff) / MID_GREY_BYTE;
+/**
+ * Into `out` from `first`: the multiplier on each channel of a face's colour under the lamps' and the bounce light, as
+ * a mid grey's shown colour over its own. The grey is toned all at once, by its brightest channel, as the traced room's
+ * composite tones a pixel, so a warm lamp keeps its warmth rather than every channel easing off on its own.
+ */
+function writeMultipliers(out: Float64Array, first: number, lamps: Float32Array, bounce: Float32Array): void {
+  const shown = shownPixel(
+    MID_GREY * ((lamps[0] ?? 0) + (bounce[0] ?? 0)),
+    MID_GREY * ((lamps[1] ?? 0) + (bounce[1] ?? 0)),
+    MID_GREY * ((lamps[2] ?? 0) + (bounce[2] ?? 0))
+  );
+  out[first] = (shown & 0xff) / MID_GREY_BYTE;
+  out[first + 1] = ((shown >>> 8) & 0xff) / MID_GREY_BYTE;
+  out[first + 2] = ((shown >>> 16) & 0xff) / MID_GREY_BYTE;
 }

@@ -55,9 +55,37 @@ function lightOf(light: VoxelLight, v: VoxelInstance): Float64Array {
   return out;
 }
 
-/** The byte the traced room shows for a grey of this linear radiance. */
+/** The byte the traced room shows for a grey of this linear radiance, each channel toned on its own. */
 function shownGreyByte(radiance: number): number {
   return shownPixel(radiance, radiance, radiance) & 0xff;
+}
+
+/**
+ * What the multipliers must be under this irradiance (r, g, b): the traced room's pixel for a mid grey in that light,
+ * toned all at once by its brightest channel as the room's composite does, over the grey's own byte.
+ */
+function multipliersUnder(irradiance: readonly [number, number, number]): [number, number, number] {
+  const [red, green, blue] = irradiance;
+  const shown = shownPixel(MID_GREY * red, MID_GREY * green, MID_GREY * blue);
+  return [
+    (shown & 0xff) / MID_GREY_BYTE,
+    ((shown >>> 8) & 0xff) / MID_GREY_BYTE,
+    ((shown >>> 16) & 0xff) / MID_GREY_BYTE,
+  ];
+}
+
+/** The irradiance on the top of a vacuum at `at`: the lamps' light on it and the floor's bounce beneath it. */
+function irradianceOnTop(traced: TracedLighting, at: { x: number; y: number }): [number, number, number] {
+  const top: SurfacePoint = { x: at.x, y: at.y, z: CUBE.height / 2, nx: 0, ny: 0, nz: 1 };
+  const lamps = new Float32Array(CHANNELS);
+  lampLight(traced.world, top, lamps);
+  const bounce = new Float32Array(CHANNELS);
+  planeLight(traced.maps.floorBounce, traced.world, at.x, at.y, bounce);
+  return [
+    channelOf(lamps, 0) + channelOf(bounce, 0),
+    channelOf(lamps, 1) + channelOf(bounce, 1),
+    channelOf(lamps, 2) + channelOf(bounce, 2),
+  ];
 }
 
 function channelOf(vector: Float32Array, channel: number): number {
@@ -113,12 +141,25 @@ describe('tracedObjectLight in a room with a lamp', () => {
     for (const [direction, nx, ny, nz] of normals) {
       const at: SurfacePoint = { x: v.x, y: v.y, z: CUBE.height / 2, nx, ny, nz };
       lampLight(traced.world, at, lamps);
-      for (let channel = 0; channel < CHANNELS; channel++) {
-        const irradiance = channelOf(lamps, channel) + channelOf(bounce, channel);
-        const expected = shownGreyByte(MID_GREY * irradiance) / MID_GREY_BYTE;
-        expect(multiplier(result, direction, channel)).toBeCloseTo(expected, 6);
+      const expected = multipliersUnder([
+        channelOf(lamps, 0) + channelOf(bounce, 0),
+        channelOf(lamps, 1) + channelOf(bounce, 1),
+        channelOf(lamps, 2) + channelOf(bounce, 2),
+      ]);
+      for (const [channel, share] of expected.entries()) {
+        expect(multiplier(result, direction, channel)).toBeCloseTo(share, 6);
       }
     }
+  });
+
+  test("a warm lamp's light is toned by its brightest channel: warmer than toning each channel alone", () => {
+    const [red, , blue] = irradianceOnTop(traced, BELOW_LAMP);
+    const top = lightOf(light, vacuumAt(BELOW_LAMP));
+    const blueToRed = multiplier(top, DIR_TOP, 2) / multiplier(top, DIR_TOP, 0);
+    const blueToRedToned = shownGreyByte(MID_GREY * blue) / shownGreyByte(MID_GREY * red);
+    expect(blueToRed).toBeLessThan(blueToRedToned - 0.05);
+    const [, , expectedBlue] = multipliersUnder(irradianceOnTop(traced, BELOW_LAMP));
+    expect(multiplier(top, DIR_TOP, 2)).toBeCloseTo(expectedBlue, 6);
   });
 
   test('the face turned to the lamp is the brightest side, and turning the vacuum turns the light with it', () => {
@@ -169,11 +210,11 @@ describe('tracedObjectLight with no lamps', () => {
     const maps = createLightmaps(world);
     maps.floorBounce.fill(0.5);
     const lit = lightOf(tracedObjectLight({ world, maps }), v);
-    const expected = shownGreyByte(MID_GREY * 0.5) / MID_GREY_BYTE;
-    expect(expected).toBeGreaterThan(0);
+    const expected = multipliersUnder([0.5, 0.5, 0.5]);
+    expect(expected[0]).toBeGreaterThan(0);
     for (const direction of DIRECTIONS) {
-      for (let channel = 0; channel < CHANNELS; channel++) {
-        expect(multiplier(lit, direction, channel)).toBeCloseTo(expected, 6);
+      for (const [channel, share] of expected.entries()) {
+        expect(multiplier(lit, direction, channel)).toBeCloseTo(share, 6);
       }
     }
   });
