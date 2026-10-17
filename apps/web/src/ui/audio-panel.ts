@@ -4,7 +4,7 @@
 import { frameRateBand, type RenderLoad, renderLoadBand } from '../game/frame-rate';
 import type { FacesSent } from '../media/transport';
 import { type BoomboxPanelOptions, showBoomboxPanel } from './boombox-panel';
-import { normalizeRenderSettings, type RenderMode, type RenderSettings } from './render-settings';
+import { normalizeRenderSettings, RENDER_MODES, type RenderMode, type RenderSettings } from './render-settings';
 import { el } from './screens';
 
 export interface AudioPanelOptions {
@@ -18,12 +18,13 @@ export interface AudioPanelOptions {
   render: { settings: RenderSettings; onChange(s: RenderSettings): void };
 }
 
-const MODES: readonly [RenderMode, string][] = [
-  ['flat', 'No shadows (classic)'],
-  ['shadows', 'Shadows'],
-  ['reflections', 'Shadows and reflections'],
-  ['reflections-only', 'Reflections only'],
-];
+/** A Record, so a new render mode can't be added without its name here. */
+const MODE_NAMES: Record<RenderMode, string> = {
+  flat: 'No shadows (classic)',
+  shadows: 'Shadows',
+  reflections: 'Shadows and reflections',
+  'reflections-only': 'Reflections only',
+};
 
 /** The face sizes, biggest first: a dot and the size's number each. */
 const FACE_SIZES: readonly (keyof FacesSent)[] = [256, 128, 64];
@@ -90,8 +91,8 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
 function lightingRow(opts: AudioPanelOptions['render']): HTMLElement {
   let current = opts.settings;
   const mode = el('select');
-  for (const [value, text] of MODES) {
-    mode.append(el('option', { value, textContent: text }));
+  for (const value of RENDER_MODES) {
+    mode.append(el('option', { value, textContent: MODE_NAMES[value] }));
   }
   mode.value = current.mode;
   mode.addEventListener('change', () => {

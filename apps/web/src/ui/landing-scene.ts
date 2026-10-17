@@ -165,9 +165,9 @@ export function faceTexels(person: LandingPerson): Uint32Array {
   const cell = FACE_SIZE / FACE_GRID;
   const texels = new Uint32Array(FACE_SIZE * FACE_SIZE);
   for (let y = 0; y < FACE_SIZE; y++) {
-    const row = person.face[Math.floor(y / cell)] as string;
+    const row = person.face.at(Math.floor(y / cell)) ?? '';
     for (let x = 0; x < FACE_SIZE; x++) {
-      texels[y * FACE_SIZE + x] = palette[row[Math.floor(x / cell)] as string] as number;
+      texels[y * FACE_SIZE + x] = palette[row.charAt(Math.floor(x / cell))] ?? 0;
     }
   }
   return texels;

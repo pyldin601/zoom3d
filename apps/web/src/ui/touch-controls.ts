@@ -46,6 +46,31 @@ function iconButton(className: string, label: string, icon: SVGSVGElement, text?
 }
 
 export function showTouchControls(root: HTMLElement, opts: TouchControlsOptions): TouchControls {
+  const pad = createMovePad();
+  const drink = createDrinkButton(opts);
+  const tray = createTray(opts);
+  const buttons = el('div', { className: 'touch-buttons' }, drink.button, tray.more);
+  root.append(pad, tray.tray, buttons);
+
+  const update = (s: TouchControlsState) => {
+    drink.update(s.held);
+    tray.update(s);
+  };
+  update(opts);
+
+  return {
+    pad,
+    update,
+    remove() {
+      tray.stopClosingOnOutsidePress();
+      pad.remove();
+      tray.tray.remove();
+      buttons.remove();
+    },
+  };
+}
+
+function createMovePad(): HTMLElement {
   const pad = el('div', { className: 'touch-pad' });
   pad.setAttribute('role', 'img');
   pad.setAttribute('aria-label', 'Move');
@@ -67,21 +92,25 @@ export function showTouchControls(root: HTMLElement, opts: TouchControlsOptions)
   pad.addEventListener('pointerdown', light(true));
   pad.addEventListener('pointerup', light(false));
   pad.addEventListener('pointercancel', light(false));
+  return pad;
+}
 
-  const drink = iconButton('drink', '', touchIcon('beer'));
+/** The drink in hand: a tap sips, a long press cheers. Hidden with nothing in hand. */
+function createDrinkButton(opts: TouchControlsOptions) {
+  const button = iconButton('drink', '', touchIcon('beer'));
   let pressed = false;
-  drink.addEventListener('pointerdown', (e) => {
+  button.addEventListener('pointerdown', (e) => {
     pressed = true;
     opts.onDrinkDown(e.timeStamp);
   });
-  drink.addEventListener('pointerup', (e) => {
+  button.addEventListener('pointerup', (e) => {
     if (pressed) {
       pressed = false;
       opts.onDrinkUp(e.timeStamp);
     }
   });
   for (const type of ['pointercancel', 'pointerleave'] as const) {
-    drink.addEventListener(type, () => {
+    button.addEventListener(type, () => {
       if (pressed) {
         pressed = false;
         opts.onDrinkCancel();
@@ -89,8 +118,21 @@ export function showTouchControls(root: HTMLElement, opts: TouchControlsOptions)
     });
   }
   // A long press is a cheers, not the browser's context menu.
-  drink.addEventListener('contextmenu', (e) => e.preventDefault());
+  button.addEventListener('contextmenu', (e) => e.preventDefault());
+  return {
+    button,
+    update(held: HeldItem | null) {
+      button.hidden = held === null;
+      if (held) {
+        button.setAttribute('aria-label', `Sip ${held} (hold to cheers)`);
+        button.replaceChildren(touchIcon(held));
+      }
+    },
+  };
+}
 
+/** The ⋯ button and the tray it opens: the drinks, the boombox and the map. */
+function createTray(opts: TouchControlsOptions) {
   const tray = el('div', { className: 'tray', hidden: true });
   const more = iconButton('more', 'More', touchIcon('more'));
   more.setAttribute('aria-expanded', 'false');
@@ -99,27 +141,25 @@ export function showTouchControls(root: HTMLElement, opts: TouchControlsOptions)
     more.setAttribute('aria-expanded', String(open));
   };
   more.addEventListener('click', () => setOpen(tray.hidden !== false));
-
-  const drinkButtons = DRINKS.map(({ item, label }) => {
-    const button = iconButton('', label, touchIcon(item ?? 'none'), label);
+  /** Each choice closes the tray, then acts. */
+  const choice = (button: HTMLButtonElement, act: () => void) => {
     button.addEventListener('click', () => {
       setOpen(false);
-      opts.onPick(item);
+      act();
     });
-    return { item, button };
-  });
-  const boombox = iconButton('', 'Boombox', touchIcon('boombox'), 'Boombox');
+    return button;
+  };
+
+  const drinkButtons = DRINKS.map(({ item, label }) => ({
+    item,
+    button: choice(iconButton('', label, touchIcon(item ?? 'none'), label), () => opts.onPick(item)),
+  }));
+  const boomboxLabel = el('span', { textContent: 'Boombox' });
+  const boombox = choice(iconButton('', 'Boombox', touchIcon('boombox')), opts.onBoombox);
+  boombox.append(boomboxLabel);
   boombox.dataset.action = 'boombox';
-  boombox.addEventListener('click', () => {
-    setOpen(false);
-    opts.onBoombox();
-  });
-  const map = iconButton('', 'Map', touchIcon('map'), 'Map');
+  const map = choice(iconButton('', 'Map', touchIcon('map'), 'Map'), opts.onMap);
   map.dataset.action = 'map';
-  map.addEventListener('click', () => {
-    setOpen(false);
-    opts.onMap();
-  });
   tray.append(...drinkButtons.map((d) => d.button), boombox, map);
 
   // A tap anywhere but the tray or ⋯ closes it.
@@ -130,33 +170,18 @@ export function showTouchControls(root: HTMLElement, opts: TouchControlsOptions)
   };
   document.addEventListener('pointerdown', outside);
 
-  const buttons = el('div', { className: 'touch-buttons' }, drink, more);
-  root.append(pad, tray, buttons);
-
-  const update = (s: TouchControlsState) => {
-    drink.hidden = s.held === null;
-    if (s.held) {
-      drink.setAttribute('aria-label', `Sip ${s.held} (hold to cheers)`);
-      drink.replaceChildren(touchIcon(s.held));
-    }
-    for (const { item, button } of drinkButtons) {
-      button.setAttribute('aria-pressed', String(item === s.held));
-    }
-    const music = s.boombox ? 'Stop music' : 'Boombox';
-    boombox.setAttribute('aria-label', music);
-    (boombox.querySelector('span') as HTMLSpanElement).textContent = music;
-    map.setAttribute('aria-pressed', String(s.map));
-  };
-  update(opts);
-
   return {
-    pad,
-    update,
-    remove() {
-      document.removeEventListener('pointerdown', outside);
-      pad.remove();
-      tray.remove();
-      buttons.remove();
+    tray,
+    more,
+    update(s: TouchControlsState) {
+      for (const { item, button } of drinkButtons) {
+        button.setAttribute('aria-pressed', String(item === s.held));
+      }
+      const music = s.boombox ? 'Stop music' : 'Boombox';
+      boombox.setAttribute('aria-label', music);
+      boomboxLabel.textContent = music;
+      map.setAttribute('aria-pressed', String(s.map));
     },
+    stopClosingOnOutsidePress: () => document.removeEventListener('pointerdown', outside),
   };
 }

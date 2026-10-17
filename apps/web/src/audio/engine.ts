@@ -68,6 +68,15 @@ export function makeImpulse(ctx: BaseAudioContext, seconds = 0.8, preDelay = 0.0
   return buffer;
 }
 
+/** 0 for no samples. */
+export function rootMeanSquare(samples: Float32Array): number {
+  let sum = 0;
+  for (const sample of samples) {
+    sum += sample * sample;
+  }
+  return samples.length ? Math.sqrt(sum / samples.length) : 0;
+}
+
 /** Instant attack, exponential release; RMS below the floor reads as silence. */
 export function speakingLevel(prev: number, rms: number, dtSeconds: number): number {
   const target = Math.min(Math.max((rms - SPEAKING_FLOOR) / SPEAKING_RANGE, 0), 1);
@@ -246,11 +255,7 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
     }
     const { analyser, samples } = v.input;
     analyser.getFloatTimeDomainData(samples);
-    let sum = 0;
-    for (let i = 0; i < samples.length; i++) {
-      sum += (samples[i] as number) ** 2;
-    }
-    v.rms = Math.sqrt(sum / samples.length);
+    v.rms = rootMeanSquare(samples);
     v.speaking = speakingLevel(v.speaking, v.rms, dt);
   };
 
