@@ -8,7 +8,7 @@ import { renderWalls } from '../walls';
 import { lastTracedBuffers, renderTraced, type TracedLighting } from './frame';
 import { createLightmaps, planeLight, WALL_HEIGHTS, wallColumnLight } from './lightmaps';
 import { fresnel } from './optics';
-import { bakeRoom, pixelOf } from './test-helpers';
+import { bakeRoom, drawOverNaN, expectEveryPixelWritten, pixelOf } from './test-helpers';
 import { shownPixel } from './tone';
 import { buildTracedWorld, FACE_WEST, TRACED_MATERIALS, type TracedMaterial } from './world';
 
@@ -52,40 +52,6 @@ function pixelAt(fb: Framebuffer, col: number, row: number): number {
 
 function brightness(pixel: number): number {
   return (pixel & 0xff) + ((pixel >>> 8) & 0xff) + ((pixel >>> 16) & 0xff);
-}
-
-function opaqueEverywhere(fb: Framebuffer): boolean {
-  return fb.pixels.findIndex((pixel) => pixel >>> 24 !== 0xff) === -1;
-}
-
-/**
- * Draws a frame, then draws it again over buffers and a z-buffer full of NaN: what the passes skip stays NaN. The frame's
- * own pixels can't show a gap, since the tone map writes every pixel from whatever light is there.
- */
-function drawOverNaN(fb: Framebuffer, eye: PlayerState, traced: TracedLighting): void {
-  draw(fb, eye, traced);
-  const { hdr, spec, reflected, widenedReflection } = lastTracedBuffers();
-  hdr.fill(Number.NaN);
-  spec.fill(Number.NaN);
-  reflected.fill(Number.NaN);
-  widenedReflection.fill(Number.NaN);
-  fb.zbuffer.fill(Number.NaN);
-  fb.pixels.fill(0);
-  draw(fb, eye, traced);
-}
-
-/**
- * For a frame drawn by `drawOverNaN`: every pixel opaque, every light (reflected ones too) and weight a number, every
- * column a distance.
- */
-function expectEveryPixelWritten(fb: Framebuffer): void {
-  const { hdr, spec, reflected, widenedReflection } = lastTracedBuffers();
-  expect(opaqueEverywhere(fb)).toBe(true);
-  expect(hdr.findIndex((light) => !Number.isFinite(light))).toBe(-1);
-  expect(spec.findIndex((weight) => !Number.isFinite(weight))).toBe(-1);
-  expect(reflected.findIndex((light) => !Number.isFinite(light))).toBe(-1);
-  expect(widenedReflection.findIndex((light) => !Number.isFinite(light))).toBe(-1);
-  expect(fb.zbuffer.findIndex((distance) => !(distance > 0))).toBe(-1);
 }
 
 describe('renderTraced on LEVEL1', () => {

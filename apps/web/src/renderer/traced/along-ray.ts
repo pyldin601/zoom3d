@@ -1,10 +1,11 @@
 // Round things a reflection's cone can meet along a 2D ray (spec docs/superpowers/specs/2026-10-17-ray-traced-renderer-
-// design.md §3.3): the lamps near the eye, listed once per frame, then per ray the few that pass close enough to show,
-// nearest first. Allocation-free once sized: the lists grow only when a room has more things than any before it.
+// design.md §3.3): the lamps (here) and people (people.ts) near the eye, listed once per frame, then per ray the few that
+// pass close enough to show, nearest first. Allocation-free once sized: the lists grow only when a room has more things
+// than any before it.
 import { LAMP_RADIUS, type TracedWorld } from './world';
 
 /** Things further than this from the eye (tiles) are left out of the frame's reflections. */
-const REACH_TILES = 12;
+export const REACH_TILES = 12;
 /** The most things one ray keeps: the nearest along it. */
 export const MOST_ALONG_RAY = 12;
 /** A cone's blob is gone this many spreads to its side. */
@@ -14,7 +15,7 @@ const MOST_MARGIN_TILES = 2;
 /** Nearer than this along a ray (in its units), a thing is where the ray leaves its surface, not ahead of it. */
 const NEAREST_ALONG = 0.05;
 
-/** The round things near the eye this frame: lamps' discs (centre and radius, tiles), `count` of them. */
+/** The round things near the eye this frame: lamps' or people's discs (centre and radius, tiles), `count` of them. */
 export interface NearbyThings {
   count: number;
   x: Float64Array;

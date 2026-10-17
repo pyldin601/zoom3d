@@ -1,13 +1,17 @@
-import { LEVEL1, type PlayerState, parseMap } from '@zoom3d/shared';
+import { type GameMap, LEVEL1, type PlayerState, parseMap, tileAt } from '@zoom3d/shared';
 import { beforeAll, describe, expect, test } from 'vitest';
-import { createFramebuffer, type Framebuffer } from '../framebuffer';
+import { FACE_SIZE } from '../../media/faces';
+import { EYE_HEIGHT } from '../camera';
+import { createFramebuffer, type Framebuffer, rgb } from '../framebuffer';
 import { corridorLights } from '../lighting';
+import { AVATAR_RADIUS, FACE_RADIUS, type Sprite } from '../sprites';
 import { makeTextures } from '../textures';
 import { REFLECTION_SAMPLE_OFFSET, REFLECTION_SCALE } from './buffers';
 import { lastTracedBuffers, renderTraced, type TracedLighting } from './frame';
-import { bakeRoom, pixelOf } from './test-helpers';
+import { FACE_REFLECTION_GAIN } from './people';
+import { bakeRoom, drawOverNaN, expectEveryPixelWritten, pixelOf } from './test-helpers';
 import { shownPixel } from './tone';
-import { TRACED_MATERIALS, type TracedWorld } from './world';
+import { linearOfSrgbChannel, TRACED_MATERIALS, type TracedWorld } from './world';
 
 const LEVEL = parseMap(LEVEL1);
 const TEXTURES = makeTextures(1);
@@ -25,8 +29,8 @@ const BLUE_CORRIDOR: PlayerState = { x: 34.5, y: 32.0, angle: Math.PI / 2 };
  */
 const WOOD_ROOM: PlayerState = { x: 38.5, y: 6.2, angle: -Math.PI / 2 - 0.5 };
 
-function draw(fb: Framebuffer, eye: PlayerState, traced: TracedLighting): void {
-  renderTraced(fb, { map: traced.world.map, eye, people: [], traced });
+function draw(fb: Framebuffer, eye: PlayerState, traced: TracedLighting, people: readonly Sprite[] = []): void {
+  renderTraced(fb, { map: traced.world.map, eye, people, traced });
 }
 
 /** A reflection sample's linear rgb, from the last frame. */
@@ -38,6 +42,21 @@ function reflectedAt(sampleCol: number, sampleRow: number): [number, number, num
 
 function sum([red, green, blue]: readonly number[]): number {
   return (red ?? 0) + (green ?? 0) + (blue ?? 0);
+}
+
+/** The reflection sample nearest the frame pixel that shows the point (x, y) at height z (0 floor .. 1 ceiling). */
+function sampleShowing(
+  fb: Framebuffer,
+  eye: PlayerState,
+  x: number,
+  y: number,
+  z: number
+): { sampleCol: number; sampleRow: number } {
+  const { col, row } = pixelOf(fb, eye, x, y, z);
+  return {
+    sampleCol: Math.round((col - REFLECTION_SAMPLE_OFFSET) / REFLECTION_SCALE),
+    sampleRow: Math.round((row - REFLECTION_SAMPLE_OFFSET) / REFLECTION_SCALE),
+  };
 }
 
 /** The frame pixel a reflection sample was traced for. */
@@ -79,6 +98,69 @@ function brightest(lights: readonly [number, number, number][]): [number, number
   return lights.reduce((best, light) => (sum(light) > sum(best) ? light : best), [0, 0, 0]);
 }
 
+/** A person standing still at (x, y): `face` inside a ring of colour `ring`, or a flat disc of it when `face` is null. */
+function personAt(x: number, y: number, ring: number, face: Uint32Array | null): Sprite {
+  return {
+    key: `${x}, ${y}`,
+    x,
+    y,
+    color: ring,
+    face,
+    speaking: 0,
+    bob: 0,
+    itemBob: 0,
+    sip: 0,
+    cheers: 0,
+    wobble: 0,
+    held: null,
+    boombox: false,
+  };
+}
+
+/** `count` people at seeded points anywhere open on `map`, each its own colour, every other one with `face`. */
+function crowdOver(map: GameMap, count: number, face: Uint32Array): Sprite[] {
+  let seed = 3;
+  const next = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
+  const people: Sprite[] = [];
+  while (people.length < count) {
+    const x = next() * map.width;
+    const y = next() * map.height;
+    if (tileAt(map, Math.floor(x), Math.floor(y)) === 0) {
+      const ring = rgb(next() * 255, next() * 255, next() * 255);
+      people.push(personAt(x, y, ring, people.length % 2 === 0 ? face : null));
+    }
+  }
+  return people;
+}
+
+/** A packed colour as a person's disc shows it in a reflection: its linear light times FACE_REFLECTION_GAIN. */
+function shownInReflection(packed: number): number[] {
+  return [packed & 0xff, (packed >>> 8) & 0xff, (packed >>> 16) & 0xff].map(
+    (byte) => linearOfSrgbChannel(byte) * FACE_REFLECTION_GAIN
+  );
+}
+
+/**
+ * How far `light` is blended from `behind` towards `colour` (the least-squares weight over the three channels), and the
+ * most any channel misses that blend by.
+ */
+function blendOf(
+  behind: readonly number[],
+  light: readonly number[],
+  colour: readonly number[]
+): { weight: number; misfit: number } {
+  const towards = colour.map((channel, at) => channel - (behind.at(at) ?? 0));
+  const moved = light.map((channel, at) => channel - (behind.at(at) ?? 0));
+  const weight =
+    towards.reduce((total, step, at) => total + step * (moved.at(at) ?? 0), 0) /
+    towards.reduce((total, step) => total + step * step, 0);
+  const misfit = Math.max(...moved.map((step, at) => Math.abs(step - weight * (towards.at(at) ?? 0))));
+  return { weight, misfit };
+}
+
 describe('reflections on LEVEL1', () => {
   let traced: TracedLighting;
   const fb = createFramebuffer();
@@ -100,12 +182,8 @@ describe('reflections on LEVEL1', () => {
 
     /** The reflection sample nearest the lamp's mirror image: a tile below the floor, as the lamp is a tile above it. */
     function imageSample(): { sampleCol: number; sampleRow: number } {
-      const image = pixelOf(fb, BLUE_CORRIDOR, nearerLamp.x, nearerLamp.y, -1);
-      expect(image.row).toBeLessThan(fb.height);
-      return {
-        sampleCol: Math.round((image.col - REFLECTION_SAMPLE_OFFSET) / REFLECTION_SCALE),
-        sampleRow: Math.round((image.row - REFLECTION_SAMPLE_OFFSET) / REFLECTION_SCALE),
-      };
+      expect(pixelOf(fb, BLUE_CORRIDOR, nearerLamp.x, nearerLamp.y, -1).row).toBeLessThan(fb.height);
+      return sampleShowing(fb, BLUE_CORRIDOR, nearerLamp.x, nearerLamp.y, -1);
     }
 
     // The floor is satin: off its bottom rows the cone reaches the ceiling about a tile wide and, stretched by 1 / slant
@@ -213,6 +291,111 @@ describe('reflections on LEVEL1', () => {
       }
       expect(checked).toBeGreaterThan(1000);
     }
+  });
+
+  describe('people', () => {
+    const GREEN_RING = rgb(40, 220, 60);
+    const RED = rgb(230, 40, 30);
+    const BLUE = rgb(30, 60, 230);
+    /** A camera face of one colour throughout, far from the ring's. */
+    const BLUE_FACE = new Uint32Array(FACE_SIZE * FACE_SIZE).fill(BLUE);
+
+    /**
+     * In the wood room, x 29..39 and y 1..7, a person 0.4 tiles out from the north wall's face at y 1, and the eye
+     * looking at their mirror image 49° from face-on: the cone off the wood, 0.1225 tiles wide a tile out, is 0.075 tiles
+     * wide when it reaches them, under 0.3 of their radius.
+     */
+    const BY_THE_WOOD_WALL = { x: 34, y: 1.4 };
+    const IMAGE_IN_THE_WALL = { x: 34, y: 0.6 };
+    const ASLANT_TO_THE_WALL: PlayerState = {
+      x: 31,
+      y: 3.2,
+      angle: Math.atan2(IMAGE_IN_THE_WALL.y - 3.2, IMAGE_IN_THE_WALL.x - 31),
+    };
+
+    test('a person between the eye and a wood wall, seen aslant, shows sharp in its reflection: face, then ring', () => {
+      draw(fb, ASLANT_TO_THE_WALL, traced, [personAt(BY_THE_WOOD_WALL.x, BY_THE_WOOD_WALL.y, GREEN_RING, BLUE_FACE)]);
+      const { x, y } = IMAGE_IN_THE_WALL;
+      const centre = sampleShowing(fb, ASLANT_TO_THE_WALL, x, y, EYE_HEIGHT);
+      const ringMiddle = EYE_HEIGHT + ((1 + FACE_RADIUS) / 2) * AVATAR_RADIUS;
+      const onRing = sampleShowing(fb, ASLANT_TO_THE_WALL, x, y, ringMiddle);
+      const face = reflectedAt(centre.sampleCol, centre.sampleRow);
+      const ring = reflectedAt(onRing.sampleCol, onRing.sampleRow);
+      for (const [channel, shown] of shownInReflection(BLUE).entries()) {
+        expect(face.at(channel), `the face, channel ${channel}`).toBeCloseTo(shown, 5);
+      }
+      for (const [channel, shown] of shownInReflection(GREEN_RING).entries()) {
+        expect(ring.at(channel), `the ring, channel ${channel}`).toBeCloseTo(shown, 5);
+      }
+    });
+
+    test("a sharp reflection shows a face mirrored, as a mirror does: the face's left half on the image's right", () => {
+      const halves = new Uint32Array(FACE_SIZE * FACE_SIZE).map((_, texel) =>
+        texel % FACE_SIZE < FACE_SIZE / 2 ? RED : BLUE
+      );
+      const eye = ASLANT_TO_THE_WALL;
+      draw(fb, eye, traced, [personAt(BY_THE_WOOD_WALL.x, BY_THE_WOOD_WALL.y, GREEN_RING, halves)]);
+      const { x, y } = IMAGE_IN_THE_WALL;
+      const toImage = Math.hypot(x - eye.x, y - eye.y);
+      // On the y-down map, (-y, x) of a direction is to its right.
+      const rightX = -(y - eye.y) / toImage;
+      const rightY = (x - eye.x) / toImage;
+      const halfwayOut = (FACE_RADIUS * AVATAR_RADIUS) / 2;
+      const onRight = sampleShowing(fb, eye, x + rightX * halfwayOut, y + rightY * halfwayOut, EYE_HEIGHT);
+      const onLeft = sampleShowing(fb, eye, x - rightX * halfwayOut, y - rightY * halfwayOut, EYE_HEIGHT);
+      const [rightRed, , rightBlue] = reflectedAt(onRight.sampleCol, onRight.sampleRow);
+      const [leftRed, , leftBlue] = reflectedAt(onLeft.sampleCol, onLeft.sampleRow);
+      expect(rightRed).toBeGreaterThan(10 * rightBlue);
+      expect(leftBlue).toBeGreaterThan(10 * leftRed);
+    });
+
+    /** In the wood room, the eye 3.5 tiles west of a person, both on y 4, looking at them across the floor. */
+    const FACING_EAST: PlayerState = { x: 30.5, y: 4, angle: 0 };
+    const ACROSS_THE_FLOOR = { x: 34, y: 4 };
+
+    test.each([
+      ["the face's average", BLUE_FACE, BLUE],
+      ['the ring colour, with no face', null, GREEN_RING],
+    ])("on the rough floor a person's reflection is a soft blob of %s, laid over what is behind", (_, face, colour) => {
+      draw(fb, FACING_EAST, traced);
+      const behind = Float32Array.from(lastTracedBuffers().reflected);
+      draw(fb, FACING_EAST, traced, [personAt(ACROSS_THE_FLOOR.x, ACROSS_THE_FLOOR.y, GREEN_RING, face)]);
+      const image = sampleShowing(fb, FACING_EAST, ACROSS_THE_FLOOR.x, ACROSS_THE_FLOOR.y, -EYE_HEIGHT);
+      const blob = shownInReflection(colour);
+      const { reflectedWidth } = lastTracedBuffers();
+      let strongest = 0;
+      for (let sampleRow = image.sampleRow - 8; sampleRow <= image.sampleRow + 8; sampleRow++) {
+        for (let sampleCol = image.sampleCol - 8; sampleCol <= image.sampleCol + 8; sampleCol++) {
+          const at = (sampleRow * reflectedWidth + sampleCol) * 3;
+          const { weight, misfit } = blendOf(
+            Array.from(behind.subarray(at, at + 3)),
+            reflectedAt(sampleCol, sampleRow),
+            blob
+          );
+          expect(misfit, `sample (${sampleCol}, ${sampleRow})`).toBeLessThan(1e-6);
+          expect(weight, `sample (${sampleCol}, ${sampleRow})`).toBeLessThan(1);
+          strongest = Math.max(strongest, weight);
+        }
+      }
+      expect(strongest).toBeGreaterThan(0.01);
+    });
+
+    test('among 100 people spread over the map, a frame writes every pixel, and a person 2 tiles ahead still reflects', () => {
+      const crowd = crowdOver(LEVEL, 100, BLUE_FACE);
+      const ahead = personAt(FACING_EAST.x + 2, FACING_EAST.y, GREEN_RING, null);
+      drawOverNaN(fb, FACING_EAST, traced, crowd);
+      expectEveryPixelWritten(fb);
+      const crowdAlone = Float32Array.from(lastTracedBuffers().reflected);
+      drawOverNaN(fb, FACING_EAST, traced, [...crowd, ahead]);
+      expectEveryPixelWritten(fb);
+      const change = [0, 0, 0];
+      for (const [at, light] of lastTracedBuffers().reflected.entries()) {
+        change[at % 3] = (change.at(at % 3) ?? 0) + light - (crowdAlone.at(at) ?? 0);
+      }
+      const [red = 0, green = 0, blue = 0] = change;
+      expect(green).toBeGreaterThan(10);
+      expect(green).toBeGreaterThan(4 * Math.max(red, blue));
+    });
   });
 });
 

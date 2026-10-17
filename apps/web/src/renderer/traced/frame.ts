@@ -1,6 +1,6 @@
 // The ray-traced room, drawn in place of renderWalls into the same Framebuffer (spec
 // docs/superpowers/specs/2026-10-17-ray-traced-renderer-design.md §3): walls, floor, ceiling and the lamps, lit from
-// the bake, and what they reflect. Avatars, objects and labels come after it as ever.
+// the bake, and what they reflect, people among it. Avatars, objects and labels come after it as ever.
 import type { GameMap, PlayerState } from '@zoom3d/shared';
 import type { Framebuffer } from '../framebuffer';
 import type { Sprite } from '../sprites';
@@ -40,7 +40,7 @@ export function renderTraced(fb: Framebuffer, scene: TracedScene): void {
   buffers = fitTracedBuffers(buffers, fb, scene.eye);
   drawWalls(fb, buffers, world, maps);
   drawFloorAndCeiling(buffers, world, maps);
-  traceReflections(buffers, world, maps);
+  traceReflections(buffers, world, maps, scene.people);
   widenReflections(buffers);
   fillReflectionTints(world, reflectionTints);
   composite(buffers, reflectionTints, fb.pixels);
