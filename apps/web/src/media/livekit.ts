@@ -140,14 +140,15 @@ const defaultLoadRoom = async () =>
 export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTransport {
   const createStream = opts.createStream ?? ((tracks: MediaStreamTrack[]) => new MediaStream(tracks));
   const local = opts.localStream;
-  const wanted: Record<TrackName, MediaStreamTrack | null> = {
+  /** Our tracks, by the name each is published under; null for one we don't send. */
+  const toPublish: Record<TrackName, MediaStreamTrack | null> = {
     face: local?.getVideoTracks()[0] ?? null,
     'face-128': null,
     'face-64': null,
     mic: local?.getAudioTracks()[0] ?? null,
     boombox: null,
   };
-  const nonePublished = (): Record<TrackName, LocalTrackLike | null> => ({
+  const noTracksPublished = (): Record<TrackName, LocalTrackLike | null> => ({
     face: null,
     'face-128': null,
     'face-64': null,
@@ -155,35 +156,35 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
     boombox: null,
   });
   let access: LiveKitAccess = { url: opts.url, token: opts.token };
-  let published = nonePublished();
+  let publishedTracks = noTracksPublished();
   /** What the interest rule wants from each peer; kept across rooms. */
-  const wants = new Map<string, Want>();
+  const wantedFrom = new Map<string, Want>();
   const remotes = new Map<string, Remote>();
   let room: LiveKitRoomLike | null = null;
   let connected = false;
   let closed = false;
   let retryMs = RETRY_MIN_MS;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
-  /** A reconcile that failed for some track tries again after this, doubling up to RETRY_MAX_MS. */
+  /** A publish pass that failed for some track tries again after this, doubling up to RETRY_MAX_MS. */
   let republishMs = RETRY_MIN_MS;
   let republishTimer: ReturnType<typeof setTimeout> | null = null;
-  // Publishing is serialized: every change reconciles what is published with what is wanted.
-  let queue = Promise.resolve();
+  // Publishing is serialized: every change runs one pass bringing what is published in line with toPublish.
+  let publishQueue = Promise.resolve();
 
   /**
-   * Brings every track in line with what is wanted; false when one of them failed. Each track is tried on its own,
-   * so a face that times out doesn't keep the mic from going out.
+   * False when one track failed. Each track is tried on its own, so a face that times out doesn't keep the mic from
+   * going out.
    */
-  async function reconcile(r: LiveKitRoomLike): Promise<boolean> {
-    // This room's record, even if a newer room replaces `published` while a call is pending.
-    const record = published;
+  async function publishEveryTrack(lkRoom: LiveKitRoomLike): Promise<boolean> {
+    // This room's record, even if a newer room replaces `publishedTracks` while a call is pending.
+    const record = publishedTracks;
     let ok = true;
     for (const name of NAMES) {
-      if (r !== room || closed) {
+      if (lkRoom !== room || closed) {
         return true;
       }
       try {
-        await reconcileTrack(r, record, name);
+        await publishTrackAsWanted(lkRoom, record, name);
       } catch (err) {
         console.warn(`livekit publish of ${name} failed`, err);
         ok = false;
@@ -192,44 +193,44 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
     return ok;
   }
 
-  async function reconcileTrack(r: LiveKitRoomLike, record: typeof published, name: TrackName) {
-    const want = wanted[name];
-    let lt = record[name];
+  async function publishTrackAsWanted(lkRoom: LiveKitRoomLike, record: typeof publishedTracks, name: TrackName) {
+    const want = toPublish[name];
+    let localTrack = record[name];
     if (!want) {
-      if (lt) {
-        await r.localParticipant.unpublishTrack(lt, false);
+      if (localTrack) {
+        await lkRoom.localParticipant.unpublishTrack(localTrack, false);
       }
       record[name] = null;
       return;
     }
-    if (lt?.mediaStreamTrack === want) {
+    if (localTrack?.mediaStreamTrack === want) {
       return;
     }
     const enabled = want.enabled;
     try {
-      if (lt) {
-        await lt.replaceTrack(want, { userProvidedTrack: true });
+      if (localTrack) {
+        await localTrack.replaceTrack(want, { userProvidedTrack: true });
       } else {
-        lt = (await r.localParticipant.publishTrack(want, PUBLISH[name])).track ?? null;
-        record[name] = lt;
+        localTrack = (await lkRoom.localParticipant.publishTrack(want, PUBLISH[name])).track ?? null;
+        record[name] = localTrack;
       }
       // Undo LiveKit's say over the track: unmute a publication it muted (its old track ended)...
-      if (lt?.isMuted) {
-        await lt.unmute();
+      if (localTrack?.isMuted) {
+        await localTrack.unmute();
       }
     } finally {
       // ...and keep the controller's mute, also when LiveKit failed half-way: a muted mic must stay silent.
       want.enabled = enabled;
     }
     const size = SMALL_SIZE[name];
-    if (lt && size) {
-      await scaleTo(lt, want, size);
+    if (localTrack && size) {
+      await scaleTo(localTrack, want, size);
     }
   }
 
   /** A small face fed a bigger track (the raw camera) scales it down to `size` on its shortest side. */
-  async function scaleTo(lt: LocalTrackLike, track: MediaStreamTrack, size: number) {
-    const sender = lt.sender;
+  async function scaleTo(localTrack: LocalTrackLike, track: MediaStreamTrack, size: number) {
+    const sender = localTrack.sender;
     if (!sender) {
       return;
     }
@@ -245,38 +246,38 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
     await sender.setParameters(params);
   }
 
-  const update = () => {
-    queue = queue
+  const queuePublish = () => {
+    publishQueue = publishQueue
       .then(async () => {
-        const r = room;
-        if (!r || !connected) {
+        const lkRoom = room;
+        if (!lkRoom || !connected) {
           return;
         }
-        if (await reconcile(r)) {
+        if (await publishEveryTrack(lkRoom)) {
           republishMs = RETRY_MIN_MS;
         } else {
-          republishLater();
+          retryPublishLater();
         }
       })
       .catch((err) => console.warn('livekit publish failed', err));
   };
 
   /** Nothing else re-runs a failed publish until a track changes, which may be never: retry on a timer. */
-  const republishLater = () => {
+  const retryPublishLater = () => {
     if (closed || republishTimer !== null) {
       return;
     }
     republishTimer = setTimeout(() => {
       republishTimer = null;
-      update();
+      queuePublish();
     }, republishMs);
     republishMs = Math.min(republishMs * 2, RETRY_MAX_MS);
   };
 
   const remoteOf = (identity: string): Remote => {
-    let r = remotes.get(identity);
-    if (!r) {
-      r = {
+    let remote = remotes.get(identity);
+    if (!remote) {
+      remote = {
         pubs: new Map(),
         tracks: new Map(),
         asked: new Map(),
@@ -284,32 +285,32 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
         emittedFace: null,
         emittedMic: null,
       };
-      remotes.set(identity, r);
+      remotes.set(identity, remote);
     }
-    return r;
+    return remote;
   };
 
   /**
    * The shown face and the mic, each as its own new stream when its track changed (empty when gone): the audio
    * engine rebuilds a voice for every new stream object, so a face change must never re-emit the voice.
    */
-  const emitStreams = (identity: string, r: Remote) => {
-    const face = r.face ? (r.tracks.get(r.face)?.mediaStreamTrack ?? null) : null;
-    const mic = r.tracks.get('mic')?.mediaStreamTrack ?? null;
-    if (face !== r.emittedFace) {
-      r.emittedFace = face;
+  const emitStreams = (identity: string, remote: Remote) => {
+    const face = remote.face ? (remote.tracks.get(remote.face)?.mediaStreamTrack ?? null) : null;
+    const mic = remote.tracks.get('mic')?.mediaStreamTrack ?? null;
+    if (face !== remote.emittedFace) {
+      remote.emittedFace = face;
       opts.onRemoteStream(identity, createStream(face ? [face] : []));
     }
-    if (mic !== r.emittedMic) {
-      r.emittedMic = mic;
+    if (mic !== remote.emittedMic) {
+      remote.emittedMic = mic;
       opts.onRemoteVoice(identity, createStream(mic ? [mic] : []));
     }
   };
 
-  const ask = (r: Remote, name: string, on: boolean) => {
-    const pub = r.pubs.get(name);
-    if (pub && (r.asked.get(name) ?? false) !== on) {
-      r.asked.set(name, on);
+  const askFor = (remote: Remote, name: string, on: boolean) => {
+    const pub = remote.pubs.get(name);
+    if (pub && (remote.asked.get(name) ?? false) !== on) {
+      remote.asked.set(name, on);
       pub.setSubscribed(on);
     }
   };
@@ -318,59 +319,59 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
    * Subscribes to what the peer's want asks for. A size switch is make-before-break: the shown face stays
    * subscribed until the new size's track has arrived, then the stream swaps and the old one is dropped.
    */
-  const apply = (identity: string) => {
-    const r = remotes.get(identity);
-    if (!r) {
+  const subscribeAsWanted = (identity: string) => {
+    const remote = remotes.get(identity);
+    if (!remote) {
       return;
     }
-    const want = wants.get(identity) ?? WANT_NONE;
-    const target = want.video === 'off' ? null : (FACE_ORDER[want.video].find((n) => r.pubs.has(n)) ?? null);
-    if (target === null || r.tracks.has(target)) {
-      r.face = target;
+    const want = wantedFrom.get(identity) ?? WANT_NONE;
+    const target = want.video === 'off' ? null : (FACE_ORDER[want.video].find((n) => remote.pubs.has(n)) ?? null);
+    if (target === null || remote.tracks.has(target)) {
+      remote.face = target;
     }
     for (const name of FACE_NAMES) {
-      ask(r, name, name === target || name === r.face);
+      askFor(remote, name, name === target || name === remote.face);
     }
-    ask(r, 'mic', want.audio);
-    ask(r, 'boombox', want.audio);
-    emitStreams(identity, r);
+    askFor(remote, 'mic', want.audio);
+    askFor(remote, 'boombox', want.audio);
+    emitStreams(identity, remote);
   };
 
   const onPublished = (pub: RemotePublicationLike, participant: { identity: string }) => {
     remoteOf(participant.identity).pubs.set(pub.trackName, pub);
-    apply(participant.identity);
+    subscribeAsWanted(participant.identity);
   };
 
   const onUnpublished = (pub: RemotePublicationLike, participant: { identity: string }) => {
-    const r = remotes.get(participant.identity);
-    r?.pubs.delete(pub.trackName);
-    r?.asked.delete(pub.trackName);
-    apply(participant.identity);
+    const remote = remotes.get(participant.identity);
+    remote?.pubs.delete(pub.trackName);
+    remote?.asked.delete(pub.trackName);
+    subscribeAsWanted(participant.identity);
   };
 
   const onSubscribed = (track: RemoteTrackLike, pub: RemotePublicationLike, participant: { identity: string }) => {
     const { identity } = participant;
-    const r = remoteOf(identity);
-    r.tracks.set(pub.trackName, track);
-    // It is subscribed now, whatever we asked last: apply() drops it again if it's no longer wanted.
-    r.asked.set(pub.trackName, true);
+    const remote = remoteOf(identity);
+    remote.tracks.set(pub.trackName, track);
+    // It is subscribed now, whatever we asked last: subscribeAsWanted() drops it again if it's no longer wanted.
+    remote.asked.set(pub.trackName, true);
     if (pub.trackName === 'boombox') {
       opts.onRemoteBoombox(identity, createStream([track.mediaStreamTrack]));
     }
-    apply(identity);
+    subscribeAsWanted(identity);
   };
 
   const onUnsubscribed = (_track: RemoteTrackLike, pub: RemotePublicationLike, participant: { identity: string }) => {
-    const r = remotes.get(participant.identity);
-    if (!r) {
+    const remote = remotes.get(participant.identity);
+    if (!remote) {
       return;
     }
-    r.tracks.delete(pub.trackName);
-    r.asked.delete(pub.trackName);
-    if (r.face === pub.trackName) {
-      r.face = null;
+    remote.tracks.delete(pub.trackName);
+    remote.asked.delete(pub.trackName);
+    if (remote.face === pub.trackName) {
+      remote.face = null;
     }
-    apply(participant.identity);
+    subscribeAsWanted(participant.identity);
   };
 
   const retry = () => {
@@ -381,48 +382,64 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
     retryMs = Math.min(retryMs * 2, RETRY_MAX_MS);
   };
 
+  /** Joins a fresh LiveKit room: loads livekit-client, listens to the room, connects, then catches up. */
   async function start() {
     retryTimer = null;
     if (closed) {
       return;
     }
-    let Impl: LiveKitTransportOptions['RoomImpl'];
+    const RoomClass = await loadRoomClass();
+    if (!RoomClass || closed) {
+      return;
+    }
+    const lkRoom = new RoomClass({ adaptiveStream: false, dynacast: true, stopLocalTrackOnUnpublish: false });
+    room = lkRoom;
+    connected = false;
+    publishedTracks = noTracksPublished();
+    remotes.clear();
+    listenTo(lkRoom);
+    if (!(await connectTo(lkRoom))) {
+      return;
+    }
+    connected = true;
+    retryMs = RETRY_MIN_MS;
+    catchUpWithParticipants(lkRoom);
+    queuePublish();
+  }
+
+  /** Undefined when loading failed, a retry already scheduled. */
+  async function loadRoomClass(): Promise<LiveKitTransportOptions['RoomImpl']> {
     try {
-      Impl = opts.RoomImpl ?? (await (opts.loadRoom ?? defaultLoadRoom)());
+      return opts.RoomImpl ?? (await (opts.loadRoom ?? defaultLoadRoom)());
     } catch (err) {
       // E.g. a tab older than a deploy asks for a chunk that's gone: retrying beats a silent room.
       console.warn('livekit-client failed to load', err);
       retry();
-      return;
+      return undefined;
     }
-    if (!Impl || closed) {
-      return;
-    }
-    const r = new Impl({ adaptiveStream: false, dynacast: true, stopLocalTrackOnUnpublish: false });
-    room = r;
-    connected = false;
-    published = nonePublished();
-    remotes.clear();
+  }
+
+  function listenTo(lkRoom: LiveKitRoomLike): void {
     /** Events from a room that was closed or replaced must not touch the current one's media. */
-    const live = <A extends unknown[]>(fn: (...args: A) => void) =>
+    const whileCurrent = <A extends unknown[]>(fn: (...args: A) => void) =>
       ((...args: A) => {
-        if (r === room && !closed) {
+        if (lkRoom === room && !closed) {
           fn(...args);
         }
       }) as unknown as (...args: never[]) => void;
-    r.on('trackPublished', live(onPublished));
-    r.on('trackUnpublished', live(onUnpublished));
-    r.on('trackSubscribed', live(onSubscribed));
-    r.on('trackUnsubscribed', live(onUnsubscribed));
-    r.on(
+    lkRoom.on('trackPublished', whileCurrent(onPublished));
+    lkRoom.on('trackUnpublished', whileCurrent(onUnpublished));
+    lkRoom.on('trackSubscribed', whileCurrent(onSubscribed));
+    lkRoom.on('trackUnsubscribed', whileCurrent(onUnsubscribed));
+    lkRoom.on(
       'participantDisconnected',
-      live((participant: { identity: string }) => {
+      whileCurrent((participant: { identity: string }) => {
         remotes.delete(participant.identity);
       })
     );
     // LiveKit gave up reconnecting (or the server went away): start over with a fresh room.
-    r.on('disconnected', () => {
-      if (r !== room || closed) {
+    lkRoom.on('disconnected', () => {
+      if (lkRoom !== room || closed) {
         return;
       }
       room = null;
@@ -430,29 +447,34 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
       remotes.clear();
       retry();
     });
+  }
+
+  /** False when it failed (then a retry is scheduled) or the room was replaced or closed meanwhile. */
+  async function connectTo(lkRoom: LiveKitRoomLike): Promise<boolean> {
     try {
-      await r.connect(access.url, access.token, { autoSubscribe: false });
+      await lkRoom.connect(access.url, access.token, { autoSubscribe: false });
     } catch (err) {
       console.warn('livekit connect failed', err);
-      if (r === room) {
+      if (lkRoom === room) {
         room = null;
         retry();
       }
-      return;
+      return false;
     }
-    if (r !== room || closed) {
-      void r.disconnect(false);
-      return;
+    if (lkRoom !== room || closed) {
+      void lkRoom.disconnect(false);
+      return false;
     }
-    connected = true;
-    retryMs = RETRY_MIN_MS;
-    // Participants already here when we joined: no trackPublished for them.
-    for (const participant of r.remoteParticipants.values()) {
+    return true;
+  }
+
+  /** Participants already here when we joined get no trackPublished. */
+  function catchUpWithParticipants(lkRoom: LiveKitRoomLike): void {
+    for (const participant of lkRoom.remoteParticipants.values()) {
       for (const pub of participant.trackPublications.values()) {
         onPublished(pub, participant);
       }
     }
-    update();
   }
 
   void start();
@@ -466,11 +488,11 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
       if (republishTimer) {
         clearTimeout(republishTimer);
       }
-      const r = room;
+      const leaving = room;
       room = null;
       connected = false;
       remotes.clear();
-      void r?.disconnect(false);
+      void leaving?.disconnect(false);
     },
     setAccess(next) {
       access = next;
@@ -498,31 +520,31 @@ export function createLiveKitTransport(opts: LiveKitTransportOptions): MediaTran
       return { bytesReceived, boomboxBytesReceived };
     },
     setVideoTracks(tracks: FaceTracks) {
-      wanted.face = tracks[256];
-      wanted['face-128'] = tracks[128];
-      wanted['face-64'] = tracks[64];
-      update();
+      toPublish.face = tracks[256];
+      toPublish['face-128'] = tracks[128];
+      toPublish['face-64'] = tracks[64];
+      queuePublish();
     },
     sendingFaces(): FacesSent {
-      const live = connected && !closed;
+      const sending = connected && !closed;
       return {
-        256: live && goesOut(published.face),
-        128: live && goesOut(published['face-128']),
-        64: live && goesOut(published['face-64']),
+        256: sending && goesOut(publishedTracks.face),
+        128: sending && goesOut(publishedTracks['face-128']),
+        64: sending && goesOut(publishedTracks['face-64']),
       };
     },
     publishes: (peerId) => (remotes.get(peerId)?.pubs.size ?? 0) > 0,
     setWanted(peerId, want) {
-      wants.set(peerId, want);
-      apply(peerId);
+      wantedFrom.set(peerId, want);
+      subscribeAsWanted(peerId);
     },
     setAudioTrack(track) {
-      wanted.mic = track;
-      update();
+      toPublish.mic = track;
+      queuePublish();
     },
     setBoomboxTrack(track) {
-      wanted.boombox = track;
-      update();
+      toPublish.boombox = track;
+      queuePublish();
     },
   };
 }

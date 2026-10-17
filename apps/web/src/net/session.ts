@@ -2,6 +2,7 @@
 // sync.
 import {
   CHEERS_MS,
+  type ClientMessage,
   type ErrorCode,
   type HeldItem,
   IDLE_INTERVAL_MS,
@@ -86,13 +87,15 @@ export interface SessionOptions {
   listener?: SessionListener;
 }
 
+/** The pose last sent, and when; null when nothing has been sent since the last welcome. */
+type SentPose = { x: number; y: number; angle: number; at: number };
+
 export function createSession(opts: SessionOptions): Session {
   const { player, now } = opts;
   const peers = new Map<string, RemotePeer>();
   /** The same peers by slot, the name `peers` batches use. */
   const bySlot = new Map<number, RemotePeer>();
   const objects = new Map<string, RemoteObject>();
-  const playing = (g: RemotePeer['gesture']) => g !== null && now() - g.at < (g.kind === 'sip' ? SIP_MS : CHEERS_MS);
   let selfId: string | null = null;
   let color: string | null = null;
   let resumeToken: string | undefined;
@@ -104,8 +107,11 @@ export function createSession(opts: SessionOptions): Session {
   let held: HeldItem | null | undefined;
   /** undefined until setBoombox: false must reach a resumed slot that may still say true. */
   let boombox: boolean | undefined;
+  let lastSent: SentPose | null = null;
   const listener = opts.listener ?? {};
-  const lastSent = { x: Number.NaN, y: Number.NaN, angle: Number.NaN, at: 0 };
+
+  const gesturePlaying = (g: RemotePeer['gesture']) =>
+    g !== null && now() - g.at < (g.kind === 'sip' ? SIP_MS : CHEERS_MS);
 
   const addPeer = (info: PeerInfo) => {
     const buffer = new SnapshotBuffer();
@@ -115,127 +121,62 @@ export function createSession(opts: SessionOptions): Session {
     bySlot.set(info.slot, peer);
   };
 
+  const removePeer = (id: string) => {
+    const peer = peers.get(id);
+    if (peer) {
+      bySlot.delete(peer.info.slot);
+    }
+    peers.delete(id);
+  };
+
+  const addObject = (info: ObjectInfo) => {
+    const buffer = new SnapshotBuffer();
+    buffer.push({ t: now(), x: info.x, y: info.y, angle: info.angle });
+    objects.set(info.id, { info: { ...info }, buffer, lastSeq: -1 });
+  };
+
+  const sendWhileOpen = (message: ClientMessage) => {
+    if (status === 'open') {
+      conn.send(message);
+    }
+  };
+
+  // Server messages.
+
   const handle = (m: ServerMessage) => {
     switch (m.type) {
-      case 'welcome': {
-        // A new identity means a fresh slot (first join, expired grace, server restart): take its spawn.
-        const identityChanged = m.selfId !== selfId;
-        if (identityChanged) {
-          Object.assign(player, m.spawn);
-        }
-        selfId = m.selfId;
-        color = m.color;
-        resumeToken = m.resumeToken;
-        peers.clear();
-        bySlot.clear();
-        for (const p of m.peers) {
-          addPeer(p);
-        }
-        // A restarted server counts each object's seq from 1 again: start every object afresh.
-        objects.clear();
-        for (const o of m.objects) {
-          const buffer = new SnapshotBuffer();
-          buffer.push({ t: now(), x: o.x, y: o.y, angle: o.angle });
-          objects.set(o.id, { info: { ...o }, buffer, lastSeq: -1 });
-        }
-        // Our pose goes out on the next tick: after a resume the server only has the one from before the outage
-        // (moves sent into a dying socket were lost), and a fresh spawn costs one message.
-        lastSent.at = Number.NEGATIVE_INFINITY;
-        // The server forgets media state on a fresh identity; resending on resume is harmless.
-        if (media) {
-          conn.send({ type: 'media', ...media });
-        }
-        if (held !== undefined) {
-          conn.send({ type: 'held', item: held });
-        }
-        if (boombox !== undefined) {
-          conn.send({ type: 'boombox', on: boombox });
-        }
-        listener.welcome?.(m.selfId, m.livekit, identityChanged);
+      case 'welcome':
+        applyWelcome(m);
         break;
-      }
       case 'peer_joined':
         addPeer(m.peer);
         listener.peerJoined?.(m.peer);
         break;
-      case 'peer_left': {
-        const peer = peers.get(m.id);
-        if (peer) {
-          bySlot.delete(peer.info.slot);
-        }
-        peers.delete(m.id);
+      case 'peer_left':
+        removePeer(m.id);
         listener.peerLeft?.(m.id);
         break;
-      }
-      case 'peer_media': {
-        const peer = peers.get(m.id);
-        if (!peer) {
-          return;
-        }
-        peer.info.cam = m.cam;
-        peer.info.mic = m.mic;
-        listener.peerMedia?.(m.id, m.cam, m.mic);
+      case 'peer_media':
+        applyPeerMedia(m.id, m.cam, m.mic);
         break;
-      }
       case 'peer_drink':
-      case 'peer_cheers': {
-        const peer = peers.get(m.id);
-        // A gesture arriving while one still plays (bunched by the network) would snap it back to the start.
-        if (peer && !playing(peer.gesture)) {
-          peer.gesture = { kind: m.type === 'peer_drink' ? 'sip' : 'cheers', at: now() };
-        }
+        startGesture(m.id, 'sip');
         break;
-      }
-      case 'peer_boombox': {
-        const peer = peers.get(m.id);
-        if (peer) {
-          peer.info.boombox = m.on;
-        }
+      case 'peer_cheers':
+        startGesture(m.id, 'cheers');
         break;
-      }
-      case 'peer_held': {
-        const peer = peers.get(m.id);
-        if (peer) {
-          peer.info.held = m.item;
-          if (m.item === null) {
-            peer.gesture = null;
-          }
-        }
+      case 'peer_boombox':
+        applyPeerBoombox(m.id, m.on);
         break;
-      }
-      case 'peers': {
-        // The socket is ordered, so there is no seq: a batch is always newer than the last.
-        const arrival = now();
-        for (const [slot, x, y, angle, age] of m.s) {
-          const peer = bySlot.get(slot);
-          if (!peer) {
-            continue;
-          }
-          // Each pose goes where the server accepted it, not where its tick sent it (a faster batch than the last
-          // could put it earlier than the previous pose: then it goes just after).
-          const latest = peer.buffer.latest();
-          const t = latest ? Math.max(arrival - age, latest.t + 1) : arrival - age;
-          holdBefore(peer.buffer, t, tierInterval(nearTier(player.x, player.y, x, y)));
-          peer.info.x = x;
-          peer.info.y = y;
-          peer.info.angle = angle;
-          peer.buffer.push({ t, x, y, angle });
-        }
+      case 'peer_held':
+        applyPeerHeld(m.id, m.item);
         break;
-      }
-      case 'object_state': {
-        const obj = objects.get(m.id);
-        if (!obj || m.seq <= obj.lastSeq) {
-          return;
-        }
-        obj.lastSeq = m.seq;
-        Object.assign(obj.info, { x: m.x, y: m.y, angle: m.angle });
-        obj.buffer.push({ t: now(), x: m.x, y: m.y, angle: m.angle });
-        if (m.event) {
-          listener.objectEvent?.(m.id, m.event);
-        }
+      case 'peers':
+        applyPeerPoses(m.s);
         break;
-      }
+      case 'object_state':
+        applyObjectState(m);
+        break;
       case 'correction':
         Object.assign(player, { x: m.x, y: m.y, angle: m.angle });
         break;
@@ -244,6 +185,116 @@ export function createSession(opts: SessionOptions): Session {
         break;
     }
   };
+
+  const applyWelcome = (m: Extract<ServerMessage, { type: 'welcome' }>) => {
+    // A new identity means a fresh slot (first join, expired grace, server restart): take its spawn.
+    const identityChanged = m.selfId !== selfId;
+    if (identityChanged) {
+      Object.assign(player, m.spawn);
+    }
+    selfId = m.selfId;
+    color = m.color;
+    resumeToken = m.resumeToken;
+    peers.clear();
+    bySlot.clear();
+    for (const p of m.peers) {
+      addPeer(p);
+    }
+    // A restarted server counts each object's seq from 1 again: start every object afresh.
+    objects.clear();
+    for (const o of m.objects) {
+      addObject(o);
+    }
+    // Our pose goes out on the next tick: after a resume the server only has the one from before the outage
+    // (moves sent into a dying socket were lost), and a fresh spawn costs one message.
+    lastSent = null;
+    resendWhatWeShow();
+    listener.welcome?.(m.selfId, m.livekit, identityChanged);
+  };
+
+  /** The server forgets these on a fresh identity; resending them on a resume is harmless. */
+  const resendWhatWeShow = () => {
+    if (media) {
+      conn.send({ type: 'media', ...media });
+    }
+    if (held !== undefined) {
+      conn.send({ type: 'held', item: held });
+    }
+    if (boombox !== undefined) {
+      conn.send({ type: 'boombox', on: boombox });
+    }
+  };
+
+  const applyPeerMedia = (id: string, cam: boolean, mic: boolean) => {
+    const peer = peers.get(id);
+    if (!peer) {
+      return;
+    }
+    peer.info.cam = cam;
+    peer.info.mic = mic;
+    listener.peerMedia?.(id, cam, mic);
+  };
+
+  const startGesture = (id: string, kind: 'sip' | 'cheers') => {
+    const peer = peers.get(id);
+    // A gesture arriving while one still plays (bunched by the network) would snap it back to the start.
+    if (peer && !gesturePlaying(peer.gesture)) {
+      peer.gesture = { kind, at: now() };
+    }
+  };
+
+  const applyPeerBoombox = (id: string, on: boolean) => {
+    const peer = peers.get(id);
+    if (peer) {
+      peer.info.boombox = on;
+    }
+  };
+
+  const applyPeerHeld = (id: string, item: HeldItem | null) => {
+    const peer = peers.get(id);
+    if (!peer) {
+      return;
+    }
+    peer.info.held = item;
+    if (item === null) {
+      peer.gesture = null;
+    }
+  };
+
+  /** The socket is ordered, so a batch is always newer than the last: it carries no seq. */
+  const applyPeerPoses = (entries: Extract<ServerMessage, { type: 'peers' }>['s']) => {
+    const arrival = now();
+    for (const [slot, x, y, angle, age] of entries) {
+      const peer = bySlot.get(slot);
+      if (!peer) {
+        continue;
+      }
+      // Each pose goes where the server accepted it, not where its tick sent it (a faster batch than the last could
+      // put it earlier than the previous pose: then it goes just after).
+      const latest = peer.buffer.latest();
+      const t = latest ? Math.max(arrival - age, latest.t + 1) : arrival - age;
+      holdBefore(peer.buffer, t, tierInterval(nearTier(player.x, player.y, x, y)));
+      peer.info.x = x;
+      peer.info.y = y;
+      peer.info.angle = angle;
+      peer.buffer.push({ t, x, y, angle });
+    }
+  };
+
+  const applyObjectState = (m: Extract<ServerMessage, { type: 'object_state' }>) => {
+    const obj = objects.get(m.id);
+    if (!obj || m.seq <= obj.lastSeq) {
+      return;
+    }
+    obj.lastSeq = m.seq;
+    Object.assign(obj.info, { x: m.x, y: m.y, angle: m.angle });
+    obj.buffer.push({ t: now(), x: m.x, y: m.y, angle: m.angle });
+    if (m.event) {
+      listener.objectEvent?.(m.id, m.event);
+    }
+  };
+
+  // The connection.
 
   let notified: ConnStatus = status;
   const notifyStatus = () => {
@@ -278,55 +329,47 @@ export function createSession(opts: SessionOptions): Session {
     WebSocketImpl: opts.WebSocketImpl,
   });
 
-  // A timer (not rAF) so position heartbeats continue while the tab is hidden.
-  const sender = setInterval(() => {
+  // Our pose.
+
+  const movedSince = (sent: SentPose) =>
+    Math.abs(player.x - sent.x) > MOVE_EPSILON ||
+    Math.abs(player.y - sent.y) > MOVE_EPSILON ||
+    Math.abs(player.angle - sent.angle) > TURN_EPSILON;
+
+  /** When we moved, or as an idle heartbeat. */
+  const sendPoseIfDue = () => {
     if (status !== 'open') {
       return;
     }
     const t = now();
-    const moved =
-      Math.abs(player.x - lastSent.x) > MOVE_EPSILON ||
-      Math.abs(player.y - lastSent.y) > MOVE_EPSILON ||
-      Math.abs(player.angle - lastSent.angle) > TURN_EPSILON;
-    if (!moved && t - lastSent.at < IDLE_INTERVAL_MS) {
+    if (lastSent && !movedSince(lastSent) && t - lastSent.at < IDLE_INTERVAL_MS) {
       return;
     }
     seq++;
     conn.send({ type: 'state', x: player.x, y: player.y, angle: player.angle, seq });
+    lastSent ??= { x: 0, y: 0, angle: 0, at: 0 };
     Object.assign(lastSent, { x: player.x, y: player.y, angle: player.angle, at: t });
-  }, STATE_INTERVAL_MS);
+  };
+  // A timer (not rAF) so position heartbeats continue while the tab is hidden.
+  const sender = setInterval(sendPoseIfDue, STATE_INTERVAL_MS);
 
   return {
     peers,
     objects,
     setMedia(cam, mic) {
       media = { cam, mic };
-      if (status === 'open') {
-        conn.send({ type: 'media', cam, mic });
-      }
+      sendWhileOpen({ type: 'media', cam, mic });
     },
     setHeld(item) {
       held = item;
-      if (status === 'open') {
-        conn.send({ type: 'held', item });
-      }
+      sendWhileOpen({ type: 'held', item });
     },
     setBoombox(on) {
       boombox = on;
-      if (status === 'open') {
-        conn.send({ type: 'boombox', on });
-      }
+      sendWhileOpen({ type: 'boombox', on });
     },
-    sendDrink() {
-      if (status === 'open') {
-        conn.send({ type: 'drink' });
-      }
-    },
-    sendCheers() {
-      if (status === 'open') {
-        conn.send({ type: 'cheers' });
-      }
-    },
+    sendDrink: () => sendWhileOpen({ type: 'drink' }),
+    sendCheers: () => sendWhileOpen({ type: 'cheers' }),
     selfId: () => selfId,
     selfColor: () => color,
     status: () => status,

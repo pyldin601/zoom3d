@@ -46,7 +46,10 @@ export async function makeAvatar(blob: Blob, deps: AvatarDeps = {}): Promise<str
   const canvas = (deps.document ?? document).createElement('canvas');
   canvas.width = AVATAR_SIZE;
   canvas.height = AVATAR_SIZE;
-  const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('unreadable');
+  }
   // JPEG has no alpha: transparent pixels would otherwise turn black.
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, AVATAR_SIZE, AVATAR_SIZE);

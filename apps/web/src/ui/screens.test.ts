@@ -88,7 +88,7 @@ test('the round mic button flips aria-pressed and calls its handler', () => {
   expect(onMic).toHaveBeenLastCalledWith(true);
 });
 
-test('your own circle is the camera toggle and keeps showing your face', () => {
+test("the self-view circle is the camera toggle and keeps showing the player's face", () => {
   const onCam = vi.fn(async (on: boolean) => on);
   showMediaControls(root, controls({ onCam }));
   showSelfPreview(root, new MediaStream(), { cam: true, name: 'Ada Lovelace', avatar: null });
@@ -146,7 +146,7 @@ test('self preview shows a muted mirrored video while the camera is on', () => {
   expect((box.querySelector('.face') as HTMLElement).hidden).toBe(true);
 });
 
-test('with the camera off the self preview shows your picture, else your initials', () => {
+test("with the camera off the self preview shows the player's picture, else their initials", () => {
   const stream = new MediaStream();
   const PIC = 'data:image/jpeg;base64,/9j/4AAQ';
   showSelfPreview(root, stream, { cam: false, name: 'Ada Lovelace', avatar: PIC });

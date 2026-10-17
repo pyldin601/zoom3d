@@ -16,7 +16,7 @@ export const OWN_CROP = 0.45;
 /** Walking: drop at the top of a step (fraction of the height), sway either way (fraction of the width). */
 export const OWN_BOB = 0.03;
 export const OWN_SWAY = 0.01;
-/** At the top of a sip the drink sits at the bottom-centre, under your mouth, this much of it visible. */
+/** At the top of a sip the drink sits at the bottom-centre, under the player's mouth, this much of it visible. */
 export const OWN_SIP_VISIBLE = 0.3;
 /**
  * Raised in a cheers (held items spec §2.4): left edge at this fraction of the width, fully in view with its bottom
@@ -34,7 +34,7 @@ export const OWN_HELD_SPRITES: Record<HeldItem, HeldSprite> = {
   wine: toHeldSprite(mirror(HELD_MAPS.wine)),
 };
 
-/** The walking step as what you hold feels it: `itemLift` 0..1 drops it, `sway` −1..1 shifts it sideways. */
+/** The walking step as the held items feel it: `itemLift` 0..1 drops it, `sway` −1..1 shifts it sideways. */
 export type HeldStep = Pick<Bob, 'itemLift' | 'sway'>;
 
 /** One texel of a first-person overlay, in framebuffer pixels: from the shorter side, so a tall phone frame keeps it small. */

@@ -191,7 +191,7 @@ describe('renderWalls reflections', () => {
     expect(far).toBeGreaterThan(0);
   });
 
-  test('a wall you are not close to stays matte, even in range: the end of a corridor seen from down it', () => {
+  test('a wall the eye is not close to stays matte, even in range: the end of a corridor seen from down it', () => {
     // A wood end wall at x = 13, a lamp 1.5 in front of it; the eye 7 away, looking straight at it.
     const room = parseMap('33333333333332\n3S...........2\n3............2\n3............2\n33333333333332');
     const roomLit = bakeLighting(
@@ -230,7 +230,7 @@ describe('renderWalls reflections', () => {
     }
   });
 
-  test('the wall you hug still streaks far ahead along it', () => {
+  test('the wall the eye hugs still streaks far ahead along it', () => {
     const hall = parseMap('1111111111111\n1S..........1\n1...........1\n1...........1\n1111111111111');
     const hallLit = bakeLighting(
       hall,

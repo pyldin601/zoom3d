@@ -1,11 +1,11 @@
 // Per-peer face textures (FACE_SIZE² texels, packed like rgb()) from live video, else the peer's
 // avatar picture, else an initials disc.
+import { type FrameVideo, VIDEO_POLL_MS } from './video-frames';
+
 export const FACE_SIZE = 256;
 export const FACE_STALL_MS = 2000;
 /** Avatars are AVATAR_SIZE²; anything much larger is a hostile decode bomb and is never drawn. */
 export const AVATAR_MAX_DIM = 512;
-/** Fallback polling when requestVideoFrameCallback is missing: one 24 fps frame. */
-const POLL_MS = 42;
 
 export function squareCrop(w: number, h: number): { sx: number; sy: number; size: number } {
   const size = Math.min(w, h);
@@ -35,11 +35,6 @@ export interface FaceSource {
   dispose(): void;
 }
 
-type FrameVideo = HTMLVideoElement & {
-  requestVideoFrameCallback?: (cb: (now: number) => void) => number;
-  cancelVideoFrameCallback?: (handle: number) => void;
-};
-
 export interface FaceOptions {
   name: string;
   color: string;
@@ -50,20 +45,10 @@ export interface FaceOptions {
 }
 
 export function createFace(opts: FaceOptions): FaceSource {
-  const canvas = opts.document.createElement('canvas');
-  canvas.width = FACE_SIZE;
-  canvas.height = FACE_SIZE;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D;
-  const read = () => new Uint32Array(ctx.getImageData(0, 0, FACE_SIZE, FACE_SIZE).data.buffer.slice(0));
-
-  ctx.fillStyle = opts.color;
-  ctx.fillRect(0, 0, FACE_SIZE, FACE_SIZE);
-  ctx.fillStyle = '#fff';
-  ctx.font = `bold ${Math.round(FACE_SIZE * 0.45)}px system-ui, sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(initials(opts.name), FACE_SIZE / 2, FACE_SIZE / 2 + FACE_SIZE * 0.03);
-  let fallbackTexels = read();
+  const ctx = faceCanvas(opts.document);
+  const readTexels = () => new Uint32Array(ctx.getImageData(0, 0, FACE_SIZE, FACE_SIZE).data.buffer.slice(0));
+  drawInitials(ctx, opts.name, opts.color);
+  let fallbackTexels = readTexels();
   // Reused for every frame: no per-frame texture allocation beyond what getImageData itself does.
   const liveTexels = new Uint32Array(FACE_SIZE * FACE_SIZE);
 
@@ -76,12 +61,13 @@ export function createFace(opts: FaceOptions): FaceSource {
   /** When the current video was set: the last frame is held for FACE_STALL_MS from then. */
   let videoSetAt = Number.NEGATIVE_INFINITY;
   let paused = false;
-  let lastVideoTime = -1;
+  /** The polled video's currentTime last copied; null before the first. */
+  let lastVideoTime: number | null = null;
   let lastPollAt = Number.NEGATIVE_INFINITY;
   let now = 0;
   let disposed = false;
 
-  if (opts.avatar) {
+  const showAvatarOnceLoaded = (src: string) => {
     const img = opts.createImage?.() ?? new Image();
     img.onload = () => {
       if (disposed || img.naturalWidth > AVATAR_MAX_DIM || img.naturalHeight > AVATAR_MAX_DIM) {
@@ -89,12 +75,15 @@ export function createFace(opts: FaceOptions): FaceSource {
       }
       const { sx, sy, size } = squareCrop(img.naturalWidth, img.naturalHeight);
       ctx.drawImage(img, sx, sy, size, size, 0, 0, FACE_SIZE, FACE_SIZE);
-      fallbackTexels = read();
+      fallbackTexels = readTexels();
     };
-    img.src = opts.avatar;
+    img.src = src;
+  };
+  if (opts.avatar) {
+    showAvatarOnceLoaded(opts.avatar);
   }
 
-  const grab = (at: number) => {
+  const copyVideoFrame = (at: number) => {
     // A disabled camera still delivers black frames; they are never shown, so skip the work.
     if (!camOn || !video || video.videoWidth === 0) {
       return;
@@ -108,7 +97,7 @@ export function createFace(opts: FaceOptions): FaceSource {
   };
 
   const onFrame = (at: number) => {
-    grab(at);
+    copyVideoFrame(at);
     if (video?.requestVideoFrameCallback) {
       frameHandle = video.requestVideoFrameCallback(onFrame);
     }
@@ -132,11 +121,11 @@ export function createFace(opts: FaceOptions): FaceSource {
     update(at) {
       now = at;
       // Without requestVideoFrameCallback, poll and only count frames whose timestamp moved.
-      if (video && !video.requestVideoFrameCallback && at - lastPollAt >= POLL_MS) {
+      if (video && !video.requestVideoFrameCallback && at - lastPollAt >= VIDEO_POLL_MS) {
         lastPollAt = at;
         if (video.currentTime !== lastVideoTime) {
           lastVideoTime = video.currentTime;
-          grab(at);
+          copyVideoFrame(at);
         }
       }
     },
@@ -145,7 +134,7 @@ export function createFace(opts: FaceOptions): FaceSource {
       video = v as FrameVideo | null;
       lastFrameAt = null;
       videoSetAt = now;
-      lastVideoTime = -1;
+      lastVideoTime = null;
       lastPollAt = Number.NEGATIVE_INFINITY;
       if (video?.requestVideoFrameCallback) {
         frameHandle = video.requestVideoFrameCallback(onFrame);
@@ -167,4 +156,25 @@ export function createFace(opts: FaceOptions): FaceSource {
       video = null;
     },
   };
+}
+
+function faceCanvas(doc: Document): CanvasRenderingContext2D {
+  const canvas = doc.createElement('canvas');
+  canvas.width = FACE_SIZE;
+  canvas.height = FACE_SIZE;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) {
+    throw new Error('a canvas without a 2d context');
+  }
+  return ctx;
+}
+
+function drawInitials(ctx: CanvasRenderingContext2D, name: string, color: string): void {
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, FACE_SIZE, FACE_SIZE);
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${Math.round(FACE_SIZE * 0.45)}px system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(initials(name), FACE_SIZE / 2, FACE_SIZE / 2 + FACE_SIZE * 0.03);
 }

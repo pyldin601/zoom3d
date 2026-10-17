@@ -28,7 +28,7 @@ export function inLabelRange(p: { x: number; y: number }, x: number, y: number):
   return Math.hypot(x - p.x, y - p.y) <= LABEL_TILES;
 }
 
-/** Each person's name above their disc, where you can see the disc's centre, on a HUD canvas over `fb`. */
+/** Each person's name above their disc, where the disc's centre is in sight, on a HUD canvas over `fb`. */
 export function drawLabels(
   ctx: CanvasRenderingContext2D,
   fb: Framebuffer,

@@ -9,7 +9,8 @@ import {
 
 export type ConnStatus = 'connecting' | 'open' | 'reconnecting' | 'failed';
 
-const FATAL: readonly ErrorCode[] = ['room_full', 'invalid_room', 'invalid_name', 'outdated'];
+/** Errors no retry can fix: the session stops. */
+const FATAL_ERRORS: readonly ErrorCode[] = ['room_full', 'invalid_room', 'invalid_name', 'outdated'];
 const BACKOFF_BASE_MS = 500;
 const BACKOFF_MAX_MS = 5000;
 /**
@@ -17,7 +18,8 @@ const BACKOFF_MAX_MS = 5000;
  * so a hung handshake (a proxy waiting on a restarting server) would otherwise block every retry behind it.
  */
 const WELCOME_TIMEOUT_MS = 10_000;
-const OPEN = 1;
+/** WebSocket.OPEN, which a test's fake socket class may not define. */
+const READY_STATE_OPEN = 1;
 
 export interface ConnectOptions {
   url: string;
@@ -30,12 +32,12 @@ export interface ConnectOptions {
 export function connect(opts: ConnectOptions): { send(m: ClientMessage): void; close(): void } {
   const Impl = opts.WebSocketImpl ?? WebSocket;
   let ws: WebSocket;
-  let attempt = 0;
+  let retries = 0;
   let stopped = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
   const open = () => {
-    opts.onStatus(attempt === 0 ? 'connecting' : 'reconnecting');
+    opts.onStatus(retries === 0 ? 'connecting' : 'reconnecting');
     const socket = new Impl(opts.url);
     ws = socket;
     const deadline = setTimeout(() => socket.close(), WELCOME_TIMEOUT_MS);
@@ -47,10 +49,10 @@ export function connect(opts: ConnectOptions): { send(m: ClientMessage): void; c
       }
       if (msg.type === 'welcome') {
         clearTimeout(deadline);
-        attempt = 0;
+        retries = 0;
         opts.onStatus('open');
       }
-      if (msg.type === 'error' && FATAL.includes(msg.code)) {
+      if (msg.type === 'error' && FATAL_ERRORS.includes(msg.code)) {
         stopped = true;
         opts.onStatus('failed');
       }
@@ -61,23 +63,23 @@ export function connect(opts: ConnectOptions): { send(m: ClientMessage): void; c
       if (stopped) {
         return;
       }
-      const delay = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** attempt);
-      attempt++;
+      const delay = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** retries);
+      retries++;
       opts.onStatus('reconnecting');
-      timer = setTimeout(open, delay);
+      retryTimer = setTimeout(open, delay);
     };
   };
   open();
 
   return {
     send(m) {
-      if (ws.readyState === OPEN) {
+      if (ws.readyState === READY_STATE_OPEN) {
         ws.send(JSON.stringify(m));
       }
     },
     close() {
       stopped = true;
-      clearTimeout(timer);
+      clearTimeout(retryTimer);
       ws.close();
     },
   };

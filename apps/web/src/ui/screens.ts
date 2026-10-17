@@ -65,7 +65,7 @@ export function showStatus(root: HTMLElement, text: string | null): void {
   slot(root, 'status').textContent = text;
 }
 
-/** The room's people count, top right: everyone in the room, you included. null removes it. */
+/** The room's people count, top right: everyone in the room, the local player included. null removes it. */
 export function showPeopleCount(root: HTMLElement, count: number | null): void {
   if (count === null) {
     root.querySelector(':scope > .people')?.remove();
@@ -91,19 +91,23 @@ export interface MediaControls {
   onMic(on: boolean): boolean;
 }
 
-/**
- * Makes `button` a mic or cam toggle. `icon` draws the device icon in it; the self-view shows your face instead, and
- * a hover hint with what a click will do.
- */
+interface ToggleOptions {
+  kind: 'cam' | 'mic';
+  label: string;
+  on: boolean;
+  available: boolean;
+  /** Resolves to whether it is on now: the handler has the last word. */
+  onChange(on: boolean): boolean | Promise<boolean>;
+  /** The mic button shows the device icon; the self-view shows the player's face, with a hover hint of what a click does. */
+  look: 'icon' | 'hint';
+}
+
+/** Makes `button` a mic or cam toggle. */
 function makeToggle(
   button: HTMLButtonElement,
-  kind: 'cam' | 'mic',
-  label: string,
-  on: boolean,
-  available: boolean,
-  onChange: (on: boolean) => boolean | Promise<boolean>,
-  icon: boolean
-): void {
+  { kind, label, on: startsOn, available, onChange, look }: ToggleOptions
+) {
+  let on = startsOn;
   button.type = 'button';
   button.disabled = !available;
   button.dataset.control = kind;
@@ -112,7 +116,7 @@ function makeToggle(
     button.setAttribute('aria-label', available ? `${label} ${on ? 'on' : 'off'}` : `No ${label.toLowerCase()}`);
     button.setAttribute('aria-pressed', String(on));
     button.classList.toggle('off', !on);
-    if (icon) {
+    if (look === 'icon') {
       button.replaceChildren(deviceIcon(kind, !on));
     } else {
       slot(button, 'hint', 'span').replaceChildren(deviceIcon(kind, on));
@@ -128,12 +132,24 @@ function makeToggle(
   render();
 }
 
-/** Bottom right: a round mic button, and your own circle, which turns the camera off and on when clicked. */
+/** Bottom right: a round mic button, and the self-view circle, which turns the camera off and on when clicked. */
 export function showMediaControls(root: HTMLElement, controls: MediaControls): void {
-  const mic = slot(root, 'mic-toggle', 'button');
-  makeToggle(mic, 'mic', 'Mic', controls.mic, controls.micAvailable, controls.onMic, true);
-  const cam = slot(root, 'selfview', 'button');
-  makeToggle(cam, 'cam', 'Cam', controls.cam, controls.camAvailable, controls.onCam, false);
+  makeToggle(slot(root, 'mic-toggle', 'button'), {
+    kind: 'mic',
+    label: 'Mic',
+    on: controls.mic,
+    available: controls.micAvailable,
+    onChange: controls.onMic,
+    look: 'icon',
+  });
+  makeToggle(slot(root, 'selfview', 'button'), {
+    kind: 'cam',
+    label: 'Cam',
+    on: controls.cam,
+    available: controls.camAvailable,
+    onChange: controls.onCam,
+    look: 'hint',
+  });
 }
 
 const BANNER_MS = 8000;
@@ -163,7 +179,7 @@ export interface SelfView {
   avatar: string | null;
 }
 
-/** Your own circle: the camera while it is on, else your picture or initials, as others see you. */
+/** The self-view circle: the camera while it is on, else the player's picture or initials, as others see them. */
 export function showSelfPreview(root: HTMLElement, stream: MediaStream | null, self: SelfView): void {
   const box = slot(root, 'selfview', 'button');
   let video = box.querySelector('video');

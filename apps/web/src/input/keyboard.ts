@@ -4,7 +4,7 @@ import type { TouchSource } from './touch';
 
 export const MOUSE_TURN_PER_PX = 0.0025; // radians
 
-interface Listenable {
+export interface Listenable {
   addEventListener(type: string, listener: EventListener): void;
 }
 

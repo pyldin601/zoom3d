@@ -155,7 +155,7 @@ describe('reflection', () => {
   });
 
   test('a lamp past its light’s reach still reflects: it fades with the whole path, eye to wall to lamp', () => {
-    // A corridor lamp (reach 4.5) 12 tiles down the wall: it lights nothing near the eye, but you still see it mirrored.
+    // A corridor lamp (reach 4.5) 12 tiles down the wall: it lights nothing near the eye, but it still shows mirrored.
     const far = { ...lamp(12, 1), radius: 4.5 };
     expect(peak(4, 0, 0.5, WOOD, far)).toBeGreaterThan(0.05);
     // Farther lamps fade, and past REFLECTION_PATH they're gone.

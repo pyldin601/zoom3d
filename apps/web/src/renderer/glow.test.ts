@@ -52,13 +52,13 @@ describe('createAvatarGlows', () => {
   const disc = (x: number, color = rgb(255, 0, 0)) => ({ x, y: 0, face: null, color });
   const self = { x: 9, y: 9, face: null, color: rgb(0, 0, 255) };
 
-  test('one glow per disc in order, then your own last', () => {
+  test("one glow per disc in order, then the local player's last", () => {
     const glows = createAvatarGlows().update([disc(1), disc(2)], self);
     expect(glows.map((g) => g.x)).toEqual([1, 2, 9]);
     expect(glows.at(-1)?.b).toBe(GLOW_STRENGTH);
   });
 
-  test('a room that grows still gets every disc once and your glow once', () => {
+  test("a room that grows still gets every disc once and the local player's glow once", () => {
     const avatars = createAvatarGlows();
     avatars.update([disc(1), disc(2)], self);
     const glows = avatars.update([disc(1), disc(2), disc(3)], self);
@@ -66,7 +66,7 @@ describe('createAvatarGlows', () => {
     expect(new Set(glows).size).toBe(4);
   });
 
-  test('without your own glow the list is just the discs', () => {
+  test("without the local player's glow the list is just the discs", () => {
     const avatars = createAvatarGlows();
     avatars.update([disc(1)], self);
     expect(avatars.update([disc(1), disc(2)], null).map((g) => g.x)).toEqual([1, 2]);

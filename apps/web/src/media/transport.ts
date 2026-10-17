@@ -12,6 +12,9 @@ export interface FaceTracks {
 /** Per face size, whether anyone in the room receives it now: dynacast pauses the sizes nobody does. */
 export type FacesSent = Record<keyof FaceTracks, boolean>;
 
+/** No face size goes out: before the media room is up, or after it closed. */
+export const NO_FACES_SENT: Readonly<FacesSent> = Object.freeze({ 256: false, 128: false, 64: false });
+
 export interface TransportOptions extends LiveKitAccess {
   localStream: MediaStream | null;
   /** A peer's shown face (video only); a new stream whenever it changes (another size), empty when off. */

@@ -51,7 +51,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 /** `start` is a rect remembered from an earlier visit; it is held until the face search begins. */
 export function createFraming(frameW: number, frameH: number, start: Rect | null = null): Framing {
   const full = Math.min(frameW, frameH);
-  const centred = (r: Rect) => {
+  const centre = (r: Rect) => {
     r.x = (frameW - full) / 2;
     r.y = (frameH - full) / 2;
     r.size = full;
@@ -59,26 +59,50 @@ export function createFraming(frameW: number, frameH: number, start: Rect | null
   const target: Rect = { x: 0, y: 0, size: 0 };
   const current: Rect = { x: 0, y: 0, size: 0 };
   const candidate: Rect = { x: 0, y: 0, size: 0 };
-  const fits = (r: Rect) => r.size > 0 && r.x >= 0 && r.y >= 0 && r.x + r.size <= frameW && r.y + r.size <= frameH;
-  const remembered = start !== null && fits(start);
+  const fitsInFrame = (r: Rect) =>
+    r.size > 0 && r.x >= 0 && r.y >= 0 && r.x + r.size <= frameW && r.y + r.size <= frameH;
+  const remembered = start !== null && fitsInFrame(start);
   if (remembered) {
     Object.assign(target, start);
     Object.assign(current, start);
   } else {
-    centred(target);
-    centred(current);
+    centre(target);
+    centre(current);
   }
   // null: a remembered start not yet searched for, so not yet lost.
   let lastBoxAt: number | null = remembered ? null : Number.NEGATIVE_INFINITY;
   let lastNow: number | null = null;
 
-  const fromBox = (b: Box) => {
+  /** The crop around face box `b`, into `candidate`. */
+  const cropAround = (b: Box) => {
     const size = clamp(FACE_SCALE * b.w, MIN_SIDE, full);
     const left = b.mouth ? b.mouth.x - size / 2 : b.x + b.w / 2 - size / 2;
     const top = b.mouth ? b.mouth.y - MOUTH_Y_IN_CROP * size : b.y + b.h / 2 - HEADROOM * size - size / 2;
     candidate.size = size;
     candidate.x = clamp(left, 0, frameW - size);
     candidate.y = clamp(top, 0, frameH - size);
+  };
+
+  /** A face that barely moved or resized leaves the target alone, so the crop doesn't wobble. */
+  const aimAt = (face: Box) => {
+    cropAround(face);
+    const move = Math.hypot(
+      candidate.x + candidate.size / 2 - (target.x + target.size / 2),
+      candidate.y + candidate.size / 2 - (target.y + target.size / 2)
+    );
+    if (move > DEAD_MOVE * target.size || Math.abs(candidate.size - target.size) > DEAD_SIZE * target.size) {
+      target.x = candidate.x;
+      target.y = candidate.y;
+      target.size = candidate.size;
+    }
+  };
+
+  const easeTowardsTarget = (now: number) => {
+    const k = lastNow === null ? 0 : 1 - Math.exp(-(now - lastNow) / EASE_MS);
+    lastNow = now;
+    current.x += (target.x - current.x) * k;
+    current.y += (target.y - current.y) * k;
+    current.size += (target.size - current.size) * k;
   };
 
   return {
@@ -89,24 +113,11 @@ export function createFraming(frameW: number, frameH: number, start: Rect | null
       }
       if (face) {
         lastBoxAt = now;
-        fromBox(face);
-        const move = Math.hypot(
-          candidate.x + candidate.size / 2 - (target.x + target.size / 2),
-          candidate.y + candidate.size / 2 - (target.y + target.size / 2)
-        );
-        if (move > DEAD_MOVE * target.size || Math.abs(candidate.size - target.size) > DEAD_SIZE * target.size) {
-          target.x = candidate.x;
-          target.y = candidate.y;
-          target.size = candidate.size;
-        }
+        aimAt(face);
       } else if (lastBoxAt !== null && now - lastBoxAt > LOST_MS) {
-        centred(target);
+        centre(target);
       }
-      const k = lastNow === null ? 0 : 1 - Math.exp(-(now - lastNow) / EASE_MS);
-      lastNow = now;
-      current.x += (target.x - current.x) * k;
-      current.y += (target.y - current.y) * k;
-      current.size += (target.size - current.size) * k;
+      easeTowardsTarget(now);
       return current;
     },
   };

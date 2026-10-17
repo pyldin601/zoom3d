@@ -17,8 +17,12 @@ export interface LayoutOptions {
   pixelPerfect: boolean;
 }
 
-/** UI text size on touch devices, as a fraction of the window's shorter side. */
+/** UI text size on touch devices, as a fraction of the window's shorter side, but never under TOUCH_MIN_FONT_PX. */
 const TOUCH_FONT = 0.045;
+const TOUCH_MIN_FONT_PX = 12;
+/** UI text size on desktop, as a fraction of the 16:9 box's height (UI is sized in em, so it scales with the box). */
+const DESKTOP_FONT = 0.032;
+const DESKTOP_MIN_FONT_PX = 8;
 /** The HUD's backing ratio on touch devices: phones report 3, which costs a lot to clear every frame. */
 const TOUCH_MAX_DPR = 2;
 
@@ -38,13 +42,12 @@ export function layoutStage(stage: HTMLElement, hud: HTMLCanvasElement, opts: La
     const touch = fitTouchViewport(size.width, size.height);
     box = touch.box;
     frame = { width: touch.width, height: touch.height, fov: touch.fov };
-    fontSize = Math.max(12, Math.min(box.width, box.height) * TOUCH_FONT);
+    fontSize = Math.max(TOUCH_MIN_FONT_PX, Math.min(box.width, box.height) * TOUCH_FONT);
     dpr = Math.min(dpr, TOUCH_MAX_DPR);
   } else {
     box = fitViewport(window.innerWidth, window.innerHeight, opts.pixelPerfect);
     frame = { width: INTERNAL_W, height: INTERNAL_H, fov: DEFAULT_FOV };
-    // UI text is sized in em, so it scales with the 16:9 box.
-    fontSize = Math.max(8, box.height * 0.032);
+    fontSize = Math.max(DESKTOP_MIN_FONT_PX, box.height * DESKTOP_FONT);
   }
   Object.assign(stage.style, {
     left: `${box.x}px`,
