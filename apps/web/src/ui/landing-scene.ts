@@ -5,10 +5,10 @@ import { type GameMap, type HeldItem, type PlayerState, parseMap } from '@zoom3d
 import { FACE_SIZE } from '../media/faces';
 import type { Framebuffer } from '../renderer/framebuffer';
 import { bakeLighting, LAMP, type Light, type Lighting } from '../renderer/lighting';
-import { hexToRgb, renderSprites, type Sprite } from '../renderer/sprites';
+import { hexToRgb, type PeopleAndObjects, renderSprites, type Sprite } from '../renderer/sprites';
 import { makeTextures } from '../renderer/textures';
 import type { VoxelInstance } from '../renderer/voxels';
-import { CEILING, FLOOR, renderWalls } from '../renderer/walls';
+import { CEILING, FLOOR, type Room, renderWalls } from '../renderer/walls';
 import { drawLogo } from './landing-logo';
 
 export const LANDING_MAP: GameMap = parseMap(`
@@ -173,13 +173,11 @@ export function faceTexels(person: LandingPerson): Uint32Array {
   return texels;
 }
 
-/** The picture's sprites and textures, built on first use and reused: the landing show redraws it every frame. */
-let landingSprites: Sprite[] | null = null;
-let landingTextures: Uint32Array[] | null = null;
-const landingVoxels: VoxelInstance[] = [];
+/** The picture as the renderer takes it, built on first use and reused: the landing show redraws it every frame. */
+let landingRoom: (Room & PeopleAndObjects & { objects: VoxelInstance[] }) | null = null;
 
-function sprites(): Sprite[] {
-  landingSprites ??= LANDING_PEOPLE.map((p, i) => ({
+function landingSprites(): Sprite[] {
+  return LANDING_PEOPLE.map((p, i) => ({
     key: String(i),
     x: p.x,
     y: p.y,
@@ -194,7 +192,6 @@ function sprites(): Sprite[] {
     held: p.held ?? null,
     boombox: false,
   }));
-  return landingSprites;
 }
 
 /**
@@ -213,14 +210,22 @@ export function renderLandingScene(
   if (lights && !landingLighting) {
     landingLighting = bakeLighting(LANDING_MAP, LANDING_LIGHTS, AMBIENT, FLOOR, CEILING);
   }
-  const lighting = lights ? landingLighting : null;
-  landingTextures ??= makeTextures(1);
-  renderWalls(fb, LANDING_MAP, camera, landingTextures, lighting);
-  landingVoxels.length = 0;
+  landingRoom ??= {
+    map: LANDING_MAP,
+    textures: makeTextures(1),
+    eye: camera,
+    lighting: null,
+    people: landingSprites(),
+    objects: [],
+  };
+  landingRoom.eye = camera;
+  landingRoom.lighting = lights ? landingLighting : null;
+  landingRoom.objects.length = 0;
   if (vacuum) {
-    landingVoxels.push(vacuum);
+    landingRoom.objects.push(vacuum);
   }
-  renderSprites(fb, camera, sprites(), undefined, landingVoxels, lighting);
+  renderWalls(fb, landingRoom);
+  renderSprites(fb, landingRoom);
   if (logo) {
     drawLogo(fb, LOGO_MARGIN, camera === LANDING_CAMERA_PORTRAIT ? 'center' : 'right');
   }

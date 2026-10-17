@@ -61,7 +61,7 @@ test('everyone stands on the floor, clear of the walls', () => {
 
 test('the camera sees every disc whole, none cut by a wall', () => {
   const fb = createFramebuffer();
-  renderWalls(fb, LANDING_MAP, LANDING_CAMERA, makeTextures(1));
+  renderWalls(fb, { map: LANDING_MAP, eye: LANDING_CAMERA, textures: makeTextures(1), lighting: null });
   const proj: Projection = { screenX: 0, depth: 0, size: 0 };
   const view = setView(createView(), fb, LANDING_CAMERA);
   for (const p of LANDING_PEOPLE) {
@@ -105,7 +105,7 @@ test('the lobby gets the same picture without the logo', () => {
   const without = createFramebuffer();
   renderLandingScene(without, { logo: false });
   const bare = createFramebuffer();
-  renderWalls(bare, LANDING_MAP, LANDING_CAMERA, makeTextures(1));
+  renderWalls(bare, { map: LANDING_MAP, eye: LANDING_CAMERA, textures: makeTextures(1), lighting: null });
   // The top-right corner holds only the logo: plain ceiling without it.
   const corner = (fb: typeof bare) => fb.pixels[40 * fb.width + fb.width - 60];
   expect(corner(without)).toBe(corner(bare));
@@ -117,7 +117,7 @@ test('the lobby gets the same picture without the logo', () => {
 
 test('a portrait phone frame sees every disc whole, none cut by a wall', () => {
   const fb = createFramebuffer(296, 640, fovForAspect(296 / 640));
-  renderWalls(fb, LANDING_MAP, LANDING_CAMERA_PORTRAIT, makeTextures(1));
+  renderWalls(fb, { map: LANDING_MAP, eye: LANDING_CAMERA_PORTRAIT, textures: makeTextures(1), lighting: null });
   const proj: Projection = { screenX: 0, depth: 0, size: 0 };
   const view = setView(createView(), fb, LANDING_CAMERA_PORTRAIT);
   for (const p of LANDING_PEOPLE) {

@@ -9,12 +9,12 @@ import { FACE_SIZE } from '../src/media/faces';
 import type { PeerFacts } from '../src/media/interest';
 import { createFramebuffer, rgb } from '../src/renderer/framebuffer';
 import type { Glow } from '../src/renderer/glow';
-import { bakeLighting, corridorLights, type Lighting } from '../src/renderer/lighting';
+import { bakeLighting, corridorLights } from '../src/renderer/lighting';
 import { VACUUM_MODEL } from '../src/renderer/models/vacuum';
-import { renderSprites, type Sprite } from '../src/renderer/sprites';
+import { type PeopleAndObjects, renderSprites, type Sprite } from '../src/renderer/sprites';
 import { averageColour, makeTextures } from '../src/renderer/textures';
 import type { VoxelInstance } from '../src/renderer/voxels';
-import { CEILING, FLOOR, renderWalls } from '../src/renderer/walls';
+import { CEILING, FLOOR, type Room, renderWalls } from '../src/renderer/walls';
 
 /** Frames per mode per round, as multiples of the pose count, and rounds (the median is reported). */
 const FRAMES_PER_POSE = 4;
@@ -40,6 +40,9 @@ const fb = createFramebuffer(640, 360);
 const faces = [faceTexture(0), faceTexture(1)];
 const scenes = scenesNearLamps();
 const facts = new Map<string, PeerFacts>();
+/** What every frame draws, refilled per frame: a new object per frame would count in the timings. */
+const room: Room = { map, textures, eye: { x: 0, y: 0, angle: 0 }, lighting: null };
+const inRoom: PeopleAndObjects = { eye: room.eye, people: [], objects: [], lighting: null };
 /** A float's exact bits, for hashing the facts' disc sizes. */
 const bits = new Float64Array(1);
 const words = new Int32Array(bits.buffer);
@@ -90,16 +93,17 @@ for (const mode of MODES) {
 }
 
 function drawWalls(mode: Mode, s: Scene): void {
-  if (mode === 'unlit') {
-    renderWalls(fb, map, s, textures);
-  } else {
-    renderWalls(fb, map, s, textures, lighting, 'both', s.glows);
-  }
+  room.eye = s;
+  room.lighting = mode === 'lit' ? lighting : null;
+  renderWalls(fb, room, s.glows);
 }
 
 function drawSprites(mode: Mode, s: Scene): void {
-  const lm: Lighting | null = mode === 'lit' ? lighting : null;
-  renderSprites(fb, s, s.sprites, facts, s.voxels, lm);
+  inRoom.eye = s;
+  inRoom.people = s.sprites;
+  inRoom.objects = s.voxels;
+  inRoom.lighting = mode === 'lit' ? lighting : null;
+  renderSprites(fb, inRoom, facts);
 }
 
 /** Mean ms per renderSprites call over `frames` frames, cycling through the scenes. */

@@ -2,15 +2,34 @@
 import { type GameMap, type PlayerState, tileAt } from '@zoom3d/shared';
 import { inLabelRange } from './labels';
 
+/** The map fills at most this fraction of the HUD's width and height. */
 const FILL = 0.9;
 const ZONE_COLORS = ['', '#8c8e8c', '#7a5530', '#1a2cc0'];
 const BACKDROP = 'rgba(0, 0, 0, 0.75)';
-const PLAYER = '#ffd400';
+const YOUR_ARROW_COLOUR = '#ffd400';
+const NAME_COLOUR = '#fff';
+/** Sizes in map cells, each with a floor in HUD pixels so a large map stays readable. */
+const DOT_RADIUS = 0.45;
+const MIN_DOT_RADIUS_PX = 4;
+const NAME_SIZE = 0.9;
+const MIN_NAME_SIZE_PX = 10;
+const NAME_GAP_PX = 2;
+const ARROW_LENGTH = 0.9;
+const MIN_ARROW_LENGTH_PX = 6;
+/** The arrow's two back corners, each this fraction of its length behind you and to one side. */
+const ARROW_BACK = 0.6;
 
 export interface AutomapLayout {
   originX: number;
   originY: number;
   cell: number;
+}
+
+export interface AutomapPeer {
+  x: number;
+  y: number;
+  color: string;
+  name: string;
 }
 
 export function automapLayout(map: GameMap, hudW: number, hudH: number): AutomapLayout {
@@ -22,11 +41,34 @@ export function automapLayout(map: GameMap, hudW: number, hudH: number): Automap
   };
 }
 
-const visibleWalls = new WeakMap<GameMap, { x: number; y: number; tile: number }[]>();
+/** The map over a dimmed HUD canvas: its walls, everyone's dot (named when near) and your arrow. */
+export function drawAutomap(
+  ctx: CanvasRenderingContext2D,
+  map: GameMap,
+  p: PlayerState,
+  others: readonly AutomapPeer[] = []
+): void {
+  const { width, height } = ctx.canvas;
+  const layout = automapLayout(map, width, height);
+  ctx.fillStyle = BACKDROP;
+  ctx.fillRect(0, 0, width, height);
+  drawWalls(ctx, map, layout);
+  drawPeople(ctx, p, others, layout);
+  drawYourArrow(ctx, p, layout);
+}
 
-/** Walls that touch floor (8-neighbourhood); the rest of the solid mass is never seen. */
-function wallsToDraw(map: GameMap) {
-  let walls = visibleWalls.get(map);
+function drawWalls(ctx: CanvasRenderingContext2D, map: GameMap, { originX, originY, cell }: AutomapLayout): void {
+  for (const w of wallsTouchingFloor(map)) {
+    ctx.fillStyle = ZONE_COLORS[w.tile] ?? (ZONE_COLORS[1] as string);
+    ctx.fillRect(originX + w.x * cell, originY + w.y * cell, cell, cell);
+  }
+}
+
+const wallsTouchingFloorOf = new WeakMap<GameMap, { x: number; y: number; tile: number }[]>();
+
+/** Walls that touch floor (8-neighbourhood); the rest of the solid mass is never seen. Worked out once per map. */
+function wallsTouchingFloor(map: GameMap) {
+  let walls = wallsTouchingFloorOf.get(map);
   if (walls) {
     return walls;
   }
@@ -34,48 +76,35 @@ function wallsToDraw(map: GameMap) {
   for (let y = 0; y < map.height; y++) {
     for (let x = 0; x < map.width; x++) {
       const tile = tileAt(map, x, y);
-      if (tile === 0) {
-        continue;
-      }
-      let touchesFloor = false;
-      for (let dy = -1; dy <= 1 && !touchesFloor; dy++) {
-        for (let dx = -1; dx <= 1 && !touchesFloor; dx++) {
-          touchesFloor = tileAt(map, x + dx, y + dy) === 0;
-        }
-      }
-      if (touchesFloor) {
+      if (tile !== 0 && touchesFloor(map, x, y)) {
         walls.push({ x, y, tile });
       }
     }
   }
-  visibleWalls.set(map, walls);
+  wallsTouchingFloorOf.set(map, walls);
   return walls;
 }
 
-export interface AutomapPeer {
-  x: number;
-  y: number;
-  color: string;
-  name: string;
+function touchesFloor(map: GameMap, x: number, y: number): boolean {
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (tileAt(map, x + dx, y + dy) === 0) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
-export function drawAutomap(
+/** Everyone's dot in their colour, with their name over it while they're within LABEL_TILES of you. */
+function drawPeople(
   ctx: CanvasRenderingContext2D,
-  map: GameMap,
   p: PlayerState,
-  hudW: number,
-  hudH: number,
-  others: readonly AutomapPeer[] = []
+  others: readonly AutomapPeer[],
+  { originX, originY, cell }: AutomapLayout
 ): void {
-  const { originX, originY, cell } = automapLayout(map, hudW, hudH);
-  ctx.fillStyle = BACKDROP;
-  ctx.fillRect(0, 0, hudW, hudH);
-  for (const w of wallsToDraw(map)) {
-    ctx.fillStyle = ZONE_COLORS[w.tile] ?? (ZONE_COLORS[1] as string);
-    ctx.fillRect(originX + w.x * cell, originY + w.y * cell, cell, cell);
-  }
-  const dot = Math.max(cell * 0.45, 4);
-  ctx.font = `${Math.max(10, Math.round(cell * 0.9))}px system-ui, sans-serif`;
+  const dot = Math.max(cell * DOT_RADIUS, MIN_DOT_RADIUS_PX);
+  ctx.font = `${Math.max(MIN_NAME_SIZE_PX, Math.round(cell * NAME_SIZE))}px system-ui, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
   for (const o of others) {
@@ -86,21 +115,30 @@ export function drawAutomap(
     ctx.arc(ox, oy, dot, 0, Math.PI * 2);
     ctx.fill();
     if (inLabelRange(p, o.x, o.y)) {
-      ctx.fillStyle = '#fff';
-      ctx.fillText(o.name, ox, oy - dot - 2);
+      ctx.fillStyle = NAME_COLOUR;
+      ctx.fillText(o.name, ox, oy - dot - NAME_GAP_PX);
     }
   }
+}
 
-  const size = Math.max(cell * 0.9, 6);
+/** A triangle at your place, pointing the way you face. */
+function drawYourArrow(ctx: CanvasRenderingContext2D, p: PlayerState, { originX, originY, cell }: AutomapLayout): void {
+  const size = Math.max(cell * ARROW_LENGTH, MIN_ARROW_LENGTH_PX);
   const px = originX + p.x * cell;
   const py = originY + p.y * cell;
   const cos = Math.cos(p.angle);
   const sin = Math.sin(p.angle);
-  ctx.fillStyle = PLAYER;
+  ctx.fillStyle = YOUR_ARROW_COLOUR;
   ctx.beginPath();
   ctx.moveTo(px + cos * size, py + sin * size);
-  ctx.lineTo(px - cos * size * 0.6 - sin * size * 0.6, py - sin * size * 0.6 + cos * size * 0.6);
-  ctx.lineTo(px - cos * size * 0.6 + sin * size * 0.6, py - sin * size * 0.6 - cos * size * 0.6);
+  ctx.lineTo(
+    px - cos * size * ARROW_BACK - sin * size * ARROW_BACK,
+    py - sin * size * ARROW_BACK + cos * size * ARROW_BACK
+  );
+  ctx.lineTo(
+    px - cos * size * ARROW_BACK + sin * size * ARROW_BACK,
+    py - sin * size * ARROW_BACK - cos * size * ARROW_BACK
+  );
   ctx.closePath();
   ctx.fill();
 }

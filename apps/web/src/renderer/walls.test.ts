@@ -29,7 +29,7 @@ function textureColumn(tile: number, texX: number): number[] {
 
 describe('renderWalls', () => {
   const fb = createFramebuffer();
-  renderWalls(fb, ROOM, { x: 2.5, y: 2.5, angle: 0 }, textures);
+  renderWalls(fb, { map: ROOM, eye: { x: 2.5, y: 2.5, angle: 0 }, textures, lighting: null });
 
   test('framebuffer is 640x360 with a per-column z-buffer', () => {
     expect([fb.width, fb.height, fb.zbuffer.length]).toEqual([640, 360, 640]);
@@ -69,7 +69,7 @@ describe('renderWalls', () => {
       for (let k = 0; k < 24; k++) {
         const pose = { x, y, angle: (k / 24) * Math.PI * 2 };
         for (const lighting of [null, lit]) {
-          renderWalls(frame, hall, pose, textures, lighting, 'both');
+          renderWalls(frame, { map: hall, eye: pose, textures, lighting, reflections: 'both' });
           const hole = frame.pixels.findIndex((c) => c >>> 24 !== 0xff || (lighting !== null && c === BLACK));
           if (hole >= 0) {
             holes.push(
@@ -90,7 +90,7 @@ describe('renderWalls', () => {
 
   test('y-side walls are shaded', () => {
     const south = createFramebuffer();
-    renderWalls(south, ROOM, { x: 2.5, y: 2.5, angle: Math.PI / 2 }, textures);
+    renderWalls(south, { map: ROOM, eye: { x: 2.5, y: 2.5, angle: Math.PI / 2 }, textures, lighting: null });
     const allowed = new Set(textureColumn(1, 32).map((c) => scaleRgb(c, SIDE_SHADE)));
     const wall = column(south, 320).filter((c) => c !== CEILING && c !== FLOOR);
     expect(wall.length).toBeGreaterThan(300);
@@ -115,8 +115,8 @@ test('a narrower FOV draws the same wall taller', () => {
   const player = { x: 2.5, y: 2.5, angle: 0 };
   const wide = createFramebuffer(296, 640, (66 * Math.PI) / 180);
   const narrow = createFramebuffer(296, 640, (50 * Math.PI) / 180);
-  renderWalls(wide, ROOM, player, textures);
-  renderWalls(narrow, ROOM, player, textures);
+  renderWalls(wide, { map: ROOM, eye: player, textures, lighting: null });
+  renderWalls(narrow, { map: ROOM, eye: player, textures, lighting: null });
   const wallHeight = (fb: ReturnType<typeof createFramebuffer>) =>
     column(fb, 148).filter((c) => c !== CEILING && c !== FLOOR).length;
   expect(wallHeight(narrow)).toBeGreaterThan(wallHeight(wide));
@@ -132,13 +132,13 @@ test('lit, a frame of a new size and FOV draws as if it were the first', async (
   const lit = bakeLighting(level, corridorLights(level), 0.45, FLOOR, CEILING);
   const pose = { x: 35.26, y: 27.38, angle: 4.48 };
   const portrait = () => createFramebuffer(296, 640, (50 * Math.PI) / 180);
-  renderWalls(createFramebuffer(), level, pose, textures, lit);
+  renderWalls(createFramebuffer(), { map: level, eye: pose, textures, lighting: lit });
   const after = portrait();
-  renderWalls(after, level, pose, textures, lit);
+  renderWalls(after, { map: level, eye: pose, textures, lighting: lit });
   vi.resetModules();
   const fresh = await import('./walls');
   const first = portrait();
-  fresh.renderWalls(first, level, pose, textures, lit);
+  fresh.renderWalls(first, { map: level, eye: pose, textures, lighting: lit });
   expect(firstDifference(after.pixels, first.pixels)).toBe(-1);
 });
 
@@ -155,7 +155,7 @@ describe('renderWalls reflections', () => {
   const matte = { ...lit, wallLamp: new Int8Array(lit.wallLamp.length).fill(-1) };
   const render = (x: number, lighting: typeof lit) => {
     const fb = createFramebuffer();
-    renderWalls(fb, corridor, { x, y: 1.5, angle: 0 }, textures, lighting);
+    renderWalls(fb, { map: corridor, eye: { x, y: 1.5, angle: 0 }, textures, lighting });
     return fb;
   };
   const channels = (c: number) => [c & 0xff, (c >>> 8) & 0xff, (c >>> 16) & 0xff];
@@ -205,8 +205,8 @@ describe('renderWalls reflections', () => {
     const pose = { x: 6, y: 2.5, angle: 0 };
     const shiny = createFramebuffer();
     const plain = createFramebuffer();
-    renderWalls(shiny, room, pose, textures, roomLit);
-    renderWalls(plain, room, pose, textures, roomMatte);
+    renderWalls(shiny, { map: room, eye: pose, textures, lighting: roomLit });
+    renderWalls(plain, { map: room, eye: pose, textures, lighting: roomMatte });
     const centre = plain.width / 2;
     expect(plain.zbuffer[centre] as number).toBeLessThan(REFLECTION_RANGE);
     expect(column(shiny, centre)).toEqual(column(plain, centre));
@@ -221,8 +221,8 @@ describe('renderWalls reflections', () => {
     const pose = { x: 35.26, y: 27.38, angle: 4.48 };
     const shiny = createFramebuffer();
     const plain = createFramebuffer();
-    renderWalls(shiny, level, pose, textures, levelLit);
-    renderWalls(plain, level, pose, textures, levelMatte);
+    renderWalls(shiny, { map: level, eye: pose, textures, lighting: levelLit });
+    renderWalls(plain, { map: level, eye: pose, textures, lighting: levelMatte });
     for (let col = 0; col < plain.width; col++) {
       if ((plain.zbuffer[col] as number) > 5) {
         expect(column(shiny, col)).toEqual(column(plain, col));
@@ -244,8 +244,8 @@ describe('renderWalls reflections', () => {
     const pose = { x: 1.5, y: 1.3, angle: 0.05 };
     const shiny = createFramebuffer();
     const plain = createFramebuffer();
-    renderWalls(shiny, hall, pose, textures, hallLit, 'walls');
-    renderWalls(plain, hall, pose, textures, hallMatte, 'walls');
+    renderWalls(shiny, { map: hall, eye: pose, textures, lighting: hallLit, reflections: 'walls' });
+    renderWalls(plain, { map: hall, eye: pose, textures, lighting: hallMatte, reflections: 'walls' });
     let farShine = 0;
     for (let col = 0; col < plain.width; col++) {
       const far = (plain.zbuffer[col] as number) > 4;
@@ -269,8 +269,8 @@ describe('renderWalls reflections', () => {
     const brightest = (pose: { x: number; y: number; angle: number }) => {
       const a = createFramebuffer();
       const b = createFramebuffer();
-      renderWalls(a, room, pose, textures, roomLit);
-      renderWalls(b, room, pose, textures, roomMatte);
+      renderWalls(a, { map: room, eye: pose, textures, lighting: roomLit });
+      renderWalls(b, { map: room, eye: pose, textures, lighting: roomMatte });
       let most = 0;
       for (let i = 0; i < a.pixels.length; i++) {
         most = Math.max(most, ((a.pixels[i] as number) >>> 16) - ((b.pixels[i] as number) >>> 16));
@@ -296,10 +296,15 @@ describe('renderWalls reflections', () => {
     const plain = createFramebuffer();
     // Close to the top wall, looking along it towards the lamp.
     const pose = { x: 2.5, y: 1.2, angle: -0.1 };
-    renderWalls(shiny, blue, pose, textures, blueLit);
-    renderWalls(plain, blue, pose, textures, {
-      ...blueLit,
-      wallLamp: new Int8Array(blueLit.wallLamp.length).fill(-1),
+    renderWalls(shiny, { map: blue, eye: pose, textures, lighting: blueLit });
+    renderWalls(plain, {
+      map: blue,
+      eye: pose,
+      textures,
+      lighting: {
+        ...blueLit,
+        wallLamp: new Int8Array(blueLit.wallLamp.length).fill(-1),
+      },
     });
     let redAdded = 0;
     let greenAdded = 0;
@@ -338,8 +343,8 @@ describe('renderWalls floor reflections', () => {
   const channels = (c: number) => [c & 0xff, (c >>> 8) & 0xff, (c >>> 16) & 0xff];
   const shiny = createFramebuffer();
   const plain = createFramebuffer();
-  renderWalls(shiny, hall, pose, textures, hallLit);
-  renderWalls(plain, hall, pose, textures, hallMatte);
+  renderWalls(shiny, { map: hall, eye: pose, textures, lighting: hallLit });
+  renderWalls(plain, { map: hall, eye: pose, textures, lighting: hallMatte });
 
   test('the floor shines between the eye and the lamp, and never darkens', () => {
     let brighter = 0;
@@ -377,7 +382,13 @@ describe('renderWalls reflection modes', () => {
   const pose = { x: 2.5, y: 1.3, angle: 0 };
   const render = (mode: 'none' | 'walls' | 'both' | 'only' | 'matte') => {
     const fb = createFramebuffer();
-    renderWalls(fb, hall, pose, textures, mode === 'matte' ? hallMatte : hallLit, mode === 'matte' ? 'none' : mode);
+    renderWalls(fb, {
+      map: hall,
+      eye: pose,
+      textures,
+      lighting: mode === 'matte' ? hallMatte : hallLit,
+      reflections: mode === 'matte' ? 'none' : mode,
+    });
     return fb;
   };
   /** How many pixels differ from the matte render, above and below the horizon. */
@@ -473,8 +484,8 @@ describe('renderWalls floor reflections in shadow', () => {
     ]) {
       const shiny = createFramebuffer();
       const plain = createFramebuffer();
-      renderWalls(shiny, hall, pose, textures, hallLit);
-      renderWalls(plain, hall, pose, textures, hallMatte);
+      renderWalls(shiny, { map: hall, eye: pose, textures, lighting: hallLit });
+      renderWalls(plain, { map: hall, eye: pose, textures, lighting: hallMatte });
       for (let i = (plain.height / 2) * plain.width; i < plain.pixels.length; i++) {
         const y = Math.floor(i / plain.width);
         const floorDistance = (0.5 * PROJ) / (y + 0.5 - plain.height / 2);
@@ -499,7 +510,7 @@ describe('renderWalls avatar glow', () => {
   const glow = { x: 4.5, y: 2.5, r: GLOW_STRENGTH, g: GLOW_STRENGTH, b: GLOW_STRENGTH };
   const render = (glows: { x: number; y: number; r: number; g: number; b: number }[]) => {
     const fb = createFramebuffer();
-    renderWalls(fb, room, pose, textures, roomLit, 'both', glows);
+    renderWalls(fb, { map: room, eye: pose, textures, lighting: roomLit, reflections: 'both' }, glows);
     return fb;
   };
   const dark = render([]);
@@ -554,8 +565,8 @@ describe('renderWalls avatar glow', () => {
     );
     const without = createFramebuffer();
     const withGlow = createFramebuffer();
-    renderWalls(without, room, pose, textures, bright, 'none', []);
-    renderWalls(withGlow, room, pose, textures, bright, 'none', [glow]);
+    renderWalls(without, { map: room, eye: pose, textures, lighting: bright, reflections: 'none' }, []);
+    renderWalls(withGlow, { map: room, eye: pose, textures, lighting: bright, reflections: 'none' }, [glow]);
     let changed = 0;
     for (let i = 0; i < without.pixels.length; i++) {
       if (withGlow.pixels[i] !== without.pixels[i]) {
@@ -567,7 +578,7 @@ describe('renderWalls avatar glow', () => {
 
   test('the reflections-only view leaves the glow out: with no lamps it is black', () => {
     const fb = createFramebuffer();
-    renderWalls(fb, room, pose, textures, roomLit, 'only', [glow]);
+    renderWalls(fb, { map: room, eye: pose, textures, lighting: roomLit, reflections: 'only' }, [glow]);
     expect(fb.pixels.every((c) => c === BLACK)).toBe(true);
   });
 
@@ -600,7 +611,7 @@ describe('renderWalls wall reflections in a doorway’s shadow', () => {
   /** The biggest step in red between neighbouring pixels of a row, anywhere in the reflections-only view. */
   const biggestStep = (pose: { x: number; y: number; angle: number }) => {
     const fb = createFramebuffer();
-    renderWalls(fb, room, pose, textures, lm, 'only');
+    renderWalls(fb, { map: room, eye: pose, textures, lighting: lm, reflections: 'only' });
     let biggest = 0;
     for (let y = 0; y < fb.height; y++) {
       for (let x = 1; x < fb.width; x++) {
@@ -617,7 +628,7 @@ describe('renderWalls wall reflections in a doorway’s shadow', () => {
     /** The red summed over the reflections-only view. */
     const total = (lighting: typeof lm) => {
       const fb = createFramebuffer();
-      renderWalls(fb, room, { x: 10.5, y: 2.5, angle: 0 }, textures, lighting, 'only');
+      renderWalls(fb, { map: room, eye: { x: 10.5, y: 2.5, angle: 0 }, textures, lighting, reflections: 'only' });
       return fb.pixels.reduce((sum, c) => sum + (c & 0xff), 0);
     };
     // The east wall in view sees 60–90% of the lamp past the jamb, and under half of it beyond y = 3.
@@ -649,7 +660,7 @@ describe('renderWalls wall reflections of two lamps', () => {
   test('the reflection changes smoothly where one lamp takes over from the other', () => {
     const pose = { x: 2.26, y: 21.06, angle: 5.45 };
     const fb = createFramebuffer();
-    renderWalls(fb, hall, pose, textures, lm, 'only');
+    renderWalls(fb, { map: hall, eye: pose, textures, lighting: lm, reflections: 'only' });
     // The columns showing the east wall (its west face), and in each the rows well inside the wall.
     const view = setView(createView(), fb, pose);
     const hit = createRayHit();
@@ -689,7 +700,7 @@ describe('renderWalls ceiling reflections', () => {
   const pose = { x: 2.5, y: 2.5, angle: 0 };
   const render = (lm: typeof hallLit, mode: 'walls' | 'both', glows: Glow[] = []) => {
     const fb = createFramebuffer();
-    renderWalls(fb, hall, pose, textures, lm, mode, glows);
+    renderWalls(fb, { map: hall, eye: pose, textures, lighting: lm, reflections: mode }, glows);
     return fb;
   };
   /** Ceiling pixels brighter with ceiling reflections than without, and the red they gain; fails on any darker. */

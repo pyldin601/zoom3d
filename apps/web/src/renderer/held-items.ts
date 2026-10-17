@@ -3,7 +3,7 @@
 // handle, the wine glass by the stem.
 import type { HeldItem } from '@zoom3d/shared';
 import { MOUTH_Y_IN_CROP } from '../media/framing';
-import { rgb } from './framebuffer';
+import { type Framebuffer, rgb } from './framebuffer';
 
 /**
  * Item geometry in disc radii: texel size, left edge right of the disc centre, top above the horizon
@@ -16,7 +16,7 @@ export const HELD_TOP = -0.3;
 export const CHEERS_LEFT = 0.35;
 export const CHEERS_TOP = 1.15;
 export const CHEERS_WOBBLE = 0.06;
-/** The framed 256² face texture spans the disc's inner circle, 0.85 r in radius (sprites.ts `RING`). */
+/** The framed 256² face texture spans the disc's inner circle, 0.85 r in radius (sprites.ts `FACE_RADIUS`). */
 const FACE_SPAN = 1.7;
 /**
  * The mouth of a framed face, in disc radii below the disc centre (held items spec §2.3): face framing puts
@@ -39,6 +39,9 @@ export interface HeldSprite {
   /** Packed like rgb(); 0 is transparent. */
   texels: Uint32Array;
 }
+
+/** The depth to blit at for a first-person overlay: nearer than any wall, so it covers the whole scene. */
+export const OVER_EVERYTHING = Number.NEGATIVE_INFINITY;
 
 export const HELD_PALETTE: Readonly<Record<string, string>> = {
   s: '#f2c29b',
@@ -118,3 +121,42 @@ export const HELD_SPRITES: Record<HeldItem, HeldSprite> = {
   coffee: toHeldSprite(HELD_MAPS.coffee),
   wine: toHeldSprite(HELD_MAPS.wine),
 };
+
+/**
+ * Draws `sprite` with texels `texelPx` wide from (left, top), clipped to the frame, in the columns whose wall is
+ * farther than `depth`.
+ */
+export function blitHeldSprite(
+  fb: Framebuffer,
+  sprite: HeldSprite,
+  left: number,
+  top: number,
+  texelPx: number,
+  depth: number
+): void {
+  const { width: w, height: h, pixels, zbuffer } = fb;
+  const { w: tw, h: th, texels } = sprite;
+  const firstCol = Math.max(0, Math.floor(left));
+  const lastCol = Math.min(w - 1, Math.ceil(left + tw * texelPx) - 1);
+  const firstRow = Math.max(0, Math.floor(top));
+  const lastRow = Math.min(h - 1, Math.ceil(top + th * texelPx) - 1);
+  for (let col = firstCol; col <= lastCol; col++) {
+    if (depth >= (zbuffer[col] as number)) {
+      continue;
+    }
+    const u = Math.floor((col + 0.5 - left) / texelPx);
+    if (u < 0 || u >= tw) {
+      continue;
+    }
+    for (let row = firstRow; row <= lastRow; row++) {
+      const v = Math.floor((row + 0.5 - top) / texelPx);
+      if (v < 0 || v >= th) {
+        continue;
+      }
+      const c = texels[v * tw + u] as number;
+      if (c !== 0) {
+        pixels[row * w + col] = c;
+      }
+    }
+  }
+}

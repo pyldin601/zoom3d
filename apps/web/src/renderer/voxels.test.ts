@@ -5,7 +5,7 @@ import { createFramebuffer, rgb } from './framebuffer';
 import { bakeLighting, type Light } from './lighting';
 import { VACUUM_MODEL } from './models/vacuum';
 import { renderSprites, type Sprite } from './sprites';
-import { buildModel, glow, renderVoxel, type VoxelInstance } from './voxels';
+import { buildModel, glowing, renderVoxel, type VoxelInstance } from './voxels';
 
 // Voxel objects (robot vacuum spec §6): models described in code, drawn depth-correct among walls and discs.
 const player: PlayerState = { x: 1.5, y: 4.5, angle: 0 };
@@ -40,14 +40,14 @@ const robot = (x: number, angle = 0): VoxelInstance => ({ model: VACUUM_MODEL, x
 
 describe('buildModel', () => {
   test('exposes only faces with an empty neighbour, never the bottom', () => {
-    const m = buildModel(2, 1, 1, 0.1, () => RED);
+    const m = buildModel({ x: 2, y: 1, z: 1 }, 0.1, () => RED);
     // 2 tops + 1 front + 1 back + 2 left + 2 right; the shared inner faces and the bottoms are absent.
     expect(m.faceCount).toBe(8);
     expect(m.corners).toHaveLength(8 * 12);
   });
 
   test('shades faces 1.0 on top, 0.8 front and back, 0.62 at the sides', () => {
-    const m = buildModel(1, 1, 1, 0.1, () => RED);
+    const m = buildModel({ x: 1, y: 1, z: 1 }, 0.1, () => RED);
     const byNormal = new Map<string, number>();
     for (let f = 0; f < m.faceCount; f++) {
       const n = [m.normals[f * 3], m.normals[f * 3 + 1], m.normals[f * 3 + 2]].join(',');
@@ -64,7 +64,7 @@ describe('buildModel', () => {
 
 describe('glowing voxels', () => {
   test("buildModel keeps each face's glow; plain colours get none", () => {
-    const m = buildModel(2, 1, 1, 0.1, (x) => (x === 0 ? RED : glow(RED, 0.75)));
+    const m = buildModel({ x: 2, y: 1, z: 1 }, 0.1, (x) => (x === 0 ? RED : glowing(RED, 0.75)));
     const byX = new Map<number, Set<number>>();
     for (let f = 0; f < m.faceCount; f++) {
       const x = Math.min(m.corners[f * 12] as number, m.corners[f * 12 + 3] as number) < 0 ? 0 : 1;
@@ -75,8 +75,8 @@ describe('glowing voxels', () => {
   });
 
   test('a glowing voxel keeps its colour in the plain (unlit) shading', () => {
-    const m = buildModel(1, 1, 1, 0.1, () => glow(RED, 1));
-    const plain = buildModel(1, 1, 1, 0.1, () => RED);
+    const m = buildModel({ x: 1, y: 1, z: 1 }, 0.1, () => glowing(RED, 1));
+    const plain = buildModel({ x: 1, y: 1, z: 1 }, 0.1, () => RED);
     expect([...m.colors]).toEqual([...plain.colors]);
   });
 });
@@ -94,14 +94,14 @@ describe('the vacuum model', () => {
   });
 
   test('its eyes and the disc on top glow; nothing else does', () => {
-    const glowing = new Set<number>();
+    const glowingColours = new Set<number>();
     for (let f = 0; f < VACUUM_MODEL.faceCount; f++) {
       if ((VACUUM_MODEL.glow[f] as number) > 0) {
-        glowing.add(VACUUM_MODEL.base[f] as number);
+        glowingColours.add(VACUUM_MODEL.base[f] as number);
         expect(VACUUM_MODEL.glow[f]).toBe(1);
       }
     }
-    expect(glowing).toEqual(new Set([rgb(0xff, 0xff, 0xd2), rgb(0xfa, 0xd2, 0x50)]));
+    expect(glowingColours).toEqual(new Set([rgb(0xff, 0xff, 0xd2), rgb(0xfa, 0xd2, 0x50)]));
   });
 
   test('its eyes face the front (+x)', () => {
@@ -166,11 +166,11 @@ describe('renderSprites with voxels', () => {
 
   test('a nearer disc covers the robot', () => {
     const discOnly = blank();
-    renderSprites(discOnly, player, [disc(3.0)]);
+    renderSprites(discOnly, { eye: player, people: [disc(3.0)], objects: [], lighting: null });
     const both = blank();
-    renderSprites(both, player, [disc(3.0)], undefined, [robot(4.0)]);
+    renderSprites(both, { eye: player, people: [disc(3.0)], objects: [robot(4.0)], lighting: null });
     const robotOnly = blank();
-    renderSprites(robotOnly, player, [], undefined, [robot(4.0)]);
+    renderSprites(robotOnly, { eye: player, people: [], objects: [robot(4.0)], lighting: null });
     const shownDisc = painted(discOnly);
     // The disc wins every pixel it paints, and the robot really was behind some of them.
     for (const [i, px] of shownDisc) {
@@ -182,9 +182,9 @@ describe('renderSprites with voxels', () => {
 
   test('a nearer robot covers the disc', () => {
     const discOnly = blank();
-    renderSprites(discOnly, player, [disc(4.0)]);
+    renderSprites(discOnly, { eye: player, people: [disc(4.0)], objects: [], lighting: null });
     const both = blank();
-    renderSprites(both, player, [disc(4.0)], undefined, [robot(3.9)]);
+    renderSprites(both, { eye: player, people: [disc(4.0)], objects: [robot(3.9)], lighting: null });
     const changed = [...painted(discOnly)].filter(([i, px]) => both.pixels[i] !== px);
     expect(changed.length).toBeGreaterThan(0);
   });
@@ -201,7 +201,7 @@ describe('renderVoxel with lighting', () => {
 1.....1
 1111111
 `);
-  const cube = buildModel(1, 1, 1, 0.2, () => RED);
+  const cube = buildModel({ x: 1, y: 1, z: 1 }, 0.2, () => RED);
   const box: VoxelInstance = { model: cube, x: 3.5, y: 4.5, angle: Math.PI };
   const drawn = (fb: ReturnType<typeof blank>) => new Set([...fb.pixels].filter((px) => px !== 0));
   const lamp: Light = { x: 3.5, y: 4.5, z: 0.85, radius: 4, r: 1, g: 1, b: 1 };
@@ -225,7 +225,7 @@ describe('renderVoxel with lighting', () => {
   test('a fully glowing voxel shows its own colour on every face, whatever the light', () => {
     const lit = (l: Light[]) => {
       const fb = blank();
-      const model = buildModel(1, 1, 1, 0.2, () => glow(RED, 1));
+      const model = buildModel({ x: 1, y: 1, z: 1 }, 0.2, () => glowing(RED, 1));
       renderVoxel(fb, view, { ...box, model }, bakeLighting(room, l, 0.45, RED, RED));
       return drawn(fb);
     };
@@ -235,7 +235,7 @@ describe('renderVoxel with lighting', () => {
 
   test('half a glow is halfway between lit and its own colour', () => {
     const fb = blank();
-    const model = buildModel(1, 1, 1, 0.2, () => glow(RED, 0.5));
+    const model = buildModel({ x: 1, y: 1, z: 1 }, 0.2, () => glowing(RED, 0.5));
     renderVoxel(fb, view, { ...box, model }, bakeLighting(room, [], 0.45, RED, RED));
     // Top: 0.45 × 0.5 + 0.5; the face to the camera: 0.45 × 0.8 × 0.5 + 0.5.
     expect(drawn(fb)).toEqual(new Set([scaled(RED, 0.725), scaled(RED, 0.68)]));
@@ -243,7 +243,7 @@ describe('renderVoxel with lighting', () => {
 
   test('renderSprites passes the lighting on to voxels', () => {
     const fb = blank();
-    renderSprites(fb, player, [], undefined, [box], bakeLighting(room, [], 0.45, RED, RED));
+    renderSprites(fb, { eye: player, people: [], objects: [box], lighting: bakeLighting(room, [], 0.45, RED, RED) });
     expect(drawn(fb).has(scaled(RED, 0.45))).toBe(true);
   });
 });

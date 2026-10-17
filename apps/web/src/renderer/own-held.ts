@@ -2,9 +2,10 @@
 // avatar's left hand, so here it is the in-game sprite mirrored: the hand and handle toward the
 // screen edge, the drink toward the centre (held items spec §2.1).
 import type { HeldItem } from '@zoom3d/shared';
+import type { Bob } from './bob';
 import type { Framebuffer } from './framebuffer';
-import { HELD_MAPS, type HeldSprite, toHeldSprite } from './held-items';
-import type { HeldPose } from './sip';
+import { blitHeldSprite, HELD_MAPS, type HeldSprite, OVER_EVERYTHING, toHeldSprite } from './held-items';
+import { type HeldPose, poseBlend } from './sip';
 
 /** Texel size, as a fraction of the screen's shorter side (the height on desktop). */
 export const OWN_TEXEL = 0.046;
@@ -33,16 +34,19 @@ export const OWN_HELD_SPRITES: Record<HeldItem, HeldSprite> = {
   wine: toHeldSprite(mirror(HELD_MAPS.wine)),
 };
 
+/** The walking step as what you hold feels it: `itemLift` 0..1 drops it, `sway` −1..1 shifts it sideways. */
+export type HeldStep = Pick<Bob, 'itemLift' | 'sway'>;
+
 /** One texel of a first-person overlay, in framebuffer pixels: from the shorter side, so a tall phone frame keeps it small. */
 export function ownTexel(fb: Framebuffer): number {
   return OWN_TEXEL * Math.min(fb.width, fb.height);
 }
 
 /**
- * Draws over the scene; `bob` 0..1 drops it, `sway` −1..1 shifts it sideways, a sip brings it to the bottom-centre
- * (held items spec §2.3) and a cheers raises it into view (§2.4).
+ * Draws over the scene, moved by the step; a sip brings it to the bottom-centre (held items spec §2.3) and a cheers
+ * raises it into view (§2.4).
  */
-export function renderOwnHeld(fb: Framebuffer, item: HeldItem | null, bob: number, sway: number, pose: HeldPose): void {
+export function renderOwnHeld(fb: Framebuffer, item: HeldItem | null, step: HeldStep, pose: HeldPose): void {
   if (!item) {
     return;
   }
@@ -50,41 +54,15 @@ export function renderOwnHeld(fb: Framebuffer, item: HeldItem | null, bob: numbe
   const sprite = OWN_HELD_SPRITES[item];
   const { w: tw, h: th } = sprite;
   const t = ownTexel(fb);
-  const rest = OWN_LEFT * w;
-  const { sip, cheers, wobble } = pose;
-  const left =
-    rest +
-    ((w - tw * t) / 2 - rest) * sip +
-    (OWN_CHEERS_LEFT * w - rest) * cheers +
-    (sway * OWN_SWAY + wobble * OWN_CHEERS_WOBBLE) * w;
-  // How far the sprite's top sits above the bottom edge, at rest, at the top of a sip and raised in a cheers.
-  const restUp = (1 - OWN_CROP) * th * t;
-  const up = restUp + (OWN_SIP_VISIBLE * th * t - restUp) * sip + (th * t + OWN_CHEERS_RAISE * h - restUp) * cheers;
-  const top = h - up + bob * OWN_BOB * h;
-  drawOverlay(fb, sprite, left, top, t);
-}
-
-/** Draws a sprite with texel size t over the scene at (left, top), clipped to the screen. */
-export function drawOverlay(fb: Framebuffer, sprite: HeldSprite, left: number, top: number, t: number): void {
-  const { width: w, height: h, pixels } = fb;
-  const { w: tw, h: th, texels } = sprite;
-  const x0 = Math.max(0, Math.floor(left));
-  const x1 = Math.min(w - 1, Math.ceil(left + tw * t) - 1);
-  const y0 = Math.max(0, Math.floor(top));
-  for (let row = y0; row < h; row++) {
-    const v = Math.floor((row + 0.5 - top) / t);
-    if (v < 0 || v >= th) {
-      continue;
-    }
-    for (let col = x0; col <= x1; col++) {
-      const u = Math.floor((col + 0.5 - left) / t);
-      if (u < 0 || u >= tw) {
-        continue;
-      }
-      const c = texels[v * tw + u] as number;
-      if (c !== 0) {
-        pixels[row * w + col] = c;
-      }
-    }
-  }
+  const centredLeft = (w - tw * t) / 2;
+  const sideways = (step.sway * OWN_SWAY + pose.wobble * OWN_CHEERS_WOBBLE) * w;
+  const left = poseBlend(pose, OWN_LEFT * w, centredLeft, OWN_CHEERS_LEFT * w) + sideways;
+  const topAboveBottomEdge = poseBlend(
+    pose,
+    (1 - OWN_CROP) * th * t,
+    OWN_SIP_VISIBLE * th * t,
+    th * t + OWN_CHEERS_RAISE * h
+  );
+  const top = h - topAboveBottomEdge + step.itemLift * OWN_BOB * h;
+  blitHeldSprite(fb, sprite, left, top, t, OVER_EVERYTHING);
 }

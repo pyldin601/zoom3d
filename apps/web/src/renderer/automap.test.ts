@@ -19,7 +19,7 @@ describe('automapLayout', () => {
 });
 
 describe('drawAutomap', () => {
-  /** A 2D context that records the text drawn and the dots filled. */
+  /** A 2D context on a 1920×1080 canvas that records the text drawn and the dots filled. */
   function recorder() {
     const texts: string[] = [];
     let arcs = 0;
@@ -27,6 +27,9 @@ describe('drawAutomap', () => {
       {},
       {
         get: (_t, prop) => {
+          if (prop === 'canvas') {
+            return { width: 1920, height: 1080 };
+          }
           if (prop === 'fillText') {
             return (text: string) => texts.push(text);
           }
@@ -46,7 +49,7 @@ describe('drawAutomap', () => {
   test('everyone gets a dot, but only people within LABEL_TILES get their name', () => {
     const { ctx, texts, arcs } = recorder();
     const p = { x: 10, y: 10, angle: 0 };
-    drawAutomap(ctx, map, p, 1920, 1080, [
+    drawAutomap(ctx, map, p, [
       { x: 12, y: 10, color: '#fff', name: 'Near' },
       { x: 10, y: 10 + LABEL_TILES, color: '#fff', name: 'Edge' },
       { x: 10 + LABEL_TILES + 1, y: 10, color: '#fff', name: 'Far' },
