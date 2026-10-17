@@ -12,6 +12,22 @@ import { FLOOR_MATERIAL } from './world';
  */
 const MIN_ROWS_FROM_HORIZON = 0.5;
 
+/**
+ * Reflections are traced at 1/REFLECTION_SCALE of the frame's resolution each way and blended up (spec §3.3, §4): ½
+ * everywhere, ¼ only as the phone fallback.
+ */
+export const REFLECTION_SCALE = 2;
+/** A reflection sample is traced for the frame pixel this far into its REFLECTION_SCALE block, each way: the middle. */
+export const REFLECTION_SAMPLE_OFFSET = REFLECTION_SCALE >> 1;
+
+/** How each frame row (or column) blends the two reflection samples either side of it. */
+export interface SampleBlend {
+  /** Per frame row or column, the reflection sample before it; the next one is the one after. */
+  before: Int32Array;
+  /** How far on from `before` towards the next sample, 0..1. */
+  towardsNext: Float32Array;
+}
+
 export interface TracedBuffers {
   width: number;
   height: number;
@@ -31,6 +47,15 @@ export interface TracedBuffers {
   /** Per screen column, the rows its wall covers, [start, end); equal where it shows none. */
   wallStart: Int32Array;
   wallEnd: Int32Array;
+  /** The reflection samples across and down: the frame's size over REFLECTION_SCALE. */
+  reflectedWidth: number;
+  reflectedHeight: number;
+  /** What each reflection sample's cone meets, linear r, g, b interleaved, row by row. */
+  reflected: Float32Array;
+  /** `reflected` blended out to the frame's width, still a row per sample row: the composite blends two of its rows. */
+  widenedReflection: Float32Array;
+  reflectionColumns: SampleBlend;
+  reflectionRows: SampleBlend;
 }
 
 /** Buffers that fit a frame of no pixels: what is "drawn" before the first frame. */
@@ -52,6 +77,8 @@ function createTracedBuffers(width: number, height: number, fov: number): Traced
   const pixels = width * height;
   const planeLength = Math.tan(fov / 2);
   const proj = width / 2 / planeLength;
+  const reflectedWidth = Math.floor(width / REFLECTION_SCALE);
+  const reflectedHeight = Math.floor(height / REFLECTION_SCALE);
   return {
     width,
     height,
@@ -64,6 +91,12 @@ function createTracedBuffers(width: number, height: number, fov: number): Traced
     rowDistance: Float64Array.from({ length: height }, (_, row) => rowDistanceOf(row, height, proj)),
     wallStart: new Int32Array(width),
     wallEnd: new Int32Array(width),
+    reflectedWidth,
+    reflectedHeight,
+    reflected: new Float32Array(reflectedWidth * reflectedHeight * 3),
+    widenedReflection: new Float32Array(width * reflectedHeight * 3),
+    reflectionColumns: sampleBlendOf(width, reflectedWidth),
+    reflectionRows: sampleBlendOf(height, reflectedHeight),
   };
 }
 
@@ -88,4 +121,24 @@ function floorFresnelOf(width: number, height: number, planeLength: number, proj
     }
   }
   return weights;
+}
+
+/**
+ * Sample `n` is traced for frame pixel n · REFLECTION_SCALE + REFLECTION_SAMPLE_OFFSET, so frame pixel `at` lies
+ * (at − offset) / scale samples in; beyond the first or last sample it takes that sample.
+ */
+function sampleBlendOf(frameSize: number, samples: number): SampleBlend {
+  const before = new Int32Array(frameSize);
+  const towardsNext = new Float32Array(frameSize);
+  const lastPair = Math.max(0, samples - 2);
+  for (let at = 0; at < frameSize; at++) {
+    const position = Math.min(
+      Math.max(0, samples - 1),
+      Math.max(0, (at - REFLECTION_SAMPLE_OFFSET) / REFLECTION_SCALE)
+    );
+    const first = Math.min(lastPair, Math.floor(position));
+    before[at] = first;
+    towardsNext[at] = position - first;
+  }
+  return { before, towardsNext };
 }

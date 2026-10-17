@@ -1,7 +1,7 @@
 // The primary pass: what each pixel sees directly, as linear light from the bake and as the Fresnel weight a reflection
 // would take (spec docs/superpowers/specs/2026-10-17-ray-traced-renderer-design.md §3). Walls column by column, as
 // renderWalls casts them, then floor and ceiling row by row. Allocation-free, with per-pixel loops kept inline.
-import { castRay, createRayHit } from '@zoom3d/shared';
+import { castRay, createRayHit, type RayHit } from '@zoom3d/shared';
 import { EYE_HEIGHT } from '../camera';
 import type { Framebuffer } from '../framebuffer';
 import { TEX } from '../textures';
@@ -105,6 +105,22 @@ export function drawFloorAndCeiling(buffers: TracedBuffers, world: TracedWorld, 
   }
 }
 
+/** The face (FACE_*) a 2D ray along (rayX, rayY) entered its wall through, from castRay's `hit`. */
+export function faceEntered(hit: RayHit, rayX: number, rayY: number): number {
+  // A ray heading +x enters a west face, one heading +y a north face.
+  if (hit.side === X_SIDE) {
+    return rayX > 0 ? FACE_WEST : FACE_EAST;
+  }
+  return rayY > 0 ? FACE_NORTH : FACE_SOUTH;
+}
+
+/** The texel column a 2D ray along (rayX, rayY) meets its wall at, from castRay's `hit`: the one renderWalls shows. */
+export function texelColumnOf(hit: RayHit, rayX: number, rayY: number): number {
+  // wallX can round up to 1. The texel column is flipped on two of the four faces, as renderWalls does.
+  const texX = Math.min(TEX - 1, Math.floor(hit.wallX * TEX));
+  return (hit.side === X_SIDE && rayX > 0) || (hit.side !== X_SIDE && rayY < 0) ? TEX - 1 - texX : texX;
+}
+
 // Wall columns.
 
 /** Casts screen column `col` with the ray `renderWalls` casts, into `hit` and `column`; fills the z-buffer. */
@@ -122,22 +138,15 @@ function castColumn(fb: Framebuffer, buffers: TracedBuffers, world: TracedWorld,
   buffers.wallStart[col] = start;
   buffers.wallEnd[col] = end;
 
-  // A ray heading +x enters a west face, one heading +y a north face.
-  const face = hit.side === X_SIDE ? (rayX > 0 ? FACE_WEST : FACE_EAST) : rayY > 0 ? FACE_NORTH : FACE_SOUTH;
-  // wallX can round up to 1. The texel column is flipped on two of the four faces, as renderWalls does.
-  let texX = Math.min(TEX - 1, Math.floor(hit.wallX * TEX));
-  if ((hit.side === X_SIDE && rayX > 0) || (hit.side !== X_SIDE && rayY < 0)) {
-    texX = TEX - 1 - texX;
-  }
   column.col = col;
   column.start = start;
   column.end = end;
   column.distance = hit.distance;
   column.rayX = rayX;
   column.rayY = rayY;
-  column.face = face;
+  column.face = faceEntered(hit, rayX, rayY);
   column.tile = hit.tile;
-  column.texX = texX;
+  column.texX = texelColumnOf(hit, rayX, rayY);
 }
 
 /** What the column's tile is made of: its texture's linear colour, where it shines, and how. */

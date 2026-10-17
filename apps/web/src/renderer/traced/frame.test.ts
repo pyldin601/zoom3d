@@ -1,23 +1,14 @@
-import {
-  castRay,
-  createRayHit,
-  FOV_TALL,
-  fovForAspect,
-  type GameMap,
-  LEVEL1,
-  type PlayerState,
-  parseMap,
-} from '@zoom3d/shared';
+import { castRay, createRayHit, FOV_TALL, fovForAspect, LEVEL1, type PlayerState, parseMap } from '@zoom3d/shared';
 import { beforeAll, describe, expect, test } from 'vitest';
-import { createView, EYE_HEIGHT, setView } from '../camera';
+import { createView, setView } from '../camera';
 import { createFramebuffer, type Framebuffer, rgb } from '../framebuffer';
 import { corridorLights } from '../lighting';
 import { makeTextures, TEX } from '../textures';
 import { renderWalls } from '../walls';
-import { bakeLighting } from './bake';
 import { lastTracedBuffers, renderTraced, type TracedLighting } from './frame';
 import { createLightmaps, planeLight, WALL_HEIGHTS, wallColumnLight } from './lightmaps';
 import { fresnel } from './optics';
+import { bakeRoom, pixelOf } from './test-helpers';
 import { shownPixel } from './tone';
 import { buildTracedWorld, FACE_WEST, TRACED_MATERIALS, type TracedMaterial } from './world';
 
@@ -51,34 +42,8 @@ function materialOf(tile: number): TracedMaterial {
   return material;
 }
 
-function bakeRoom(
-  map: GameMap,
-  textures: readonly Uint32Array[],
-  lamps: readonly { x: number; y: number }[]
-): TracedLighting {
-  const world = buildTracedWorld(map, textures, lamps);
-  const maps = createLightmaps(world);
-  for (const _ of bakeLighting(world, maps)) {
-    // Run to the end.
-  }
-  return { world, maps };
-}
-
 function draw(fb: Framebuffer, eye: PlayerState, traced: TracedLighting): void {
   renderTraced(fb, { map: traced.world.map, eye, people: [], traced });
-}
-
-/** The pixel that shows the point (x, y) at height z (0 floor .. 1 ceiling) from `eye`. */
-function pixelOf(fb: Framebuffer, eye: PlayerState, x: number, y: number, z: number): { col: number; row: number } {
-  const view = setView(createView(), fb, eye);
-  const offsetX = x - eye.x;
-  const offsetY = y - eye.y;
-  const across = view.invDet * (view.dirY * offsetX - view.dirX * offsetY);
-  const depth = view.invDet * (-view.planeY * offsetX + view.planeX * offsetY);
-  return {
-    col: Math.floor(view.halfWidth * (1 + across / depth)),
-    row: Math.floor(view.half - ((z - EYE_HEIGHT) * view.proj) / depth),
-  };
 }
 
 function pixelAt(fb: Framebuffer, col: number, row: number): number {
@@ -99,20 +64,27 @@ function opaqueEverywhere(fb: Framebuffer): boolean {
  */
 function drawOverNaN(fb: Framebuffer, eye: PlayerState, traced: TracedLighting): void {
   draw(fb, eye, traced);
-  const { hdr, spec } = lastTracedBuffers();
+  const { hdr, spec, reflected, widenedReflection } = lastTracedBuffers();
   hdr.fill(Number.NaN);
   spec.fill(Number.NaN);
+  reflected.fill(Number.NaN);
+  widenedReflection.fill(Number.NaN);
   fb.zbuffer.fill(Number.NaN);
   fb.pixels.fill(0);
   draw(fb, eye, traced);
 }
 
-/** For a frame drawn by `drawOverNaN`: every pixel opaque, every light and weight a number, every column a distance. */
+/**
+ * For a frame drawn by `drawOverNaN`: every pixel opaque, every light (reflected ones too) and weight a number, every
+ * column a distance.
+ */
 function expectEveryPixelWritten(fb: Framebuffer): void {
-  const { hdr, spec } = lastTracedBuffers();
+  const { hdr, spec, reflected, widenedReflection } = lastTracedBuffers();
   expect(opaqueEverywhere(fb)).toBe(true);
   expect(hdr.findIndex((light) => !Number.isFinite(light))).toBe(-1);
   expect(spec.findIndex((weight) => !Number.isFinite(weight))).toBe(-1);
+  expect(reflected.findIndex((light) => !Number.isFinite(light))).toBe(-1);
+  expect(widenedReflection.findIndex((light) => !Number.isFinite(light))).toBe(-1);
   expect(fb.zbuffer.findIndex((distance) => !(distance > 0))).toBe(-1);
 }
 
