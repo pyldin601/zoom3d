@@ -37,20 +37,17 @@ import { loadMediaPrefs, saveMediaPrefs } from './media/media-prefs';
 import { createOwnGlowSampler } from './media/own-glow';
 import { createRemoteMedia } from './media/remote-media';
 import { createSession, type Session } from './net/session';
-import { drawAutomap } from './renderer/automap';
 import { createBob } from './renderer/bob';
+import { type InYourHands, type RoomScene, renderHud, renderView } from './renderer/frame';
 import { createFramebuffer, type Framebuffer } from './renderer/framebuffer';
-import { createAvatarGlows, type GlowSource } from './renderer/glow';
-import { drawLabels } from './renderer/labels';
+import type { GlowSource } from './renderer/glow';
 import { bakeLighting, corridorLights, type Lighting } from './renderer/lighting';
 import { VACUUM_MODEL } from './renderer/models/vacuum';
-import { renderOwnBoombox } from './renderer/own-boombox';
-import { renderOwnHeld } from './renderer/own-held';
 import { createGestureClock } from './renderer/sip';
-import { renderSprites, ringRgb } from './renderer/sprites';
+import { ringRgb } from './renderer/sprites';
 import { averageColour, makeTextures } from './renderer/textures';
 import type { VoxelInstance } from './renderer/voxels';
-import { CEILING, FLOOR, renderWalls } from './renderer/walls';
+import { CEILING, FLOOR } from './renderer/walls';
 import { flushOnHide, initAnalytics, track } from './telemetry/analytics';
 import { mediaOutcome } from './telemetry/onboarding';
 import { createRoomTracker, type RoomTracker, withRoomTracker } from './telemetry/room-tracker';
@@ -158,8 +155,6 @@ const roomLighting = (() => {
 })();
 /** The renderer's console options (the lighting mode), kept per browser. */
 let renderSettings = loadRenderSettings(storage());
-/** Each avatar's glow: its face lights the floor and walls around it like a screen. Yours too, last. */
-const avatarGlows = createAvatarGlows();
 /** Your own disc as a glow source, moved to you each frame. */
 const selfDisc = { x: 0, y: 0, face: null, color: 0 };
 /** Your face's average colour while the camera is on, null otherwise; set once local media exists. */
@@ -642,8 +637,8 @@ if (import.meta.env.DEV) {
 
 // Dynamic subscription.
 
-/** Per peer, what the last frame drew of them (written by renderSprites into reused objects). */
-const facts = new Map<string, PeerFacts>();
+/** Per peer, what the last frame drew of them (written by renderView into reused objects). */
+const seen = new Map<string, PeerFacts>();
 const interest = createInterest();
 /** The wants last handed to `wantsCall`, so only changes are sent. */
 const sentWants = new Map<string, Want>();
@@ -651,7 +646,7 @@ let wantsCall: Call | null = null;
 let interestAt = Number.NEGATIVE_INFINITY;
 
 /** Dynamic subscription (6c spec §4): every INTEREST_MS, decides whose face and voice to receive. */
-function updateInterest(s: Session, now: number, hidden: boolean): void {
+function chooseWhatToReceive(s: Session, now: number, hidden: boolean): void {
   if (!call || now - interestAt < INTEREST_MS) {
     return;
   }
@@ -662,9 +657,9 @@ function updateInterest(s: Session, now: number, hidden: boolean): void {
   }
   const media = call;
   const { positions } = world;
-  for (const id of facts.keys()) {
+  for (const id of seen.keys()) {
     if (!positions.has(id)) {
-      facts.delete(id);
+      seen.delete(id);
     }
   }
   const peers: { id: string; x: number; y: number }[] = [];
@@ -682,7 +677,7 @@ function updateInterest(s: Session, now: number, hidden: boolean): void {
     map,
     maxDistance: audio?.settings().max ?? DEFAULT_AUDIO_SETTINGS.max,
     peers,
-    facts: (id) => facts.get(id),
+    facts: (id) => seen.get(id),
   });
   for (const [id, want] of wants) {
     const sent = sentWants.get(id);
@@ -710,7 +705,7 @@ startHiddenTicker(
     world.sample(session, player, now);
     objectSounds?.sync(session.objects, world.objectPoses, HIDDEN_TICK_MS / 1000);
     audio?.update(now, player, world.positions);
-    updateInterest(session, now, true);
+    chooseWhatToReceive(session, now, true);
   },
   () => document.hidden
 );
@@ -723,12 +718,16 @@ function frame(dt: number): void {
     updateWorld(session, now, dt);
   }
   const drawStart = performance.now();
-  drawView();
+  const shown = describeScene(drawStart);
+  renderView(fb, shown, seen);
   gameCtx.putImageData(image, 0, 0);
-  drawHud();
+  renderHud(hudCtx, fb, shown, automapVisible);
   const drawnAt = performance.now();
   // dt comes from rAF's timestamps, which fall on the screen's refreshes.
   frameRateMeter.frame(drawnAt, dt * 1000, drawnAt - drawStart);
+  if (session) {
+    chooseWhatToReceive(session, drawnAt, document.hidden);
+  }
 }
 
 /** Your own move this frame: the mouse or drag turn, keys or pad, and your walking bob. */
@@ -754,44 +753,48 @@ function updateWorld(s: Session, now: number, dt: number): void {
   audio?.update(now, player, world.positions);
 }
 
-/** The view into the framebuffer: walls lit by lamps and glows, the people and objects, then what you hold. */
-function drawView(): void {
-  const glows = avatarGlows.update(world.sprites, ownDisc());
+const yourHands: InYourHands = { drink: null, boombox: false, step: selfBob, gesture: ownGesture.pose(0) };
+/** Refilled every frame by describeScene. */
+const scene: RoomScene = {
+  map,
+  textures,
+  eye: player,
+  lighting: null,
+  reflections: 'none',
+  people: world.sprites,
+  objects: world.voxels,
+  labels: world.labels,
+  yourGlow: null,
+  inYourHands: null,
+};
+
+function describeScene(now: number): RoomScene {
   // The console's lighting mode; flat is drawn unlit, as with `?lights=off`.
   const reflections = litReflections(renderSettings.mode);
-  const lighting = reflections === null ? null : roomLighting();
-  renderWalls(fb, map, player, textures, lighting, reflections ?? 'none', glows);
-  renderSprites(fb, player, world.sprites, facts, world.voxels, lighting);
-  if (session) {
-    // After the sprites: it reads what they drew of each peer.
-    updateInterest(session, performance.now(), document.hidden);
-  }
-  if (inRoom()) {
-    // The boombox first: a sip swings the drink across it, and the drink must stay in front.
-    renderOwnBoombox(fb, ownBoombox, selfBob.itemLift, selfBob.sway);
-    renderOwnHeld(fb, ownHeld, selfBob.itemLift, selfBob.sway, ownGesture.pose(performance.now()));
-  }
+  scene.lighting = reflections === null ? null : roomLighting();
+  scene.reflections = reflections ?? 'none';
+  scene.yourGlow = yourGlow(now);
+  scene.inYourHands = inRoom() ? whatYouHold(now) : null;
+  return scene;
 }
 
-/** Your own disc as a glow source: your camera's colour, else your ring's; null before a welcome gives you one. */
-function ownDisc(): GlowSource | null {
+/** Your camera's colour, else your ring's. */
+function yourGlow(now: number): GlowSource | null {
   const color = session?.selfColor();
   if (!color) {
     return null;
   }
   selfDisc.x = player.x;
   selfDisc.y = player.y;
-  selfDisc.color = ownGlowColour(performance.now()) ?? ringRgb(color);
+  selfDisc.color = ownGlowColour(now) ?? ringRgb(color);
   return selfDisc;
 }
 
-/** Name labels, and the automap while it is open, over the view. */
-function drawHud(): void {
-  hudCtx.clearRect(0, 0, hud.width, hud.height);
-  drawLabels(hudCtx, fb, player, world.labels, hud.width, hud.height);
-  if (automapVisible) {
-    drawAutomap(hudCtx, map, player, hud.width, hud.height, world.labels);
-  }
+function whatYouHold(now: number): InYourHands {
+  yourHands.drink = ownHeld;
+  yourHands.boombox = ownBoombox;
+  yourHands.gesture = ownGesture.pose(now);
+  return yourHands;
 }
 
 // Stills and the landing show.
