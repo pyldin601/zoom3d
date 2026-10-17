@@ -4,26 +4,18 @@
 // once more with a crowd of 100 glowing avatars spread over the whole map (most of them out of view, as with ?bots).
 // It also prints a hash of the baked lighting and of every pixel drawn in every mode: a refactor that changes no
 // behaviour must leave both hashes alone (docs/code-style.md, Refactoring).
-import { LEVEL1, parseMap, tileAt } from '@zoom3d/shared';
+import { LEVEL1, parseMap } from '@zoom3d/shared';
 import { createFramebuffer } from '../src/renderer/framebuffer';
-import type { Glow } from '../src/renderer/glow';
 import { bakeLighting, corridorLights, type Lighting } from '../src/renderer/lighting';
 import { averageColour, makeTextures } from '../src/renderer/textures';
 import { CEILING, FLOOR, type Room, renderWalls } from '../src/renderer/walls';
+import { crowdGlows, type Pose, posesNearLamps } from './poses';
 
 /** Frames per mode per round, as multiples of the pose count, and rounds (the median is reported). */
 const FRAMES_PER_POSE = 2;
 const ROUNDS = 7;
 const MODES = ['unlit', 'none', 'walls', 'both', 'both + glow', 'both + crowd', 'only'] as const;
-/** Glowing avatars in the crowd mode. */
-const CROWD = 100;
 type Mode = (typeof MODES)[number];
-interface Pose {
-  x: number;
-  y: number;
-  angle: number;
-  glows: Glow[];
-}
 
 const map = parseMap(LEVEL1);
 const lights = corridorLights(map);
@@ -33,8 +25,8 @@ const bakeStart = performance.now();
 const lighting = bakeLighting(map, lights, 0.08, FLOOR, CEILING, bounce);
 const bakeMs = performance.now() - bakeStart;
 const fb = createFramebuffer(640, 360);
-const poses = posesNearLamps();
-const crowd = crowdGlows();
+const poses = posesNearLamps(map, lights);
+const crowd = crowdGlows(map);
 /** The room every frame draws, re-aimed and re-lit per frame: a new object per frame would count in the timings. */
 const room: Room = { map, textures, eye: { x: 0, y: 0, angle: 0 }, lighting: null };
 
@@ -94,55 +86,6 @@ function time(mode: Mode, frames: number): number {
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted.at(sorted.length >> 1) ?? Number.NaN;
-}
-
-/** Up to 8 seeded poses within 2.5 tiles of each lamp, facing anywhere, with glowing avatars around them. */
-function posesNearLamps(): Pose[] {
-  let seed = 7;
-  const rand = () => {
-    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-    return seed / 0x7fffffff;
-  };
-  const open = (x: number, y: number) => tileAt(map, Math.floor(x), Math.floor(y)) === 0;
-  const out: Pose[] = [];
-  for (const l of lights) {
-    for (let k = 0; k < 8; k++) {
-      const x = l.x + (rand() - 0.5) * 5;
-      const y = l.y + (rand() - 0.5) * 5;
-      if (!open(x, y)) {
-        continue;
-      }
-      const glows: Glow[] = [];
-      for (let j = 0; j < 7; j++) {
-        const gx = x + (rand() - 0.5) * 4;
-        const gy = y + (rand() - 0.5) * 4;
-        if (open(gx, gy)) {
-          glows.push({ x: gx, y: gy, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6 });
-        }
-      }
-      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2 });
-      out.push({ x, y, angle: rand() * Math.PI * 2, glows });
-    }
-  }
-  return out;
-}
-
-/** CROWD seeded glows anywhere open on the map. */
-function crowdGlows(): Glow[] {
-  let seed = 3;
-  const rand = () => {
-    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-    return seed / 0x7fffffff;
-  };
-  const out: Glow[] = [];
-  while (out.length < CROWD) {
-    const x = rand() * map.width;
-    const y = rand() * map.height;
-    if (tileAt(map, Math.floor(x), Math.floor(y)) === 0) {
-      out.push({ x, y, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6 });
-    }
-  }
-  return out;
 }
 
 /** A hash of every baked table, so a bake refactor can show it bakes the same. */
