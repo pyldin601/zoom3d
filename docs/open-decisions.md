@@ -472,5 +472,25 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     light keep hard sight lines.
   - Not done yet: rooms get no lamps of their own.
 
+### D25 — A ray-traced renderer
+- *Resolved 2026-10-17* ([spec](superpowers/specs/2026-10-17-ray-traced-renderer-design.md)): a **second renderer**
+  next to D24's, switchable at runtime ("Ray traced" in the console's Lighting menu, stepped from the touch tray). The
+  default stays "Shadows and reflections" and the landing page keeps the current renderer. The owner wanted light to
+  follow from a few roughly true rules (lamps shine, rays travel straight, walls block them, surfaces bounce by
+  material) instead of D24's stack of tricks.
+  - **Pure rays.** All light comes from the lamps along rays: no base light, and bounce at the surfaces' linear colour.
+    The spike had both softeners (a base light of 0.03, bounce at the painted colour); the owner dropped them. So the
+    room is darker and more contrasty than D24's, and a room without lamps is black by design.
+  - **It replaces `renderWalls` only** (`renderer/traced/`, picked per frame by `renderView`): avatars, objects,
+    labels and the HUD run unchanged after it. Lamps are `corridorLights`, as before; none of them moves, so the
+    light is baked once and nothing casts shadows or glows in this mode.
+  - **The bake** takes about 0.6 s for LEVEL1 on a Mac. It runs in 6 ms slices a frame (`traced/room.ts`) only while
+    the mode is chosen; the lit renderer draws until it is done, and leaving the mode pauses it, never restarts it.
+    Its bounce jitter is a precomputed table of `seeded(12345)`'s first 8192 draws, because `seeded()` costs about
+    40 ns a draw and repeats after about 11–16k draws.
+  - **Phones are the open check** (spec §4): in a room with 8 people on video the frame-rate meter must stay "good"
+    (55 fps). If it doesn't: ¼-resolution reflections and a Worker bake, then decide with the owner. `pnpm bench:traced`
+    times the bake and the frame.
+
 ## Resolved
 _(none yet)_
