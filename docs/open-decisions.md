@@ -354,7 +354,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     direct light on its floor, ceiling and bordering wall faces times each surface's colour (wall colours are the
     textures' averages), then spreads it through the open floor with 40 rounds of blur, never through walls. A
     sample's ambient is a bare 0.08 plus 3.5× the bounce of the cell in front of it (`Bounce` in
-    `renderer/lighting.ts`, constants in `main.ts`). Lit corridors stay about as bright as before (~0.43 near lamps);
+    `renderer/lighting.ts`, constants in `renderer/room-lighting.ts`). Lit corridors stay about as bright as before (~0.43 near lamps);
     light falls off into rooms without lamps, which stay dim but never black; walls tint what they throw back (blue
     brick casts blue). The vacuum takes it too (`ambientAt`); avatars aren't lit. Baked once, nothing per frame; the
     bake grows from ~78 to ~123 ms for LEVEL1. North/south faces stay at 70%, of the ambient part only. The landing

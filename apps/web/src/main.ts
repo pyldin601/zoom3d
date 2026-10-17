@@ -17,6 +17,7 @@ import { createObjectSounds, type ObjectSounds } from './audio/object-sounds';
 import { HIDDEN_TICK_MS, startHiddenTicker } from './audio/ticker';
 import { createFrameRateMeter } from './game/frame-rate';
 import { startLoop } from './game/loop';
+import { findPageElements, pageStorage, readPageFlags } from './game/page';
 import { createRemoteWorld, type PeerMedia } from './game/remote-world';
 import { type Frame, layoutStage, watchLayout } from './game/stage';
 import { createDrinkKey } from './input/drink-key';
@@ -41,13 +42,12 @@ import { createBob } from './renderer/bob';
 import { type InYourHands, type RoomScene, renderHud, renderView } from './renderer/frame';
 import { createFramebuffer, type Framebuffer } from './renderer/framebuffer';
 import type { GlowSource } from './renderer/glow';
-import { bakeLighting, corridorLights, type Lighting } from './renderer/lighting';
 import { VACUUM_MODEL } from './renderer/models/vacuum';
+import { bakeRoomLightingOnce } from './renderer/room-lighting';
 import { createGestureClock } from './renderer/sip';
 import { ringRgb } from './renderer/sprites';
-import { averageColour, makeTextures } from './renderer/textures';
+import { makeTextures } from './renderer/textures';
 import type { VoxelInstance } from './renderer/voxels';
-import { CEILING, FLOOR } from './renderer/walls';
 import { flushOnHide, initAnalytics, track } from './telemetry/analytics';
 import { mediaOutcome } from './telemetry/onboarding';
 import { createRoomTracker, type RoomTracker, withRoomTracker } from './telemetry/room-tracker';
@@ -79,82 +79,16 @@ import { showTouchControls, type TouchControls } from './ui/touch-controls';
 initSentry(import.meta.env.VITE_SENTRY_DSN, import.meta.env.VITE_RELEASE);
 initAnalytics(import.meta.env.VITE_AMPLITUDE_API_KEY, import.meta.env.VITE_RELEASE);
 
-// Page flags, read once at load.
-
-const LOAD_PARAMS = new URLSearchParams(location.search);
-const PIXEL_PERFECT = LOAD_PARAMS.has('pixelperfect');
-/** SPIKE: baked corridor lamps; `?lights=off` shows the old flat look. */
-const LIGHTS = LOAD_PARAMS.get('lights') !== 'off';
-/** Touch mode (mobile spec §2.0): decided once at load, never re-evaluated, so the frame never flips mid-visit. */
-const TOUCH = matchMedia('(pointer: coarse)').matches;
-document.documentElement.classList.toggle('touch', TOUCH);
-/** Reduced motion (landing vacuum spec §2.5): read once at load; the landing picture then stays still. */
-const REDUCED_MOTION = matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-// The page's elements: index.html has them all.
-
-const stage = element('stage', HTMLDivElement);
-const game = element('game', HTMLCanvasElement);
-const hud = element('hud', HTMLCanvasElement);
-const ui = element('ui', HTMLDivElement);
-const mediaContainer = element('media', HTMLDivElement);
-const localMediaContainer = element('local-media', HTMLDivElement);
-const gameCtx = context2d(game);
-const hudCtx = context2d(hud);
-
-function element<T extends HTMLElement>(id: string, type: { new (): T; prototype: T }): T {
-  const el = document.getElementById(id);
-  if (!(el instanceof type)) {
-    throw new Error(`index.html has no ${type.name} #${id}`);
-  }
-  return el;
-}
-
-function context2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    throw new Error(`no 2d context for #${canvas.id}`);
-  }
-  return ctx;
-}
-
-const storage = (): Storage | null => {
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-};
-
-// The world and what draws it.
+const flags = readPageFlags(location.search, (query) => matchMedia(query).matches);
+document.documentElement.classList.toggle('touch', flags.touch);
+const page = findPageElements(document);
+const { game, hud, ui, gameCtx, hudCtx } = page;
 
 const map = parseMap(LEVEL1);
 const textures = makeTextures(1);
-const lamps = corridorLights(map);
-/** Ambient light is bounce light: what the lamps' lit surfaces throw back, over a bare minimum so no room is black. */
-const BARE_AMBIENT = 0.08;
-/** How much of the light the lamps' lit surfaces throw back comes back as ambient (see `Bounce`). */
-const BOUNCE_STRENGTH = 3.5;
-/**
- * The room's lighting, null with `?lights=off`. Baked on the room's first frame (about 100 ms), not at load, so the
- * landing page never waits for it; by then the join is already connecting.
- */
-const roomLighting = (() => {
-  let baked: { lighting: Lighting | null } | null = null;
-  return (): Lighting | null => {
-    baked ??= {
-      lighting: LIGHTS
-        ? bakeLighting(map, lamps, BARE_AMBIENT, FLOOR, CEILING, {
-            wallColours: textures.map((tex) => (tex.length ? averageColour(tex) : 0)),
-            strength: BOUNCE_STRENGTH,
-          })
-        : null,
-    };
-    return baked.lighting;
-  };
-})();
+const roomLighting = bakeRoomLightingOnce(map, textures, flags.lights);
 /** The renderer's console options (the lighting mode), kept per browser. */
-let renderSettings = loadRenderSettings(storage());
+let renderSettings = loadRenderSettings(pageStorage());
 /** Your own disc as a glow source, moved to you each frame. */
 const selfDisc = { x: 0, y: 0, face: null, color: 0 };
 /** Your face's average colour while the camera is on, null otherwise; set once local media exists. */
@@ -232,7 +166,7 @@ function chooseHeld(item: HeldItem | null): void {
   if (item === null) {
     ownGesture.cancel();
   }
-  saveHeld(storage(), item);
+  saveHeld(pageStorage(), item);
   session?.setHeld(item);
   if (item !== null) {
     track({ name: 'drink_picked', item });
@@ -260,9 +194,10 @@ function rebuildFrame(frame: Frame): void {
     showStill(still.logo);
   }
 }
-const relayout = () => rebuildFrame(layoutStage(stage, hud, { touch: TOUCH, pixelPerfect: PIXEL_PERFECT }));
+const relayout = () =>
+  rebuildFrame(layoutStage(page.stage, hud, { touch: flags.touch, pixelPerfect: flags.pixelPerfect }));
 relayout();
-watchLayout(relayout, { skipWhileTyping: TOUCH });
+watchLayout(relayout, { skipWhileTyping: flags.touch });
 
 // Mouse-look only: iOS has no pointer lock, and a finger on the view turns by dragging instead (mobile spec §4.1).
 game.addEventListener('pointerdown', (e) => {
@@ -291,7 +226,7 @@ function boomboxControls(): BoomboxPanelOptions | null {
     progress: () => box.progress(),
     onVolume(v) {
       box.setVolume(v);
-      saveBoomboxVolume(storage(), box.volume());
+      saveBoomboxVolume(pageStorage(), box.volume());
     },
     onSeek: (seconds) => box.seek(seconds),
     onStop: () => box.toggle(true),
@@ -316,7 +251,7 @@ function toggleAudioPanel(): void {
       settings: renderSettings,
       onChange(s) {
         renderSettings = s;
-        saveRenderSettings(storage(), s);
+        saveRenderSettings(pageStorage(), s);
       },
     },
   });
@@ -457,12 +392,12 @@ function joinRoom(
   audio = createAudioEngine({ ctx: audioCtx, map });
   const sounds = createObjectSounds(audioCtx, audio);
   objectSounds = sounds;
-  saveName(storage(), name);
-  saveAvatar(storage(), avatar);
+  saveName(pageStorage(), name);
+  saveAvatar(pageStorage(), avatar);
   clearScreen(ui);
   call = createCall({
     local,
-    remote: createRemoteMedia(mediaContainer),
+    remote: createRemoteMedia(page.media),
     audio,
     document,
     createFace,
@@ -483,7 +418,7 @@ function joinRoom(
       objectEvent: (id, e) => sounds.event(id, e),
     },
   });
-  const held = loadHeld(storage());
+  const held = loadHeld(pageStorage());
   ownHeld = held;
   session.setHeld(held);
   session.setBoombox(false);
@@ -495,7 +430,7 @@ function joinRoom(
   const activeCall = call;
   boombox = createBoombox({
     ctx: audioCtx,
-    container: localMediaContainer,
+    container: page.localMedia,
     onTrack: (track) => activeCall.setBoomboxTrack(track),
     onChange(on) {
       if (on) {
@@ -507,7 +442,7 @@ function joinRoom(
       setAudioPanelBoombox(ui, boomboxControls());
     },
   });
-  boombox.setVolume(loadBoomboxVolume(storage()));
+  boombox.setVolume(loadBoomboxVolume(pageStorage()));
   const media = local.state();
   showMediaControls(ui, {
     cam: media.cam,
@@ -526,7 +461,7 @@ function joinRoom(
     onMic: (on) => activeCall.setMic(on),
   });
   showSelfPreview(ui, local.stream, { cam: media.cam, name, avatar });
-  if (TOUCH) {
+  if (flags.touch) {
     showTouch();
   }
   if (new URLSearchParams(location.search).has('debug')) {
@@ -579,9 +514,9 @@ function openLobby(roomId: string): void {
       getUserMedia: (c) => navigator.mediaDevices.getUserMedia(c),
       enumerateDevices: () => navigator.mediaDevices.enumerateDevices(),
       onDeviceChange: (cb) => navigator.mediaDevices?.addEventListener('devicechange', cb),
-      framer: createFramer({ container: localMediaContainer, document, memory: createFramingMemory(storage()) }),
+      framer: createFramer({ container: page.localMedia, document, memory: createFramingMemory(pageStorage()) }),
     },
-    loadMediaPrefs(storage())
+    loadMediaPrefs(pageStorage())
   );
   const ownFace = createOwnGlowSampler(local.framer.canvas, document);
   // Kept from the controller's notifications (every camera change notifies), not asked of it every frame.
@@ -593,14 +528,14 @@ function openLobby(roomId: string): void {
   track({ name: 'lobby_viewed', entry: roomId === hostedRoom ? 'host' : 'invite' });
   void local.ready.then(() => track({ name: 'media_permission', ...mediaOutcome(local.state()) }));
   // Saved for the whole visit, so the room's Cam/Mic buttons are remembered too.
-  local.subscribe(() => saveMediaPrefs(storage(), local.prefs()));
+  local.subscribe(() => saveMediaPrefs(pageStorage(), local.prefs()));
   const meter = createMicLevel(audioCtx);
   meter.setTrack(local.micTrack());
   const stopMetering = local.subscribe(() => meter.setTrack(local.micTrack()));
   const closeLobby = showLobby(ui, {
     media: local,
-    defaultName: loadName(storage()),
-    defaultAvatar: loadAvatar(storage()),
+    defaultName: loadName(pageStorage()),
+    defaultAvatar: loadAvatar(pageStorage()),
     level: meter.level,
     inviteUrl: location.href,
     onJoin(name, avatar) {
@@ -807,7 +742,7 @@ function showStill(logo: boolean): void {
 }
 
 function drawStill(logo: boolean): void {
-  renderLandingScene(fb, { logo, lights: LIGHTS, vacuum: landingVacuum });
+  renderLandingScene(fb, { logo, lights: flags.lights, vacuum: landingVacuum });
   gameCtx.putImageData(image, 0, 0);
 }
 
@@ -840,7 +775,7 @@ if (route.kind === 'invalid') {
   startFrames();
 } else {
   showStill(route.kind === 'landing');
-  if (route.kind === 'landing' && !REDUCED_MOTION) {
+  if (route.kind === 'landing' && !flags.reducedMotion) {
     startLandingShow();
   }
 }
