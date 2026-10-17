@@ -7,6 +7,7 @@ import { BOOMBOX_LEFT, BOOMBOX_SPRITE, BOOMBOX_TOP } from './boombox';
 import { createView, EYE_HEIGHT, MIN_DEPTH, setView, type View } from './camera';
 import { type Framebuffer, rgb, scaleRgb } from './framebuffer';
 import {
+  blitHeldSprite,
   CHEERS_LEFT,
   CHEERS_TOP,
   CHEERS_WOBBLE,
@@ -14,7 +15,6 @@ import {
   HELD_SPRITES,
   HELD_TEXEL,
   HELD_TOP,
-  type HeldSprite,
   sipLeft,
   sipTop,
 } from './held-items';
@@ -456,14 +456,14 @@ function drawDrink(fb: Framebuffer, s: Sprite, drink: HeldItem, { screenX, depth
   const r = size / 2;
   const left = screenX + drinkLeft(drink, s) * r;
   const top = fb.height / 2 - (drinkTop(drink, s) + s.itemBob * BOB_HEIGHT) * r;
-  blitItem(fb, HELD_SPRITES[drink], left, top, HELD_TEXEL * r, depth);
+  blitHeldSprite(fb, HELD_SPRITES[drink], left, top, HELD_TEXEL * r, depth);
 }
 
 /** The boombox in the hand on the viewer's left, bobbing with the step. */
 function drawBoombox(fb: Framebuffer, s: Sprite, { screenX, depth, size }: Projection): void {
   const r = size / 2;
   const top = fb.height / 2 - (BOOMBOX_TOP + s.itemBob * BOB_HEIGHT) * r;
-  blitItem(fb, BOOMBOX_SPRITE, screenX + BOOMBOX_LEFT * r, top, HELD_TEXEL * r, depth);
+  blitHeldSprite(fb, BOOMBOX_SPRITE, screenX + BOOMBOX_LEFT * r, top, HELD_TEXEL * r, depth);
 }
 
 /** The drink's left edge in `pose`, in disc radii right of the disc's centre. */
@@ -471,32 +471,3 @@ const drinkLeft = (drink: HeldItem, pose: HeldPose) =>
   poseBlend(pose, HELD_LEFT, sipLeft(drink), CHEERS_LEFT) + CHEERS_WOBBLE * pose.wobble;
 /** The drink's top in `pose`, in disc radii above the eye line. */
 const drinkTop = (drink: HeldItem, pose: HeldPose) => poseBlend(pose, HELD_TOP, sipTop(drink), CHEERS_TOP);
-
-/** Draws an item sprite with texel size t at (left, top), depth-tested per column like the disc. */
-function blitItem(fb: Framebuffer, sprite: HeldSprite, left: number, top: number, t: number, depth: number): void {
-  const { width: w, height: h, pixels, zbuffer } = fb;
-  const { w: tw, h: th, texels } = sprite;
-  const x0 = Math.max(0, Math.floor(left));
-  const x1 = Math.min(w - 1, Math.ceil(left + tw * t) - 1);
-  const y0 = Math.max(0, Math.floor(top));
-  const y1 = Math.min(h - 1, Math.ceil(top + th * t) - 1);
-  for (let col = x0; col <= x1; col++) {
-    if (depth >= (zbuffer[col] as number)) {
-      continue;
-    }
-    const u = Math.floor((col + 0.5 - left) / t);
-    if (u < 0 || u >= tw) {
-      continue;
-    }
-    for (let row = y0; row <= y1; row++) {
-      const v = Math.floor((row + 0.5 - top) / t);
-      if (v < 0 || v >= th) {
-        continue;
-      }
-      const c = texels[v * tw + u] as number;
-      if (c !== 0) {
-        pixels[row * w + col] = c;
-      }
-    }
-  }
-}

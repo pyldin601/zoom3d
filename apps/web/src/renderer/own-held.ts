@@ -3,7 +3,7 @@
 // screen edge, the drink toward the centre (held items spec §2.1).
 import type { HeldItem } from '@zoom3d/shared';
 import type { Framebuffer } from './framebuffer';
-import { HELD_MAPS, type HeldSprite, toHeldSprite } from './held-items';
+import { blitHeldSprite, HELD_MAPS, type HeldSprite, OVER_EVERYTHING, toHeldSprite } from './held-items';
 import type { HeldPose } from './sip';
 
 /** Texel size, as a fraction of the screen's shorter side (the height on desktop). */
@@ -61,30 +61,5 @@ export function renderOwnHeld(fb: Framebuffer, item: HeldItem | null, bob: numbe
   const restUp = (1 - OWN_CROP) * th * t;
   const up = restUp + (OWN_SIP_VISIBLE * th * t - restUp) * sip + (th * t + OWN_CHEERS_RAISE * h - restUp) * cheers;
   const top = h - up + bob * OWN_BOB * h;
-  drawOverlay(fb, sprite, left, top, t);
-}
-
-/** Draws a sprite with texel size t over the scene at (left, top), clipped to the screen. */
-export function drawOverlay(fb: Framebuffer, sprite: HeldSprite, left: number, top: number, t: number): void {
-  const { width: w, height: h, pixels } = fb;
-  const { w: tw, h: th, texels } = sprite;
-  const x0 = Math.max(0, Math.floor(left));
-  const x1 = Math.min(w - 1, Math.ceil(left + tw * t) - 1);
-  const y0 = Math.max(0, Math.floor(top));
-  for (let row = y0; row < h; row++) {
-    const v = Math.floor((row + 0.5 - top) / t);
-    if (v < 0 || v >= th) {
-      continue;
-    }
-    for (let col = x0; col <= x1; col++) {
-      const u = Math.floor((col + 0.5 - left) / t);
-      if (u < 0 || u >= tw) {
-        continue;
-      }
-      const c = texels[v * tw + u] as number;
-      if (c !== 0) {
-        pixels[row * w + col] = c;
-      }
-    }
-  }
+  blitHeldSprite(fb, sprite, left, top, t, OVER_EVERYTHING);
 }
