@@ -189,7 +189,7 @@ function projectFaces(view: View, v: VoxelInstance): void {
   const { corners, normals, faceCount } = v.model;
   const cos = Math.cos(v.angle);
   const sin = Math.sin(v.angle);
-  faceOrder.length = 0;
+  let count = 0;
   // One loop: with the back-face test and the corner projection as functions it measured 1% slower (bench:sprites).
   for (let f = 0; f < faceCount; f++) {
     const c = f * 12;
@@ -226,8 +226,10 @@ function projectFaces(view: View, v: VoxelInstance): void {
       continue;
     }
     faceDepths[f] = depthSum / 4;
-    faceOrder.push(f);
+    faceOrder[count++] = f;
   }
+  // Written by index and trimmed after: `length = 0` would make V8 drop the array's storage every frame.
+  faceOrder.length = count;
   faceOrder.sort(facesFarFirst);
 }
 
