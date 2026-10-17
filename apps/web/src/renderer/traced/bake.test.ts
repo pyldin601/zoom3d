@@ -327,6 +327,18 @@ describe('bakeLighting', () => {
     expect(wallSample(2).every((light) => light > 0)).toBe(true);
   });
 
+  test('the soft maps are the soft copies of the finished floor and ceiling, and not dark', () => {
+    for (const [sharp, soft] of [
+      [maps.floor, maps.floorSoft],
+      [maps.ceiling, maps.ceilingSoft],
+    ] as const) {
+      const expected = new Float32Array(sharp.length);
+      makeSoftCopy(world, sharp, expected);
+      expect(soft).toEqual(expected);
+      expect(soft.some((light) => light > 0)).toBe(true);
+    }
+  });
+
   test('two bakes of the same world are identical', () => {
     const again = createLightmaps(world);
     for (const _ of bakeLighting(world, again)) {
