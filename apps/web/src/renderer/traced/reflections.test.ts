@@ -427,6 +427,68 @@ describe('reflections on LEVEL1', () => {
   });
 });
 
+/** A stone hall 14 tiles square, the eye at its west side looking east at the far wall, a lamp ahead of it. */
+const STONE_HALL = parseMap(
+  [
+    '1'.repeat(16),
+    ...Array.from({ length: 14 }, (_, row) => `1${row === 7 ? 'S' : '.'}${'.'.repeat(13)}1`),
+    '1'.repeat(16),
+  ].join('\n')
+);
+
+describe('a lamp beside the ray off a rough wall', () => {
+  const EYE: PlayerState = { x: 3.5, y: 8.5, angle: 0 };
+
+  test('fades out as it passes the culling margin, changing the centre column by no step as big as a tenth of it', () => {
+    const traced = bakeRoom(STONE_HALL, TEXTURES, [{ x: 12, y: 8.5 }]);
+    const fb = createFramebuffer();
+    /** The centre column's light, as the lamp's disc (moved after the bake, so only its own reflection changes) is. */
+    const centreColumnWithLampAt = (side: number): number => {
+      traced.world.lampY[0] = EYE.y + side;
+      draw(fb, EYE, traced);
+      const { reflected, reflectedWidth, reflectedHeight } = lastTracedBuffers();
+      let total = 0;
+      for (let sampleRow = 0; sampleRow < reflectedHeight; sampleRow++) {
+        const at = (sampleRow * reflectedWidth + (reflectedWidth >> 1)) * 3;
+        total += (reflected.at(at) ?? 0) + (reflected.at(at + 1) ?? 0) + (reflected.at(at + 2) ?? 0);
+      }
+      return total;
+    };
+    // The stone's cone is 0.72 a tile wide, so the margin (2 tiles past the lamp's radius) is what cuts the lamp.
+    const sides = Array.from({ length: 61 }, (_, step) => 1.9 + step * 0.01);
+    const lights = sides.map(centreColumnWithLampAt);
+    const lampsShare = (lights.at(0) ?? 0) - (lights.at(-1) ?? 0);
+    expect(lampsShare).toBeGreaterThan(0.005);
+    const biggestStep = Math.max(...lights.slice(1).map((light, at) => Math.abs(light - (lights.at(at) ?? 0))));
+    expect(biggestStep).toBeLessThan(lampsShare / 10);
+  });
+});
+
+describe('the ceiling above a wall in the reflections', () => {
+  test("holds the wall's first sample, so the wall's top pixel row is not blended with black", () => {
+    const traced = bakeRoom(STONE_HALL, TEXTURES, [{ x: 12, y: 8.5 }]);
+    const fb = createFramebuffer();
+    draw(fb, { x: 3.5, y: 8.5, angle: 0.2 }, traced);
+    const { wallStart, reflectedWidth, reflectedHeight } = lastTracedBuffers();
+    let checked = 0;
+    for (let sampleCol = 0; sampleCol < reflectedWidth; sampleCol++) {
+      const wallTop = Math.ceil(
+        ((wallStart.at(framePixelOf(sampleCol, 0).col) ?? 0) - REFLECTION_SAMPLE_OFFSET) / REFLECTION_SCALE
+      );
+      if (wallTop < 1 || wallTop >= reflectedHeight) {
+        continue;
+      }
+      checked++;
+      const firstWallSample = reflectedAt(sampleCol, wallTop);
+      expect(sum(firstWallSample), `column ${sampleCol}`).toBeGreaterThan(0);
+      for (let sampleRow = 0; sampleRow < wallTop; sampleRow++) {
+        expect(reflectedAt(sampleCol, sampleRow), `sample (${sampleCol}, ${sampleRow})`).toEqual(firstWallSample);
+      }
+    }
+    expect(checked).toBeGreaterThan(reflectedWidth / 2);
+  });
+});
+
 /** A lit hall with a closet walled off in its middle: nothing in the closet can see the hall or its lamps. */
 const HALL_AND_CLOSET = parseMap(
   Array.from({ length: 22 }, (_, row) => {

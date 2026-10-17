@@ -94,6 +94,32 @@ describe('findThingsAlongRay', () => {
     expect(along.count).toBe(0);
   });
 
+  test('fades a lamp out over the last half-tile before the margin, so none steps in or out as a ray moves', () => {
+    const spreadPerS = 1;
+    const margin = LAMP_RADIUS + 2;
+    let before = 1;
+    let biggestStep = 0;
+    let first = true;
+    for (let side = margin - 0.8; side < margin + 0.3; side += 0.01) {
+      findThingsAlongRay(lampsAt([{ x: 22, y: 3.5 + side }]), east({ spreadPerS }), along);
+      const shown = along.count === 0 ? 0 : (along.fade.at(0) ?? Number.NaN);
+      if (!first) {
+        biggestStep = Math.max(biggestStep, Math.abs(shown - before));
+      }
+      first = false;
+      before = shown;
+    }
+    expect(before).toBe(0);
+    expect(biggestStep).toBeLessThan(0.05);
+  });
+
+  test('shows a lamp in full until half a tile from the margin', () => {
+    findThingsAlongRay(lampsAt([{ x: 22, y: 3.5 + LAMP_RADIUS + 1.4 }]), east({ spreadPerS: 1 }), along);
+    expect(along.fade.at(0)).toBe(1);
+    findThingsAlongRay(lampsAt([{ x: 22, y: 3.5 + LAMP_RADIUS + 0.2 }]), east({ spreadPerS: 0.05 }), along);
+    expect(along.fade.at(0)).toBe(1);
+  });
+
   test('drops lamps behind where the ray starts and from where it stops on', () => {
     const lamps = lampsAt([1, 2.01, 5, 9, 11].map((x) => ({ x, y: 3.5 })));
     findThingsAlongRay(lamps, east({ wallS: 9 }), along);

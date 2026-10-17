@@ -136,10 +136,12 @@ export function traceReflections(
     aimColumn(buffers, world, maps, sampleCol);
     const wallTop = firstSampleRowFrom(buffers.wallStart[column.col] ?? 0, reflectedHeight);
     const floorTop = Math.max(wallTop, firstSampleRowFrom(buffers.wallEnd[column.col] ?? 0, reflectedHeight));
-    clearCeilingSamples(buffers, sampleCol, wallTop);
     if (floorTop > wallTop) {
       mirrorOffWall(buffers, world, maps);
       traceWallSamples(buffers, world, maps, sampleCol, wallTop, floorTop);
+      copyFirstWallSampleUp(buffers, sampleCol, wallTop);
+    } else {
+      clearCeilingSamples(buffers, sampleCol, wallTop);
     }
     traceFloorSamples(buffers, world, maps, sampleCol, floorTop);
   }
@@ -269,6 +271,20 @@ function seeWallHit(
   out.albedo = world.albedo[hit.tile] ?? NO_TEXTURE;
   out.mean = world.meanAlbedo[hit.tile] ?? NO_TEXTURE;
   wallColumnLight(maps, faceIndex, hit.wallX, out.light);
+}
+
+/**
+ * The ceiling reflects nothing, but the composite blends the wall's top pixel row with the sample row above it: holding
+ * the wall's first sample there keeps that row from losing part of its reflection to black.
+ */
+function copyFirstWallSampleUp(buffers: TracedBuffers, sampleCol: number, wallTop: number): void {
+  const first = (wallTop * buffers.reflectedWidth + sampleCol) * 3;
+  for (let sampleRow = 0; sampleRow < wallTop; sampleRow++) {
+    const at = (sampleRow * buffers.reflectedWidth + sampleCol) * 3;
+    buffers.reflected[at] = buffers.reflected[first] ?? 0;
+    buffers.reflected[at + 1] = buffers.reflected[first + 1] ?? 0;
+    buffers.reflected[at + 2] = buffers.reflected[first + 2] ?? 0;
+  }
 }
 
 function clearCeilingSamples(buffers: TracedBuffers, sampleCol: number, wallTop: number): void {
@@ -497,7 +513,8 @@ function addLampsAtCeiling(world: TracedWorld, reflection: Reflection, ceilingS:
       continue;
     }
     const radius = nearbyLamps.radius[lamps.thing[at] ?? 0] ?? 0;
-    lampShare += blobWeight(lamps.side[at] ?? 0, (lampS - ceilingS) * run, radius, spreadAcross, spreadAlong);
+    const blob = blobWeight(lamps.side[at] ?? 0, (lampS - ceilingS) * run, radius, spreadAcross, spreadAlong);
+    lampShare += blob * (lamps.fade[at] ?? 0);
   }
   seen.red += (world.lampRgb[0] ?? 0) * lampShare * share;
   seen.green += (world.lampRgb[1] ?? 0) * lampShare * share;
@@ -522,7 +539,7 @@ function seePeople(reflection: Reflection): void {
     }
     const person = people.thing[at] ?? 0;
     const radius = nearbyPeople.radius[person] ?? 0;
-    // The ray passes `side` to the right of the disc's centre, so it meets the disc that far to the centre's left.
+    // The disc's centre lies `side` to the ray's right, so the ray meets the disc that far to the centre's left.
     const across = -(people.side[at] ?? 0);
     const up = fromHeight + rise * (personS - fromS) - (nearbyPeople.height[person] ?? 0);
     const cone = conePerS * (personS - fromS);
