@@ -486,7 +486,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     `corridorLights`, as before; none of them moves, so the light is baked once and nothing casts shadows or glows in
     this mode.
   - **The vacuum is lit from the bake.** In this mode `renderView` hands the sprites an `objectLight`
-    (`traced/objects.ts`; null in every other mode): per face direction the lamps' light at the model's mid height plus
+    (`traced/objects.ts`; null unless the traced room is drawing, so also while it bakes): per face direction the lamps' light at the model's mid height plus
     the floor's bounce light beneath it, toned by the brightest channel as the room is.
   - **The bake** takes about 0.6 s for LEVEL1 on a Mac. It runs in 6 ms slices a frame (`traced/room.ts`) only while
     the mode is chosen; the lit renderer draws until it is done, and leaving the mode pauses it, never restarts it.
@@ -503,7 +503,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     neither it nor its reflection read; at 0xa0 it is about 10×.
   - **Phones are the open check** (spec §4): in a room with 8 people on video the frame-rate meter must stay "good"
     (55 fps). If it doesn't: ¼-resolution reflections and a Worker bake, then decide with the owner. `pnpm bench:traced`
-    times the bake and the frame.
+    times the bake and the frame (at ½ only: `REFLECTION_SCALE` is a constant until the fallback is needed).
 
 ## Resolved
 _(none yet)_

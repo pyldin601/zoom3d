@@ -1,7 +1,7 @@
 # Ray-traced lighting (a second renderer): design spec
 
 Status: approved design, implemented 2026-10-17, from a brainstorm and an approved throwaway spike
-(`spikes/raytrace/`, uncommitted).
+(`spikes/raytrace/`, committed as a throwaway reference).
 Decision record to add: [open-decisions.md](../../open-decisions.md) D25.
 
 Calls marked **(my call)** were made by the designer, not by the product owner, and can be overridden. Everything else
@@ -173,8 +173,11 @@ floor keeps the column's own direction (no extra walk). Only heights differ per 
   cone blob (its total stays the disc's, it widens with distance), Fresnel, and the tone curve (hue kept, monotonic,
   never past 1). Rendering is checked with a bench and by eye.
 - **Bench:** its own script (`bench:walls` folds every mode into one pixel hash, so a traced mode there would change it):
-  bake time, ms per frame at ½ and ¼, with the crowd, and its own pixel hash for later refactors. `pnpm bench:walls`
-  output stays byte-identical.
+  bake time, ms per frame with the crowd, and its own pixel hash for later refactors. `pnpm bench:walls` output stays
+  byte-identical. As built it times ½ only: ¼ is the phone fallback below, `REFLECTION_SCALE` is a module constant that
+  the hot loops read, and a setter just to time a fallback that may never be used would put a mutable global on those
+  paths. If the phone check misses, make the scale a parameter then and time ¼ (the spike measured it: 4.7 ms against
+  7.9 ms at ½).
 - **Phones in a real room.** The spike's phone run had 7 emoji discs and no video, audio or bots. The bar **(my
   call)**: on the owner's phone, in a room with 8 people on video, the frame-rate meter (`game/frame-rate.ts`) stays
   "good" (55 fps) in the traced mode. This is checked with the owner early, as soon as the traced room draws in the
