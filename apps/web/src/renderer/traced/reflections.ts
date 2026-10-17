@@ -12,7 +12,7 @@ import {
   createNearbyThings,
   createThingsAlongRay,
   findThingsAlongRay,
-  listNearbyThings,
+  listNearbyLamps,
   type ThingsAlongRay,
 } from './along-ray';
 import { REFLECTION_SAMPLE_OFFSET, REFLECTION_SCALE, type TracedBuffers } from './buffers';
@@ -129,7 +129,7 @@ export function traceReflections(
   people: readonly Sprite[]
 ): void {
   const { reflectedWidth, reflectedHeight, view } = buffers;
-  listNearbyThings(world, view.x, view.y, nearbyLamps);
+  listNearbyLamps(world, view.x, view.y, nearbyLamps);
   listNearbyPeople(people, view.x, view.y, nearbyPeople);
   for (let sampleCol = 0; sampleCol < reflectedWidth; sampleCol++) {
     aimColumn(buffers, world, maps, sampleCol);

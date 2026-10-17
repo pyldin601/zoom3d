@@ -6,7 +6,7 @@ import {
   createNearbyThings,
   createThingsAlongRay,
   findThingsAlongRay,
-  listNearbyThings,
+  listNearbyLamps,
   MOST_ALONG_RAY,
   type NearbyThings,
 } from './along-ray';
@@ -32,12 +32,12 @@ function lampsAt(points: readonly { x: number; y: number }[]): NearbyThings {
   };
 }
 
-describe('listNearbyThings', () => {
+describe('listNearbyLamps', () => {
   test('lists the lamps within 12 tiles of the eye, and only them', () => {
     const lamps = [3, 10, 14.5, 16, 30].map((x) => ({ x, y: 3.5 }));
     const world = buildTracedWorld(HALL, TEXTURES, lamps);
     const nearby = createNearbyThings();
-    listNearbyThings(world, 3, 3.5, nearby);
+    listNearbyLamps(world, 3, 3.5, nearby);
     expect(Array.from(nearby.x.subarray(0, nearby.count))).toEqual([3, 10, 14.5]);
     expect(Array.from(nearby.radius.subarray(0, nearby.count))).toEqual([LAMP_RADIUS, LAMP_RADIUS, LAMP_RADIUS]);
   });
@@ -49,8 +49,8 @@ describe('listNearbyThings', () => {
       [3, 30].map((x) => ({ x, y: 3.5 }))
     );
     const nearby = createNearbyThings();
-    listNearbyThings(world, 3, 3.5, nearby);
-    listNearbyThings(world, 25, 3.5, nearby);
+    listNearbyLamps(world, 3, 3.5, nearby);
+    listNearbyLamps(world, 25, 3.5, nearby);
     expect(Array.from(nearby.x.subarray(0, nearby.count))).toEqual([30]);
   });
 });

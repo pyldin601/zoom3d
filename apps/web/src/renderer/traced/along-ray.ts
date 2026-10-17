@@ -61,7 +61,7 @@ export function createThingsAlongRay(): ThingsAlongRay {
 }
 
 /** Lists into `out` the lamps within REACH_TILES of the eye at (eyeX, eyeY). */
-export function listNearbyThings(world: TracedWorld, eyeX: number, eyeY: number, out: NearbyThings): void {
+export function listNearbyLamps(world: TracedWorld, eyeX: number, eyeY: number, out: NearbyThings): void {
   const lamps = world.lampX.length;
   if (out.x.length < lamps) {
     out.x = new Float64Array(lamps);
