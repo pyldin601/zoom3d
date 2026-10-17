@@ -482,12 +482,19 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     The spike had both softeners (a base light of 0.03, bounce at the painted colour); the owner dropped them. So the
     room is darker and more contrasty than D24's, and a room without lamps is black by design.
   - **It replaces `renderWalls` only** (`renderer/traced/`, picked per frame by `renderView`): avatars, objects,
-    labels and the HUD run unchanged after it. Lamps are `corridorLights`, as before; none of them moves, so the
-    light is baked once and nothing casts shadows or glows in this mode.
+    labels and the HUD are drawn after it as before, except for the vacuum's light (below). Lamps are
+    `corridorLights`, as before; none of them moves, so the light is baked once and nothing casts shadows or glows in
+    this mode.
+  - **The vacuum is lit from the bake.** In this mode `renderView` hands the sprites an `objectLight`
+    (`traced/objects.ts`; null in every other mode): per face direction the lamps' light at the model's mid height plus
+    the floor's bounce light beneath it, toned by the brightest channel as the room is.
   - **The bake** takes about 0.6 s for LEVEL1 on a Mac. It runs in 6 ms slices a frame (`traced/room.ts`) only while
     the mode is chosen; the lit renderer draws until it is done, and leaving the mode pauses it, never restarts it.
     Its bounce jitter is a precomputed table of `seeded(12345)`'s first 8192 draws, because `seeded()` costs about
     40 ns a draw and repeats after about 11–16k draws.
+  - **Reflections sample what is in front of the wall.** A cone that straddles a wall's foot or top takes the floor or
+    ceiling part from the plane in front of that wall. The spike took the ray's own crossing, which lies beyond the
+    wall, often in another room, lit by other lamps.
   - **Phones are the open check** (spec §4): in a room with 8 people on video the frame-rate meter must stay "good"
     (55 fps). If it doesn't: ¼-resolution reflections and a Worker bake, then decide with the owner. `pnpm bench:traced`
     times the bake and the frame.

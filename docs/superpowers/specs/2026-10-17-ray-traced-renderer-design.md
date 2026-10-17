@@ -1,6 +1,7 @@
 # Ray-traced lighting (a second renderer): design spec
 
-Status: draft design, 2026-10-17, from a brainstorm and an approved throwaway spike (`spikes/raytrace/`, uncommitted).
+Status: approved design, implemented 2026-10-17, from a brainstorm and an approved throwaway spike
+(`spikes/raytrace/`, uncommitted).
 Decision record to add: [open-decisions.md](../../open-decisions.md) D25.
 
 Calls marked **(my call)** were made by the designer, not by the product owner, and can be overridden. Everything else
@@ -149,6 +150,13 @@ floor keeps the column's own direction (no extra walk). Only heights differ per 
 
 - Spike cost at 640×360 in Chrome on a Mac: about **4.7 ms** a frame with ¼-res reflections and **7.9 ms** with ½-res,
   in a wall-heavy view; the current renderer is about 1.3–1.7 ms. Bake 0.6 s. The owner's phone ran it smoothly.
+- **Built, measured** (`pnpm bench:traced`, Node, 640×360, 2026-10-17, three runs): the cold bake takes 0.58–0.61 s;
+  its first slice (10 ms) builds the world and no later slice runs past 7.5 ms, so a frame spends the 6 ms budget plus
+  at most one slice. A frame costs **5.3–5.5 ms** alone and **5.6–5.7 ms** with the 100-person crowd (people in the
+  reflections); `bench:walls` draws the lit room at 1.1 ms (1.8 ms with its crowd). In Chrome with no one else in the
+  room the backtick panel reads 5.5 ms (33% of a frame) in this mode and 2.6 ms in the default one. Run alone,
+  `frame-rate.spec.ts` measures a 16.7 ms median in both modes with a peer on video; in a full parallel run on a loaded
+  machine the traced one has slipped to 33 ms.
 - Reflection resolution: **½ everywhere**, the setting the owner's phone ran smoothly, with no menu choice **(my
   call)**.
 - The spike listed every person and lamp along every column's ray (cheap with 7 people and 37 lamps). It must hold with
