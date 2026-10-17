@@ -1,16 +1,12 @@
 // Touch input (mobile spec §4): a move pad for the left thumb and drag-to-turn anywhere on the view for the right.
 // Only touch pointers count; mouse and pen keep their desktop meaning.
 import type { MoveInput } from '@zoom3d/shared';
-import type { InputDocument } from './keyboard';
+import type { InputDocument, Listenable } from './keyboard';
 
 /** Fraction of the pad's radius around its centre where a finger moves nothing. */
 export const PAD_DEAD_ZONE = 0.25;
 /** A horizontal drag across half the view turns this far (radians). */
 export const TOUCH_TURN_HALF_SCREEN = Math.PI / 2;
-
-interface Listenable {
-  addEventListener(type: string, listener: EventListener): void;
-}
 
 export interface PointerTarget extends Listenable {
   getBoundingClientRect(): { left: number; top: number; width: number; height: number };
@@ -56,11 +52,24 @@ export function padDirection(dx: number, dy: number, radius: number): { forward:
     return { forward: 0, strafe: 0 };
   }
   const sector = (Math.round(Math.atan2(-dy, dx) / (Math.PI / 4)) + 8) % 8;
-  const [forward, strafe] = SECTORS[sector] as readonly [number, number];
+  const [forward, strafe] = SECTORS.at(sector) ?? [0, 0];
   return { forward, strafe };
 }
 
+/** What this reads off a pointer event; tests dispatch plain objects with just these. */
 type Pointer = { pointerId: number; pointerType: string; clientX: number; clientY: number };
+
+function isPointer(event: unknown): event is Pointer {
+  return typeof event === 'object' && event !== null && 'pointerId' in event;
+}
+
+function onPointer(target: Listenable, type: string, handle: (pointer: Pointer) => void): void {
+  target.addEventListener(type, (event) => {
+    if (isPointer(event)) {
+      handle(event);
+    }
+  });
+}
 
 export function createTouchInput({ surface, win, doc, surfaceWidth }: TouchInputOptions): TouchSource {
   let padId: number | null = null;
@@ -86,8 +95,7 @@ export function createTouchInput({ surface, win, doc, surfaceWidth }: TouchInput
     strafe = 0;
     turn = 0;
   };
-  const end = (event: Event) => {
-    const e = event as unknown as Pointer;
+  const end = (e: Pointer) => {
     if (e.pointerId === padId) {
       padId = null;
       forward = 0;
@@ -98,8 +106,7 @@ export function createTouchInput({ surface, win, doc, surfaceWidth }: TouchInput
     }
   };
 
-  surface.addEventListener('pointerdown', (event) => {
-    const e = event as unknown as Pointer;
+  onPointer(surface, 'pointerdown', (e) => {
     if (e.pointerType !== 'touch' || turnId !== null) {
       return;
     }
@@ -107,8 +114,7 @@ export function createTouchInput({ surface, win, doc, surfaceWidth }: TouchInput
     turnX = e.clientX;
   });
   // Moves and lifts are watched on the window, so a finger that slides off the pad or the view keeps counting.
-  win.addEventListener('pointermove', (event) => {
-    const e = event as unknown as Pointer;
+  onPointer(win, 'pointermove', (e) => {
     if (e.pointerId === padId) {
       steer(e);
     } else if (e.pointerId === turnId) {
@@ -116,8 +122,8 @@ export function createTouchInput({ surface, win, doc, surfaceWidth }: TouchInput
       turnX = e.clientX;
     }
   });
-  win.addEventListener('pointerup', end);
-  win.addEventListener('pointercancel', end);
+  onPointer(win, 'pointerup', end);
+  onPointer(win, 'pointercancel', end);
   win.addEventListener('blur', reset);
   doc.addEventListener('visibilitychange', () => {
     if (doc.visibilityState === 'hidden') {
@@ -143,8 +149,7 @@ export function createTouchInput({ surface, win, doc, surfaceWidth }: TouchInput
         return;
       }
       pad = target;
-      target.addEventListener('pointerdown', (event) => {
-        const e = event as unknown as Pointer;
+      onPointer(target, 'pointerdown', (e) => {
         if (e.pointerType !== 'touch' || padId !== null || pad !== target) {
           return;
         }
