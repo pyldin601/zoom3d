@@ -30,9 +30,11 @@ export interface TracedMaterial {
   tint: number;
 }
 
+export const FLOOR_MATERIAL: TracedMaterial = { f0: 0.04, roughness: 0.6, tint: 0 };
+
 /** Index = tile id; 0 is the floor. */
 export const TRACED_MATERIALS: readonly TracedMaterial[] = [
-  { f0: 0.04, roughness: 0.6, tint: 0 },
+  FLOOR_MATERIAL,
   { f0: 0.04, roughness: 0.85, tint: 0.6 },
   { f0: 0.04, roughness: 0.35, tint: 0.75 },
   { f0: 0.04, roughness: 0.85, tint: 0.85 },
