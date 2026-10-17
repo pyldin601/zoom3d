@@ -96,8 +96,9 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   `disconnect(false)`. It also rewrites `enabled` on publish/replace (a muted mic would go live), so the transport
   restores it. Match remote tracks by name, never by order.
 - Dynamic subscription (6c spec `docs/superpowers/specs/2026-10-11-dynamic-subscription-design.md`): nothing is
-  received until asked for (`autoSubscribe: false`). Every 250 ms `main.ts` runs `media/interest.ts` on what
-  `renderSprites` drew (its `facts` map) and hands changed wants to `call.setWanted`. The face's three sizes are
+  received until asked for (`autoSubscribe: false`). Every 250 ms the room loop (`game/room-loop.ts`, through
+  `media/subscription.ts`) runs `media/interest.ts` on what `renderSprites` drew (its `facts` map) and hands changed
+  wants to `call.setWanted`. The face's three sizes are
   **separate tracks**, not simulcast (livekit-client disables simulcast below 480 px); dynacast pauses the ones nobody
   receives. Size switches are make-before-break, and faces hold their last frame while paused or resuming. An e2e
   spec that expects someone's face must turn toward them first (`lookAt` in `e2e/join.ts`): players spawn facing a
@@ -117,8 +118,8 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   welcome deadline (`connection.ts`) in place.
 - E2E runs Chrome with `--use-fake-device-for-media-stream`; `window.__game.call` exposes `isLive`/`stats` (dev only).
   `e2e/mobile.spec.ts` emulates a portrait phone (`hasTouch`, `isMobile`), which Chrome reports as `(pointer: coarse)`.
-- Touch mode (mobile spec §2.0) is `matchMedia('(pointer: coarse)')` read once at load (`TOUCH` in `main.ts`, plus
-  `html.touch` for CSS). Never re-evaluate it: the frame size, FOV and room UI would flip mid-visit. The FOV lives on
+- Touch mode (mobile spec §2.0) is `matchMedia('(pointer: coarse)')` read once at load (`flags.touch` from `readPageFlags`
+  in `game/page.ts`, plus `html.touch` for CSS). Never re-evaluate it: the frame size, FOV and room UI would flip mid-visit. The FOV lives on
   the `Framebuffer` (`fb.fov`); every projection reads it through a `View` (`renderer/camera.ts`, set once per pass
   by `setView`), so never reintroduce a FOV constant. The buffer is rebuilt
   only when the frame's size or FOV changes, never per frame.
