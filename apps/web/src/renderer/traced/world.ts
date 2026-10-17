@@ -1,8 +1,9 @@
 // The room as the ray tracer sees it: the grid, the lamps as glowing discs set in the ceiling, and every surface's colour
 // in linear light (spec docs/superpowers/specs/2026-10-17-ray-traced-renderer-design.md §3). Pure data and queries.
 import { type GameMap, tileAt } from '@zoom3d/shared';
+import { rgb } from '../framebuffer';
 import { GLOSS } from '../textures';
-import { CEILING, FLOOR } from '../walls';
+import { FLOOR } from '../walls';
 
 /** A lamp is a glowing disc this wide (tiles) set in the ceiling, shining down: the game's fixture. */
 export const LAMP_RADIUS = 0.18;
@@ -13,6 +14,12 @@ export const LAMP_RADIANCE = 36;
  * colours, so the same warmth in linear light is the tint to the power 2.2; without it the lamps read cold.
  */
 const LAMP_TINT = [1, 0.84 ** 2.2, 0.6 ** 2.2] as const;
+
+/**
+ * The traced room's ceiling, where the current renderer's is 0x38. Lit by bounce only, that dark grey showed about 90×
+ * darker than the floor under a lamp half a tile away: neither it nor its reflection read (owner's choice, D25).
+ */
+const TRACED_CEILING = rgb(0xa0, 0xa0, 0xa0);
 
 /** `lampOver` where no lamp's disc is. */
 export const NO_LAMP = -1;
@@ -93,7 +100,7 @@ export function buildTracedWorld(
     meanAlbedo: albedo.map(meanOf),
     gloss: GLOSS,
     floorAlbedo: linearRgbOf(FLOOR),
-    ceilingAlbedo: linearRgbOf(CEILING),
+    ceilingAlbedo: linearRgbOf(TRACED_CEILING),
   };
 }
 

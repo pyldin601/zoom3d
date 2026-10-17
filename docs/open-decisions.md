@@ -498,6 +498,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Reflection cones follow mirror geometry** (owner's review, 2026-10-17): a cone keeps its width (roughness² per
     tile) within the plane of incidence and narrows by the slant across it. The first build stretched it by 1 / slant
     instead, so a lamp's floor reflection spread over about 10× too much floor and read as a faint brightening.
+  - **The traced ceiling is light grey 0xa0** (owner's review, 2026-10-17; the current renderer keeps 0x38): lit by
+    bounce only, the game's dark grey showed about 90× darker than the floor under a lamp half a tile away, and
+    neither it nor its reflection read; at 0xa0 it is about 10×.
   - **Phones are the open check** (spec §4): in a room with 8 people on video the frame-rate meter must stay "good"
     (55 fps). If it doesn't: ¼-resolution reflections and a Worker bake, then decide with the owner. `pnpm bench:traced`
     times the bake and the frame.

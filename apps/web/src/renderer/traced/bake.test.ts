@@ -1,6 +1,7 @@
 import { parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { makeTextures } from '../textures';
+import { CEILING } from '../walls';
 import { bakeLighting, lampLight, makeSoftCopy, type SurfacePoint } from './bake';
 import {
   createLightmaps,
@@ -11,7 +12,14 @@ import {
   WALL_HEIGHTS,
   wallSampleHeight,
 } from './lightmaps';
-import { buildTracedWorld, FACE_WEST, LAMP_RADIANCE, LAMP_RADIUS, type TracedWorld } from './world';
+import {
+  buildTracedWorld,
+  FACE_WEST,
+  LAMP_RADIANCE,
+  LAMP_RADIUS,
+  linearOfSrgbChannel,
+  type TracedWorld,
+} from './world';
 
 const TEXTURES = makeTextures(1);
 const MAP_NAMES = [
@@ -245,6 +253,22 @@ describe('bakeLighting', () => {
     const aboveFloorCell = { ...cellCentre(cellX, cellY), z: 1, nz: -1 };
     expect(Array.from(lightAt(world, aboveFloorCell))).toEqual([0, 0, 0]);
     expect(cellOf(maps.ceiling, cellX, cellY).every((light) => light > 0)).toBe(true);
+  });
+
+  test("a ceiling cell half a tile from the lamp shows at least 5 times what the game's dark grey ceiling would", () => {
+    const darkGrey = linearOfSrgbChannel(CEILING & 0xff);
+    const darkCeilingWorld = { ...world, ceilingAlbedo: Float32Array.of(darkGrey, darkGrey, darkGrey) };
+    const darkCeilingMaps = createLightmaps(darkCeilingWorld);
+    for (const _ of bakeLighting(darkCeilingWorld, darkCeilingMaps)) {
+      // Run to the end.
+    }
+    const [cellX, cellY] = [6 * FLOOR_CELLS, 5 * FLOOR_CELLS + 3];
+    const shown = (ceiling: Float32Array, albedo: Float32Array) =>
+      cellOf(ceiling, cellX, cellY).reduce((total, light, channel) => total + light * (albedo.at(channel) ?? 0), 0);
+    expect(shown(darkCeilingMaps.ceiling, darkCeilingWorld.ceilingAlbedo)).toBeGreaterThan(0);
+    expect(shown(maps.ceiling, world.ceilingAlbedo)).toBeGreaterThan(
+      5 * shown(darkCeilingMaps.ceiling, darkCeilingWorld.ceilingAlbedo)
+    );
   });
 
   test('the floor bounce map holds the bounce alone: the floor is the lamp light plus it', () => {

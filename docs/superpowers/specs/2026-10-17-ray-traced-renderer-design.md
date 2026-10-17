@@ -91,7 +91,10 @@ floor keeps the column's own direction (no extra walk). Only heights differ per 
 - Irradiance from a lamp: `radiance × r² × cos(surface) × cos(disc) / d²`, faded smoothly to nothing by 8 tiles.
 - **Soft shadows:** 2D shadow rays to strips across the disc. Rays to its centre and both edges first; only where they
   disagree, 8 strips weighted by their chord length.
-- The ceiling gets no direct light (the disc faces down); it is lit by bounce only, so it stays dark.
+- The ceiling gets no direct light (the disc faces down); it is lit by bounce only. It is painted light grey 0xa0
+  (linear 0.352) in the traced room, where the current renderer's is 0x38 (owner's review, 2026-10-17): at 0x38 it
+  showed about 90× darker than the floor under a lamp half a tile away, and neither it nor its reflection read. At
+  0xa0 that is about 10×, so it stays dim.
 - Lamps appear in the direct view as part of the ceiling (a point inside a disc shows the lamp's radiance).
 
 ### 3.2 The bake
@@ -146,7 +149,7 @@ floor keeps the column's own direction (no extra walk). Only heights differ per 
 - **Pure rays (the owner's choice, 2026-10-17).** The spike the owner first approved had two softeners: a base light
   of 0.03 everywhere and bounce at the texture's painted colour (2–5× its linear colour). The owner asked whether these
   were fake ambient light and chose to drop both. So the room is darker and more contrasty than the current renderer:
-  between lamps walls are dim, the ceiling is dark, and **rooms without lamps are black**. A higher exposure barely
+  between lamps walls are dim, the ceiling is dim, and **rooms without lamps are black**. A higher exposure barely
   lifts this (unlit areas are about 50× darker than lamp pools). The prototype was switched to pure rays for the owner
   to see on the phone before building.
 

@@ -2,7 +2,7 @@ import { parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { rgb } from '../framebuffer';
 import { GLOSS, makeTextures } from '../textures';
-import { CEILING, FLOOR } from '../walls';
+import { FLOOR } from '../walls';
 import {
   buildTracedWorld,
   FACE_EAST,
@@ -177,13 +177,14 @@ describe('the traced world', () => {
     expect(world.albedo.at(1)?.length).toBe(64 * 64 * 3);
   });
 
-  test('takes gloss from the game, and floor and ceiling colour from the unlit room', () => {
+  test('takes gloss from the game and floor colour from the unlit room; its ceiling is light grey 0xa0', () => {
     const world = buildTracedWorld(CORRIDOR, NO_TEXTURES, LAMPS);
     expect(world.gloss).toBe(GLOSS);
     const linear = (packed: number) => (((packed & 0xff) / 255 + 0.055) / 1.055) ** 2.4;
     expect(world.floorAlbedo.at(0)).toBeCloseTo(linear(FLOOR), 5);
     expect(world.floorAlbedo.at(2)).toBeCloseTo(linear(FLOOR), 5);
-    expect(world.ceilingAlbedo.at(1)).toBeCloseTo(linear(CEILING), 5);
+    expect(Array.from(world.ceilingAlbedo)).toEqual([0, 1, 2].map(() => expect.closeTo(linear(0xa0), 5)));
+    expect(world.ceilingAlbedo.at(0)).toBeCloseTo(0.352, 3);
     expect(world.floorAlbedo.length).toBe(3);
   });
 });
