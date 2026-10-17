@@ -7,6 +7,7 @@ import { castRay, createRayHit, type RayHit } from '@zoom3d/shared';
 import { EYE_HEIGHT } from '../camera';
 import { TEX } from '../textures';
 import {
+  type ConeAcrossMap,
   createNearbyThings,
   createThingsAlongRay,
   findThingsAlongRay,
@@ -69,7 +70,7 @@ interface WallSeen {
 }
 
 /** A reflected ray and the cone around it: aimed per column, then per sample row. */
-interface Reflection {
+interface Reflection extends ConeAcrossMap {
   /** Its ray runs from (x, y) along (dx, dy), crossing `run` tiles per unit s. */
   x: number;
   y: number;
@@ -89,6 +90,8 @@ interface Reflection {
   /** The wall the ray meets, `wallS` along it (Infinity where none is in reach). */
   wall: WallSeen;
   wallS: number;
+  /** How wide (tiles) the cone grows to each side per unit s, at eye level: what things near the ray are found by. */
+  spreadPerS: number;
   /** The lamps near the ray. */
   lamps: ThingsAlongRay;
 }
@@ -184,6 +187,7 @@ function createReflection(wall: WallSeen, stretch: Reflection['stretch'], conePe
     stretch,
     wall,
     wallS: 0,
+    spreadPerS: 0,
     lamps: createThingsAlongRay(),
   };
 }
@@ -224,7 +228,8 @@ function aimColumn(buffers: TracedBuffers, world: TracedWorld, maps: TracedLight
   offFloor.dy = rayY;
   offFloor.run = column.run;
   offFloor.wallS = column.distance;
-  findThingsAlongRay(nearby, x, y, rayX, rayY, column.distance, FLOOR_CONE_PER_TILE * column.run, offFloor.lamps);
+  offFloor.spreadPerS = FLOOR_CONE_PER_TILE * column.run;
+  findThingsAlongRay(nearby, offFloor, offFloor.lamps);
 }
 
 /** The wall castRay's `hit` met, as a reflection sees it, into `out`. */
@@ -275,8 +280,8 @@ function mirrorOffWall(buffers: TracedBuffers, world: TracedWorld, maps: TracedL
   offWall.conePerTile = roughness * roughness;
   // The lamps the cone can reach to the side, stretched across as at eye level: up to 7% more at the frame's top or
   // bottom, where the ray climbs or falls, which three spreads leave room for.
-  const spreadPerS = (offWall.conePerTile * run) / Math.max(MIN_SLANT, column.facing / run);
-  findThingsAlongRay(nearby, offWall.x, offWall.y, offWall.dx, offWall.dy, offWall.wallS, spreadPerS, offWall.lamps);
+  offWall.spreadPerS = (offWall.conePerTile * run) / Math.max(MIN_SLANT, column.facing / run);
+  findThingsAlongRay(nearby, offWall, offWall.lamps);
 }
 
 /**

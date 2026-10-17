@@ -23,6 +23,19 @@ export interface NearbyThings {
 }
 
 /**
+ * A 2D ray across the map and the cone round it, as things are found along it: from (x, y) along (dx, dy) to the wall
+ * it meets, `wallS` along it (in units of the ray), the cone growing `spreadPerS` tiles to each side per unit.
+ */
+export interface ConeAcrossMap {
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  wallS: number;
+  spreadPerS: number;
+}
+
+/**
  * The things one ray passes close to, `count` of them, nearest first: `s` along it (in units of its direction),
  * `side` how far to its side (tiles, positive to its right on the y-down map) and `thing`, an index into NearbyThings.
  */
@@ -70,20 +83,12 @@ export function listNearbyThings(world: TracedWorld, eyeX: number, eyeY: number,
 }
 
 /**
- * The things the 2D ray from (x, y) along (dx, dy) passes close to before `maxS` (in units of the ray), into `out`:
- * within a thing's radius of the ray, plus three of the cone's spreads at that distance (`spreadPerS` tiles per unit
- * of s), but never more than MOST_MARGIN_TILES past it. Per reflection column, so it reads typed arrays by index.
+ * The things `cone`'s ray passes close to before its wall, into `out`: within a thing's radius of the ray, plus three of
+ * the cone's spreads at that distance, but never more than MOST_MARGIN_TILES past it. Per reflection column, so it
+ * reads typed arrays by index.
  */
-export function findThingsAlongRay(
-  things: NearbyThings,
-  x: number,
-  y: number,
-  dx: number,
-  dy: number,
-  maxS: number,
-  spreadPerS: number,
-  out: ThingsAlongRay
-): void {
+export function findThingsAlongRay(things: NearbyThings, cone: ConeAcrossMap, out: ThingsAlongRay): void {
+  const { x, y, dx, dy, wallS, spreadPerS } = cone;
   const runSquared = dx * dx + dy * dy;
   const run = Math.sqrt(runSquared);
   out.count = 0;
@@ -91,7 +96,7 @@ export function findThingsAlongRay(
     const offsetX = (things.x[thing] ?? 0) - x;
     const offsetY = (things.y[thing] ?? 0) - y;
     const s = (offsetX * dx + offsetY * dy) / runSquared;
-    if (s <= NEAREST_ALONG || s >= maxS) {
+    if (s <= NEAREST_ALONG || s >= wallS) {
       continue;
     }
     const side = (dx * offsetY - dy * offsetX) / run;
