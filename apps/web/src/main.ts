@@ -3,11 +3,11 @@
 // input/room-keys.ts, the drink key in input/drink-key.ts).
 import { type HeldItem, LEVEL1, newRoomId, parseMap } from '@zoom3d/shared';
 import { preferPlayAndRecord } from './audio/audio-session';
-import { HIDDEN_TICK_MS, startHiddenTicker } from './audio/ticker';
+import { startHiddenTicker } from './audio/ticker';
 import { createFrameRateMeter } from './game/frame-rate';
 import { findPageElements, pageStorage, readPageFlags } from './game/page';
-import { createRemoteWorld, type PeerMedia } from './game/remote-world';
 import { isConnected, joinRoom, type Room } from './game/room';
+import { createRoomLoop } from './game/room-loop';
 import { createScreen } from './game/screen';
 import { createYou } from './game/you';
 import { createDrinkKey } from './input/drink-key';
@@ -21,8 +21,6 @@ import { createFramingMemory } from './media/framing-memory';
 import { createLocalMedia, type LocalMediaController } from './media/local-media';
 import { loadMediaPrefs, saveMediaPrefs } from './media/media-prefs';
 import { createOwnGlowSampler } from './media/own-glow';
-import { createSubscription } from './media/subscription';
-import { type RoomScene, renderHud, renderView } from './renderer/frame';
 import { bakeRoomLightingOnce } from './renderer/room-lighting';
 import { makeTextures } from './renderer/textures';
 import { flushOnHide, initAnalytics, track } from './telemetry/analytics';
@@ -34,19 +32,10 @@ import { heldKeyAction, loadHeld, saveHeld } from './ui/held-store';
 import { joinBanner, PROBLEM_TEXT, showLobby } from './ui/lobby';
 import { createMicLevel } from './ui/mic-level';
 import { loadName, saveName } from './ui/name-store';
-import { litReflections, loadRenderSettings, saveRenderSettings } from './ui/render-settings';
-import { statusText } from './ui/room-status';
+import { loadRenderSettings, saveRenderSettings } from './ui/render-settings';
+import { createStatusLine } from './ui/room-status';
 import { botsParam, parseRoute } from './ui/route';
-import {
-  clearScreen,
-  showBanner,
-  showLanding,
-  showMediaControls,
-  showNotice,
-  showPeopleCount,
-  showSelfPreview,
-  showStatus,
-} from './ui/screens';
+import { clearScreen, showBanner, showLanding, showMediaControls, showNotice, showSelfPreview } from './ui/screens';
 import { showTouchControls, type TouchControls } from './ui/touch-controls';
 
 initSentry(import.meta.env.VITE_SENTRY_DSN, import.meta.env.VITE_RELEASE);
@@ -90,13 +79,22 @@ const drinkKey = createDrinkKey({
 // The room, from Join on.
 
 let room: Room | null = null;
-/** Everyone else and the world objects, as this frame draws them. */
-const world = createRemoteWorld();
-/** What the world shows of each peer's media. */
-const peerMedia: PeerMedia = {
-  faceOf: (id) => room?.call.faceOf(id) ?? null,
-  speaking: (id) => room?.audio.speaking(id) ?? 0,
-};
+const roomLoop = createRoomLoop({
+  map,
+  textures,
+  you,
+  input,
+  screen,
+  hud: hudCtx,
+  frameRate: frameRateMeter,
+  statusLine: createStatusLine(ui),
+  room: () => room,
+  renderMode: () => renderSettings.mode,
+  roomLighting,
+  showMap: () => automapVisible,
+});
+// rAF stops while the tab is hidden: keep voices (and newcomers) audible from a timer meanwhile.
+startHiddenTicker(roomLoop.whileHidden, () => document.hidden);
 
 function inRoom(): boolean {
   return isConnected(room);
@@ -253,26 +251,6 @@ window.addEventListener('pointerdown', (e) => {
   }
 });
 
-// The room's status line and head count, written only when they change.
-
-let shownStatus: string | null = null;
-function setStatus(text: string | null): void {
-  if (text === shownStatus) {
-    return;
-  }
-  showStatus(ui, text);
-  shownStatus = text;
-}
-
-let shownPeople: number | null = null;
-function setPeopleCount(count: number | null): void {
-  if (count === shownPeople) {
-    return;
-  }
-  showPeopleCount(ui, count);
-  shownPeople = count;
-}
-
 // Joining.
 
 function enterRoom(
@@ -408,7 +386,7 @@ function openLobby(roomId: string): void {
       closeLobby();
       stopMetering();
       meter.dispose();
-      screen.runRoom(frame);
+      screen.runRoom(roomLoop.frame);
       enterRoom(roomId, name, avatar, local, audioCtx);
     },
   });
@@ -434,107 +412,8 @@ if (import.meta.env.DEV) {
   });
 }
 
-const subscription = createSubscription();
-
-/** Dynamic subscription (6c spec §4): whose face and voice to receive. */
-function chooseWhatToReceive(r: Room, now: number, hidden: boolean): void {
-  subscription.choose(now, {
-    call: r.call,
-    people: r.session.peers,
-    positions: world.positions,
-    player,
-    fov: screen.fb.fov,
-    map,
-    maxDistance: r.audio.settings().max,
-    hidden,
-  });
-}
-
-// The room loop.
-
-// rAF stops while the tab is hidden: keep voices (and newcomers) audible from a timer meanwhile.
-startHiddenTicker(
-  () => {
-    if (!room) {
-      return;
-    }
-    const now = performance.now();
-    world.sample(room.session, player, now);
-    room.objectSounds.sync(room.session.objects, world.objectPoses, HIDDEN_TICK_MS / 1000);
-    room.audio.update(now, player, world.positions);
-    chooseWhatToReceive(room, now, true);
-  },
-  () => document.hidden
-);
-
-function frame(dt: number): void {
-  stepSelf(dt);
-  const now = performance.now();
-  if (room) {
-    room.call.update(now);
-    updateWorld(room, now, dt);
-  }
-  const drawStart = performance.now();
-  const shown = describeScene(drawStart);
-  renderView(screen.fb, shown, subscription.seen);
-  screen.present();
-  renderHud(hudCtx, screen.fb, shown, automapVisible);
-  const drawnAt = performance.now();
-  // dt comes from rAF's timestamps, which fall on the screen's refreshes.
-  frameRateMeter.frame(drawnAt, dt * 1000, drawnAt - drawStart);
-  if (room) {
-    chooseWhatToReceive(room, drawnAt, document.hidden);
-  }
-}
-
-/** Your own move this frame: the mouse or drag turn, keys or pad, and your walking bob. */
-function stepSelf(dt: number): void {
-  // Consumed outside the room too, so a turn made before it doesn't land on the first frame in it.
-  const mouseTurn = input.consumeMouseTurn();
-  if (!inRoom()) {
-    return;
-  }
-  you.walk(map, input.state(), mouseTurn, dt);
-}
-
-/** Everyone else and the world objects this frame, their sounds, and the room's status line and head count. */
-function updateWorld(r: Room, now: number, dt: number): void {
-  const { session } = r;
-  world.sample(session, player, now);
-  world.collect(session, peerMedia, now, dt);
-  r.objectSounds.sync(session.objects, world.objectPoses, dt);
-  setStatus(statusText(session.status(), session.error()));
-  // Bots count too: the client can't tell them from people.
-  setPeopleCount(session.status() === 'open' ? session.peers.size + 1 : null);
-  r.audio.update(now, player, world.positions);
-}
-
-/** Refilled every frame by describeScene. */
-const scene: RoomScene = {
-  map,
-  textures,
-  eye: player,
-  lighting: null,
-  reflections: 'none',
-  people: world.sprites,
-  objects: world.voxels,
-  labels: world.labels,
-  yourGlow: null,
-  inYourHands: null,
-};
-
-function describeScene(now: number): RoomScene {
-  // The console's lighting mode; flat is drawn unlit, as with `?lights=off`.
-  const reflections = litReflections(renderSettings.mode);
-  scene.lighting = reflections === null ? null : roomLighting();
-  scene.reflections = reflections ?? 'none';
-  scene.yourGlow = you.glow(now, room?.session.selfColor() ?? null);
-  scene.inYourHands = inRoom() ? you.hands(now) : null;
-  return scene;
-}
-
 if (route.kind === 'invalid') {
-  screen.runRoom(frame);
+  screen.runRoom(roomLoop.frame);
 } else if (route.kind === 'landing') {
   screen.showTitle();
 } else {

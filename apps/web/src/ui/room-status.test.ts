@@ -1,6 +1,7 @@
+// @vitest-environment happy-dom
 import { MAX_PEERS } from '@zoom3d/shared';
 import { expect, test } from 'vitest';
-import { statusText } from './room-status';
+import { createStatusLine, statusText } from './room-status';
 
 test('nothing while connected; the connection while it connects', () => {
   expect(statusText('open', null)).toBeNull();
@@ -13,4 +14,21 @@ test('a failure says why when it can', () => {
   expect(statusText('failed', 'outdated')).toBe('zoom3d was updated: reload the page');
   expect(statusText('failed', 'invalid_room')).toBe("Couldn't join this room");
   expect(statusText('failed', null)).toBe("Couldn't join this room");
+});
+
+test('the status line writes only what changed', () => {
+  const ui = document.createElement('div');
+  const line = createStatusLine(ui);
+  line.show('Connecting…', null);
+  const status = ui.querySelector('.status');
+  expect(status?.textContent).toBe('Connecting…');
+  if (status) {
+    status.textContent = 'left alone';
+  }
+  line.show('Connecting…', 3);
+  expect(ui.querySelector('.status')?.textContent).toBe('left alone');
+  expect(ui.querySelector('.people')).not.toBeNull();
+  line.show(null, null);
+  expect(ui.querySelector('.status')).toBeNull();
+  expect(ui.querySelector('.people')).toBeNull();
 });
