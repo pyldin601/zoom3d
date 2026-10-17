@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
+    "noEmit": true,
+    "paths": { "@zoom3d/shared": ["../../packages/shared/src/index.ts"] }
+  },
+  "include": ["*.ts"]
+}
