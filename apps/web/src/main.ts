@@ -16,10 +16,9 @@ import { type AudioEngine, createAudioEngine } from './audio/engine';
 import { createObjectSounds, type ObjectSounds } from './audio/object-sounds';
 import { HIDDEN_TICK_MS, startHiddenTicker } from './audio/ticker';
 import { createFrameRateMeter } from './game/frame-rate';
-import { startLoop } from './game/loop';
 import { findPageElements, pageStorage, readPageFlags } from './game/page';
 import { createRemoteWorld, type PeerMedia } from './game/remote-world';
-import { type Frame, layoutStage, watchLayout } from './game/stage';
+import { createScreen } from './game/screen';
 import { createDrinkKey } from './input/drink-key';
 import { createInput } from './input/keyboard';
 import { lockPointer } from './input/pointer-lock';
@@ -40,14 +39,11 @@ import { createRemoteMedia } from './media/remote-media';
 import { createSession, type Session } from './net/session';
 import { createBob } from './renderer/bob';
 import { type InYourHands, type RoomScene, renderHud, renderView } from './renderer/frame';
-import { createFramebuffer, type Framebuffer } from './renderer/framebuffer';
 import type { GlowSource } from './renderer/glow';
-import { VACUUM_MODEL } from './renderer/models/vacuum';
 import { bakeRoomLightingOnce } from './renderer/room-lighting';
 import { createGestureClock } from './renderer/sip';
 import { ringRgb } from './renderer/sprites';
 import { makeTextures } from './renderer/textures';
-import type { VoxelInstance } from './renderer/voxels';
 import { flushOnHide, initAnalytics, track } from './telemetry/analytics';
 import { mediaOutcome } from './telemetry/onboarding';
 import { createRoomTracker, type RoomTracker, withRoomTracker } from './telemetry/room-tracker';
@@ -56,8 +52,6 @@ import { setAudioPanelBoombox, showAudioPanel } from './ui/audio-panel';
 import type { BoomboxPanelOptions } from './ui/boombox-panel';
 import { loadBoomboxVolume, saveBoomboxVolume } from './ui/boombox-store';
 import { heldKeyAction, loadHeld, saveHeld } from './ui/held-store';
-import { renderLandingScene } from './ui/landing-scene';
-import { createLandingShow, LANDING_PARK } from './ui/landing-show';
 import { joinBanner, PROBLEM_TEXT, showLobby } from './ui/lobby';
 import { createMicLevel } from './ui/mic-level';
 import { loadName, saveName } from './ui/name-store';
@@ -82,7 +76,7 @@ initAnalytics(import.meta.env.VITE_AMPLITUDE_API_KEY, import.meta.env.VITE_RELEA
 const flags = readPageFlags(location.search, (query) => matchMedia(query).matches);
 document.documentElement.classList.toggle('touch', flags.touch);
 const page = findPageElements(document);
-const { game, hud, ui, gameCtx, hudCtx } = page;
+const { game, ui, hudCtx } = page;
 
 const map = parseMap(LEVEL1);
 const textures = makeTextures(1);
@@ -93,11 +87,7 @@ let renderSettings = loadRenderSettings(pageStorage());
 const selfDisc = { x: 0, y: 0, face: null, color: 0 };
 /** Your face's average colour while the camera is on, null otherwise; set once local media exists. */
 let ownGlowColour: (now: number) => number | null = () => null;
-let fb: Framebuffer = createFramebuffer();
-let image = imageOf(fb);
-function imageOf(buffer: Framebuffer): ImageData {
-  return new ImageData(new Uint8ClampedArray(buffer.pixels.buffer as ArrayBuffer), buffer.width, buffer.height);
-}
+const screen = createScreen(page, flags);
 /** Counts every drawn room frame and times its drawing; the backtick panel shows the rate and the render time. */
 const frameRateMeter = createFrameRateMeter();
 
@@ -172,32 +162,6 @@ function chooseHeld(item: HeldItem | null): void {
     track({ name: 'drink_picked', item });
   }
 }
-
-// The stage: the frame's size follows the window.
-
-/** Whether the frame loop runs; before that the stage shows a still that a new frame size must redraw. */
-let looping = false;
-let still: { logo: boolean } | null = null;
-/** The landing show's robot while the show runs (landing vacuum spec); null once Start a party resets the picture. */
-let landingVacuum: VoxelInstance | null = null;
-let stopLandingShow: (() => void) | null = null;
-/** Swaps in a buffer of the new size or FOV; only on rotation or resize, never per frame. */
-function rebuildFrame(frame: Frame): void {
-  if (frame.width === fb.width && frame.height === fb.height && frame.fov === fb.fov) {
-    return;
-  }
-  fb = createFramebuffer(frame.width, frame.height, frame.fov);
-  image = imageOf(fb);
-  game.width = fb.width;
-  game.height = fb.height;
-  if (!looping && still) {
-    showStill(still.logo);
-  }
-}
-const relayout = () =>
-  rebuildFrame(layoutStage(page.stage, hud, { touch: flags.touch, pixelPerfect: flags.pixelPerfect }));
-relayout();
-watchLayout(relayout, { skipWhileTyping: flags.touch });
 
 // Mouse-look only: iOS has no pointer lock, and a finger on the view turns by dragging instead (mobile spec §4.1).
 game.addEventListener('pointerdown', (e) => {
@@ -487,10 +451,7 @@ if (route.kind === 'landing') {
     // `/?bots=N` carries into the room link, so the join that creates the room asks for bots.
     const bots = botsParam(location.search);
     history.pushState(null, '', `/r/${roomId}${bots ? `?bots=${bots}` : ''}`);
-    stopLandingShow?.();
-    stopLandingShow = null;
-    landingVacuum = null;
-    showStill(false);
+    screen.showLobbyPicture();
     openLobby(roomId);
   });
 } else if (route.kind === 'invalid') {
@@ -544,7 +505,7 @@ function openLobby(roomId: string): void {
       closeLobby();
       stopMetering();
       meter.dispose();
-      startFrames();
+      screen.runRoom(frame);
       joinRoom(roomId, name, avatar, local, audioCtx);
     },
   });
@@ -608,7 +569,7 @@ function chooseWhatToReceive(s: Session, now: number, hidden: boolean): void {
     now,
     hidden,
     player,
-    fov: fb.fov,
+    fov: screen.fb.fov,
     map,
     maxDistance: audio?.settings().max ?? DEFAULT_AUDIO_SETTINGS.max,
     peers,
@@ -654,9 +615,9 @@ function frame(dt: number): void {
   }
   const drawStart = performance.now();
   const shown = describeScene(drawStart);
-  renderView(fb, shown, seen);
-  gameCtx.putImageData(image, 0, 0);
-  renderHud(hudCtx, fb, shown, automapVisible);
+  renderView(screen.fb, shown, seen);
+  screen.present();
+  renderHud(hudCtx, screen.fb, shown, automapVisible);
   const drawnAt = performance.now();
   // dt comes from rAF's timestamps, which fall on the screen's refreshes.
   frameRateMeter.frame(drawnAt, dt * 1000, drawnAt - drawStart);
@@ -732,50 +693,10 @@ function whatYouHold(now: number): InYourHands {
   return yourHands;
 }
 
-// Stills and the landing show.
-
-/** One still from the renderer: the title picture on the landing page, the same corridor without the title behind
- * the lobby. The room loop starts on Join. */
-function showStill(logo: boolean): void {
-  still = { logo };
-  drawStill(logo);
-}
-
-function drawStill(logo: boolean): void {
-  renderLandingScene(fb, { logo, lights: flags.lights, vacuum: landingVacuum });
-  gameCtx.putImageData(image, 0, 0);
-}
-
-/**
- * The landing show (landing vacuum spec §2): the title picture redrawn with the robot vacuum, which comes out after
- * 10 s. Its own small loop, not the room loop, and no input reaches it.
- */
-function startLandingShow(): void {
-  const show = createLandingShow();
-  const vacuum: VoxelInstance = { model: VACUUM_MODEL, ...LANDING_PARK };
-  landingVacuum = vacuum;
-  /** The buffer last drawn into: a new one (a resize) needs the picture even if the robot stood still. */
-  let drawnInto: Framebuffer | null = null;
-  stopLandingShow = startLoop((dt) => {
-    show.advance(dt);
-    // Only the robot moves: while it waits, scans or pauses, the last picture stands.
-    if (show.poseInto(vacuum) || drawnInto !== fb) {
-      drawnInto = fb;
-      drawStill(true);
-    }
-  });
-}
-
-function startFrames(): void {
-  looping = true;
-  startLoop(frame);
-}
-
 if (route.kind === 'invalid') {
-  startFrames();
+  screen.runRoom(frame);
+} else if (route.kind === 'landing') {
+  screen.showTitle();
 } else {
-  showStill(route.kind === 'landing');
-  if (route.kind === 'landing' && !flags.reducedMotion) {
-    startLandingShow();
-  }
+  screen.showLobbyPicture();
 }
