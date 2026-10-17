@@ -5,6 +5,7 @@ import { frameRateBand, type RenderLoad, renderLoadBand } from '../game/frame-ra
 import type { FacesSent } from '../media/transport';
 import { type BoomboxPanelOptions, showBoomboxPanel } from './boombox-panel';
 import { normalizeRenderSettings, type RenderMode, type RenderSettings } from './render-settings';
+import { el } from './screens';
 
 export interface AudioPanelOptions {
   /** Frames per second, or null before it is measured; refreshed while the panel is open. */
@@ -31,15 +32,6 @@ const FACE_SIZES: readonly (keyof FacesSent)[] = [256, 128, 64];
 const REFRESH_MS = 200;
 const timers = new WeakMap<HTMLElement, ReturnType<typeof setInterval>>();
 
-function make<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  props: Record<string, string> = {}
-): HTMLElementTagNameMap[K] {
-  const node: HTMLElementTagNameMap[K] = document.createElement(tag);
-  Object.assign(node, props);
-  return node;
-}
-
 export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null): void {
   const existing = root.querySelector<HTMLElement>(':scope > .audio-panel');
   if (existing) {
@@ -54,13 +46,13 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
     return;
   }
 
-  const panel = make('div', { className: 'audio-panel' });
+  const panel = el('div', { className: 'audio-panel' });
   // The renderer on the left; the boombox's controls on the right while it plays.
-  const renderer = make('div', { className: 'renderer' });
-  const slot = make('div', { className: 'boombox-slot' });
-  const rate = make('span');
-  const renderTime = make('span');
-  const dots = FACE_SIZES.map((size) => make('span', { textContent: String(size) }));
+  const renderer = el('div', { className: 'renderer' });
+  const slot = el('div', { className: 'boombox-slot' });
+  const rate = el('span');
+  const renderTime = el('span');
+  const dots = FACE_SIZES.map((size) => el('span', { textContent: String(size) }));
   const refresh = () => {
     const fps = opts.frameRate();
     rate.textContent = fps === null ? '–' : `${fps} fps`;
@@ -73,19 +65,19 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
       dots.at(i)?.classList.toggle('on', sent[size]);
     }
   };
-  const frameRateRow = make('div', { className: 'frame-rate' });
+  const frameRateRow = el('div', { className: 'frame-rate' });
   frameRateRow.append('Frame rate ', rate);
-  const renderLoadRow = make('div', { className: 'render-load' });
+  const renderLoadRow = el('div', { className: 'render-load' });
   renderLoadRow.append('Render time', renderTime);
-  const dotBox = make('span', { className: 'dots' });
+  const dotBox = el('span', { className: 'dots' });
   dotBox.append(...dots);
-  const faceRow = make('div', { className: 'face-sent' });
+  const faceRow = el('div', { className: 'face-sent' });
   faceRow.append('Face sent', dotBox);
   renderer.append(
     frameRateRow,
     renderLoadRow,
     faceRow,
-    make('h2', { textContent: 'Renderer' }),
+    el('h2', { textContent: 'Renderer' }),
     lightingRow(opts.render)
   );
   refresh();
@@ -97,16 +89,16 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
 
 function lightingRow(opts: AudioPanelOptions['render']): HTMLElement {
   let current = opts.settings;
-  const mode = make('select');
+  const mode = el('select');
   for (const [value, text] of MODES) {
-    mode.append(make('option', { value, textContent: text }));
+    mode.append(el('option', { value, textContent: text }));
   }
   mode.value = current.mode;
   mode.addEventListener('change', () => {
     current = normalizeRenderSettings({ ...current, mode: mode.value });
     opts.onChange(current);
   });
-  const row = make('label');
+  const row = el('label');
   row.append('Lighting', mode);
   return row;
 }

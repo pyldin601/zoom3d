@@ -91,19 +91,23 @@ export interface MediaControls {
   onMic(on: boolean): boolean;
 }
 
-/**
- * Makes `button` a mic or cam toggle. `icon` draws the device icon in it; the self-view shows your face instead, and
- * a hover hint with what a click will do.
- */
+interface ToggleOptions {
+  kind: 'cam' | 'mic';
+  label: string;
+  on: boolean;
+  available: boolean;
+  /** Resolves to whether it is on now: the handler has the last word. */
+  onChange(on: boolean): boolean | Promise<boolean>;
+  /** The mic button shows the device icon; your own circle shows your face, with a hover hint of what a click does. */
+  look: 'icon' | 'hint';
+}
+
+/** Makes `button` a mic or cam toggle. */
 function makeToggle(
   button: HTMLButtonElement,
-  kind: 'cam' | 'mic',
-  label: string,
-  on: boolean,
-  available: boolean,
-  onChange: (on: boolean) => boolean | Promise<boolean>,
-  icon: boolean
-): void {
+  { kind, label, on: startsOn, available, onChange, look }: ToggleOptions
+) {
+  let on = startsOn;
   button.type = 'button';
   button.disabled = !available;
   button.dataset.control = kind;
@@ -112,7 +116,7 @@ function makeToggle(
     button.setAttribute('aria-label', available ? `${label} ${on ? 'on' : 'off'}` : `No ${label.toLowerCase()}`);
     button.setAttribute('aria-pressed', String(on));
     button.classList.toggle('off', !on);
-    if (icon) {
+    if (look === 'icon') {
       button.replaceChildren(deviceIcon(kind, !on));
     } else {
       slot(button, 'hint', 'span').replaceChildren(deviceIcon(kind, on));
@@ -130,10 +134,22 @@ function makeToggle(
 
 /** Bottom right: a round mic button, and your own circle, which turns the camera off and on when clicked. */
 export function showMediaControls(root: HTMLElement, controls: MediaControls): void {
-  const mic = slot(root, 'mic-toggle', 'button');
-  makeToggle(mic, 'mic', 'Mic', controls.mic, controls.micAvailable, controls.onMic, true);
-  const cam = slot(root, 'selfview', 'button');
-  makeToggle(cam, 'cam', 'Cam', controls.cam, controls.camAvailable, controls.onCam, false);
+  makeToggle(slot(root, 'mic-toggle', 'button'), {
+    kind: 'mic',
+    label: 'Mic',
+    on: controls.mic,
+    available: controls.micAvailable,
+    onChange: controls.onMic,
+    look: 'icon',
+  });
+  makeToggle(slot(root, 'selfview', 'button'), {
+    kind: 'cam',
+    label: 'Cam',
+    on: controls.cam,
+    available: controls.camAvailable,
+    onChange: controls.onCam,
+    look: 'hint',
+  });
 }
 
 const BANNER_MS = 8000;
