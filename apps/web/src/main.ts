@@ -1,7 +1,7 @@
 // The page: the landing picture, the lobby, then the room loop. It wires the modules together and owns the page's
 // state; what can be pure lives in the modules (the other people in game/remote-world.ts, the room's keys in
 // input/room-keys.ts, the drink key in input/drink-key.ts).
-import { type HeldItem, LEVEL1, newRoomId, parseMap, spawnPoint, stepPlayer } from '@zoom3d/shared';
+import { type HeldItem, LEVEL1, newRoomId, parseMap } from '@zoom3d/shared';
 import { preferPlayAndRecord } from './audio/audio-session';
 import { HIDDEN_TICK_MS, startHiddenTicker } from './audio/ticker';
 import { createFrameRateMeter } from './game/frame-rate';
@@ -9,6 +9,7 @@ import { findPageElements, pageStorage, readPageFlags } from './game/page';
 import { createRemoteWorld, type PeerMedia } from './game/remote-world';
 import { isConnected, joinRoom, type Room } from './game/room';
 import { createScreen } from './game/screen';
+import { createYou } from './game/you';
 import { createDrinkKey } from './input/drink-key';
 import { createInput } from './input/keyboard';
 import { lockPointer } from './input/pointer-lock';
@@ -21,12 +22,8 @@ import { createLocalMedia, type LocalMediaController } from './media/local-media
 import { loadMediaPrefs, saveMediaPrefs } from './media/media-prefs';
 import { createOwnGlowSampler } from './media/own-glow';
 import { createSubscription } from './media/subscription';
-import { createBob } from './renderer/bob';
-import { type InYourHands, type RoomScene, renderHud, renderView } from './renderer/frame';
-import type { GlowSource } from './renderer/glow';
+import { type RoomScene, renderHud, renderView } from './renderer/frame';
 import { bakeRoomLightingOnce } from './renderer/room-lighting';
-import { createGestureClock } from './renderer/sip';
-import { ringRgb } from './renderer/sprites';
 import { makeTextures } from './renderer/textures';
 import { flushOnHide, initAnalytics, track } from './telemetry/analytics';
 import { mediaOutcome } from './telemetry/onboarding';
@@ -65,29 +62,19 @@ const textures = makeTextures(1);
 const roomLighting = bakeRoomLightingOnce(map, textures, flags.lights);
 /** The renderer's console options (the lighting mode), kept per browser. */
 let renderSettings = loadRenderSettings(pageStorage());
-/** Your own disc as a glow source, moved to you each frame. */
-const selfDisc = { x: 0, y: 0, face: null, color: 0 };
-/** Your face's average colour while the camera is on, null otherwise; set once local media exists. */
-let ownGlowColour: (now: number) => number | null = () => null;
 const screen = createScreen(page, flags);
 /** Counts every drawn room frame and times its drawing; the backtick panel shows the rate and the render time. */
 const frameRateMeter = createFrameRateMeter();
 
 // You.
 
-const player = spawnPoint(map, Math.random);
-const selfBob = createBob();
+const you = createYou(map, Math.random);
+const { player } = you;
 const touch = createTouchInput({ surface: game, win: window, doc: document, surfaceWidth: () => game.clientWidth });
 const input = createInput(window, document, touch);
-/** What the local player holds, drawn in first person. */
-let ownHeld: HeldItem | null = null;
-/** Whether our boombox is playing, drawn in first person. */
-let ownBoombox = false;
-/** The local player's sip or cheers, on the performance.now() clock (held items spec §2.3–2.4). */
-const ownGesture = createGestureClock();
 /** The held drink's key or touch button: a tap sips, a long press cheers (held items spec §2.4). */
 const drinkKey = createDrinkKey({
-  gesture: ownGesture,
+  gesture: you.gesture,
   // Nothing during a reconnect: the others would never see it.
   canGesture: inRoom,
   onGesture(kind) {
@@ -121,17 +108,13 @@ window.addEventListener('pagehide', () => {
   flushOnHide();
 });
 
-/** The one path for changing the drink in hand, from a number key. */
+/** The one path for changing the drink in hand, from a number key or the touch tray. */
 function chooseHeld(item: HeldItem | null): void {
-  if (item === ownHeld) {
+  if (!you.takeDrink(item)) {
     return;
   }
-  ownHeld = item;
   drinkKey.cancel();
   refreshTouchControls();
-  if (item === null) {
-    ownGesture.cancel();
-  }
   saveHeld(pageStorage(), item);
   room?.session.setHeld(item);
   if (item !== null) {
@@ -203,7 +186,7 @@ function onRoomKey(key: RoomKey, e: KeyboardEvent): void {
     case 'drink':
       // 1–3 pick a drink, 0 puts it down; the drink in hand's own key sips or cheers it.
       e.preventDefault();
-      if (heldKeyAction(key.item, ownHeld) === 'pick') {
+      if (heldKeyAction(key.item, you.drink) === 'pick') {
         chooseHeld(key.item);
       } else {
         drinkKey.down(e.timeStamp, key.code);
@@ -237,8 +220,8 @@ function showTouch(): void {
     return;
   }
   touchControls = showTouchControls(ui, {
-    held: ownHeld,
-    boombox: ownBoombox,
+    held: you.drink,
+    boombox: you.boombox,
     map: automapVisible,
     onPick(item) {
       if (inRoom()) {
@@ -262,7 +245,7 @@ function showTouch(): void {
   touch.attachPad(touchControls.pad);
 }
 function refreshTouchControls(): void {
-  touchControls?.update({ held: ownHeld, boombox: ownBoombox, map: automapVisible });
+  touchControls?.update({ held: you.drink, boombox: you.boombox, map: automapVisible });
 }
 window.addEventListener('pointerdown', (e) => {
   if (e.pointerType === 'touch') {
@@ -302,7 +285,7 @@ function enterRoom(
   saveName(pageStorage(), name);
   saveAvatar(pageStorage(), avatar);
   clearScreen(ui);
-  ownHeld = loadHeld(pageStorage());
+  you.takeDrink(loadHeld(pageStorage()));
   const joined = joinRoom({
     roomId,
     name,
@@ -313,10 +296,10 @@ function enterRoom(
     player,
     mediaContainer: page.media,
     localMediaContainer: page.localMedia,
-    drink: ownHeld,
+    drink: you.drink,
     boomboxVolume: loadBoomboxVolume(pageStorage()),
     onBoomboxChange(on) {
-      ownBoombox = on;
+      you.boombox = on;
       refreshTouchControls();
       backtickConsole.refreshBoombox();
     },
@@ -405,7 +388,7 @@ function openLobby(roomId: string): void {
   local.subscribe(() => {
     camOn = local.state().cam;
   });
-  ownGlowColour = (now) => (camOn ? ownFace.colour(now) : null);
+  you.useCameraColour((now) => (camOn ? ownFace.colour(now) : null));
   track({ name: 'lobby_viewed', entry: roomId === hostedRoom ? 'host' : 'invite' });
   void local.ready.then(() => track({ name: 'media_permission', ...mediaOutcome(local.state()) }));
   // Saved for the whole visit, so the room's Cam/Mic buttons are remembered too.
@@ -511,9 +494,7 @@ function stepSelf(dt: number): void {
   if (!inRoom()) {
     return;
   }
-  player.angle += mouseTurn;
-  stepPlayer(map, player, input.state(), dt, player);
-  selfBob.update(player.x, player.y, dt);
+  you.walk(map, input.state(), mouseTurn, dt);
 }
 
 /** Everyone else and the world objects this frame, their sounds, and the room's status line and head count. */
@@ -528,7 +509,6 @@ function updateWorld(r: Room, now: number, dt: number): void {
   r.audio.update(now, player, world.positions);
 }
 
-const yourHands: InYourHands = { drink: null, boombox: false, step: selfBob, gesture: ownGesture.pose(0) };
 /** Refilled every frame by describeScene. */
 const scene: RoomScene = {
   map,
@@ -548,28 +528,9 @@ function describeScene(now: number): RoomScene {
   const reflections = litReflections(renderSettings.mode);
   scene.lighting = reflections === null ? null : roomLighting();
   scene.reflections = reflections ?? 'none';
-  scene.yourGlow = yourGlow(now);
-  scene.inYourHands = inRoom() ? whatYouHold(now) : null;
+  scene.yourGlow = you.glow(now, room?.session.selfColor() ?? null);
+  scene.inYourHands = inRoom() ? you.hands(now) : null;
   return scene;
-}
-
-/** Your camera's colour, else your ring's. */
-function yourGlow(now: number): GlowSource | null {
-  const color = room?.session.selfColor();
-  if (!color) {
-    return null;
-  }
-  selfDisc.x = player.x;
-  selfDisc.y = player.y;
-  selfDisc.color = ownGlowColour(now) ?? ringRgb(color);
-  return selfDisc;
-}
-
-function whatYouHold(now: number): InYourHands {
-  yourHands.drink = ownHeld;
-  yourHands.boombox = ownBoombox;
-  yourHands.gesture = ownGesture.pose(now);
-  return yourHands;
 }
 
 if (route.kind === 'invalid') {
