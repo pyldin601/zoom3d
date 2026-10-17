@@ -10,19 +10,31 @@ export interface RemoteMedia {
 }
 
 export function createRemoteMedia(container: HTMLElement): RemoteMedia {
-  const elements = new Map<string, HTMLMediaElement>();
+  const videos = new Map<string, HTMLVideoElement>();
+  const audios = new Map<string, HTMLAudioElement>();
+  const doc = container.ownerDocument;
+
   const detach = (key: string) => {
-    const el = elements.get(key);
+    const el = videos.get(key) ?? audios.get(key);
     if (!el) {
       return;
     }
     el.srcObject = null;
     el.remove();
-    elements.delete(key);
+    videos.delete(key);
+    audios.delete(key);
   };
-  /** Creates (once) and plays the element for `key`; `el` is ready before play() runs. */
-  const play = (key: string, el: HTMLMediaElement, stream: MediaStream) => {
-    if (!elements.has(key)) {
+
+  /** Creates the element for `key` once, then plays `stream` in it. */
+  const playIn = <T extends HTMLMediaElement>(
+    elements: Map<string, T>,
+    key: string,
+    create: () => T,
+    stream: MediaStream
+  ) => {
+    let el = elements.get(key);
+    if (!el) {
+      el = create();
       el.autoplay = true;
       el.muted = true;
       el.dataset.peer = key;
@@ -33,23 +45,25 @@ export function createRemoteMedia(container: HTMLElement): RemoteMedia {
       el.srcObject = stream;
     }
     el.play().catch((err) => console.warn('remote media play failed', key, err));
+    return el;
   };
-  const doc = container.ownerDocument;
+
+  const createVideo = () => {
+    const video = doc.createElement('video');
+    // iOS reads playsinline when play() runs.
+    video.playsInline = true;
+    return video;
+  };
+
   return {
-    attach(peerId, stream) {
-      const el = (elements.get(peerId) as HTMLVideoElement | undefined) ?? doc.createElement('video');
-      // iOS reads playsinline when play() runs.
-      el.playsInline = true;
-      play(peerId, el, stream);
-      return el;
-    },
+    attach: (peerId, stream) => playIn(videos, peerId, createVideo, stream),
     attachAudio(key, stream) {
-      play(key, elements.get(key) ?? doc.createElement('audio'), stream);
+      playIn(audios, key, () => doc.createElement('audio'), stream);
     },
     detach,
     detachAll() {
-      for (const id of [...elements.keys()]) {
-        detach(id);
+      for (const key of [...videos.keys(), ...audios.keys()]) {
+        detach(key);
       }
     },
   };

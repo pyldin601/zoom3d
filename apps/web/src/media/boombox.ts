@@ -1,11 +1,11 @@
 // The local boombox (boombox spec §3): B picks an audio file, which plays once. Its sound goes into
-// Web Audio and splits two ways: a stream track for the mesh, and our own speakers, centred and dry.
+// Web Audio and splits two ways: a stream track sent to the room, and our own speakers, centred and dry.
 
 /** How loud the carrier hears their own music; it's in their hand, not out in the room. */
 export const BOOMBOX_SELF_GAIN = 0.5;
 /**
  * The audio formats every current browser decodes, Safari on iOS included. WebRTC takes any of them: the <audio>
- * element decodes the file and the mesh re-encodes it as Opus. Ogg, Opus and WebM are left out (patchy in Safari).
+ * element decodes the file and WebRTC re-encodes it as Opus. Ogg, Opus and WebM are left out (patchy in Safari).
  * `mimes` are the types systems report for the format, the first being the standard one.
  */
 const FORMATS: { mimes: string[]; exts: string[] }[] = [
@@ -82,26 +82,27 @@ export function createBoombox(opts: BoomboxOptions): Boombox {
   /** Bumped by every start and stop, so a late play() result from an old attempt is ignored. */
   let attempt = 0;
   let track: MediaStreamTrack | null = null;
-  let volume: GainNode | null = null;
-  let level = 1;
+  let volumeNode: GainNode | null = null;
+  let volumeLevel = 1;
   let title: string | null = null;
 
-  const graph = (): MediaStreamTrack | null => {
+  /** The audio graph is built on first use, and once: an element can feed only one MediaElementSource. */
+  const musicTrack = (): MediaStreamTrack | null => {
     if (track) {
       return track;
     }
     const source = ctx.createMediaElementSource(audio);
-    volume = ctx.createGain();
-    volume.gain.value = level;
+    volumeNode = ctx.createGain();
+    volumeNode.gain.value = volumeLevel;
     const stream = ctx.createMediaStreamDestination();
     // One point in the room, panned again by every listener: send mono (spec §5.3).
     stream.channelCount = 1;
     stream.channelCountMode = 'explicit';
     const self = ctx.createGain();
     self.gain.value = BOOMBOX_SELF_GAIN;
-    source.connect(volume);
-    volume.connect(stream);
-    volume.connect(self);
+    source.connect(volumeNode);
+    volumeNode.connect(stream);
+    volumeNode.connect(self);
     self.connect(ctx.destination);
     track = stream.stream.getAudioTracks()[0] ?? null;
     return track;
@@ -128,18 +129,12 @@ export function createBoombox(opts: BoomboxOptions): Boombox {
     }
   };
 
-  input.addEventListener('change', () => {
-    const file = input.files?.[0];
-    // Reset so picking the same file again still fires change.
-    input.value = '';
-    if (!file || state !== 'off' || !isSupported(file)) {
-      return;
-    }
+  const play = (file: File) => {
     state = 'starting';
     title = file.name;
     const mine = ++attempt;
     // Built before play() so the element never sounds outside the graph.
-    const out = graph();
+    const out = musicTrack();
     url = urls.create(file);
     audio.src = url;
     audio.play().then(
@@ -159,6 +154,15 @@ export function createBoombox(opts: BoomboxOptions): Boombox {
         stop();
       }
     );
+  };
+
+  input.addEventListener('change', () => {
+    const file = input.files?.[0];
+    // Reset so picking the same file again still fires change.
+    input.value = '';
+    if (file && state === 'off' && isSupported(file)) {
+      play(file);
+    }
   });
   audio.addEventListener('ended', stop);
   audio.addEventListener('error', stop);
@@ -177,10 +181,10 @@ export function createBoombox(opts: BoomboxOptions): Boombox {
       }
     },
     playing: () => state === 'playing',
-    volume: () => level,
+    volume: () => volumeLevel,
     setVolume(v) {
-      level = Math.min(Math.max(v, 0), 1);
-      volume?.gain.setTargetAtTime(level, ctx.currentTime, VOLUME_TAU);
+      volumeLevel = Math.min(Math.max(v, 0), 1);
+      volumeNode?.gain.setTargetAtTime(volumeLevel, ctx.currentTime, VOLUME_TAU);
     },
     progress() {
       const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
