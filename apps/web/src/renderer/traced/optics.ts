@@ -34,3 +34,24 @@ export function blobWeight(across: number, up: number, radius: number, spreadAcr
   const peak = Math.min(1, (radius * radius) / (2 * Math.sqrt(varianceAcross * varianceUp)));
   return peak * Math.exp(-falloff);
 }
+
+/** The view's axis that lies in a reflection's plane of incidence: up the screen off the floor, across it off a wall. */
+export type InPlaneAxis = 'up' | 'across';
+
+/** How wide (tiles) a reflection cone is across the view and up it. */
+export interface ConeSpread {
+  across: number;
+  up: number;
+}
+
+/**
+ * The widths of a cone `cone` tiles wide across the view and up it, into `out`, seen at `slant` (the cosine between the
+ * view and the surface's normal). Mirror geometry: a microfacet tilted by δ within the plane of incidence turns the
+ * reflected ray by 2δ at any angle, but tilted across that plane by only 2δ × slant. So the cone keeps its width along
+ * `inPlane` and narrows by the slant along the other axis.
+ */
+export function spreadCone(cone: number, slant: number, inPlane: InPlaneAxis, out: ConeSpread): void {
+  const narrowed = cone * slant;
+  out.across = inPlane === 'across' ? cone : narrowed;
+  out.up = inPlane === 'across' ? narrowed : cone;
+}

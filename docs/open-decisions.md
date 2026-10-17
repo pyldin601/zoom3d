@@ -495,6 +495,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Reflections sample what is in front of the wall.** A cone that straddles a wall's foot or top takes the floor or
     ceiling part from the plane in front of that wall. The spike took the ray's own crossing, which lies beyond the
     wall, often in another room, lit by other lamps.
+  - **Reflection cones follow mirror geometry** (owner's review, 2026-10-17): a cone keeps its width (roughness² per
+    tile) within the plane of incidence and narrows by the slant across it. The first build stretched it by 1 / slant
+    instead, so a lamp's floor reflection spread over about 10× too much floor and read as a faint brightening.
   - **Phones are the open check** (spec §4): in a room with 8 people on video the frame-rate meter must stay "good"
     (55 fps). If it doesn't: ¼-resolution reflections and a Worker bake, then decide with the owner. `pnpm bench:traced`
     times the bake and the frame.

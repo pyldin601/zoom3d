@@ -17,12 +17,12 @@ import {
 } from './along-ray';
 import { REFLECTION_SAMPLE_OFFSET, REFLECTION_SCALE, type TracedBuffers } from './buffers';
 import { planeLight, type TracedLightmaps, WALL_HEIGHTS, wallColumnLight } from './lightmaps';
-import { blobWeight } from './optics';
+import { blobWeight, type ConeSpread, type InPlaneAxis, spreadCone } from './optics';
 import { createNearbyPeople, listNearbyPeople, seeDiscSharp } from './people';
 import { faceEntered, texelColumnOf } from './primary';
 import { FACE_NORMAL_X, FACE_NORMAL_Y, FLOOR_MATERIAL, NO_FACE, TRACED_MATERIALS, type TracedWorld } from './world';
 
-/** A cone's stretch along the view stops growing at this slant (the cosine between the view and the surface's normal). */
+/** A cone's narrowing across its plane of incidence stops at this slant (the cosine between the view and the normal). */
 const MIN_SLANT = 0.1;
 /** A lamp's stretch along the ray stops growing at this rise (the sine of the ray's climb to the ceiling). */
 const MIN_RISE = 0.1;
@@ -87,10 +87,10 @@ interface Reflection extends ConeAcrossMap {
   rise: number;
   /** How wide (tiles) the cone grows per tile travelled: the surface's roughness squared. */
   conePerTile: number;
-  /** How squarely the eye's ray meets the surface, held at MIN_SLANT: at a graze the cone stretches by 1 / slant... */
+  /** How squarely the eye's ray meets the surface, held at MIN_SLANT: the cone narrows by it across... */
   slant: number;
-  /** ...along the view (up the screen, off the floor) or across it (off a wall). */
-  stretch: 'along' | 'across';
+  /** ...its plane of incidence, keeping its width along this axis of the view. */
+  inPlane: InPlaneAxis;
   /** The wall the ray meets, `wallS` along it (Infinity where none is in reach). */
   wall: WallSeen;
   wallS: number;
@@ -104,7 +104,7 @@ interface Reflection extends ConeAcrossMap {
 const column: ReflectingColumn = { col: 0, rayX: 0, rayY: 0, run: 1, distance: 0, face: 0, facing: 0 };
 const columnWall = createWallSeen();
 const farWall = createWallSeen();
-const offFloor = createReflection(columnWall, 'along', FLOOR_CONE_PER_TILE);
+const offFloor = createReflection(columnWall, 'up', FLOOR_CONE_PER_TILE);
 /** Its cone's width per tile is the column's wall's, set per column. */
 const offWall = createReflection(farWall, 'across', 0);
 
@@ -116,6 +116,7 @@ const nearbyPeople = createNearbyPeople();
 /** What a reflection sample sees, linear light, and one thing in it before it is weighed in. */
 const seen = { red: 0, green: 0, blue: 0 };
 const part = { red: 0, green: 0, blue: 0 };
+const spread: ConeSpread = { across: 0, up: 0 };
 const planeSample = new Float32Array(3);
 
 /**
@@ -184,7 +185,7 @@ function createWallSeen(): WallSeen {
   return { tile: 0, texX: 0, albedo: NO_TEXTURE, mean: NO_TEXTURE, light: new Float32Array(WALL_HEIGHTS * 3) };
 }
 
-function createReflection(wall: WallSeen, stretch: Reflection['stretch'], conePerTile: number): Reflection {
+function createReflection(wall: WallSeen, inPlane: InPlaneAxis, conePerTile: number): Reflection {
   return {
     x: 0,
     y: 0,
@@ -196,7 +197,7 @@ function createReflection(wall: WallSeen, stretch: Reflection['stretch'], conePe
     rise: 0,
     conePerTile,
     slant: 1,
-    stretch,
+    inPlane,
     wall,
     wallS: 0,
     spreadPerS: 0,
@@ -297,9 +298,9 @@ function mirrorOffWall(buffers: TracedBuffers, world: TracedWorld, maps: TracedL
 
   const roughness = (TRACED_MATERIALS[columnWall.tile] ?? FLOOR_MATERIAL).roughness;
   offWall.conePerTile = roughness * roughness;
-  // The things the cone can reach to the side, stretched across as at eye level: up to 7% more at the frame's top or
+  // The things the cone can reach to the side, as wide across as at eye level: up to 7% more at the frame's top or
   // bottom, where the ray climbs or falls, which three spreads leave room for.
-  offWall.spreadPerS = (offWall.conePerTile * run) / Math.max(MIN_SLANT, column.facing / run);
+  offWall.spreadPerS = offWall.conePerTile * run;
   findThingsAlong(offWall);
 }
 
@@ -379,8 +380,8 @@ function seeRoom(reflection: Reflection, world: TracedWorld, maps: TracedLightma
   const toWall = Math.max(0, reflection.wallS - fromS);
   const coneAtWall = conePerTile * toWall * run;
   const heightAtWall = fromHeight + rise * toWall;
-  // Stretched up the screen, the cone straddles a wall's foot or top over more of its height.
-  const edge = Math.max(MIN_EDGE_TILES, reflection.stretch === 'along' ? coneAtWall / reflection.slant : coneAtWall);
+  spreadCone(coneAtWall, reflection.slant, reflection.inPlane, spread);
+  const edge = Math.max(MIN_EDGE_TILES, spread.up);
   const wallShare = wall.tile === 0 ? 0 : wallShareAt(rise, heightAtWall, edge);
   clearSeen();
   if (wallShare > 0) {
@@ -477,17 +478,18 @@ function seePlane(
 
 /**
  * Adds to `seen` the lamps `reflection`'s cone meets where it reaches the ceiling, at `ceilingS` along its ray, with
- * `share` of it getting there: each disc against the cone's footprint, as a blob. The footprint is as wide as the cone
- * has grown, and stretched along the ray by how low the ray comes in (1 / its rise), which turns a lamp far down a
- * corridor into a streak.
+ * `share` of it getting there: each disc against the cone's footprint, as a blob. The footprint is the cone's spread,
+ * its width up the view stretched along the ray by how low the ray comes in (1 / its rise), which turns a lamp far down
+ * a corridor into a streak.
  */
 function addLampsAtCeiling(world: TracedWorld, reflection: Reflection, ceilingS: number, share: number): void {
-  const { fromS, rise, run, slant, lamps } = reflection;
+  const { fromS, rise, run, lamps } = reflection;
   const length = Math.sqrt(run * run + rise * rise);
   const cone = reflection.conePerTile * (ceilingS - fromS) * length;
   const comesIn = Math.max(MIN_RISE, rise / length);
-  const spreadAcross = reflection.stretch === 'across' ? cone / slant : cone;
-  const spreadAlong = (reflection.stretch === 'along' ? cone / slant : cone) / comesIn;
+  spreadCone(cone, reflection.slant, reflection.inPlane, spread);
+  const spreadAcross = spread.across;
+  const spreadAlong = spread.up / comesIn;
   let lampShare = 0;
   for (let at = 0; at < lamps.count; at++) {
     const lampS = lamps.s[at] ?? 0;
@@ -504,11 +506,11 @@ function addLampsAtCeiling(world: TracedWorld, reflection: Reflection, ceilingS:
 
 /**
  * Lays over `seen` the people `reflection`'s cone meets, far to near, each covering what is behind: sharp while the cone
- * is narrower than SHARP_CONE_RADII of a disc's radius, else the disc blurred by the cone (stretched as for the lamps),
- * a blob of what a blurred disc shows.
+ * is narrower than SHARP_CONE_RADII of a disc's radius, else the disc blurred by the cone (spread as for the lamps), a
+ * blob of what a blurred disc shows.
  */
 function seePeople(reflection: Reflection): void {
-  const { fromS, fromHeight, rise, run, slant, people } = reflection;
+  const { fromS, fromHeight, rise, run, slant, inPlane, people } = reflection;
   if (people.count === 0) {
     return;
   }
@@ -525,9 +527,8 @@ function seePeople(reflection: Reflection): void {
     const up = fromHeight + rise * (personS - fromS) - (nearbyPeople.height[person] ?? 0);
     const cone = conePerS * (personS - fromS);
     if (cone >= SHARP_CONE_RADII * radius) {
-      const spreadAcross = reflection.stretch === 'across' ? cone / slant : cone;
-      const spreadUp = reflection.stretch === 'along' ? cone / slant : cone;
-      layBlurredDiscOver(person, blobWeight(across, up, radius, spreadAcross, spreadUp));
+      spreadCone(cone, slant, inPlane, spread);
+      layBlurredDiscOver(person, blobWeight(across, up, radius, spread.across, spread.up));
     } else if (across * across + up * up < radius * radius) {
       seeDiscSharp(nearbyPeople, person, across / radius, up / radius, seen);
     }

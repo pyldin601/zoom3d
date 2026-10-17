@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { blobWeight, fresnel } from './optics';
+import { blobWeight, type ConeSpread, fresnel, spreadCone } from './optics';
 import { TRACED_MATERIALS, type TracedMaterial } from './world';
 
 const ROUND_THING_RADIUS = 0.35;
@@ -107,5 +107,24 @@ describe('blobWeight', () => {
     for (const spread of [0, 0.001, 0.01, 0.1]) {
       expect(blobWeight(0, 0, 0.18, spread, spread)).toBeLessThanOrEqual(1);
     }
+  });
+});
+
+describe('spreadCone, by mirror geometry', () => {
+  const CONE = 0.4;
+  const SLANTS = [1, 0.7, 0.3, 0.1];
+
+  test.each(SLANTS)('off the floor it keeps its width up the view and narrows across it by the slant (%f)', (slant) => {
+    const spread: ConeSpread = { across: 0, up: 0 };
+    spreadCone(CONE, slant, 'up', spread);
+    expect(spread.up).toBe(CONE);
+    expect(spread.across).toBeCloseTo(CONE * slant, 12);
+  });
+
+  test.each(SLANTS)('off a wall it keeps its width across the view and narrows up it by the slant (%f)', (slant) => {
+    const spread: ConeSpread = { across: 0, up: 0 };
+    spreadCone(CONE, slant, 'across', spread);
+    expect(spread.across).toBe(CONE);
+    expect(spread.up).toBeCloseTo(CONE * slant, 12);
   });
 });

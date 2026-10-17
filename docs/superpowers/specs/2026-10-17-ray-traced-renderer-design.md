@@ -121,9 +121,13 @@ floor keeps the column's own direction (no extra walk). Only heights differ per 
 
   Tint is how much a reflection takes on the surface's own colour (its average albedo at full brightness): wood glows
   golden, blue brick shines bluish. It matches what the current renderer does with its per-material tint.
-- **A rough surface reflects a cone, not a ray.** The cone is roughness² wide per tile travelled, stretched by
-  1 / slant along the view at grazing angles (slant floored at 0.1): up the screen off the floor, across it off a wall.
-  This is what turns a lamp into a streak along a glossy floor.
+- **A rough surface reflects a cone, not a ray.** The cone is roughness² wide per tile travelled. By mirror geometry
+  it keeps that width within the plane of incidence and narrows by the slant across it (slant floored at 0.1): a
+  microfacet tilted by δ within that plane turns the reflected ray by 2δ at any angle, tilted across it by only
+  2δ × slant. Off the floor the cone keeps its width up the screen and narrows sideways; off a wall it keeps its width
+  across the screen and narrows up it. Its width up the screen, reaching the ceiling at a low rise, is what turns a lamp
+  into a streak along a glossy floor (owner's review, 2026-10-17: the first build stretched by 1 / slant instead, which
+  spread a lamp's floor reflection over about 10× too much floor).
 - People meet the cone in closed form, as a Gaussian blob (the disc blurred by the cone, as bright overall as the
   disc). While the cone is narrower than 0.3 of a disc's radius the face is shown sharp, with its texture.
 - A lamp meets it where the cone reaches the ceiling: the disc against the cone's footprint there, stretched along the

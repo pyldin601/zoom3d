@@ -186,9 +186,37 @@ describe('reflections on LEVEL1', () => {
       return sampleShowing(fb, BLUE_CORRIDOR, nearerLamp.x, nearerLamp.y, -1);
     }
 
-    // The floor is satin: off its bottom rows the cone reaches the ceiling about a tile wide and, stretched by 1 / slant
-    // and 1 / rise, 9 to 11 tiles long. So the streak runs down the floor, brightest nearest the eye where the cone is
-    // smallest, with no peak of its own at the image. What it must not have is a box blur's plateau or edges.
+    /**
+     * Measured before the cone took mirror geometry (2026-10-17), when it was stretched by 1 / slant up the screen: the
+     * light over the 9 sample rows round the image down its column, and the samples its row took to fall to half.
+     */
+    const STRETCHED_CONE = { lightRoundImage: 1.024, samplesToHalf: 40 };
+
+    test('the image reads as a reflection: 5 times the light round it that the stretched cone gave, and narrower', () => {
+      draw(fb, BLUE_CORRIDOR, traced);
+      const { sampleCol, sampleRow } = imageSample();
+      let lightRoundImage = 0;
+      for (let row = sampleRow - 4; row <= sampleRow + 4; row++) {
+        lightRoundImage += sum(reflectedAt(sampleCol, row));
+      }
+      expect(lightRoundImage).toBeGreaterThan(5 * STRETCHED_CONE.lightRoundImage);
+      const middle = sum(reflectedAt(sampleCol, sampleRow));
+      for (const side of [-1, 1]) {
+        let samplesToHalf = 1;
+        while (
+          samplesToHalf < STRETCHED_CONE.samplesToHalf &&
+          sum(reflectedAt(sampleCol + side * samplesToHalf, sampleRow)) > middle / 2
+        ) {
+          samplesToHalf++;
+        }
+        expect(samplesToHalf, `to the ${side < 0 ? 'left' : 'right'}`).toBeLessThan(STRETCHED_CONE.samplesToHalf);
+      }
+    });
+
+    // The floor is satin: off its bottom rows the cone reaches the ceiling about a tile wide. Narrowed across the view by
+    // the slant it is 0.36 tiles wide there; it keeps its width up the view, which the low rise stretches to 3 to 3.5
+    // tiles along the ray. So the streak runs down the floor, brightest nearest the eye where the cone is smallest, with
+    // no peak of its own at the image. What it must not have is a box blur's plateau or edges.
     test('down its column it brightens steadily towards the eye, through the image to the bottom of the frame', () => {
       draw(fb, BLUE_CORRIDOR, traced);
       const { sampleCol, sampleRow } = imageSample();
