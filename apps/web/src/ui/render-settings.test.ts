@@ -3,9 +3,11 @@ import {
   DEFAULT_RENDER_SETTINGS,
   litReflections,
   loadRenderSettings,
+  RENDER_MODE_NAMES,
   RENDER_MODES,
   RENDER_SETTINGS_KEY,
   saveRenderSettings,
+  tracesRays,
 } from './render-settings';
 
 function memory() {
@@ -27,11 +29,16 @@ test('every mode is kept as it was saved', () => {
     saveRenderSettings(store, { mode });
     expect(loadRenderSettings(store)).toEqual({ mode });
   }
-  expect(RENDER_MODES).toEqual(['flat', 'shadows', 'reflections', 'reflections-only']);
+  expect(RENDER_MODES).toEqual(['flat', 'shadows', 'reflections', 'reflections-only', 'traced']);
 });
 
 test('each mode picks what the lit renderer reflects; flat is drawn unlit', () => {
-  expect(RENDER_MODES.map(litReflections)).toEqual([null, 'none', 'both', 'only']);
+  expect(RENDER_MODES.map(litReflections)).toEqual([null, 'none', 'both', 'only', 'both']);
+});
+
+test('only the traced mode traces rays', () => {
+  expect(RENDER_MODES.filter(tracesRays)).toEqual(['traced']);
+  expect(RENDER_MODE_NAMES.traced).toBe('Ray traced');
 });
 
 test('round-trips through storage', () => {
