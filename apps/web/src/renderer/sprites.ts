@@ -20,7 +20,7 @@ import {
 } from './held-items';
 import type { Lighting } from './lighting';
 import { type HeldPose, poseBlend } from './sip';
-import { renderVoxel, type VoxelInstance, voxelDepth } from './voxels';
+import { renderVoxel, type VoxelInstance, type VoxelLight, voxelDepth } from './voxels';
 
 /** In tiles. */
 export const AVATAR_RADIUS = 0.35;
@@ -80,6 +80,8 @@ export interface PeopleAndObjects {
   objects: readonly VoxelInstance[];
   /** null draws the objects unlit. */
   lighting: Lighting | null;
+  /** Lights the objects in place of `lighting` when set: renderView makes it from the traced room. */
+  objectLight?: VoxelLight | null;
 }
 
 export interface Projection {
@@ -390,8 +392,8 @@ function drawFarToNear(fb: Framebuffer, view: View, scene: PeopleAndObjects): vo
 const depthOfVoxel = (k: number) => voxelDepths[voxelOrder[k] as number] as number;
 
 /** Draws the `k`th object in voxelOrder. */
-function drawVoxel(fb: Framebuffer, view: View, { objects, lighting }: PeopleAndObjects, k: number): void {
-  renderVoxel(fb, view, objects[voxelOrder[k] as number] as VoxelInstance, lighting);
+function drawVoxel(fb: Framebuffer, view: View, { objects, lighting, objectLight }: PeopleAndObjects, k: number): void {
+  renderVoxel(fb, view, objects[voxelOrder[k] as number] as VoxelInstance, lighting, objectLight);
 }
 
 /** One avatar: its disc, then the drink and boombox it carries in front of it. */
