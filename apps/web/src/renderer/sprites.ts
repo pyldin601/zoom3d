@@ -25,7 +25,7 @@ import { renderVoxel, type VoxelInstance, voxelDepth } from './voxels';
 /** In tiles. */
 export const AVATAR_RADIUS = 0.35;
 /** The face fills the disc out to this fraction of its radius; the ring is the rest. */
-const FACE_RADIUS = 0.85;
+export const FACE_RADIUS = 0.85;
 /** A flat disc's ring shows at 70% of its colour, like an unlit y-side wall (lighting.ts SIDE_SHADE). */
 const FLAT_RING_SHADE = 0.7;
 /** How far towards white the ring goes while its person talks at full loudness. */

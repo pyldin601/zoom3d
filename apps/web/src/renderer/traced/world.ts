@@ -190,7 +190,8 @@ function linearRgbOf(packed: number): Float32Array {
   );
 }
 
-function linearOfSrgbChannel(byte: number): number {
+/** An sRGB channel's byte (0..255) as linear light, 0..1. */
+export function linearOfSrgbChannel(byte: number): number {
   const encoded = byte / 255;
   return encoded <= 0.04045 ? encoded / 12.92 : ((encoded + 0.055) / 1.055) ** 2.4;
 }
