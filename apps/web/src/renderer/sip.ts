@@ -59,6 +59,11 @@ export interface HeldPose {
   wobble: number;
 }
 
+/** A coordinate of the held drink in `pose`: `resting`, moved towards `atMouth` by a sip and `raised` by a cheers. */
+export function poseBlend(pose: HeldPose, resting: number, atMouth: number, raised: number): number {
+  return resting + (atMouth - resting) * pose.sip + (raised - resting) * pose.cheers;
+}
+
 export interface GestureClock {
   /** Starts a gesture at `now` unless one is still playing; true if it started. */
   start(kind: Gesture, now: number): boolean;

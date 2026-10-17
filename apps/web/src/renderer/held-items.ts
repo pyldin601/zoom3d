@@ -16,7 +16,7 @@ export const HELD_TOP = -0.3;
 export const CHEERS_LEFT = 0.35;
 export const CHEERS_TOP = 1.15;
 export const CHEERS_WOBBLE = 0.06;
-/** The framed 256² face texture spans the disc's inner circle, 0.85 r in radius (sprites.ts `RING`). */
+/** The framed 256² face texture spans the disc's inner circle, 0.85 r in radius (sprites.ts `FACE_RADIUS`). */
 const FACE_SPAN = 1.7;
 /**
  * The mouth of a framed face, in disc radii below the disc centre (held items spec §2.3): face framing puts
