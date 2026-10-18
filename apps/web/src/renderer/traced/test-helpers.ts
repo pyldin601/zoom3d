@@ -74,8 +74,8 @@ function reflectionSamples(): Float32Array[] {
     buffers.reflectedSurface,
     buffers.reflectedKeep,
     buffers.reflectedOver,
-    buffers.coneAcross,
-    buffers.coneUp,
+    buffers.tentAcross,
+    buffers.tentUp,
     buffers.blurredSurface,
   ];
 }

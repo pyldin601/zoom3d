@@ -66,9 +66,12 @@ export interface TracedBuffers {
   reflectedOver: Float32Array;
   /** Per sample, the surface its cone leaves from (surface-blur.ts: NO_SURFACE, FLOOR_SURFACE or a wall plane). */
   surfaceKind: Int32Array;
-  /** Per sample, the cone's deviation where it meets the surfaces, in samples along the row and along the column. */
-  coneAcross: Float32Array;
-  coneUp: Float32Array;
+  /**
+   * Per sample, the half width (samples) of the tents along the row and along the column that blur its surfaces: as
+   * wide as the cone where it meets them (surface-blur.ts).
+   */
+  tentAcross: Float32Array;
+  tentUp: Float32Array;
   /** `reflectedSurface` blurred by the cone, and the line the blur works along. */
   blurredSurface: Float32Array;
   blurLine: BlurLine;
@@ -124,8 +127,8 @@ function createTracedBuffers(width: number, height: number, fov: number): Traced
     reflectedKeep: new Float32Array(samples),
     reflectedOver: new Float32Array(samples * 3),
     surfaceKind: new Int32Array(samples),
-    coneAcross: new Float32Array(samples),
-    coneUp: new Float32Array(samples),
+    tentAcross: new Float32Array(samples),
+    tentUp: new Float32Array(samples),
     blurredSurface: new Float32Array(samples * 3),
     blurLine: createBlurLine(Math.max(reflectedWidth, reflectedHeight)),
     widenedReflection: new Float32Array(width * reflectedHeight * 3),

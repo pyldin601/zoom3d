@@ -10,7 +10,7 @@ import { REFLECTION_SAMPLE_OFFSET, REFLECTION_SCALE } from './buffers';
 import { lastTracedBuffers, renderTraced, type TracedLighting } from './frame';
 import { createLightmaps } from './lightmaps';
 import { FACE_REFLECTION_GAIN } from './people';
-import { blurReflectedSurfaces, FLOOR_SURFACE, NO_SURFACE, wallSurface } from './surface-blur';
+import { blurReflectedSurfaces, FLOOR_SURFACE, NO_SURFACE, TENT_PER_DEVIATION, wallSurface } from './surface-blur';
 import { bakeRoom, drawOverNaN, expectEveryPixelWritten, pixelOf } from './test-helpers';
 import { shownPixel } from './tone';
 import { FACE_SOUTH, linearOfSrgbChannel, TRACED_MATERIALS, type TracedWorld } from './world';
@@ -338,15 +338,18 @@ describe('reflections on LEVEL1', () => {
       const { reflected, reflectedSurface, blurredSurface, reflectedKeep, reflectedOver, surfaceKind } = lit;
       const lampsOverLitRoom = Float32Array.from(reflectedOver);
       // Every sample off a surface is what the people leave of it blurred, plus the lamps and people over it.
+      let composed = 0;
       for (let at = 0; at < reflected.length; at += 97) {
         const sample = Math.floor(at / 3);
         if (surfaceKind.at(sample) === NO_SURFACE) {
           continue;
         }
+        composed++;
         const keeps = reflectedKeep.at(sample) ?? 0;
         const expected = keeps * (blurredSurface.at(at) ?? 0) + (reflectedOver.at(at) ?? 0);
         expect(reflected.at(at), `sample value ${at}`).toBeCloseTo(expected, 6);
       }
+      expect(composed).toBeGreaterThan(1000);
       expect(reflectedSurface.some((light) => light > 0)).toBe(true);
 
       const unlit: TracedLighting = { world: traced.world, maps: createLightmaps(traced.world) };
@@ -354,12 +357,12 @@ describe('reflections on LEVEL1', () => {
       const lampsAlone = lastTracedBuffers();
       expect(lampsAlone.reflectedSurface.every((light) => light === 0)).toBe(true);
       expect(lampsAlone.reflected.reduce((most, light) => Math.max(most, light), 0)).toBeGreaterThan(0.1);
-      for (const [at, light] of lampsAlone.reflected.entries()) {
-        const offASurface = lampsAlone.surfaceKind.at(Math.floor(at / 3)) !== NO_SURFACE;
-        if (offASurface && light !== (lampsOverLitRoom.at(at) ?? 0)) {
-          expect(light, `sample value ${at}`).toBe(lampsOverLitRoom.at(at));
-        }
-      }
+      const offASurface = Array.from(lampsAlone.reflected.keys()).filter(
+        (at) => lampsAlone.surfaceKind.at(Math.floor(at / 3)) !== NO_SURFACE
+      );
+      const differing = offASurface.filter((at) => lampsAlone.reflected.at(at) !== lampsOverLitRoom.at(at));
+      expect(offASurface.length).toBeGreaterThan(100_000);
+      expect(differing, 'sample values where the lamps alone differ from the lamps over the lit room').toEqual([]);
     });
 
     test("no floor or wall reflection takes in another surface's, nor anything from the ceiling rows", () => {
@@ -687,13 +690,13 @@ describe('glossy wood reflecting a stone block that stands against it', () => {
     const traced = bakeRoom(BLOCK_BY_THE_WOOD, TEXTURES, [{ x: 4.5, y: 2.5 }]);
     const fb = createFramebuffer();
     draw(fb, EYE, traced);
-    const { reflectedWidth, reflectedSurface, blurredSurface, surfaceKind, coneAcross, coneUp } = lastTracedBuffers();
+    const { reflectedWidth, reflectedSurface, blurredSurface, surfaceKind, tentAcross, tentUp } = lastTracedBuffers();
     const light = (samples: Float32Array, sample: number) =>
       (samples.at(sample * 3) ?? 0) + (samples.at(sample * 3 + 1) ?? 0) + (samples.at(sample * 3 + 2) ?? 0);
     const isNarrow = (sample: number) =>
       surfaceKind.at(sample) === NORTH_WALL &&
-      (coneAcross.at(sample) ?? 0) < NARROW_CONE &&
-      (coneUp.at(sample) ?? 0) < NARROW_CONE;
+      (tentAcross.at(sample) ?? 0) < NARROW_CONE * TENT_PER_DEVIATION &&
+      (tentUp.at(sample) ?? 0) < NARROW_CONE * TENT_PER_DEVIATION;
     let edges = 0;
     for (let sample = 0; sample < surfaceKind.length; sample++) {
       for (const next of [sample + 1, sample + reflectedWidth]) {

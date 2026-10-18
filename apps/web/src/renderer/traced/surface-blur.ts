@@ -9,13 +9,15 @@
 import type { TracedBuffers } from './buffers';
 
 /** A tent this many deviations to each side has a Gaussian's variance: h² / 6 = 1. */
-const TENT_PER_DEVIATION = Math.sqrt(6);
+export const TENT_PER_DEVIATION = Math.sqrt(6);
 /** A tent half a sample to each side lies within the sample, so it is the sample itself: none is narrower. */
-const NARROWEST_TENT = 0.5;
+export const NARROWEST_TENT = 0.5;
 /**
  * A tent h samples to each side is worked out at least every h / 4 samples (so every one up to h = 8) and the samples
- * between drawn on a line: what a tent leaves of an edge bends by at most its contrast / h² per sample², so a line over
- * h / 4 samples misses by under 1% of it. Working out every sample measured 1.4 ms a frame against 0.8.
+ * between drawn on a line. For an uncut tent of one width, what it leaves of an edge bends by at most its contrast / h²
+ * per sample², so a line over h / 4 samples misses by under 1% of it; where the tents are cut by a run's end or change
+ * width the miss is larger. Against tents worked out at every sample over 45 bench poses: 0.55% on average, 4.8% of the
+ * frame's brightest value at worst. Working out every sample measured 1.4 ms a frame against 0.8.
  */
 const SAMPLES_TAKEN_PER_HALF = 0.25;
 /** A tent is also worked out where its width has changed by this share since the last one: a line assumes one. */
@@ -24,8 +26,11 @@ const WIDTH_DRIFT = 0.125;
 export const NO_SURFACE = 0;
 /** ...the floor... */
 export const FLOOR_SURFACE = 1;
+/** ...a wall whose plane is not known (no face), blurred only with others like it... */
+export const UNPLACED_WALL_SURFACE = 2;
 /** ...or a wall plane: see `wallSurface`. */
-const FIRST_WALL_SURFACE = 2;
+const FIRST_WALL_PLANE = 3;
+const FACES = 4;
 /** What is read past a line's last sample: no surface kind, so the last run ends there. */
 const PAST_THE_LINE = -1;
 
@@ -46,10 +51,12 @@ export interface BlurLine {
 
 /**
  * The surface kind of wall face `face` (FACE_*) on map line `line` (the map column of a west or east face, the map row
- * of a north or south face): every cell's face along one plane is one surface.
+ * of a north or south face): every cell's face along one plane is one surface. Each face and line gives its own kind,
+ * above the floor's; anything else (NO_FACE, a line off the map) is UNPLACED_WALL_SURFACE, never another's kind.
  */
 export function wallSurface(face: number, line: number): number {
-  return FIRST_WALL_SURFACE + face + 4 * line;
+  const isPlane = Number.isInteger(face) && face >= 0 && face < FACES && Number.isInteger(line) && line >= 0;
+  return isPlane ? FIRST_WALL_PLANE + face + FACES * line : UNPLACED_WALL_SURFACE;
 }
 
 /** What blurs runs of up to `samples` samples. */
@@ -64,29 +71,29 @@ export function createBlurLine(samples: number): BlurLine {
 }
 
 /**
- * Blurs `reflectedSurface` into `blurredSurface`, each sample by a tent as wide as its cone (`coneAcross` along the
- * row, `coneUp` along the column, deviations in samples), among the samples off its own surface (`surfaceKind`).
+ * Blurs `reflectedSurface` into `blurredSurface`, each sample by a tent as wide as its cone (`tentAcross` along the
+ * row, `tentUp` along the column, half widths in samples), among the samples off its own surface (`surfaceKind`).
  */
 export function blurReflectedSurfaces(buffers: TracedBuffers): void {
-  const { reflectedWidth, reflectedHeight, reflectedSurface, blurredSurface, coneAcross, coneUp } = buffers;
+  const { reflectedWidth, reflectedHeight, reflectedSurface, blurredSurface, tentAcross, tentUp } = buffers;
   for (let sampleRow = 0; sampleRow < reflectedHeight; sampleRow++) {
-    blurLine(buffers, reflectedSurface, blurredSurface, coneAcross, sampleRow * reflectedWidth, 1, reflectedWidth);
+    blurLine(buffers, reflectedSurface, blurredSurface, tentAcross, sampleRow * reflectedWidth, 1, reflectedWidth);
   }
   for (let sampleCol = 0; sampleCol < reflectedWidth; sampleCol++) {
-    blurLine(buffers, blurredSurface, blurredSurface, coneUp, sampleCol, reflectedWidth, reflectedHeight);
+    blurLine(buffers, blurredSurface, blurredSurface, tentUp, sampleCol, reflectedWidth, reflectedHeight);
   }
 }
 
 /**
  * The line of `count` samples from sample `first`, `stride` apart, blurred from `from` into `to` (which may be `from`)
- * by a tent `deviation` wide per sample, run by run of samples off one surface; the ceiling's runs, which reflect
- * nothing, are cleared.
+ * by a tent `tents` (half widths, samples) wide per sample, run by run of samples off one surface; the ceiling's
+ * runs, which reflect nothing, are cleared.
  */
 function blurLine(
   buffers: TracedBuffers,
   from: Float32Array,
   to: Float32Array,
-  deviation: Float32Array,
+  tents: Float32Array,
   first: number,
   stride: number,
   count: number
@@ -103,7 +110,7 @@ function blurLine(
     if (runKind === NO_SURFACE) {
       clearRun(to, runFirst, stride, k - runStart);
     } else {
-      blurRun(buffers.blurLine, from, to, deviation, runFirst, stride, k - runStart);
+      blurRun(buffers.blurLine, from, to, tents, runFirst, stride, k - runStart);
     }
     runStart = k;
     runKind = kind;
@@ -123,12 +130,12 @@ function blurRun(
   line: BlurLine,
   from: Float32Array,
   to: Float32Array,
-  deviation: Float32Array,
+  tents: Float32Array,
   first: number,
   stride: number,
   count: number
 ): void {
-  sumTwiceAndTake(line, from, deviation, first, stride, count);
+  sumTwiceAndTake(line, from, tents, first, stride, count);
   tentsInto(line, to, first, stride, count);
 }
 
@@ -144,7 +151,7 @@ function blurRun(
 function sumTwiceAndTake(
   line: BlurLine,
   from: Float32Array,
-  deviation: Float32Array,
+  tents: Float32Array,
   first: number,
   stride: number,
   count: number
@@ -166,7 +173,7 @@ function sumTwiceAndTake(
   let takenCount = 0;
   let lastTaken = 0;
   let lastHalf = 0;
-  let nextHalf = Math.max(NARROWEST_TENT, (deviation[first] ?? 0) * TENT_PER_DEVIATION);
+  let nextHalf = tents[first] ?? NARROWEST_TENT;
   for (let k = 0, at = first * 3, sum = 3; k < count; k++, at += stride * 3, sum += 3) {
     const sampleRed = from[at] ?? 0;
     const sampleGreen = from[at + 1] ?? 0;
@@ -185,8 +192,7 @@ function sumTwiceAndTake(
     sumsOfSums[sum + 2] = blueOfSums;
 
     const half = nextHalf;
-    nextHalf =
-      k < lastSample ? Math.max(NARROWEST_TENT, (deviation[first + (k + 1) * stride] ?? 0) * TENT_PER_DEVIATION) : 0;
+    nextHalf = k < lastSample ? (tents[first + (k + 1) * stride] ?? NARROWEST_TENT) : 0;
     const narrowest = Math.min(lastHalf, half, nextHalf);
     const drift = half > lastHalf ? half - lastHalf : lastHalf - half;
     const isRunEnd = k === 0 || k === lastSample;

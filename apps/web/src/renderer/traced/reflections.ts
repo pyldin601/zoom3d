@@ -23,7 +23,7 @@ import { createLampsPastWalls, findLampsPastWalls, seeLampsFrom, softenWallDista
 import { blobWeight, type ConeSpread, type InPlaneAxis, spreadCone } from './optics';
 import { createNearbyPeople, listNearbyPeople, seeDiscSharp } from './people';
 import { faceEntered, texelColumnOf } from './primary';
-import { FLOOR_SURFACE, NO_SURFACE, wallSurface } from './surface-blur';
+import { FLOOR_SURFACE, NARROWEST_TENT, NO_SURFACE, TENT_PER_DEVIATION, wallSurface } from './surface-blur';
 import { FACE_NORMAL_X, FACE_NORMAL_Y, FLOOR_MATERIAL, NO_FACE, TRACED_MATERIALS, type TracedWorld } from './world';
 
 /** A cone's narrowing across its plane of incidence stops at this slant (the cosine between the view and the normal). */
@@ -101,12 +101,12 @@ interface Reflection extends ConeAcrossMap {
   eyeS: number;
   /** Reflection samples per tile at a depth of 1 (tiles): what turns the cone's width where it lands into samples. */
   samplesPerTile: number;
-  /** The cone's widths across the view and up it per tile of its width, as mirror geometry spreads it at `slant`. */
-  shape: ConeSpread;
-  /** Where along the ray (s) the cone leaves its surface, at what height (tiles), climbing `rise` per unit s. */
+  /** Where along the ray (s) the cone leaves its surface, at what height (tiles), climbing `rise` per unit s... */
   fromS: number;
   fromHeight: number;
   rise: number;
+  /** ...so crossing `length` tiles per unit s, its climb included: √(run² + rise²), as the cone grows along. */
+  length: number;
   /** How wide (tiles) the cone grows per tile travelled: the surface's roughness squared. */
   conePerTile: number;
   /** How squarely the eye's ray meets the surface, held at MIN_SLANT: the cone narrows by it across... */
@@ -253,10 +253,10 @@ function createReflection(wall: WallSeen, inPlane: InPlaneAxis, conePerTile: num
     run: 1,
     eyeS: 0,
     samplesPerTile: 0,
-    shape: { across: 0, up: 0 },
     fromS: 0,
     fromHeight: 0,
     rise: 0,
+    length: 1,
     conePerTile,
     slant: 1,
     inPlane,
@@ -372,8 +372,8 @@ function clearCeilingSamples(buffers: TracedBuffers, sampleCol: number, wallTop:
       buffers.reflectedOver[at] = 0;
     }
     buffers.reflectedKeep[sample] = 0;
-    buffers.coneAcross[sample] = 0;
-    buffers.coneUp[sample] = 0;
+    buffers.tentAcross[sample] = NARROWEST_TENT;
+    buffers.tentUp[sample] = NARROWEST_TENT;
     buffers.surfaceKind[sample] = NO_SURFACE;
   }
 }
@@ -453,8 +453,8 @@ function aimOffWall(buffers: TracedBuffers, frameRow: number): void {
   const rise = (half - (frameRow + 0.5)) / proj;
   offWall.rise = rise;
   offWall.fromHeight = clampToUnit(EYE_HEIGHT + rise * column.distance);
-  offWall.slant = Math.max(MIN_SLANT, column.facing / Math.sqrt(column.run * column.run + rise * rise));
-  spreadCone(1, offWall.slant, offWall.inPlane, offWall.shape);
+  offWall.length = Math.sqrt(column.run * column.run + rise * rise);
+  offWall.slant = Math.max(MIN_SLANT, column.facing / offWall.length);
 }
 
 // Off the floor.
@@ -480,8 +480,8 @@ function aimOffFloor(buffers: TracedBuffers, frameRow: number): void {
   const rise = EYE_HEIGHT / floorS;
   offFloor.fromS = floorS;
   offFloor.rise = rise;
-  offFloor.slant = Math.max(MIN_SLANT, rise / Math.sqrt(offFloor.run * offFloor.run + rise * rise));
-  spreadCone(1, offFloor.slant, offFloor.inPlane, offFloor.shape);
+  offFloor.length = Math.sqrt(offFloor.run * offFloor.run + rise * rise);
+  offFloor.slant = Math.max(MIN_SLANT, rise / offFloor.length);
 }
 
 // What a cone sees.
@@ -690,21 +690,23 @@ function clearSeen(): void {
 
 /**
  * Adds `share` of `part`, a surface `toSurface` along `reflection`, to `surfaces`, and as much of the width of the cone
- * where it meets it over the depth the reflection shows it at. One call for both: each call on the room's per-sample
- * path counts against V8's inlining budget.
+ * where it meets it (grown along the ray's whole length, as for the lamps and people) over the depth the reflection
+ * shows it at. One call for both: each call on the room's per-sample path counts against V8's inlining budget.
  */
 function addPart(reflection: Reflection, toSurface: number, share: number): void {
   surfaces.red += part.red * share;
   surfaces.green += part.green * share;
   surfaces.blue += part.blue * share;
   surfaces.conePerDepth +=
-    (share * reflection.conePerTile * toSurface * reflection.run) / (reflection.eyeS + reflection.fromS + toSurface);
+    (share * reflection.conePerTile * toSurface * reflection.length) / (reflection.eyeS + reflection.fromS + toSurface);
 }
 
 /**
- * Keeps what `reflection`'s cone saw as sample (`sampleCol`, `sampleRow`), off surface kind `kind`, with the deviation
- * in samples along the row and the column that its surfaces are blurred by: the cone's width over their depth, spread
- * by mirror geometry (spreadCone is linear in the width), in samples.
+ * Keeps what `reflection`'s cone saw as sample (`sampleCol`, `sampleRow`), off surface kind `kind`, with the half width
+ * (samples) of the tents along the row and the column that its surfaces are blurred by. The cone's width over their
+ * depth, in samples, is spread by mirror geometry as spreadCone spreads it, written out here per sample: it keeps its
+ * width within the plane of incidence (up the view off the floor, across it off a wall) and narrows by the slant
+ * across that plane.
  */
 function keepSeen(
   buffers: TracedBuffers,
@@ -715,12 +717,14 @@ function keepSeen(
 ): void {
   const sample = sampleRow * buffers.reflectedWidth + sampleCol;
   const at = sample * 3;
-  const coneSamples = surfaces.conePerDepth * reflection.samplesPerTile;
+  const cone = surfaces.conePerDepth * reflection.samplesPerTile;
+  const narrowed = cone * reflection.slant;
+  const offFloor = reflection.inPlane === 'up';
   buffers.reflectedSurface[at] = surfaces.red;
   buffers.reflectedSurface[at + 1] = surfaces.green;
   buffers.reflectedSurface[at + 2] = surfaces.blue;
-  buffers.coneAcross[sample] = coneSamples * reflection.shape.across;
-  buffers.coneUp[sample] = coneSamples * reflection.shape.up;
+  buffers.tentAcross[sample] = Math.max(NARROWEST_TENT, (offFloor ? narrowed : cone) * TENT_PER_DEVIATION);
+  buffers.tentUp[sample] = Math.max(NARROWEST_TENT, (offFloor ? cone : narrowed) * TENT_PER_DEVIATION);
   buffers.reflectedKeep[sample] = over.keeps;
   buffers.reflectedOver[at] = over.red;
   buffers.reflectedOver[at + 1] = over.green;
@@ -733,7 +737,7 @@ function keepSeen(
  * `from` is -1.
  */
 function blendSamplesBetween(buffers: TracedBuffers, sampleCol: number, from: number, to: number): void {
-  const { reflectedWidth, reflectedSurface, reflectedOver, reflectedKeep, coneAcross, coneUp, surfaceKind } = buffers;
+  const { reflectedWidth, reflectedSurface, reflectedOver, reflectedKeep, tentAcross, tentUp, surfaceKind } = buffers;
   const fromSample = from * reflectedWidth + sampleCol;
   const toSample = to * reflectedWidth + sampleCol;
   for (let sampleRow = from + 1; from >= 0 && sampleRow < to; sampleRow++) {
@@ -746,8 +750,8 @@ function blendSamplesBetween(buffers: TracedBuffers, sampleCol: number, from: nu
       reflectedOver[sample * 3 + channel] = mix(reflectedOver[fromAt], reflectedOver[toAt], share);
     }
     reflectedKeep[sample] = mix(reflectedKeep[fromSample], reflectedKeep[toSample], share);
-    coneAcross[sample] = mix(coneAcross[fromSample], coneAcross[toSample], share);
-    coneUp[sample] = mix(coneUp[fromSample], coneUp[toSample], share);
+    tentAcross[sample] = mix(tentAcross[fromSample], tentAcross[toSample], share);
+    tentUp[sample] = mix(tentUp[fromSample], tentUp[toSample], share);
     surfaceKind[sample] = surfaceKind[toSample] ?? NO_SURFACE;
   }
 }

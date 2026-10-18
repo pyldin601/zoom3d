@@ -148,10 +148,11 @@ floor keeps the column's own direction (no extra walk). Only heights differ per 
   silhouettes crisply while lamps were broad glows). Lamps and people meet the cone in closed form, so each reflection
   sample keeps them apart from the walls, floor and ceiling its ray meets: the surfaces, how much of them the people in
   front leave, and what the lamps and people add. The surfaces are then blurred in the reflection buffer by that
-  sample's own cone, its width where it meets them (spread by mirror geometry) over the depth the reflection shows them
-  at: along the row, then the column, a tent of the Gaussian's variance per axis, worked out every few samples where it
-  is wide (`traced/surface-blur.ts`). Never across surface kinds: the floor with the floor, a wall plane with itself,
-  and the ceiling rows, which reflect nothing, not at all. The lamps and people are laid back over after.
+  sample's own cone, its width where it meets them (grown along the ray's whole length, climb included, as for the
+  lamps and people, and spread by mirror geometry) over the depth the reflection shows them at: along the row, then the
+  column, a tent of the Gaussian's variance per axis, worked out every few samples where it is wide
+  (`traced/surface-blur.ts`). Never across surface kinds: the floor with the floor, a wall plane with itself, and the
+  ceiling rows, which reflect nothing, not at all. The lamps and people are laid back over after.
 - Reflections are traced at ½ resolution (¼ only as the phone fallback, section 4) and blended up bilinearly. On very
   rough walls (roughness² > 0.25) every 4th row is traced and the rows between blended.
 
