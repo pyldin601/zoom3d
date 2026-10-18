@@ -144,8 +144,16 @@ floor keeps the column's own direction (no extra walk). Only heights differ per 
 - Walls, floor and ceiling seen in a reflection lose detail as the cone widens: the texture fades to its average colour
   by 0.25 tiles of cone width, the floor and ceiling light to its soft copy by 1 tile. Where the cone straddles an edge
   (a wall's top or foot) the two sides blend over its width.
-- **No screen-space blur.** Reflections are traced at ½ resolution (¼ only as the phone fallback, section 4) and
-  blended up bilinearly. On very rough walls (roughness² > 0.25) every 4th row is traced and the rows between blended.
+- **Reflected surfaces are blurred by the same cone** (owner's review, 2026-10-18: the satin floor mirrored wall
+  silhouettes crisply while lamps were broad glows). Lamps and people meet the cone in closed form, so each reflection
+  sample keeps them apart from the walls, floor and ceiling its ray meets: the surfaces, how much of them the people in
+  front leave, and what the lamps and people add. The surfaces are then blurred in the reflection buffer by that
+  sample's own cone, its width where it meets them (spread by mirror geometry) over the depth the reflection shows them
+  at: along the row, then the column, a tent of the Gaussian's variance per axis, worked out every few samples where it
+  is wide (`traced/surface-blur.ts`). Never across surface kinds: the floor with the floor, a wall plane with itself,
+  and the ceiling rows, which reflect nothing, not at all. The lamps and people are laid back over after.
+- Reflections are traced at ½ resolution (¼ only as the phone fallback, section 4) and blended up bilinearly. On very
+  rough walls (roughness² > 0.25) every 4th row is traced and the rows between blended.
 
 ### 3.4 Exposure, tone and pure rays
 

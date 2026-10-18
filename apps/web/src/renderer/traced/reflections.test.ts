@@ -8,10 +8,12 @@ import { AVATAR_RADIUS, FACE_RADIUS, type Sprite } from '../sprites';
 import { makeTextures } from '../textures';
 import { REFLECTION_SAMPLE_OFFSET, REFLECTION_SCALE } from './buffers';
 import { lastTracedBuffers, renderTraced, type TracedLighting } from './frame';
+import { createLightmaps } from './lightmaps';
 import { FACE_REFLECTION_GAIN } from './people';
+import { blurReflectedSurfaces, FLOOR_SURFACE, NO_SURFACE, wallSurface } from './surface-blur';
 import { bakeRoom, drawOverNaN, expectEveryPixelWritten, pixelOf } from './test-helpers';
 import { shownPixel } from './tone';
-import { linearOfSrgbChannel, TRACED_MATERIALS, type TracedWorld } from './world';
+import { FACE_SOUTH, linearOfSrgbChannel, TRACED_MATERIALS, type TracedWorld } from './world';
 
 const LEVEL = parseMap(LEVEL1);
 const TEXTURES = makeTextures(1);
@@ -274,6 +276,132 @@ describe('reflections on LEVEL1', () => {
     });
   });
 
+  describe("reflected surfaces are blurred by the same cone as the lamps (owner's review, 2026-10-18)", () => {
+    const AT_THE_DOORWAY: PlayerState = { x: 34.61952393867534, y: 20.65799239823415, angle: 1.5949999999999713 };
+    /**
+     * The doorway 10.3 to 11.3 tiles ahead has a side wall either side, between 11 and 22 tiles deep. Before surfaces
+     * were blurred, the floor mirrored each one's edge from one sample column to the next: these were the largest steps
+     * between neighbouring samples across each edge in the walls' reflection, down the floor below them (the lit jamb
+     * showed as a line).
+     */
+    const CRISP_STEPS = [0.0547, 0.0453];
+
+    /** The reflection columns where the wall's distance jumps from the doorway's (< 12) to its sides' (> 20). */
+    function doorwaySideEdges(): number[] {
+      const { reflectedWidth, wallDistance } = lastTracedBuffers();
+      const depthOf = (sampleCol: number) => wallDistance.at(framePixelOf(sampleCol, 0).col) ?? 0;
+      const edges: number[] = [];
+      for (let sampleCol = 0; sampleCol + 1 < reflectedWidth; sampleCol++) {
+        const [nearer, further] = [depthOf(sampleCol), depthOf(sampleCol + 1)].sort((a, b) => a - b);
+        if ((nearer ?? 0) < 12 && (further ?? 0) > 20) {
+          edges.push(sampleCol);
+        }
+      }
+      return edges;
+    }
+
+    test("the satin floor mirrors a doorway side wall's edge over several samples: its largest step a third of the crisp one", () => {
+      // The walls' reflection alone: the lit room's less the lamps' (drawn with the room unlit).
+      draw(fb, AT_THE_DOORWAY, { world: traced.world, maps: createLightmaps(traced.world) });
+      const lampsAlone = Float32Array.from(lastTracedBuffers().reflected);
+      draw(fb, AT_THE_DOORWAY, traced);
+      const { reflected, reflectedWidth, reflectedHeight, wallEnd } = lastTracedBuffers();
+      const wallsAt = (sampleCol: number, sampleRow: number) => {
+        const at = (sampleRow * reflectedWidth + sampleCol) * 3;
+        return [at, at + 1, at + 2].reduce((total, channel) => {
+          return total + (reflected.at(channel) ?? 0) - (lampsAlone.at(channel) ?? 0);
+        }, 0);
+      };
+      const edges = doorwaySideEdges();
+      expect(edges.length).toBe(CRISP_STEPS.length);
+      for (const [index, edge] of edges.entries()) {
+        const wallFoot = Math.max(
+          ...[edge - 3, edge + 4].map((sampleCol) => wallEnd.at(framePixelOf(sampleCol, 0).col) ?? 0)
+        );
+        // Right under the wall's foot the cone off the floor has hardly spread (under a sample there), as a reflection
+        // is sharp where what it shows stands on the mirror: the steps are taken from the next row down.
+        const floorRowBelowFoot = Math.ceil((wallFoot - REFLECTION_SAMPLE_OFFSET) / REFLECTION_SCALE) + 1;
+        let largestStep = 0;
+        for (let sampleRow = floorRowBelowFoot; sampleRow < reflectedHeight; sampleRow++) {
+          for (let sampleCol = edge - 3; sampleCol <= edge + 3; sampleCol++) {
+            const step = Math.abs(wallsAt(sampleCol + 1, sampleRow) - wallsAt(sampleCol, sampleRow));
+            largestStep = Math.max(largestStep, step);
+          }
+        }
+        expect(largestStep, `the edge at sample column ${edge}`).toBeLessThanOrEqual((CRISP_STEPS.at(index) ?? 0) / 3);
+      }
+    });
+
+    test('the lamps are laid over the blurred surfaces as traced, not blurred again: unlit, the reflection is theirs alone', () => {
+      draw(fb, AT_THE_DOORWAY, traced);
+      const lit = lastTracedBuffers();
+      const { reflected, reflectedSurface, blurredSurface, reflectedKeep, reflectedOver, surfaceKind } = lit;
+      const lampsOverLitRoom = Float32Array.from(reflectedOver);
+      // Every sample off a surface is what the people leave of it blurred, plus the lamps and people over it.
+      for (let at = 0; at < reflected.length; at += 97) {
+        const sample = Math.floor(at / 3);
+        if (surfaceKind.at(sample) === NO_SURFACE) {
+          continue;
+        }
+        const keeps = reflectedKeep.at(sample) ?? 0;
+        const expected = keeps * (blurredSurface.at(at) ?? 0) + (reflectedOver.at(at) ?? 0);
+        expect(reflected.at(at), `sample value ${at}`).toBeCloseTo(expected, 6);
+      }
+      expect(reflectedSurface.some((light) => light > 0)).toBe(true);
+
+      const unlit: TracedLighting = { world: traced.world, maps: createLightmaps(traced.world) };
+      draw(fb, AT_THE_DOORWAY, unlit);
+      const lampsAlone = lastTracedBuffers();
+      expect(lampsAlone.reflectedSurface.every((light) => light === 0)).toBe(true);
+      expect(lampsAlone.reflected.reduce((most, light) => Math.max(most, light), 0)).toBeGreaterThan(0.1);
+      for (const [at, light] of lampsAlone.reflected.entries()) {
+        const offASurface = lampsAlone.surfaceKind.at(Math.floor(at / 3)) !== NO_SURFACE;
+        if (offASurface && light !== (lampsOverLitRoom.at(at) ?? 0)) {
+          expect(light, `sample value ${at}`).toBe(lampsOverLitRoom.at(at));
+        }
+      }
+    });
+
+    test("no floor or wall reflection takes in another surface's, nor anything from the ceiling rows", () => {
+      const isFloor = (kind: number) => kind === FLOOR_SURFACE;
+      const isWall = (kind: number) => kind !== FLOOR_SURFACE && kind !== NO_SURFACE;
+      for (const eye of [AT_THE_DOORWAY, BLUE_CORRIDOR, WOOD_ROOM]) {
+        draw(fb, eye, traced);
+        const buffers = lastTracedBuffers();
+        const { reflectedSurface, surfaceKind } = buffers;
+        const unblurred = Float32Array.from(reflectedSurface);
+        const blurred = Float32Array.from(buffers.blurredSurface);
+        for (const [name, kept] of [
+          ['floor', isFloor],
+          ['wall', isWall],
+        ] as const) {
+          // Every other sample turned blinding white, then all blurred again: the kept ones must not notice.
+          for (const [sample, kind] of surfaceKind.entries()) {
+            if (!kept(kind)) {
+              reflectedSurface.fill(1000, sample * 3, sample * 3 + 3);
+            }
+          }
+          blurReflectedSurfaces(buffers);
+          let checked = 0;
+          for (const [sample, kind] of surfaceKind.entries()) {
+            if (!kept(kind)) {
+              continue;
+            }
+            checked++;
+            for (let at = sample * 3; at < sample * 3 + 3; at++) {
+              const change = Math.abs((buffers.blurredSurface.at(at) ?? 0) - (blurred.at(at) ?? 0));
+              if (change > 1e-6) {
+                expect(change, `${name} sample ${sample}`).toBeLessThanOrEqual(1e-6);
+              }
+            }
+          }
+          expect(checked, name).toBeGreaterThan(1000);
+          reflectedSurface.set(unblurred);
+        }
+      }
+    });
+  });
+
   test("crossing a doorway's edge, a lamp's streak on the floor changes by no more than 4% beyond its own slope", () => {
     draw(fb, BLUE_CORRIDOR, traced);
     const { sampleRow } = sampleShowing(fb, BLUE_CORRIDOR, 34.5, 36.5, -1);
@@ -529,6 +657,68 @@ describe('the ceiling above a wall in the reflections', () => {
       }
     }
     expect(checked).toBeGreaterThan(reflectedWidth / 2);
+  });
+});
+
+/** A wood room with a stone block standing against its north wall, x 6..7, y 1..2. */
+const BLOCK_BY_THE_WOOD = parseMap(
+  [
+    '2'.repeat(16),
+    ...Array.from(
+      { length: 6 },
+      (_, row) => `2${row === 0 ? '.....1' : row === 4 ? '.S....' : '......'}${'.'.repeat(8)}2`
+    ),
+    '2'.repeat(16),
+  ].join('\n')
+);
+
+describe('glossy wood reflecting a stone block that stands against it', () => {
+  /**
+   * The cone's width in samples is its width over the depth its reflection shows at, so it is narrow where what the
+   * wall reflects stands close to the wall, not where the wall is close to the eye: here near the block's foot, at
+   * the corner, seen from 4 tiles off, aslant.
+   */
+  const EYE: PlayerState = { x: 1.5, y: 2.5, angle: Math.atan2(1 - 2.5, 5.7 - 1.5) };
+  const NORTH_WALL = wallSurface(FACE_SOUTH, 0);
+  /** Narrower than this (a deviation, in samples) both ways, a cone leaves a sample all but as traced. */
+  const NARROW_CONE = 0.5;
+
+  test('keeps its edges at most about 2 samples wide where the cone has spread under half a sample', () => {
+    const traced = bakeRoom(BLOCK_BY_THE_WOOD, TEXTURES, [{ x: 4.5, y: 2.5 }]);
+    const fb = createFramebuffer();
+    draw(fb, EYE, traced);
+    const { reflectedWidth, reflectedSurface, blurredSurface, surfaceKind, coneAcross, coneUp } = lastTracedBuffers();
+    const light = (samples: Float32Array, sample: number) =>
+      (samples.at(sample * 3) ?? 0) + (samples.at(sample * 3 + 1) ?? 0) + (samples.at(sample * 3 + 2) ?? 0);
+    const isNarrow = (sample: number) =>
+      surfaceKind.at(sample) === NORTH_WALL &&
+      (coneAcross.at(sample) ?? 0) < NARROW_CONE &&
+      (coneUp.at(sample) ?? 0) < NARROW_CONE;
+    let edges = 0;
+    for (let sample = 0; sample < surfaceKind.length; sample++) {
+      for (const next of [sample + 1, sample + reflectedWidth]) {
+        if (!isNarrow(sample) || !isNarrow(next) || (next === sample + 1 && next % reflectedWidth === 0)) {
+          continue;
+        }
+        const step = light(reflectedSurface, next) - light(reflectedSurface, sample);
+        // An edge: at least a fifth of the brighter side, in light the block's lamp throws.
+        if (Math.abs(step) < 0.2 * Math.max(light(reflectedSurface, next), light(reflectedSurface, sample), 0.005)) {
+          continue;
+        }
+        edges++;
+        const kept = (light(blurredSurface, next) - light(blurredSurface, sample)) / step;
+        expect(kept, `samples ${sample} to ${next}`).toBeGreaterThanOrEqual(0.5);
+      }
+    }
+    expect(edges).toBeGreaterThan(10);
+    // Where the cone is wide, the same wall's reflection is blurred.
+    let blurredMost = 0;
+    for (const [sample, kind] of surfaceKind.entries()) {
+      if (kind === NORTH_WALL) {
+        blurredMost = Math.max(blurredMost, Math.abs(light(blurredSurface, sample) - light(reflectedSurface, sample)));
+      }
+    }
+    expect(blurredMost).toBeGreaterThan(0.005);
   });
 });
 

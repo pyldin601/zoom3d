@@ -2,8 +2,9 @@
 // reflecting point sends out meets, traced at 1/REFLECTION_SCALE of the frame each way, then widened to the frame's
 // width for the composite. Off a wall the ray is mirrored once per column and walked; off the floor it keeps its
 // column's direction, so it needs no walk. Lamps and people meet the cone in closed form; walls, floor and ceiling are
-// seen through prefiltered texture and light; nothing is blurred on screen. Off the floor, walls hide what lies past
-// them softly across columns, as wide as the cone spreads sideways (occlusion.ts). Allocation-free.
+// seen through prefiltered texture and light, kept apart from what lies over them so that the cone can blur them across
+// the samples (surface-blur.ts) before the lamps and people are laid back over. Off the floor, walls hide what lies
+// past them softly across columns, as wide as the cone spreads sideways (occlusion.ts). Allocation-free.
 import { castRay, createRayHit, type RayHit } from '@zoom3d/shared';
 import { EYE_HEIGHT } from '../camera';
 import type { Sprite } from '../sprites';
@@ -22,6 +23,7 @@ import { createLampsPastWalls, findLampsPastWalls, seeLampsFrom, softenWallDista
 import { blobWeight, type ConeSpread, type InPlaneAxis, spreadCone } from './optics';
 import { createNearbyPeople, listNearbyPeople, seeDiscSharp } from './people';
 import { faceEntered, texelColumnOf } from './primary';
+import { FLOOR_SURFACE, NO_SURFACE, wallSurface } from './surface-blur';
 import { FACE_NORMAL_X, FACE_NORMAL_Y, FLOOR_MATERIAL, NO_FACE, TRACED_MATERIALS, type TracedWorld } from './world';
 
 /** A cone's narrowing across its plane of incidence stops at this slant (the cosine between the view and the normal). */
@@ -68,6 +70,8 @@ interface ReflectingColumn {
   /** The face (FACE_*) the ray meets, and how squarely: |n · ray|. */
   face: number;
   facing: number;
+  /** The wall plane that face lies in, as a surface kind (surface-blur.ts): what its reflections are blurred among. */
+  surface: number;
 }
 
 /** A wall as a reflection sees it, up the column its ray meets. */
@@ -90,6 +94,15 @@ interface Reflection extends ConeAcrossMap {
   dx: number;
   dy: number;
   run: number;
+  /**
+   * How deep (s) the eye's ray has come by s = 0 along this one: off a wall the wall's distance, off the floor 0, since
+   * that ray starts at the eye. A thing `s` along it shows in the reflection as deep as eyeS + s.
+   */
+  eyeS: number;
+  /** Reflection samples per tile at a depth of 1 (tiles): what turns the cone's width where it lands into samples. */
+  samplesPerTile: number;
+  /** The cone's widths across the view and up it per tile of its width, as mirror geometry spreads it at `slant`. */
+  shape: ConeSpread;
   /** Where along the ray (s) the cone leaves its surface, at what height (tiles), climbing `rise` per unit s. */
   fromS: number;
   fromHeight: number;
@@ -115,7 +128,7 @@ interface Reflection extends ConeAcrossMap {
   people: ThingsAlongRay;
 }
 
-const column: ReflectingColumn = { col: 0, rayX: 0, rayY: 0, run: 1, distance: 0, face: 0, facing: 0 };
+const column: ReflectingColumn = { col: 0, rayX: 0, rayY: 0, run: 1, distance: 0, face: 0, facing: 0, surface: 0 };
 const columnWall = createWallSeen();
 const farWall = createWallSeen();
 const offFloor = createReflection(columnWall, 'up', FLOOR_CONE_PER_TILE);
@@ -128,15 +141,23 @@ const nearbyLamps = createNearbyThings();
 const nearbyPeople = createNearbyPeople();
 const lampsPastWalls = createLampsPastWalls();
 
-/** What a reflection sample sees, linear light, and one thing in it before it is weighed in. */
-const seen = { red: 0, green: 0, blue: 0 };
+/**
+ * What a reflection sample sees, linear light: the walls, floor and ceiling its cone meets, and the cone's width where
+ * it meets them over the depth the reflection shows them at, weighed by their shares: what they are blurred by...
+ */
+const surfaces = { red: 0, green: 0, blue: 0, conePerDepth: 0 };
+/** ...and the lamps and people over them: `keeps` of the surfaces shows through, and r, g, b add to it. */
+const over = { red: 0, green: 0, blue: 0, keeps: 1 };
+/** One surface the cone meets, before it is weighed in. */
 const part = { red: 0, green: 0, blue: 0 };
 const spread: ConeSpread = { across: 0, up: 0 };
 const planeSample = new Float32Array(3);
 
 /**
- * Fills `buffers.reflected`: per sample, what the cone off the surface it shows meets, `people` among it (the ceiling
- * is matte and reflects nothing). Needs the rows each column's wall covers, from the primary pass.
+ * Fills the reflection samples: per sample, what the cone off the surface it shows meets, `people` among it (the
+ * ceiling is matte and reflects nothing), kept as the walls, floor and ceiling (`reflectedSurface`, with the cone's
+ * width there) and what lies over them (`reflectedKeep`, `reflectedOver`). Needs the rows each column's wall covers,
+ * from the primary pass. `layOverBlurredSurfaces` puts them together once the surfaces are blurred.
  */
 export function traceReflections(
   buffers: TracedBuffers,
@@ -148,18 +169,38 @@ export function traceReflections(
   listNearbyLamps(world, view.x, view.y, nearbyLamps);
   listNearbyPeople(people, view.x, view.y, nearbyPeople);
   seeWallsAcrossColumns(buffers);
+  offFloor.samplesPerTile = view.proj / REFLECTION_SCALE;
+  offWall.samplesPerTile = view.proj / REFLECTION_SCALE;
   for (let sampleCol = 0; sampleCol < reflectedWidth; sampleCol++) {
     aimColumn(buffers, world, maps, sampleCol);
     const wallTop = firstSampleRowFrom(buffers.wallStart[column.col] ?? 0, reflectedHeight);
     const floorTop = Math.max(wallTop, firstSampleRowFrom(buffers.wallEnd[column.col] ?? 0, reflectedHeight));
+    clearCeilingSamples(buffers, sampleCol, wallTop);
     if (floorTop > wallTop) {
       mirrorOffWall(buffers, world, maps);
       traceWallSamples(buffers, world, maps, sampleCol, wallTop, floorTop);
-      copyFirstWallSampleUp(buffers, sampleCol, wallTop);
-    } else {
-      clearCeilingSamples(buffers, sampleCol, wallTop);
     }
     traceFloorSamples(buffers, world, maps, sampleCol, floorTop);
+  }
+}
+
+/**
+ * Lays the lamps and people back over the blurred surfaces, into `reflected`: per sample, what they leave showing of
+ * `blurredSurface` plus `reflectedOver`. The ceiling reflects nothing, but the composite blends a wall's top pixel row
+ * with the sample row above it: holding the wall's first sample there keeps that row from losing part of its
+ * reflection to black.
+ */
+export function layOverBlurredSurfaces(buffers: TracedBuffers): void {
+  const { reflected, blurredSurface, reflectedKeep, reflectedOver } = buffers;
+  for (let sample = 0; sample < reflectedKeep.length; sample++) {
+    const keeps = reflectedKeep[sample] ?? 0;
+    const at = sample * 3;
+    reflected[at] = keeps * (blurredSurface[at] ?? 0) + (reflectedOver[at] ?? 0);
+    reflected[at + 1] = keeps * (blurredSurface[at + 1] ?? 0) + (reflectedOver[at + 1] ?? 0);
+    reflected[at + 2] = keeps * (blurredSurface[at + 2] ?? 0) + (reflectedOver[at + 2] ?? 0);
+  }
+  for (let sampleCol = 0; sampleCol < buffers.reflectedWidth; sampleCol++) {
+    holdFirstWallSampleUp(buffers, sampleCol);
   }
 }
 
@@ -210,6 +251,9 @@ function createReflection(wall: WallSeen, inPlane: InPlaneAxis, conePerTile: num
     dx: 0,
     dy: 0,
     run: 1,
+    eyeS: 0,
+    samplesPerTile: 0,
+    shape: { across: 0, up: 0 },
     fromS: 0,
     fromHeight: 0,
     rise: 0,
@@ -276,6 +320,7 @@ function aimColumn(buffers: TracedBuffers, world: TracedWorld, maps: TracedLight
   column.distance = columnHit.distance;
   column.face = face;
   column.facing = Math.abs((FACE_NORMAL_X[face] ?? 0) * rayX + (FACE_NORMAL_Y[face] ?? 0) * rayY);
+  column.surface = wallSurface(face, FACE_NORMAL_X[face] === 0 ? columnHit.mapY : columnHit.mapX);
   seeWallHit(world, maps, columnHit, rayX, rayY, columnWall);
 
   offFloor.x = x;
@@ -318,26 +363,37 @@ function seeWallHit(
   wallColumnLight(maps, faceIndex, hit.wallX, out.light);
 }
 
-/**
- * The ceiling reflects nothing, but the composite blends the wall's top pixel row with the sample row above it: holding
- * the wall's first sample there keeps that row from losing part of its reflection to black.
- */
-function copyFirstWallSampleUp(buffers: TracedBuffers, sampleCol: number, wallTop: number): void {
-  const first = (wallTop * buffers.reflectedWidth + sampleCol) * 3;
+/** The ceiling's samples above `wallTop`: it reflects nothing, and is no surface the blur takes in. */
+function clearCeilingSamples(buffers: TracedBuffers, sampleCol: number, wallTop: number): void {
   for (let sampleRow = 0; sampleRow < wallTop; sampleRow++) {
-    const at = (sampleRow * buffers.reflectedWidth + sampleCol) * 3;
-    buffers.reflected[at] = buffers.reflected[first] ?? 0;
-    buffers.reflected[at + 1] = buffers.reflected[first + 1] ?? 0;
-    buffers.reflected[at + 2] = buffers.reflected[first + 2] ?? 0;
+    const sample = sampleRow * buffers.reflectedWidth + sampleCol;
+    for (let at = sample * 3; at < sample * 3 + 3; at++) {
+      buffers.reflectedSurface[at] = 0;
+      buffers.reflectedOver[at] = 0;
+    }
+    buffers.reflectedKeep[sample] = 0;
+    buffers.coneAcross[sample] = 0;
+    buffers.coneUp[sample] = 0;
+    buffers.surfaceKind[sample] = NO_SURFACE;
   }
 }
 
-function clearCeilingSamples(buffers: TracedBuffers, sampleCol: number, wallTop: number): void {
+/** Copies column `sampleCol`'s first sample up the ceiling rows above it, if it is a wall's. */
+function holdFirstWallSampleUp(buffers: TracedBuffers, sampleCol: number): void {
+  const { reflected, reflectedWidth, reflectedHeight, surfaceKind } = buffers;
+  let wallTop = 0;
+  while (wallTop < reflectedHeight && surfaceKind[wallTop * reflectedWidth + sampleCol] === NO_SURFACE) {
+    wallTop++;
+  }
+  if (wallTop === reflectedHeight || surfaceKind[wallTop * reflectedWidth + sampleCol] === FLOOR_SURFACE) {
+    return;
+  }
+  const first = (wallTop * reflectedWidth + sampleCol) * 3;
   for (let sampleRow = 0; sampleRow < wallTop; sampleRow++) {
-    const at = (sampleRow * buffers.reflectedWidth + sampleCol) * 3;
-    buffers.reflected[at] = 0;
-    buffers.reflected[at + 1] = 0;
-    buffers.reflected[at + 2] = 0;
+    const at = (sampleRow * reflectedWidth + sampleCol) * 3;
+    reflected[at] = reflected[first] ?? 0;
+    reflected[at + 1] = reflected[first + 1] ?? 0;
+    reflected[at + 2] = reflected[first + 2] ?? 0;
   }
 }
 
@@ -350,6 +406,7 @@ function mirrorOffWall(buffers: TracedBuffers, world: TracedWorld, maps: TracedL
   const normalY = FACE_NORMAL_Y[face] ?? 0;
   offWall.x = buffers.view.x + rayX * distance + normalX * OFF_THE_WALL;
   offWall.y = buffers.view.y + rayY * distance + normalY * OFF_THE_WALL;
+  offWall.eyeS = distance;
   offWall.dx = normalX === 0 ? rayX : -rayX;
   offWall.dy = normalY === 0 ? rayY : -rayY;
   offWall.run = run;
@@ -384,7 +441,7 @@ function traceWallSamples(
   for (let sampleRow = wallTop; tracedRow < lastRow; sampleRow = Math.min(lastRow, sampleRow + step)) {
     aimOffWall(buffers, frameRowOf(sampleRow));
     seeAlong(offWall, world, maps);
-    keepSeen(buffers, sampleCol, sampleRow);
+    keepSeen(buffers, offWall, sampleCol, sampleRow, column.surface);
     blendSamplesBetween(buffers, sampleCol, tracedRow, sampleRow);
     tracedRow = sampleRow;
   }
@@ -397,6 +454,7 @@ function aimOffWall(buffers: TracedBuffers, frameRow: number): void {
   offWall.rise = rise;
   offWall.fromHeight = clampToUnit(EYE_HEIGHT + rise * column.distance);
   offWall.slant = Math.max(MIN_SLANT, column.facing / Math.sqrt(column.run * column.run + rise * rise));
+  spreadCone(1, offWall.slant, offWall.inPlane, offWall.shape);
 }
 
 // Off the floor.
@@ -412,7 +470,7 @@ function traceFloorSamples(
   for (let sampleRow = floorTop; sampleRow < buffers.reflectedHeight; sampleRow++) {
     aimOffFloor(buffers, frameRowOf(sampleRow));
     seeAlong(offFloor, world, maps);
-    keepSeen(buffers, sampleCol, sampleRow);
+    keepSeen(buffers, offFloor, sampleCol, sampleRow, FLOOR_SURFACE);
   }
 }
 
@@ -423,19 +481,24 @@ function aimOffFloor(buffers: TracedBuffers, frameRow: number): void {
   offFloor.fromS = floorS;
   offFloor.rise = rise;
   offFloor.slant = Math.max(MIN_SLANT, rise / Math.sqrt(offFloor.run * offFloor.run + rise * rise));
+  spreadCone(1, offFloor.slant, offFloor.inPlane, offFloor.shape);
 }
 
 // What a cone sees.
 
-/** What `reflection`'s cone meets, into `seen`: the room, and the people in front of it. */
+/** What `reflection`'s cone meets, into `surfaces` and `over`: the room, and the people in front of it. */
 function seeAlong(reflection: Reflection, world: TracedWorld, maps: TracedLightmaps): void {
   seeRoom(reflection, world, maps);
-  seePeople(reflection);
+  // Asked here too: V8 stopped inlining seePeople into this path, and most samples have nobody to see.
+  if (reflection.people.count > 0) {
+    seePeople(reflection);
+  }
 }
 
 /**
- * The room `reflection`'s cone meets, into `seen`: its wall, or the floor or ceiling past the wall's foot or top, the
- * two blended where the cone straddles the edge; and the lamps where it reaches the ceiling.
+ * The room `reflection`'s cone meets: its wall, or the floor or ceiling past the wall's foot or top, the two blended
+ * where the cone straddles the edge, into `surfaces` with the cone's width where it meets them; and the lamps where it
+ * reaches the ceiling, into `over`.
  */
 function seeRoom(reflection: Reflection, world: TracedWorld, maps: TracedLightmaps): void {
   const { fromS, fromHeight, rise, run, conePerTile, wall } = reflection;
@@ -444,7 +507,7 @@ function seeRoom(reflection: Reflection, world: TracedWorld, maps: TracedLightma
   if (wallShare > 0) {
     const toWall = Math.max(0, reflection.wallS - fromS);
     seeWall(wall, clampToUnit(fromHeight + rise * toWall), conePerTile * toWall * run);
-    addPart(wallShare);
+    addPart(reflection, toWall, wallShare);
   }
   if (wallShare === 1 || rise === 0) {
     return;
@@ -462,7 +525,7 @@ function seeRoom(reflection: Reflection, world: TracedWorld, maps: TracedLightma
     reflection.y + reflection.dy * planeS,
     conePerTile * (planeS - fromS) * run
   );
-  addPart(1 - wallShare);
+  addPart(reflection, planeS - fromS, 1 - wallShare);
   if (upward) {
     addLampsAtCeiling(world, reflection, planeS, 1 - wallShare);
   }
@@ -540,7 +603,7 @@ function seePlane(
 }
 
 /**
- * Adds to `seen` the lamps `reflection`'s cone meets where it reaches the ceiling, at `ceilingS` along its ray, with
+ * Adds to `over` the lamps `reflection`'s cone meets where it reaches the ceiling, at `ceilingS` along its ray, with
  * `share` of it getting there: each disc against the cone's footprint, as a blob. The footprint is the cone's spread,
  * its width up the view stretched along the ray by how low the ray comes in (1 / its rise), which turns a lamp far down
  * a corridor into a streak.
@@ -563,15 +626,15 @@ function addLampsAtCeiling(world: TracedWorld, reflection: Reflection, ceilingS:
     const blob = blobWeight(lamps.side[at] ?? 0, (lampS - ceilingS) * run, radius, spreadAcross, spreadAlong);
     lampShare += blob * (lamps.shown[at] ?? 0);
   }
-  seen.red += (world.lampRgb[0] ?? 0) * lampShare * share;
-  seen.green += (world.lampRgb[1] ?? 0) * lampShare * share;
-  seen.blue += (world.lampRgb[2] ?? 0) * lampShare * share;
+  over.red += (world.lampRgb[0] ?? 0) * lampShare * share;
+  over.green += (world.lampRgb[1] ?? 0) * lampShare * share;
+  over.blue += (world.lampRgb[2] ?? 0) * lampShare * share;
 }
 
 /**
- * Lays over `seen` the people `reflection`'s cone meets, far to near, each covering what is behind: sharp while the cone
- * is narrower than SHARP_CONE_RADII of a disc's radius, else the disc blurred by the cone (spread as for the lamps), a
- * blob of what a blurred disc shows.
+ * Lays over what `reflection`'s cone sees the people it meets, far to near, each covering what is behind (in `over`, as
+ * how much of the surfaces it leaves and what it adds to them): sharp while the cone is narrower than SHARP_CONE_RADII
+ * of a disc's radius, else the disc blurred by the cone (spread as for the lamps), a blob of what a blurred disc shows.
  */
 function seePeople(reflection: Reflection): void {
   const { fromS, fromHeight, rise, run, slant, inPlane, people } = reflection;
@@ -594,54 +657,98 @@ function seePeople(reflection: Reflection): void {
       spreadCone(cone, slant, inPlane, spread);
       layBlurredDiscOver(person, blobWeight(across, up, radius, spread.across, spread.up));
     } else if (across * across + up * up < radius * radius) {
-      seeDiscSharp(nearbyPeople, person, across / radius, up / radius, seen);
+      seeDiscSharp(nearbyPeople, person, across / radius, up / radius, over);
+      over.keeps = 0;
     }
   }
 }
 
-/** Lays person `person`'s disc, blurred, over `seen`, covering `weight` of it. */
+/** Lays person `person`'s disc, blurred, over what the cone sees, covering `weight` of it. */
 function layBlurredDiscOver(person: number, weight: number): void {
   if (weight === 0) {
     return;
   }
   const keeps = 1 - weight;
-  seen.red = seen.red * keeps + (nearbyPeople.blurred[person * 3] ?? 0) * weight;
-  seen.green = seen.green * keeps + (nearbyPeople.blurred[person * 3 + 1] ?? 0) * weight;
-  seen.blue = seen.blue * keeps + (nearbyPeople.blurred[person * 3 + 2] ?? 0) * weight;
+  over.red = over.red * keeps + (nearbyPeople.blurred[person * 3] ?? 0) * weight;
+  over.green = over.green * keeps + (nearbyPeople.blurred[person * 3 + 1] ?? 0) * weight;
+  over.blue = over.blue * keeps + (nearbyPeople.blurred[person * 3 + 2] ?? 0) * weight;
+  over.keeps *= keeps;
 }
 
 // The samples.
 
 function clearSeen(): void {
-  seen.red = 0;
-  seen.green = 0;
-  seen.blue = 0;
+  surfaces.red = 0;
+  surfaces.green = 0;
+  surfaces.blue = 0;
+  surfaces.conePerDepth = 0;
+  over.red = 0;
+  over.green = 0;
+  over.blue = 0;
+  over.keeps = 1;
 }
 
-function addPart(share: number): void {
-  seen.red += part.red * share;
-  seen.green += part.green * share;
-  seen.blue += part.blue * share;
+/**
+ * Adds `share` of `part`, a surface `toSurface` along `reflection`, to `surfaces`, and as much of the width of the cone
+ * where it meets it over the depth the reflection shows it at. One call for both: each call on the room's per-sample
+ * path counts against V8's inlining budget.
+ */
+function addPart(reflection: Reflection, toSurface: number, share: number): void {
+  surfaces.red += part.red * share;
+  surfaces.green += part.green * share;
+  surfaces.blue += part.blue * share;
+  surfaces.conePerDepth +=
+    (share * reflection.conePerTile * toSurface * reflection.run) / (reflection.eyeS + reflection.fromS + toSurface);
 }
 
-function keepSeen(buffers: TracedBuffers, sampleCol: number, sampleRow: number): void {
-  const at = (sampleRow * buffers.reflectedWidth + sampleCol) * 3;
-  buffers.reflected[at] = seen.red;
-  buffers.reflected[at + 1] = seen.green;
-  buffers.reflected[at + 2] = seen.blue;
+/**
+ * Keeps what `reflection`'s cone saw as sample (`sampleCol`, `sampleRow`), off surface kind `kind`, with the deviation
+ * in samples along the row and the column that its surfaces are blurred by: the cone's width over their depth, spread
+ * by mirror geometry (spreadCone is linear in the width), in samples.
+ */
+function keepSeen(
+  buffers: TracedBuffers,
+  reflection: Reflection,
+  sampleCol: number,
+  sampleRow: number,
+  kind: number
+): void {
+  const sample = sampleRow * buffers.reflectedWidth + sampleCol;
+  const at = sample * 3;
+  const coneSamples = surfaces.conePerDepth * reflection.samplesPerTile;
+  buffers.reflectedSurface[at] = surfaces.red;
+  buffers.reflectedSurface[at + 1] = surfaces.green;
+  buffers.reflectedSurface[at + 2] = surfaces.blue;
+  buffers.coneAcross[sample] = coneSamples * reflection.shape.across;
+  buffers.coneUp[sample] = coneSamples * reflection.shape.up;
+  buffers.reflectedKeep[sample] = over.keeps;
+  buffers.reflectedOver[at] = over.red;
+  buffers.reflectedOver[at + 1] = over.green;
+  buffers.reflectedOver[at + 2] = over.blue;
+  buffers.surfaceKind[sample] = kind;
 }
 
-/** Blends the samples of column `sampleCol` strictly between rows `from` and `to`; none when `from` is -1. */
+/**
+ * Blends the samples of column `sampleCol` strictly between rows `from` and `to`, all off the same wall; none when
+ * `from` is -1.
+ */
 function blendSamplesBetween(buffers: TracedBuffers, sampleCol: number, from: number, to: number): void {
-  const { reflected, reflectedWidth } = buffers;
-  const fromAt = (from * reflectedWidth + sampleCol) * 3;
-  const toAt = (to * reflectedWidth + sampleCol) * 3;
+  const { reflectedWidth, reflectedSurface, reflectedOver, reflectedKeep, coneAcross, coneUp, surfaceKind } = buffers;
+  const fromSample = from * reflectedWidth + sampleCol;
+  const toSample = to * reflectedWidth + sampleCol;
   for (let sampleRow = from + 1; from >= 0 && sampleRow < to; sampleRow++) {
     const share = (sampleRow - from) / (to - from);
-    const at = (sampleRow * reflectedWidth + sampleCol) * 3;
+    const sample = sampleRow * reflectedWidth + sampleCol;
     for (let channel = 0; channel < 3; channel++) {
-      reflected[at + channel] = mix(reflected[fromAt + channel], reflected[toAt + channel], share);
+      const fromAt = fromSample * 3 + channel;
+      const toAt = toSample * 3 + channel;
+      reflectedSurface[sample * 3 + channel] = mix(reflectedSurface[fromAt], reflectedSurface[toAt], share);
+      reflectedOver[sample * 3 + channel] = mix(reflectedOver[fromAt], reflectedOver[toAt], share);
     }
+    reflectedKeep[sample] = mix(reflectedKeep[fromSample], reflectedKeep[toSample], share);
+    coneAcross[sample] = mix(coneAcross[fromSample], coneAcross[toSample], share);
+    coneUp[sample] = mix(coneUp[fromSample], coneUp[toSample], share);
+    surfaceKind[sample] = surfaceKind[toSample] ?? NO_SURFACE;
   }
 }
 

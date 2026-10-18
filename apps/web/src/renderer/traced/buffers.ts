@@ -4,6 +4,7 @@ import type { PlayerState } from '@zoom3d/shared';
 import { createView, EYE_HEIGHT, setView, type View } from '../camera';
 import type { Framebuffer } from '../framebuffer';
 import { fresnel } from './optics';
+import { type BlurLine, createBlurLine } from './surface-blur';
 import { FLOOR_MATERIAL } from './world';
 
 /**
@@ -52,8 +53,25 @@ export interface TracedBuffers {
   /** The reflection samples across and down: the frame's size over REFLECTION_SCALE. */
   reflectedWidth: number;
   reflectedHeight: number;
-  /** What each reflection sample's cone meets, linear r, g, b interleaved, row by row. */
+  /**
+   * What each reflection sample's cone meets, linear r, g, b interleaved, row by row: what the people leave of its
+   * surfaces, blurred, plus the lamps and people over them.
+   */
   reflected: Float32Array;
+  /** Per sample, the walls, floor and ceiling its cone meets, r, g, b, before it blurs them (surface-blur.ts)... */
+  reflectedSurface: Float32Array;
+  /** ...how much of them the people in front leave showing... */
+  reflectedKeep: Float32Array;
+  /** ...and the lamps and people over them, r, g, b, already blurred by the cone in closed form. */
+  reflectedOver: Float32Array;
+  /** Per sample, the surface its cone leaves from (surface-blur.ts: NO_SURFACE, FLOOR_SURFACE or a wall plane). */
+  surfaceKind: Int32Array;
+  /** Per sample, the cone's deviation where it meets the surfaces, in samples along the row and along the column. */
+  coneAcross: Float32Array;
+  coneUp: Float32Array;
+  /** `reflectedSurface` blurred by the cone, and the line the blur works along. */
+  blurredSurface: Float32Array;
+  blurLine: BlurLine;
   /** `reflected` blended out to the frame's width, still a row per sample row: the composite blends two of its rows. */
   widenedReflection: Float32Array;
   reflectionColumns: SampleBlend;
@@ -85,6 +103,7 @@ function createTracedBuffers(width: number, height: number, fov: number): Traced
   const proj = width / 2 / planeLength;
   const reflectedWidth = Math.floor(width / REFLECTION_SCALE);
   const reflectedHeight = Math.floor(height / REFLECTION_SCALE);
+  const samples = reflectedWidth * reflectedHeight;
   return {
     width,
     height,
@@ -100,7 +119,15 @@ function createTracedBuffers(width: number, height: number, fov: number): Traced
     wallDistance: new Float64Array(width),
     reflectedWidth,
     reflectedHeight,
-    reflected: new Float32Array(reflectedWidth * reflectedHeight * 3),
+    reflected: new Float32Array(samples * 3),
+    reflectedSurface: new Float32Array(samples * 3),
+    reflectedKeep: new Float32Array(samples),
+    reflectedOver: new Float32Array(samples * 3),
+    surfaceKind: new Int32Array(samples),
+    coneAcross: new Float32Array(samples),
+    coneUp: new Float32Array(samples),
+    blurredSurface: new Float32Array(samples * 3),
+    blurLine: createBlurLine(Math.max(reflectedWidth, reflectedHeight)),
     widenedReflection: new Float32Array(width * reflectedHeight * 3),
     reflectionColumns: sampleBlendOf(width, reflectedWidth),
     reflectionRows: sampleBlendOf(height, reflectedHeight),

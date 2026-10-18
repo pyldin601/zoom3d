@@ -501,6 +501,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Wall occlusion in reflections is soft across columns** (owner's review, 2026-10-18), as wide as the cone's
     sideways spread: dropping whatever lay past a column's own wall turned a lamp just past a doorway's faces into a
     hard-edged bar down the floor. Off the floor only; wall reflections keep the per-column cut.
+  - **Reflected surfaces are blurred by the same cone as lamps** (owner's review, 2026-10-18): walls, floor and ceiling
+    in a reflection are blurred in the reflection buffer by each sample's own cone, never across surface kinds, and the
+    lamps and people, already blurred in closed form, are laid over after. About 1.4 ms a frame on `bench:traced`.
   - **The traced ceiling is light grey 0xa0** (owner's review, 2026-10-17; the current renderer keeps 0x38): lit by
     bounce only, the game's dark grey showed about 90× darker than the floor under a lamp half a tile away, and
     neither it nor its reflection read; at 0xa0 it is about 10×.

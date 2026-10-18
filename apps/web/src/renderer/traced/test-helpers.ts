@@ -54,14 +54,30 @@ export function drawOverNaN(
 ): void {
   const scene = { map: traced.world.map, eye, people, traced };
   renderTraced(fb, scene);
-  const { hdr, spec, reflected, widenedReflection } = lastTracedBuffers();
+  const { hdr, spec, widenedReflection } = lastTracedBuffers();
   hdr.fill(Number.NaN);
   spec.fill(Number.NaN);
-  reflected.fill(Number.NaN);
+  for (const samples of reflectionSamples()) {
+    samples.fill(Number.NaN);
+  }
   widenedReflection.fill(Number.NaN);
   fb.zbuffer.fill(Number.NaN);
   fb.pixels.fill(0);
   renderTraced(fb, scene);
+}
+
+/** Every per-sample reflection buffer the last frame wrote. */
+function reflectionSamples(): Float32Array[] {
+  const buffers = lastTracedBuffers();
+  return [
+    buffers.reflected,
+    buffers.reflectedSurface,
+    buffers.reflectedKeep,
+    buffers.reflectedOver,
+    buffers.coneAcross,
+    buffers.coneUp,
+    buffers.blurredSurface,
+  ];
 }
 
 /**
@@ -69,11 +85,16 @@ export function drawOverNaN(
  * column a distance.
  */
 export function expectEveryPixelWritten(fb: Framebuffer): void {
-  const { hdr, spec, reflected, widenedReflection } = lastTracedBuffers();
+  const { hdr, spec, widenedReflection } = lastTracedBuffers();
   expect(fb.pixels.findIndex((pixel) => pixel >>> 24 !== 0xff)).toBe(-1);
   expect(hdr.findIndex((light) => !Number.isFinite(light))).toBe(-1);
   expect(spec.findIndex((weight) => !Number.isFinite(weight))).toBe(-1);
-  expect(reflected.findIndex((light) => !Number.isFinite(light))).toBe(-1);
+  for (const [index, samples] of reflectionSamples().entries()) {
+    expect(
+      samples.findIndex((value) => !Number.isFinite(value)),
+      `reflection buffer ${index}`
+    ).toBe(-1);
+  }
   expect(widenedReflection.findIndex((light) => !Number.isFinite(light))).toBe(-1);
   expect(fb.zbuffer.findIndex((distance) => !(distance > 0))).toBe(-1);
 }

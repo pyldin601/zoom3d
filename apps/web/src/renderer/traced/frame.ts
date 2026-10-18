@@ -7,7 +7,8 @@ import type { Sprite } from '../sprites';
 import { createEmptyTracedBuffers, fitTracedBuffers, type TracedBuffers } from './buffers';
 import type { TracedLightmaps } from './lightmaps';
 import { drawFloorAndCeiling, drawWalls } from './primary';
-import { fillReflectionTints, traceReflections, widenReflections } from './reflections';
+import { fillReflectionTints, layOverBlurredSurfaces, traceReflections, widenReflections } from './reflections';
+import { blurReflectedSurfaces } from './surface-blur';
 import { ENCODE, ENCODE_SIZE, EXPOSURE, TONE_SCALE, TONE_SIZE, TONE_STEPS, TONE_WHITE } from './tone';
 import { TRACED_MATERIALS, type TracedWorld } from './world';
 
@@ -41,6 +42,8 @@ export function renderTraced(fb: Framebuffer, scene: TracedScene): void {
   drawWalls(fb, buffers, world, maps);
   drawFloorAndCeiling(buffers, world, maps);
   traceReflections(buffers, world, maps, scene.people);
+  blurReflectedSurfaces(buffers);
+  layOverBlurredSurfaces(buffers);
   widenReflections(buffers);
   fillReflectionTints(world, reflectionTints);
   composite(buffers, reflectionTints, fb.pixels);
