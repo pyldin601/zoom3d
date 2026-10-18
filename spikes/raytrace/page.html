@@ -1,0 +1,152 @@
+<title>zoom3d Ray Tracing</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&display=swap">
+<style>
+  /* One dark look, like the game: the frame fills the screen, a small lamp-lit panel floats over a corner. */
+  :root {
+    color-scheme: dark;
+    --ink: #0b0d12;
+    --panel: rgba(12, 14, 20, 0.8);
+    --fg: #ece6d6;
+    --dim: #9d9786;
+    --lamp: #ffd27a;
+    --rule: rgba(255, 210, 122, 0.3);
+    --hud: 'VT323', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  }
+  html,
+  body {
+    height: 100%;
+    background: var(--ink);
+    color: var(--fg);
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  #stage {
+    position: fixed;
+    inset: 0;
+    background: var(--ink);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    cursor: grab;
+  }
+  #stage:active {
+    cursor: grabbing;
+  }
+  #view {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    image-rendering: pixelated;
+  }
+  .panel {
+    position: fixed;
+    left: calc(12px + env(safe-area-inset-left, 0px));
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    display: grid;
+    gap: 6px;
+    padding: 10px 12px;
+    max-width: calc(100% - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    font: 20px/1 var(--hud);
+    font-variant-numeric: tabular-nums;
+    touch-action: manipulation;
+    cursor: default;
+  }
+  html.touch .panel {
+    bottom: auto;
+    top: calc(10px + env(safe-area-inset-top, 0px));
+    font-size: 18px;
+    padding: 8px 10px;
+  }
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+  .label {
+    color: var(--dim);
+    letter-spacing: 0.04em;
+    margin-right: 2px;
+  }
+  .stats {
+    display: flex;
+    gap: 14px;
+    color: var(--lamp);
+  }
+  .stats #size,
+  .bake,
+  .phases {
+    color: var(--dim);
+  }
+  .phases {
+    font-size: 0.8em;
+  }
+  button {
+    font: inherit;
+    color: var(--fg);
+    background: transparent;
+    border: 1px solid var(--rule);
+    padding: 3px 8px 4px;
+    cursor: pointer;
+  }
+  button[aria-pressed='true'] {
+    background: var(--lamp);
+    border-color: var(--lamp);
+    color: var(--ink);
+  }
+  button:focus-visible {
+    outline: 2px solid var(--lamp);
+    outline-offset: 2px;
+  }
+  #exposure {
+    min-width: 2.2em;
+    text-align: center;
+  }
+  [data-off] {
+    opacity: 0.35;
+    pointer-events: none;
+  }
+  .hint {
+    color: var(--dim);
+  }
+  html.touch .hint-keys,
+  html:not(.touch) .hint-touch {
+    display: none;
+  }
+</style>
+
+<div id="stage"><canvas id="view" width="640" height="360" aria-label="The LEVEL1 room, drawn by the renderer chosen below"></canvas></div>
+<div class="panel" role="group" aria-label="Renderer">
+  <div class="row">
+    <button id="mode-traced" data-mode="traced" aria-pressed="true">Ray traced</button>
+    <button id="mode-current" data-mode="current" aria-pressed="false">Current</button>
+  </div>
+  <div class="stats" aria-live="off"><span id="cost">– ms</span><span id="fps">– fps</span><span id="size">640×360</span></div>
+  <div class="phases traced-only" id="phases">–</div>
+  <div class="row traced-only">
+    <span class="label">Reflections</span>
+    <button id="reflections-off" data-reflections="0" aria-pressed="false">Off</button>
+    <button id="reflections-half" data-reflections="2" aria-pressed="true">½ res</button>
+    <button id="reflections-quarter" data-reflections="4" aria-pressed="false">¼ res</button>
+  </div>
+  <div class="row traced-only">
+    <span class="label">Wall light</span>
+    <button id="heights-3" data-heights="3" aria-pressed="true">3 heights</button>
+    <button id="heights-8" data-heights="8" aria-pressed="false">8</button>
+  </div>
+  <div class="row traced-only">
+    <span class="label">Exposure</span>
+    <button id="darker" aria-label="Darker">−</button><span id="exposure">4.0</span><button id="brighter" aria-label="Brighter">+</button>
+  </div>
+  <div class="bake traced-only" id="bake">baking 0%</div>
+  <div class="hint hint-keys">WASD or arrows · drag to turn · T, R, H</div>
+  <div class="hint hint-touch">Left: move · right: turn</div>
+</div>
+<!--SCRIPT-->

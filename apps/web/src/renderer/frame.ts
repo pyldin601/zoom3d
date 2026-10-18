@@ -10,11 +10,16 @@ import { renderOwnBoombox } from './own-boombox';
 import { type HeldStep, renderOwnHeld } from './own-held';
 import type { HeldPose } from './sip';
 import { type PeopleAndObjects, renderSprites } from './sprites';
+import { renderTraced, type TracedLighting } from './traced/frame';
+import { tracedObjectLight } from './traced/objects';
+import type { VoxelLight } from './voxels';
 import { type Room, renderWalls } from './walls';
 
 /** Everything one frame shows. */
 export interface RoomScene extends Room, PeopleAndObjects {
   reflections: ReflectionMode;
+  /** The baked rays' light; when set the room is drawn by `renderTraced`, else by `renderWalls` from `lighting`. */
+  traced: TracedLighting | null;
   /** Each person's name label and automap dot. */
   labels: readonly PersonLabel[];
   /** The local player's own face lights the room round them, as everyone's does; null until they have a colour. */
@@ -33,6 +38,8 @@ export interface FirstPerson {
 }
 
 const avatarGlows = createAvatarGlows();
+/** Each TracedLighting's light on objects, made once: it owns scratch space that a frame would otherwise allocate. */
+const objectLights = new WeakMap<TracedLighting, VoxelLight>();
 
 /** `seen` gets, per person, how much of them this frame drew (dynamic subscription reads it). */
 export function renderView(fb: Framebuffer, scene: RoomScene, seen?: Map<string, PeerFacts>): void {
@@ -54,11 +61,30 @@ export function renderHud(hud: CanvasRenderingContext2D, fb: Framebuffer, scene:
 }
 
 function drawRoom(fb: Framebuffer, scene: RoomScene, glows: readonly Glow[]): void {
-  renderWalls(fb, scene, glows);
+  if (isTraced(scene)) {
+    renderTraced(fb, scene);
+  } else {
+    renderWalls(fb, scene, glows);
+  }
+}
+
+function isTraced(scene: RoomScene): scene is RoomScene & { traced: TracedLighting } {
+  return scene.traced !== null;
 }
 
 function drawPeopleAndObjects(fb: Framebuffer, scene: RoomScene, seen: Map<string, PeerFacts> | undefined): void {
+  // Set every frame: a scene that was traced and is not now must not keep the light of the room it left.
+  scene.objectLight = isTraced(scene) ? objectLightOf(scene.traced) : null;
   renderSprites(fb, scene, seen);
+}
+
+function objectLightOf(traced: TracedLighting): VoxelLight {
+  let light = objectLights.get(traced);
+  if (light === undefined) {
+    light = tracedObjectLight(traced);
+    objectLights.set(traced, light);
+  }
+  return light;
 }
 
 function drawFirstPerson(fb: Framebuffer, hands: FirstPerson): void {

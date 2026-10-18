@@ -118,6 +118,7 @@ test('the renderer section switches the lighting mode', () => {
     ['shadows', 'Shadows'],
     ['reflections', 'Shadows and reflections'],
     ['reflections-only', 'Reflections only'],
+    ['traced', 'Ray traced (alpha)'],
   ]);
   select.value = 'reflections-only';
   select.dispatchEvent(new Event('change'));

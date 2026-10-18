@@ -5,6 +5,7 @@ import type { DrinkKey } from '../input/drink-key';
 import { type RoomKey, roomKey } from '../input/room-keys';
 import type { TouchSource } from '../input/touch';
 import { heldKeyAction } from '../ui/held-store';
+import { nextRenderMode, type RenderMode } from '../ui/render-settings';
 import { showTouchControls, type TouchControls } from '../ui/touch-controls';
 import type { LocalPlayer } from './local-player';
 import { isConnected, type Room } from './room';
@@ -17,13 +18,15 @@ export interface RoomControlsOptions {
   room(): Room | null;
   chooseDrink(item: HeldItem | null): void;
   toggleConsole(): void;
+  renderMode(): RenderMode;
+  setRenderMode(mode: RenderMode): void;
 }
 
 export interface RoomControls {
   readonly mapShown: boolean;
   /** From Join in touch mode; otherwise they come with the first touch in the room. */
   showTouchControls(): void;
-  /** The local player's drink, boombox or the map changed. */
+  /** The local player's drink, boombox, the map or the lighting changed. */
   refresh(): void;
 }
 
@@ -33,7 +36,13 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
   let touchControls: TouchControls | null = null;
   const inRoom = () => isConnected(o.room());
 
-  const refresh = () => touchControls?.update({ held: localPlayer.drink, boombox: localPlayer.boombox, map: mapShown });
+  const refresh = () =>
+    touchControls?.update({
+      held: localPlayer.drink,
+      boombox: localPlayer.boombox,
+      map: mapShown,
+      lighting: o.renderMode(),
+    });
 
   const toggleMap = () => {
     mapShown = !mapShown;
@@ -84,6 +93,7 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
       held: localPlayer.drink,
       boombox: localPlayer.boombox,
       map: mapShown,
+      lighting: o.renderMode(),
       onPick(item) {
         if (inRoom()) {
           o.chooseDrink(item);
@@ -101,6 +111,10 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
         if (inRoom()) {
           toggleMap();
         }
+      },
+      onLighting: () => {
+        o.setRenderMode(nextRenderMode(o.renderMode()));
+        refresh();
       },
     });
     o.touch.attachPad(touchControls.pad);

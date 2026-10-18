@@ -472,5 +472,46 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     light keep hard sight lines.
   - Not done yet: rooms get no lamps of their own.
 
+### D25 — A ray-traced renderer
+- *Resolved 2026-10-17* ([spec](superpowers/specs/2026-10-17-ray-traced-renderer-design.md)): a **second renderer**
+  next to D24's, switchable at runtime ("Ray traced (alpha)" in the console's Lighting menu, stepped from the touch
+  tray). The default stays "Shadows and reflections" and the landing page keeps the current renderer. The owner wanted light to
+  follow from a few roughly true rules (lamps shine, rays travel straight, walls block them, surfaces bounce by
+  material) instead of D24's stack of tricks.
+  - **Pure rays.** All light comes from the lamps along rays: no base light, and bounce at the surfaces' linear colour.
+    The spike had both softeners (a base light of 0.03, bounce at the painted colour); the owner dropped them. So the
+    room is darker and more contrasty than D24's, and a room without lamps is black by design.
+  - **It replaces `renderWalls` only** (`renderer/traced/`, picked per frame by `renderView`): avatars, objects,
+    labels and the HUD are drawn after it as before, except for the vacuum's light (below). Lamps are
+    `corridorLights`, as before; none of them moves, so the light is baked once and nothing casts shadows or glows in
+    this mode.
+  - **The vacuum is lit from the bake.** In this mode `renderView` hands the sprites an `objectLight`
+    (`traced/objects.ts`; null unless the traced room is drawing, so also while it bakes): per face direction the lamps' light at the model's mid height plus
+    the floor's bounce light beneath it, toned by the brightest channel as the room is.
+  - **The bake** takes about 0.6 s for LEVEL1 on a Mac. It runs in 6 ms slices a frame (`traced/room.ts`) only while
+    the mode is chosen; the lit renderer draws until it is done, and leaving the mode pauses it, never restarts it.
+    Its bounce jitter is a precomputed table of `seeded(12345)`'s first 8192 draws, because `seeded()` costs about
+    40 ns a draw and repeats after about 11–16k draws.
+  - **Reflections sample what is in front of the wall.** A cone that straddles a wall's foot or top takes the floor or
+    ceiling part from the plane in front of that wall. The spike took the ray's own crossing, which lies beyond the
+    wall, often in another room, lit by other lamps.
+  - **Reflection cones follow mirror geometry** (owner's review, 2026-10-17): a cone keeps its width (roughness² per
+    tile) within the plane of incidence and narrows by the slant across it. The first build stretched it by 1 / slant
+    instead, so a lamp's floor reflection spread over about 10× too much floor and read as a faint brightening.
+  - **Wall occlusion in reflections is soft across columns** (owner's review, 2026-10-18), as wide as the cone's
+    sideways spread: dropping whatever lay past a column's own wall turned a lamp just past a doorway's faces into a
+    hard-edged bar down the floor. Off the floor only; wall reflections keep the per-column cut.
+  - **Reflected surfaces are blurred by the same cone as lamps** (owner's review, 2026-10-18): walls, floor and ceiling
+    in a reflection are blurred in the reflection buffer by each sample's own cone, never across surface kinds, and the
+    lamps and people, already blurred in closed form, are laid over after. About 1.4 ms a frame on `bench:traced`.
+  - **The traced ceiling is light grey 0xa0** (owner's review, 2026-10-17; the current renderer keeps 0x38): lit by
+    bounce only, the game's dark grey showed about 90× darker than the floor under a lamp half a tile away, and
+    neither it nor its reflection read; at 0xa0 it is about 10×.
+  - **Kept as an alpha, not the default** (owner's review, 2026-10-18: "looks nice as an alpha version"). It ships
+    labelled "(alpha)"; "Shadows and reflections" stays the default for everyone who hasn't chosen otherwise.
+  - **Phones are the open check** (spec §4): in a room with 8 people on video the frame-rate meter must stay "good"
+    (55 fps). If it doesn't: ¼-resolution reflections and a Worker bake, then decide with the owner. `pnpm bench:traced`
+    times the bake and the frame (at ½ only: `REFLECTION_SCALE` is a constant until the fallback is needed).
+
 ## Resolved
 _(none yet)_

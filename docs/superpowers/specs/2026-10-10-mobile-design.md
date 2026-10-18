@@ -184,8 +184,11 @@ The occasional actions sit behind one **⋯** button. It opens a small tray:
 - **Drinks:** beer, coffee, wine, nothing (the same as keys `1`–`3`, `0`, through the same `chooseHeld`).
 - **Boombox:** start (opens the file picker, as `B` does) / stop while playing.
 - **Map:** on/off (as Tab).
+- **Lighting** *(since 2026-10-17)*: shows the current lighting mode and steps to the next on each tap, in the order
+  of the backtick console, wrapping round; the mode is kept per browser.
 
-The tray closes on picking, on tapping outside it, or on ⋯ again.
+The tray closes on picking, on tapping outside it, or on ⋯ again. Lighting is the exception: stepping to the mode
+wanted takes several taps, so picking it leaves the tray open.
 
 ### 5.4 Drink button (*my call*)
 Sipping and cheers happen while talking, so they get their own button, visible only while you hold a drink. It

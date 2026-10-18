@@ -11,12 +11,13 @@ import { NO_FACES_SENT } from '../media/transport';
 import { bakeRoomLightingOnce } from '../renderer/room-lighting';
 import type { Gesture } from '../renderer/sip';
 import { makeTextures } from '../renderer/textures';
+import { createTracedRoom } from '../renderer/traced/room';
 import { flushOnHide, track } from '../telemetry/analytics';
 import { createBacktickConsole } from '../ui/backtick-console';
 import { loadBoomboxVolume, saveBoomboxVolume } from '../ui/boombox-store';
 import { loadHeld, saveHeld } from '../ui/held-store';
 import { saveName } from '../ui/name-store';
-import { loadRenderSettings, saveRenderSettings } from '../ui/render-settings';
+import { loadRenderSettings, type RenderMode, saveRenderSettings, tracesRays } from '../ui/render-settings';
 import { showRoomScreen } from '../ui/room-screen';
 import { createStatusLine } from '../ui/room-status';
 import { botsParam, type Route } from '../ui/route';
@@ -41,9 +42,10 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
   const map = parseMap(LEVEL1);
   const textures = makeTextures(1);
   const roomLighting = bakeRoomLightingOnce(map, textures, flags.lights);
+  const tracedRoom = createTracedRoom(map, textures, flags.lights);
   const screen = createScreen(page, flags);
   const frameRateMeter = createFrameRateMeter();
-  /** The lighting mode, chosen in the backtick console and kept per browser. */
+  /** The lighting mode, chosen in the backtick console or the touch tray and kept per browser. */
   let renderSettings = loadRenderSettings(pageStorage());
 
   const localPlayer = createLocalPlayer(map, Math.random);
@@ -65,8 +67,8 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
       render: {
         settings: renderSettings,
         onChange(s) {
-          renderSettings = s;
-          saveRenderSettings(pageStorage(), s);
+          setRenderMode(s.mode);
+          controls.refresh();
         },
       },
     }),
@@ -81,6 +83,8 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     room: () => room,
     chooseDrink,
     toggleConsole: () => backtickConsole.toggle(),
+    renderMode: () => renderSettings.mode,
+    setRenderMode,
   });
   const roomLoop = createRoomLoop({
     map,
@@ -94,6 +98,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     room: () => room,
     renderMode: () => renderSettings.mode,
     roomLighting,
+    tracedRoom,
     showMap: () => controls.mapShown,
   });
   // rAF stops while the tab is hidden: keep voices (and newcomers) audible from a timer meanwhile.
@@ -111,6 +116,10 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
       },
       get call() {
         return room?.call ?? null;
+      },
+      /** Whether the room is drawn by rays: the mode is traced and its bake is done. */
+      get tracedReady() {
+        return tracesRays(renderSettings.mode) && tracedRoom.lighting() !== null;
       },
       get audio() {
         return room?.audio ?? null;
@@ -185,6 +194,12 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
 
   function inRoom(): boolean {
     return isConnected(room);
+  }
+
+  /** The one path for changing the lighting mode, from the backtick console or the touch tray. */
+  function setRenderMode(mode: RenderMode): void {
+    renderSettings = { ...renderSettings, mode };
+    saveRenderSettings(pageStorage(), renderSettings);
   }
 
   /** The one path for changing the drink in hand, from a number key or the touch tray. */

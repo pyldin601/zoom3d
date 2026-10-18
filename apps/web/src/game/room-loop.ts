@@ -7,7 +7,9 @@ import type { Input } from '../input/keyboard';
 import { createSubscription } from '../media/subscription';
 import { type RoomScene, renderHud, renderView } from '../renderer/frame';
 import type { Lighting } from '../renderer/lighting';
-import { litReflections, type RenderMode } from '../ui/render-settings';
+import type { TracedLighting } from '../renderer/traced/frame';
+import { BAKE_SLICE_MS, type TracedRoom } from '../renderer/traced/room';
+import { litReflections, type RenderMode, tracesRays } from '../ui/render-settings';
 import { type StatusLine, statusText } from '../ui/room-status';
 import type { FrameRateMeter } from './frame-rate';
 import type { LocalPlayer } from './local-player';
@@ -27,6 +29,7 @@ export interface RoomLoopOptions {
   room(): Room | null;
   renderMode(): RenderMode;
   roomLighting(): Lighting | null;
+  tracedRoom: TracedRoom;
   showMap(): boolean;
 }
 
@@ -49,6 +52,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     eye: localPlayer.pose,
     lighting: null,
     reflections: 'none',
+    traced: null,
     people: world.sprites,
     objects: world.voxels,
     labels: world.labels,
@@ -75,11 +79,23 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     room.audio.update(now, localPlayer.pose, world.positions);
   };
 
+  /** Bakes a slice of the traced light while that mode is chosen; null until it is done, and in every other mode. */
+  const tracedLightingFor = (mode: RenderMode): TracedLighting | null => {
+    if (!tracesRays(mode)) {
+      return null;
+    }
+    o.tracedRoom.bake(BAKE_SLICE_MS);
+    return o.tracedRoom.lighting();
+  };
+
   const describeScene = (now: number) => {
     // The console's lighting mode; flat is drawn unlit, as with `?lights=off`.
-    const reflections = litReflections(o.renderMode());
+    const mode = o.renderMode();
+    const reflections = litReflections(mode);
     scene.lighting = reflections === null ? null : o.roomLighting();
     scene.reflections = reflections ?? 'none';
+    // The lit room keeps drawing until the traced one is baked.
+    scene.traced = tracedLightingFor(mode);
     const room = o.room();
     scene.ownGlow = localPlayer.glow(now, room?.session.selfColor() ?? null);
     scene.firstPerson = isConnected(room) ? localPlayer.firstPerson(now) : null;

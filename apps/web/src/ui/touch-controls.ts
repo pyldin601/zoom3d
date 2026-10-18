@@ -3,12 +3,14 @@
 // wires the handlers, and input/touch.ts reads the pad.
 import type { HeldItem } from '@zoom3d/shared';
 import { touchIcon } from './icons';
+import { RENDER_MODE_NAMES, type RenderMode } from './render-settings';
 import { el } from './screens';
 
 export interface TouchControlsState {
   held: HeldItem | null;
   boombox: boolean;
   map: boolean;
+  lighting: RenderMode;
 }
 
 export interface TouchControlsOptions extends TouchControlsState {
@@ -19,6 +21,8 @@ export interface TouchControlsOptions extends TouchControlsState {
   onDrinkCancel(): void;
   onBoombox(): void;
   onMap(): void;
+  /** Steps to the next lighting mode; the new mode comes back through `update`. */
+  onLighting(): void;
 }
 
 export interface TouchControls {
@@ -131,7 +135,7 @@ function createDrinkButton(opts: TouchControlsOptions) {
   };
 }
 
-/** The ⋯ button and the tray it opens: the drinks, the boombox and the map. */
+/** The ⋯ button and the tray it opens: the drinks, the boombox, the map and the lighting. */
 function createTray(opts: TouchControlsOptions) {
   const tray = el('div', { className: 'tray', hidden: true });
   const more = iconButton('more', 'More', touchIcon('more'));
@@ -160,7 +164,13 @@ function createTray(opts: TouchControlsOptions) {
   boombox.dataset.action = 'boombox';
   const map = choice(iconButton('', 'Map', touchIcon('map'), 'Map'), opts.onMap);
   map.dataset.action = 'map';
-  tray.append(...drinkButtons.map((d) => d.button), boombox, map);
+  // Not a choice: stepping through the modes takes several taps, so the tray stays open.
+  const lightingLabel = el('span');
+  const lighting = iconButton('', 'Lighting', touchIcon('lighting'));
+  lighting.append(lightingLabel);
+  lighting.dataset.action = 'lighting';
+  lighting.addEventListener('click', opts.onLighting);
+  tray.append(...drinkButtons.map((d) => d.button), boombox, map, lighting);
 
   // A tap anywhere but the tray or ⋯ closes it.
   const outside = (e: Event) => {
@@ -181,6 +191,8 @@ function createTray(opts: TouchControlsOptions) {
       boombox.setAttribute('aria-label', music);
       boomboxLabel.textContent = music;
       map.setAttribute('aria-pressed', String(s.map));
+      lightingLabel.textContent = RENDER_MODE_NAMES[s.lighting];
+      lighting.setAttribute('aria-label', `Lighting: ${RENDER_MODE_NAMES[s.lighting]}`);
     },
     stopClosingOnOutsidePress: () => document.removeEventListener('pointerdown', outside),
   };
