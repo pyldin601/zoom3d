@@ -1,7 +1,7 @@
 # Ray-traced lighting (a second renderer): design spec
 
 Status: approved design, implemented 2026-10-17, from a brainstorm and an approved throwaway spike
-(`spikes/raytrace/`, committed as a throwaway reference).
+(`spikes/raytrace/`, committed as a throwaway reference). Kept as an alpha, not the default (owner, 2026-10-18).
 Decision record to add: [open-decisions.md](../../open-decisions.md) D25.
 
 Calls marked **(my call)** were made by the designer, not by the product owner, and can be overridden. Everything else
@@ -28,7 +28,7 @@ floor keeps the column's own direction (no extra walk). Only heights differ per 
 
 ### Goals
 
-- A new choice in the console's **Lighting** menu, "Ray traced", saved per browser like the other render settings,
+- A new choice in the console's **Lighting** menu, "Ray traced (alpha)", saved per browser like the other render settings,
   and a **Lighting button in the touch tray** so phones can switch too (the console only opens with a key).
 - **Smooth on phones from the start.** The spike ran "perfect" on the owner's phone at 640 px wide, with ½-res
   reflections.

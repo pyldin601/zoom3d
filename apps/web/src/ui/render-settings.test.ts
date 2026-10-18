@@ -39,7 +39,7 @@ test('each mode picks what the lit renderer reflects; flat is drawn unlit', () =
 
 test('only the traced mode traces rays', () => {
   expect(RENDER_MODES.filter(tracesRays)).toEqual(['traced']);
-  expect(RENDER_MODE_NAMES.traced).toBe('Ray traced');
+  expect(RENDER_MODE_NAMES.traced).toBe('Ray traced (alpha)');
 });
 
 test('the next mode follows the console order and wraps around', () => {

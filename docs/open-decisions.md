@@ -474,8 +474,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 
 ### D25 — A ray-traced renderer
 - *Resolved 2026-10-17* ([spec](superpowers/specs/2026-10-17-ray-traced-renderer-design.md)): a **second renderer**
-  next to D24's, switchable at runtime ("Ray traced" in the console's Lighting menu, stepped from the touch tray). The
-  default stays "Shadows and reflections" and the landing page keeps the current renderer. The owner wanted light to
+  next to D24's, switchable at runtime ("Ray traced (alpha)" in the console's Lighting menu, stepped from the touch
+  tray). The default stays "Shadows and reflections" and the landing page keeps the current renderer. The owner wanted light to
   follow from a few roughly true rules (lamps shine, rays travel straight, walls block them, surfaces bounce by
   material) instead of D24's stack of tricks.
   - **Pure rays.** All light comes from the lamps along rays: no base light, and bounce at the surfaces' linear colour.
@@ -507,6 +507,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **The traced ceiling is light grey 0xa0** (owner's review, 2026-10-17; the current renderer keeps 0x38): lit by
     bounce only, the game's dark grey showed about 90× darker than the floor under a lamp half a tile away, and
     neither it nor its reflection read; at 0xa0 it is about 10×.
+  - **Kept as an alpha, not the default** (owner's review, 2026-10-18: "looks nice as an alpha version"). It ships
+    labelled "(alpha)"; "Shadows and reflections" stays the default for everyone who hasn't chosen otherwise.
   - **Phones are the open check** (spec §4): in a room with 8 people on video the frame-rate meter must stay "good"
     (55 fps). If it doesn't: ¼-resolution reflections and a Worker bake, then decide with the owner. `pnpm bench:traced`
     times the bake and the frame (at ½ only: `REFLECTION_SCALE` is a constant until the fallback is needed).

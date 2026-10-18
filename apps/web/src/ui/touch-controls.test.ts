@@ -134,7 +134,7 @@ test('the Lighting button steps the mode, keeps the tray open and names the mode
   expect(tray().hidden).toBe(false);
   expect($('[data-action="lighting"]').textContent).toContain('Shadows and reflections');
   controls.update({ held: null, boombox: false, map: false, lighting: 'traced' });
-  expect($('[data-action="lighting"]').textContent).toContain('Ray traced');
+  expect($('[data-action="lighting"]').textContent).toContain('Ray traced (alpha)');
 });
 
 test('the held drink is marked in the tray', () => {

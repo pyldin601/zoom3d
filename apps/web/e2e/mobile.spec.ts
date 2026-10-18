@@ -155,10 +155,10 @@ test('the tray steps the lighting to Ray traced, and it is kept', async ({ brows
 
   await phone.locator('.more').click();
   const lighting = phone.locator('[data-action="lighting"]');
-  for (let taps = 0; taps < 5 && (await lighting.textContent())?.trim() !== 'Ray traced'; taps++) {
+  for (let taps = 0; taps < 5 && (await lighting.textContent())?.trim() !== 'Ray traced (alpha)'; taps++) {
     await lighting.click();
   }
-  await expect(lighting).toHaveText('Ray traced');
+  await expect(lighting).toHaveText('Ray traced (alpha)');
   await expect(phone.locator('.tray')).toBeVisible();
   const saved = await phone.evaluate(() => localStorage.getItem('zoom3d.render.v1'));
   expect(JSON.parse(saved ?? 'null')).toEqual({ mode: 'traced' });

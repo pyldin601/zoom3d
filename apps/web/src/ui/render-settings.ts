@@ -23,7 +23,7 @@ export const RENDER_MODE_NAMES: Record<RenderMode, string> = {
   shadows: 'Shadows',
   reflections: 'Shadows and reflections',
   'reflections-only': 'Reflections only',
-  traced: 'Ray traced',
+  traced: 'Ray traced (alpha)',
 };
 
 /** The mode after `mode` in the console's order, wrapping from the last back to the first: the tray's one button. */
