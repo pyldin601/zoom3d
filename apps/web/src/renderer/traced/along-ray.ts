@@ -41,14 +41,15 @@ export interface ConeAcrossMap {
 /**
  * The things one ray passes close to, `count` of them, nearest first: `s` along it (in units of its direction),
  * `side` how far to its side (tiles, positive to its right on the y-down map) and `thing`, an index into NearbyThings.
- * `fade` (0..1) is how much of it shows: less than 1 only in the last FADE_TILES before the margin.
+ * `shown` (0..1) is how much of it shows: less than 1 in the last FADE_TILES before the margin, or where walls hide it
+ * from part of the cone.
  */
 export interface ThingsAlongRay {
   count: number;
   s: Float64Array;
   side: Float64Array;
   thing: Int16Array;
-  fade: Float64Array;
+  shown: Float64Array;
 }
 
 export function createNearbyThings(): NearbyThings {
@@ -61,7 +62,7 @@ export function createThingsAlongRay(): ThingsAlongRay {
     s: new Float64Array(MOST_ALONG_RAY),
     side: new Float64Array(MOST_ALONG_RAY),
     thing: new Int16Array(MOST_ALONG_RAY),
-    fade: new Float64Array(MOST_ALONG_RAY),
+    shown: new Float64Array(MOST_ALONG_RAY),
   };
 }
 
@@ -91,9 +92,16 @@ export function listNearbyLamps(world: TracedWorld, eyeX: number, eyeY: number, 
 /**
  * The things `cone`'s ray passes close to before its wall, into `out`: within a thing's radius of the ray, plus three of
  * the cone's spreads at that distance, but never more than MOST_MARGIN_TILES past it, fading out over the last
- * FADE_TILES of that. Per reflection column, so it reads typed arrays by index.
+ * FADE_TILES of that. Given `seenPastWalls`, per thing how much of it the cone sees past the walls of the columns it
+ * spreads over (occlusion.ts), a thing past the ray's own wall is listed too, and each is shown by that much. Per
+ * reflection column, so it reads typed arrays by index.
  */
-export function findThingsAlongRay(things: NearbyThings, cone: ConeAcrossMap, out: ThingsAlongRay): void {
+export function findThingsAlongRay(
+  things: NearbyThings,
+  cone: ConeAcrossMap,
+  out: ThingsAlongRay,
+  seenPastWalls?: Float64Array
+): void {
   const { x, y, dx, dy, wallS, spreadPerS } = cone;
   const runSquared = dx * dx + dy * dy;
   const run = Math.sqrt(runSquared);
@@ -102,7 +110,8 @@ export function findThingsAlongRay(things: NearbyThings, cone: ConeAcrossMap, ou
     const offsetX = (things.x[thing] ?? 0) - x;
     const offsetY = (things.y[thing] ?? 0) - y;
     const s = (offsetX * dx + offsetY * dy) / runSquared;
-    if (s <= NEAREST_ALONG || s >= wallS) {
+    const seen = seenPastWalls === undefined ? (s < wallS ? 1 : 0) : (seenPastWalls[thing] ?? 0);
+    if (s <= NEAREST_ALONG || seen === 0) {
       continue;
     }
     const side = (dx * offsetY - dy * offsetX) / run;
@@ -112,12 +121,12 @@ export function findThingsAlongRay(things: NearbyThings, cone: ConeAcrossMap, ou
       continue;
     }
     const toMargin = (radius + MOST_MARGIN_TILES - Math.abs(side)) / FADE_TILES;
-    keepNearest(out, s, side, thing, toMargin >= 1 ? 1 : toMargin * toMargin * (3 - 2 * toMargin));
+    keepNearest(out, s, side, thing, seen * (toMargin >= 1 ? 1 : toMargin * toMargin * (3 - 2 * toMargin)));
   }
 }
 
 /** Inserts a thing into a list kept in order of s; once the list is full, a thing further than all of it is dropped. */
-function keepNearest(out: ThingsAlongRay, s: number, side: number, thing: number, fade: number): void {
+function keepNearest(out: ThingsAlongRay, s: number, side: number, thing: number, shown: number): void {
   if (out.count === MOST_ALONG_RAY && s >= (out.s[MOST_ALONG_RAY - 1] ?? 0)) {
     return;
   }
@@ -126,10 +135,10 @@ function keepNearest(out: ThingsAlongRay, s: number, side: number, thing: number
     out.s[at] = out.s[at - 1] ?? 0;
     out.side[at] = out.side[at - 1] ?? 0;
     out.thing[at] = out.thing[at - 1] ?? 0;
-    out.fade[at] = out.fade[at - 1] ?? 0;
+    out.shown[at] = out.shown[at - 1] ?? 0;
   }
   out.s[at] = s;
   out.side[at] = side;
   out.thing[at] = thing;
-  out.fade[at] = fade;
+  out.shown[at] = shown;
 }

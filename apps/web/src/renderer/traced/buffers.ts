@@ -47,6 +47,8 @@ export interface TracedBuffers {
   /** Per screen column, the rows its wall covers, [start, end); equal where it shows none. */
   wallStart: Int32Array;
   wallEnd: Int32Array;
+  /** Per screen column, how far its wall is (perpendicular to the camera plane, tiles); Infinity where none is in reach. */
+  wallDistance: Float64Array;
   /** The reflection samples across and down: the frame's size over REFLECTION_SCALE. */
   reflectedWidth: number;
   reflectedHeight: number;
@@ -56,6 +58,10 @@ export interface TracedBuffers {
   widenedReflection: Float32Array;
   reflectionColumns: SampleBlend;
   reflectionRows: SampleBlend;
+  /** Per reflection column, `wallDistance` at the screen column it is traced for... */
+  reflectedWallDistance: Float64Array;
+  /** ...and that blended over its neighbours as the floor's cone spreads across them (occlusion.ts). */
+  softWallDistance: Float64Array;
 }
 
 /** Buffers that fit a frame of no pixels: what is "drawn" before the first frame. */
@@ -91,12 +97,15 @@ function createTracedBuffers(width: number, height: number, fov: number): Traced
     rowDistance: Float64Array.from({ length: height }, (_, row) => rowDistanceOf(row, height, proj)),
     wallStart: new Int32Array(width),
     wallEnd: new Int32Array(width),
+    wallDistance: new Float64Array(width),
     reflectedWidth,
     reflectedHeight,
     reflected: new Float32Array(reflectedWidth * reflectedHeight * 3),
     widenedReflection: new Float32Array(width * reflectedHeight * 3),
     reflectionColumns: sampleBlendOf(width, reflectedWidth),
     reflectionRows: sampleBlendOf(height, reflectedHeight),
+    reflectedWallDistance: new Float64Array(reflectedWidth),
+    softWallDistance: new Float64Array(reflectedWidth),
   };
 }
 

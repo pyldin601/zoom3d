@@ -498,6 +498,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Reflection cones follow mirror geometry** (owner's review, 2026-10-17): a cone keeps its width (roughness² per
     tile) within the plane of incidence and narrows by the slant across it. The first build stretched it by 1 / slant
     instead, so a lamp's floor reflection spread over about 10× too much floor and read as a faint brightening.
+  - **Wall occlusion in reflections is soft across columns** (owner's review, 2026-10-18), as wide as the cone's
+    sideways spread: dropping whatever lay past a column's own wall turned a lamp just past a doorway's faces into a
+    hard-edged bar down the floor. Off the floor only; wall reflections keep the per-column cut.
   - **The traced ceiling is light grey 0xa0** (owner's review, 2026-10-17; the current renderer keeps 0x38): lit by
     bounce only, the game's dark grey showed about 90× darker than the floor under a lamp half a tile away, and
     neither it nor its reflection read; at 0xa0 it is about 10×.

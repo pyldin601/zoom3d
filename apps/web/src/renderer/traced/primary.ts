@@ -76,8 +76,8 @@ const columnLight = new Float32Array(WALL_HEIGHTS * 3);
 const planeRow = { cellX: 0, cellY: 0, stepCellX: 0, stepCellY: 0 };
 
 /**
- * Draws every wall pixel into `buffers.hdr`, `spec` and `specTile`, and fills `fb.zbuffer` and the rows each column's
- * wall covers.
+ * Draws every wall pixel into `buffers.hdr`, `spec` and `specTile`, and fills `fb.zbuffer`, and each column's wall
+ * distance and the rows its wall covers.
  */
 export function drawWalls(fb: Framebuffer, buffers: TracedBuffers, world: TracedWorld, maps: TracedLightmaps): void {
   for (let col = 0; col < fb.width; col++) {
@@ -131,6 +131,7 @@ function castColumn(fb: Framebuffer, buffers: TracedBuffers, world: TracedWorld,
   const rayY = dirY + planeY * cameraX;
   castRay(world.map, x, y, rayX, rayY, hit);
   fb.zbuffer[col] = hit.distance;
+  buffers.wallDistance[col] = hit.distance;
 
   const wallHeightPx = hit.tile === 0 ? 0 : proj / hit.distance;
   const start = Math.max(0, Math.floor(half - wallHeightPx / 2));

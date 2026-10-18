@@ -250,6 +250,49 @@ describe('reflections on LEVEL1', () => {
     });
   });
 
+  describe("a lamp just past a doorway's wall faces (owner's review, 2026-10-18)", () => {
+    /** The owner's view: the lamp 10.8 tiles ahead, just past the faces (10.3 to 10.6 tiles) of the doorway before it. */
+    const AT_THE_DOORWAY: PlayerState = { x: 34.61952393867534, y: 20.65799239823415, angle: 1.5949999999999713 };
+    const LAMP = { x: 34.5, y: 31.5 };
+    /** A sample row its streak runs down, and the streak's red there at its brightest while walls hid it per column. */
+    const BAR_ROW = 160;
+    const HARD_EDGED_PEAK = 0.141;
+
+    test("its streak on the floor fades out past the doorway's edges instead of stopping there, and still shows through", () => {
+      draw(fb, AT_THE_DOORWAY, traced);
+      const middle = sampleShowing(fb, AT_THE_DOORWAY, LAMP.x, LAMP.y, -1).sampleCol;
+      const reds = Array.from({ length: 81 }, (_, offset) => reflectedAt(middle - 40 + offset, BAR_ROW)[0]);
+      const peak = Math.max(...reds);
+      for (let at = 1; at < reds.length; at++) {
+        const step = Math.abs((reds.at(at) ?? 0) - (reds.at(at - 1) ?? 0));
+        expect(step, `sample column ${middle - 40 + at}`).toBeLessThanOrEqual(0.25 * peak);
+      }
+      expect(reds.at(40)).toBeGreaterThanOrEqual(0.7 * HARD_EDGED_PEAK);
+      // Beside the doorway, where it used to stop dead, some of it shows.
+      expect(reds.at(40 - 13)).toBeGreaterThan(0);
+      expect(reds.at(40 + 13)).toBeGreaterThan(0);
+    });
+  });
+
+  test("crossing a doorway's edge, a lamp's streak on the floor changes by no more than 4% beyond its own slope", () => {
+    draw(fb, BLUE_CORRIDOR, traced);
+    const { sampleRow } = sampleShowing(fb, BLUE_CORRIDOR, 34.5, 36.5, -1);
+    const across = (sampleCol: number) => sum(reflectedAt(sampleCol, sampleRow));
+    const { wallStart } = lastTracedBuffers();
+    const wallTopOf = (sampleCol: number) => wallStart.at(framePixelOf(sampleCol, 0).col) ?? 0;
+    // The doorway at the corridor's end (11 tiles ahead, 24 through it) has its edges between these sample columns.
+    for (const [before, after] of [
+      [149, 150],
+      [169, 170],
+    ] as const) {
+      expect(Math.abs(wallTopOf(after) - wallTopOf(before)), `walls at ${before}/${after}`).toBeGreaterThan(5);
+      const step = across(after) - across(before);
+      const ownSlope = (across(before) - across(before - 1) + across(after + 1) - across(after)) / 2;
+      const excess = Math.abs(step - ownSlope) / Math.max(across(before), across(after));
+      expect(excess, `from sample column ${before} to ${after}`).toBeLessThanOrEqual(0.04);
+    }
+  });
+
   test('the brightest reflection on the far wood wall is golden: red, then green, then blue, more so than the lamp', () => {
     draw(fb, WOOD_ROOM, traced);
     const reflections = wallReflections(traced.world, WOOD);

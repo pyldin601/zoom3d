@@ -102,7 +102,7 @@ describe('findThingsAlongRay', () => {
     let first = true;
     for (let side = margin - 0.8; side < margin + 0.3; side += 0.01) {
       findThingsAlongRay(lampsAt([{ x: 22, y: 3.5 + side }]), east({ spreadPerS }), along);
-      const shown = along.count === 0 ? 0 : (along.fade.at(0) ?? Number.NaN);
+      const shown = along.count === 0 ? 0 : (along.shown.at(0) ?? Number.NaN);
       if (!first) {
         biggestStep = Math.max(biggestStep, Math.abs(shown - before));
       }
@@ -115,15 +115,22 @@ describe('findThingsAlongRay', () => {
 
   test('shows a lamp in full until half a tile from the margin', () => {
     findThingsAlongRay(lampsAt([{ x: 22, y: 3.5 + LAMP_RADIUS + 1.4 }]), east({ spreadPerS: 1 }), along);
-    expect(along.fade.at(0)).toBe(1);
+    expect(along.shown.at(0)).toBe(1);
     findThingsAlongRay(lampsAt([{ x: 22, y: 3.5 + LAMP_RADIUS + 0.2 }]), east({ spreadPerS: 0.05 }), along);
-    expect(along.fade.at(0)).toBe(1);
+    expect(along.shown.at(0)).toBe(1);
   });
 
   test('drops lamps behind where the ray starts and from where it stops on', () => {
     const lamps = lampsAt([1, 2.01, 5, 9, 11].map((x) => ({ x, y: 3.5 })));
     findThingsAlongRay(lamps, east({ wallS: 9 }), along);
     expect(Array.from(along.s.subarray(0, along.count))).toEqual([3, 7]);
+  });
+
+  test("given how much of each lamp the cone sees past the walls, lists them by it instead of stopping at the ray's wall", () => {
+    const lamps = lampsAt([5, 9, 11, 13].map((x) => ({ x, y: 3.5 })));
+    findThingsAlongRay(lamps, east({ wallS: 8 }), along, Float64Array.from([1, 0.25, 0, 0.5]));
+    expect(Array.from(along.s.subarray(0, along.count))).toEqual([3, 7, 11]);
+    expect(Array.from(along.shown.subarray(0, along.count))).toEqual([1, 0.25, 0.5]);
   });
 
   test(`keeps the nearest ${MOST_ALONG_RAY} along the ray, nearest first, whatever order they are listed in`, () => {

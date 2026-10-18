@@ -2,7 +2,8 @@
 // reflecting point sends out meets, traced at 1/REFLECTION_SCALE of the frame each way, then widened to the frame's
 // width for the composite. Off a wall the ray is mirrored once per column and walked; off the floor it keeps its
 // column's direction, so it needs no walk. Lamps and people meet the cone in closed form; walls, floor and ceiling are
-// seen through prefiltered texture and light; nothing is blurred on screen. Allocation-free.
+// seen through prefiltered texture and light; nothing is blurred on screen. Off the floor, walls hide what lies past
+// them softly across columns, as wide as the cone spreads sideways (occlusion.ts). Allocation-free.
 import { castRay, createRayHit, type RayHit } from '@zoom3d/shared';
 import { EYE_HEIGHT } from '../camera';
 import type { Sprite } from '../sprites';
@@ -17,6 +18,7 @@ import {
 } from './along-ray';
 import { REFLECTION_SAMPLE_OFFSET, REFLECTION_SCALE, type TracedBuffers } from './buffers';
 import { planeLight, type TracedLightmaps, WALL_HEIGHTS, wallColumnLight } from './lightmaps';
+import { createLampsPastWalls, findLampsPastWalls, seeLampsFrom, softenWallDistances } from './occlusion';
 import { blobWeight, type ConeSpread, type InPlaneAxis, spreadCone } from './optics';
 import { createNearbyPeople, listNearbyPeople, seeDiscSharp } from './people';
 import { faceEntered, texelColumnOf } from './primary';
@@ -42,6 +44,13 @@ const OFF_THE_WALL = 1e-4;
 const WALL_SEGMENTS = WALL_HEIGHTS - 1;
 /** How wide (tiles) the floor's cone grows per tile travelled: its roughness squared. */
 const FLOOR_CONE_PER_TILE = FLOOR_MATERIAL.roughness * FLOOR_MATERIAL.roughness;
+/**
+ * How wide (tiles) the floor's cone is across the view where it reaches the ceiling, a tile up, as the lamps and a
+ * wall's top are: it grows FLOOR_CONE_PER_TILE per tile travelled and narrows across by the slant, which is its climb
+ * per tile, so it is FLOOR_CONE_PER_TILE wide across per tile climbed, from any row (until the slant is held at
+ * MIN_SLANT, near the horizon). What walls hide off the floor is softened across columns by this width.
+ */
+const FLOOR_CONE_ACROSS_AT_CEILING = FLOOR_CONE_PER_TILE;
 /** A person's disc shows sharp, with its face, while the cone is narrower than this many of its radii. */
 const SHARP_CONE_RADII = 0.3;
 
@@ -94,6 +103,11 @@ interface Reflection extends ConeAcrossMap {
   /** The wall the ray meets, `wallS` along it (Infinity where none is in reach). */
   wall: WallSeen;
   wallS: number;
+  /**
+   * Where the share of the cone that meets the wall, rather than passing its top or foot, is reckoned: off the floor
+   * the wall's distance softened across columns, so a jump in depth fades over the cone's width; off a wall `wallS`.
+   */
+  shareWallS: number;
   /** How wide (tiles) the cone grows to each side per unit s, at eye level: what things near the ray are found by. */
   spreadPerS: number;
   /** The lamps and the people near the ray. */
@@ -112,6 +126,7 @@ const columnHit = createRayHit();
 const mirrorHit = createRayHit();
 const nearbyLamps = createNearbyThings();
 const nearbyPeople = createNearbyPeople();
+const lampsPastWalls = createLampsPastWalls();
 
 /** What a reflection sample sees, linear light, and one thing in it before it is weighed in. */
 const seen = { red: 0, green: 0, blue: 0 };
@@ -132,6 +147,7 @@ export function traceReflections(
   const { reflectedWidth, reflectedHeight, view } = buffers;
   listNearbyLamps(world, view.x, view.y, nearbyLamps);
   listNearbyPeople(people, view.x, view.y, nearbyPeople);
+  seeWallsAcrossColumns(buffers);
   for (let sampleCol = 0; sampleCol < reflectedWidth; sampleCol++) {
     aimColumn(buffers, world, maps, sampleCol);
     const wallTop = firstSampleRowFrom(buffers.wallStart[column.col] ?? 0, reflectedHeight);
@@ -202,10 +218,33 @@ function createReflection(wall: WallSeen, inPlane: InPlaneAxis, conePerTile: num
     inPlane,
     wall,
     wallS: 0,
+    shareWallS: 0,
     spreadPerS: 0,
     lamps: createThingsAlongRay(),
     people: createThingsAlongRay(),
   };
+}
+
+/**
+ * Lists what the floor's reflections read to soften wall occlusion across columns (occlusion.ts): each reflection
+ * column's wall distance and that softened, and per lamp near the eye the columns whose wall lies beyond it.
+ */
+function seeWallsAcrossColumns(buffers: TracedBuffers): void {
+  const { reflectedWidth, reflectedWallDistance, softWallDistance, wallDistance, view } = buffers;
+  for (let sampleCol = 0; sampleCol < reflectedWidth; sampleCol++) {
+    reflectedWallDistance[sampleCol] =
+      wallDistance[sampleCol * REFLECTION_SCALE + REFLECTION_SAMPLE_OFFSET] ?? Number.POSITIVE_INFINITY;
+  }
+  const columnsPerTile = view.proj / REFLECTION_SCALE;
+  softenWallDistances(reflectedWallDistance, columnsPerTile, FLOOR_CONE_ACROSS_AT_CEILING, softWallDistance);
+  findLampsPastWalls(
+    nearbyLamps,
+    view,
+    reflectedWallDistance,
+    columnsPerTile,
+    FLOOR_CONE_ACROSS_AT_CEILING,
+    lampsPastWalls
+  );
 }
 
 /** The first sample row at or below frame row `frameRow`, or `samples` if none is. */
@@ -219,7 +258,8 @@ function frameRowOf(sampleRow: number): number {
 
 /**
  * Casts the frame column that sample column `sampleCol` is traced for, with the primary pass's ray, into `column` and
- * `columnWall`, and aims `offFloor` along it: off the floor the ray keeps its column's direction.
+ * `columnWall`, and aims `offFloor` along it: off the floor the ray keeps its column's direction, and its cone sees
+ * past the walls by what falls on the columns it spreads over.
  */
 function aimColumn(buffers: TracedBuffers, world: TracedWorld, maps: TracedLightmaps, sampleCol: number): void {
   const { x, y, dirX, dirY, planeX, planeY } = buffers.view;
@@ -244,13 +284,18 @@ function aimColumn(buffers: TracedBuffers, world: TracedWorld, maps: TracedLight
   offFloor.dy = rayY;
   offFloor.run = column.run;
   offFloor.wallS = column.distance;
+  offFloor.shareWallS = buffers.softWallDistance[sampleCol] ?? column.distance;
   offFloor.spreadPerS = FLOOR_CONE_PER_TILE * column.run;
-  findThingsAlong(offFloor);
+  seeLampsFrom(lampsPastWalls, sampleCol);
+  findThingsAlong(offFloor, lampsPastWalls.shown);
 }
 
-/** The lamps and the people `reflection`'s cone can meet, each nearest first. */
-function findThingsAlong(reflection: Reflection): void {
-  findThingsAlongRay(nearbyLamps, reflection, reflection.lamps);
+/**
+ * The lamps and the people `reflection`'s cone can meet, each nearest first: the lamps by how much of each it sees past
+ * the walls, `lampsSeenPastWalls`, if given, else those before its wall.
+ */
+function findThingsAlong(reflection: Reflection, lampsSeenPastWalls?: Float64Array): void {
+  findThingsAlongRay(nearbyLamps, reflection, reflection.lamps, lampsSeenPastWalls);
   findThingsAlongRay(nearbyPeople, reflection, reflection.people);
 }
 
@@ -311,6 +356,7 @@ function mirrorOffWall(buffers: TracedBuffers, world: TracedWorld, maps: TracedL
   castRay(world.map, offWall.x, offWall.y, offWall.dx, offWall.dy, mirrorHit);
   seeWallHit(world, maps, mirrorHit, offWall.dx, offWall.dy, farWall);
   offWall.wallS = mirrorHit.distance;
+  offWall.shareWallS = mirrorHit.distance;
 
   const roughness = (TRACED_MATERIALS[columnWall.tile] ?? FLOOR_MATERIAL).roughness;
   offWall.conePerTile = roughness * roughness;
@@ -393,15 +439,11 @@ function seeAlong(reflection: Reflection, world: TracedWorld, maps: TracedLightm
  */
 function seeRoom(reflection: Reflection, world: TracedWorld, maps: TracedLightmaps): void {
   const { fromS, fromHeight, rise, run, conePerTile, wall } = reflection;
-  const toWall = Math.max(0, reflection.wallS - fromS);
-  const coneAtWall = conePerTile * toWall * run;
-  const heightAtWall = fromHeight + rise * toWall;
-  spreadCone(coneAtWall, reflection.slant, reflection.inPlane, spread);
-  const edge = Math.max(MIN_EDGE_TILES, spread.up);
-  const wallShare = wall.tile === 0 ? 0 : wallShareAt(rise, heightAtWall, edge);
+  const wallShare = wall.tile === 0 ? 0 : wallShareOf(reflection);
   clearSeen();
   if (wallShare > 0) {
-    seeWall(wall, clampToUnit(heightAtWall), coneAtWall);
+    const toWall = Math.max(0, reflection.wallS - fromS);
+    seeWall(wall, clampToUnit(fromHeight + rise * toWall), conePerTile * toWall * run);
     addPart(wallShare);
   }
   if (wallShare === 1 || rise === 0) {
@@ -427,11 +469,16 @@ function seeRoom(reflection: Reflection, world: TracedWorld, maps: TracedLightma
 }
 
 /**
- * How much of a cone that meets a wall at `height` meets the wall, rather than the floor below its foot or the ceiling
- * above its top: the two blend over `edge` tiles. A rising ray (`rise` > 0) can only pass the top, a falling one the
- * foot.
+ * How much of `reflection`'s cone meets its wall, rather than the floor below its foot or the ceiling above its top,
+ * reckoned at `shareWallS`: the two blend over the cone's width up the view there. A rising ray (`rise` > 0) can only
+ * pass the top, a falling one the foot.
  */
-function wallShareAt(rise: number, height: number, edge: number): number {
+function wallShareOf(reflection: Reflection): number {
+  const { fromS, fromHeight, rise } = reflection;
+  const toWall = Math.max(0, reflection.shareWallS - fromS);
+  spreadCone(reflection.conePerTile * toWall * reflection.run, reflection.slant, reflection.inPlane, spread);
+  const edge = Math.max(MIN_EDGE_TILES, spread.up);
+  const height = fromHeight + rise * toWall;
   if (rise > 0) {
     return clampToUnit((1 + edge - height) / (2 * edge));
   }
@@ -514,7 +561,7 @@ function addLampsAtCeiling(world: TracedWorld, reflection: Reflection, ceilingS:
     }
     const radius = nearbyLamps.radius[lamps.thing[at] ?? 0] ?? 0;
     const blob = blobWeight(lamps.side[at] ?? 0, (lampS - ceilingS) * run, radius, spreadAcross, spreadAlong);
-    lampShare += blob * (lamps.fade[at] ?? 0);
+    lampShare += blob * (lamps.shown[at] ?? 0);
   }
   seen.red += (world.lampRgb[0] ?? 0) * lampShare * share;
   seen.green += (world.lampRgb[1] ?? 0) * lampShare * share;

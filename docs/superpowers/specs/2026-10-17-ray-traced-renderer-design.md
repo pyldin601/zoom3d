@@ -135,6 +135,12 @@ floor keeps the column's own direction (no extra walk). Only heights differ per 
   disc). While the cone is narrower than 0.3 of a disc's radius the face is shown sharp, with its texture.
 - A lamp meets it where the cone reaches the ceiling: the disc against the cone's footprint there, stretched along the
   ray by 1 / rise.
+- **Wall occlusion is soft across columns** (owner's review, 2026-10-18), as wide as the cone's sideways spread: off
+  the floor, what lies past a column's wall is seen by the share of a Gaussian across the columns (the cone's width
+  across where it reaches the ceiling, roughness² = 0.36 tiles, at that depth) that falls on columns whose wall lies
+  beyond it. That weighs each lamp, and the wall's share of the cone is reckoned at the wall's distance blended so
+  (as nearness, 1 / distance). Worked out per column from runs of columns listed once a frame (`traced/occlusion.ts`).
+  Wall reflections keep the per-column cut: their mirrored rays meet different walls from column to column.
 - Walls, floor and ceiling seen in a reflection lose detail as the cone widens: the texture fades to its average colour
   by 0.25 tiles of cone width, the floor and ceiling light to its soft copy by 1 tile. Where the cone straddles an edge
   (a wall's top or foot) the two sides blend over its width.
