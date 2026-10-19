@@ -149,19 +149,19 @@ test('a drink is picked from the tray and sipped with the drink button', async (
   await expect.poll(pip, { timeout: 5000 }).toEqual({ held: 'beer', gesture: 'sip' });
 });
 
-test('the tray steps the lighting to Ray traced, and it is kept', async ({ browser }) => {
+test('the tray steps the lighting to Reflections only, and it is kept', async ({ browser }) => {
   const phone = await phonePage(browser);
   await createAndJoin(phone, 'Lou');
 
   await phone.locator('.more').click();
   const lighting = phone.locator('[data-action="lighting"]');
-  for (let taps = 0; taps < 5 && (await lighting.textContent())?.trim() !== 'Ray traced (alpha)'; taps++) {
+  for (let taps = 0; taps < 5 && (await lighting.textContent())?.trim() !== 'Reflections only'; taps++) {
     await lighting.click();
   }
-  await expect(lighting).toHaveText('Ray traced (alpha)');
+  await expect(lighting).toHaveText('Reflections only');
   await expect(phone.locator('.tray')).toBeVisible();
   const saved = await phone.evaluate(() => localStorage.getItem('zoom3d.render.v1'));
-  expect(JSON.parse(saved ?? 'null')).toEqual({ mode: 'traced' });
+  expect(JSON.parse(saved ?? 'null')).toEqual({ mode: 'reflections-only' });
 });
 
 test.describe('desktop with a touchscreen', () => {

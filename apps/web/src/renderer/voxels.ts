@@ -35,13 +35,6 @@ export interface VoxelInstance {
   angle: number;
 }
 
-/**
- * The light on an instance, for a room that lights its objects some way other than `Lighting`: fills `out` with the
- * multiplier on a face's unshaded colour for each face direction, r, g, b in turn for each of lighting.ts's DIR_*. A
- * multiplier may go past 1 (an overbright face), and has ambient and shade in it already.
- */
-export type VoxelLight = (v: VoxelInstance, out: Float64Array) => void;
-
 /** A model's size in voxels along its x (front), y and z (up). */
 export interface VoxelGridSize {
   x: number;
@@ -150,10 +143,7 @@ let faceDepths = new Float64Array(0);
 const faceOrder: number[] = [];
 /** Far to near. Math.sign: sort can't inline its comparator, and a small integer isn't boxed as a double is. */
 const facesFarFirst = (a: number, b: number) => Math.sign((faceDepths[b] as number) - (faceDepths[a] as number));
-/**
- * This instance's multipliers per face direction (r, g, b × 5): the lamp light with ambient × shade added, or whatever
- * an object light wrote.
- */
+/** Lamp light per face direction (r, g, b × 5), then ambient × shade added: this instance's multipliers. */
 const directionLight = new Float64Array(FACES.length * 3);
 /** The ambient light, r, g, b, where this instance stands. */
 const ambient = new Float64Array(3);
@@ -161,29 +151,20 @@ const ambient = new Float64Array(3);
 /**
  * Draws one instance seen through `view`, depth-tested per pixel column against fb.zbuffer. With lighting, each face
  * takes the ambient share of its usual shade plus the lamps that reach its direction (sampled once, at the model's mid
- * height). An `objectLight` lights the faces in its own way instead, and wins when both are given.
+ * height).
  */
-export function renderVoxel(
-  fb: Framebuffer,
-  view: View,
-  v: VoxelInstance,
-  lighting: Lighting | null = null,
-  objectLight: VoxelLight | null = null
-): void {
+export function renderVoxel(fb: Framebuffer, view: View, v: VoxelInstance, lighting: Lighting | null = null): void {
   const { model } = v;
   if (faceDepths.length < model.faceCount) {
     screenCorners = new Float64Array(model.faceCount * 8);
     faceDepths = new Float64Array(model.faceCount);
   }
-  const lit = lighting !== null || objectLight !== null;
-  if (objectLight) {
-    objectLight(v, directionLight);
-  } else if (lighting) {
+  if (lighting) {
     lightDirections(lighting, v);
   }
   projectFaces(view, v);
   for (const f of faceOrder) {
-    fillFace(fb, f, lit ? litColor(model, f, directionLight) : (model.colors[f] as number));
+    fillFace(fb, f, lighting ? litColor(model, f, directionLight) : (model.colors[f] as number));
   }
 }
 

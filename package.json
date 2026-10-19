@@ -16,8 +16,7 @@
     "e2e": "pnpm --filter @zoom3d/web e2e",
     "bench": "vitest bench --run --reporter=verbose",
     "bench:walls": "pnpm --filter @zoom3d/server exec esbuild ../web/bench/walls.ts --bundle --platform=node --format=esm --outfile=../../node_modules/.cache/bench-walls.mjs --log-level=warning && node node_modules/.cache/bench-walls.mjs",
-    "bench:sprites": "pnpm --filter @zoom3d/server exec esbuild ../web/bench/sprites.ts --bundle --platform=node --format=esm --outfile=../../node_modules/.cache/bench-sprites.mjs --log-level=warning && node node_modules/.cache/bench-sprites.mjs",
-    "bench:traced": "pnpm --filter @zoom3d/server exec esbuild ../web/bench/traced.ts --bundle --platform=node --format=esm --outfile=../../node_modules/.cache/bench-traced.mjs --log-level=warning && node node_modules/.cache/bench-traced.mjs"
+    "bench:sprites": "pnpm --filter @zoom3d/server exec esbuild ../web/bench/sprites.ts --bundle --platform=node --format=esm --outfile=../../node_modules/.cache/bench-sprites.mjs --log-level=warning && node node_modules/.cache/bench-sprites.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

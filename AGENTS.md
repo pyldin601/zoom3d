@@ -56,7 +56,6 @@ pnpm e2e          # playwright; starts its own LiveKit :7890-7892 + server :8788
 pnpm bench        # renderer frame-time benchmark (vitest, unlit walls and sprites)
 pnpm bench:walls  # lit walls, reflections and glow in an esbuild bundle, with pixel hashes for refactors
 pnpm bench:sprites # avatars, held items, boomboxes and the vacuum, unlit and lit, likewise with a pixel hash
-pnpm bench:traced # the ray-traced room: cold bake time, ms per frame alone and with a 100-avatar crowd, pixel hash
 # Large rooms: open /?bots=100 and start a party: the room gets 100 server-driven bots (any server, prod included)
 docker compose up --build              # both images locally: http://localhost:8080
 scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this before pushing)
@@ -168,14 +167,6 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
     near with the discs.
   - **Sound:** the hum goes through `AudioEngine.attachNode`, not a `MediaStream`, and stays under voices
     (`VACUUM_GAIN`).
-- Ray-traced mode (decision D25, spec `docs/superpowers/specs/2026-10-17-ray-traced-renderer-design.md`) lives in
-  `renderer/traced/` and replaces `renderWalls` only: `renderView` draws `renderTraced` when `scene.traced` is set, and
-  sprites, labels and the HUD follow as ever. The one seam is the vacuum's light: `renderView` sets `scene.objectLight`
-  (`traced/objects.ts`, the bake's lamp light plus the floor's bounce) every frame, null unless the traced room is
-  drawing (so also while it bakes). The room loop bakes it in 6 ms slices a frame (`TracedRoom`) while the mode is
-  chosen, and the lit renderer draws until it is done (`litReflections('traced')`); leaving the mode pauses the bake.
-  It is pure rays: no base light, so a room without lamps is dark by design. `?lights=off` stays flat in every mode. `bench:walls` never draws it; use `bench:traced`,
-  whose crowd line draws 100 people in the reflections.
 - Telemetry privacy: logs, metrics labels, Sentry and Amplitude never get names, resume tokens or IPs, nor raw room
   ids: a room link is the room's only key. Server logs use `roomRef()` (a short hash), and the browser Sentry
   `beforeSend` scrubs `/r/<id>`.

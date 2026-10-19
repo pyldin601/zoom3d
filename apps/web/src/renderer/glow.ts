@@ -39,8 +39,8 @@ export function glowOf(source: GlowSource, out: Glow): void {
   out.b = (colour.b / 255) * GLOW_STRENGTH;
 }
 
-/** The face's average colour, 0..255 per channel, from GLOW_SAMPLES² texels spread evenly over it: a reused object. */
-export function averageFace(face: Uint32Array): typeof channels {
+/** The face's average colour, from GLOW_SAMPLES² texels spread evenly over it. */
+function averageFace(face: Uint32Array): typeof channels {
   const size = Math.round(Math.sqrt(face.length));
   const step = size / GLOW_SAMPLES;
   let r = 0;
