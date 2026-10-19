@@ -4,11 +4,9 @@ import {
   litReflections,
   loadRenderSettings,
   nextRenderMode,
-  RENDER_MODE_NAMES,
   RENDER_MODES,
   RENDER_SETTINGS_KEY,
   saveRenderSettings,
-  tracesRays,
 } from './render-settings';
 
 function memory() {
@@ -30,22 +28,22 @@ test('every mode is kept as it was saved', () => {
     saveRenderSettings(store, { mode });
     expect(loadRenderSettings(store)).toEqual({ mode });
   }
-  expect(RENDER_MODES).toEqual(['flat', 'shadows', 'reflections', 'reflections-only', 'traced']);
+  expect(RENDER_MODES).toEqual(['flat', 'shadows', 'reflections', 'reflections-only']);
 });
 
 test('each mode picks what the lit renderer reflects; flat is drawn unlit', () => {
-  expect(RENDER_MODES.map(litReflections)).toEqual([null, 'none', 'both', 'only', 'both']);
+  expect(RENDER_MODES.map(litReflections)).toEqual([null, 'none', 'both', 'only']);
 });
 
-test('only the traced mode traces rays', () => {
-  expect(RENDER_MODES.filter(tracesRays)).toEqual(['traced']);
-  expect(RENDER_MODE_NAMES.traced).toBe('Ray traced (alpha)');
+test('a saved mode that is gone, as the ray-traced one is, loads as the default', () => {
+  const store = memory();
+  store.setItem(RENDER_SETTINGS_KEY, JSON.stringify({ mode: 'traced' }));
+  expect(loadRenderSettings(store)).toEqual(DEFAULT_RENDER_SETTINGS);
 });
 
 test('the next mode follows the console order and wraps around', () => {
   expect(nextRenderMode('flat')).toBe('shadows');
-  expect(nextRenderMode('reflections-only')).toBe('traced');
-  expect(nextRenderMode('traced')).toBe('flat');
+  expect(nextRenderMode('reflections-only')).toBe('flat');
 });
 
 test('round-trips through storage', () => {
