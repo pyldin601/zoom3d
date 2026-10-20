@@ -124,7 +124,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     switch (route.kind) {
       case 'landing':
         track({ name: 'landing_viewed' });
-        showLanding(page.ui, startParty);
+        showLanding(page.ui, startParty, import.meta.env.VITE_RELEASE);
         screen.showTitle();
         break;
       case 'room':

@@ -36,8 +36,14 @@ export function clearScreen(root: HTMLElement): void {
   root.querySelector(':scope > .screen')?.remove();
 }
 
-/** The landing panel, in the lobby's style; main.ts draws the title picture behind it (landing-scene.ts). */
-export function showLanding(root: HTMLElement, onCreate: () => void): void {
+/** As long as the `sha-<commit>` image tags CI pushes, so the build on the page names the image it came from. */
+const SHORT_COMMIT_LENGTH = 7;
+
+/**
+ * The landing panel, in the lobby's style; main.ts draws the title picture behind it (landing-scene.ts). `release` is
+ * the commit the bundle was built from, shown faintly under it; unset in dev and tests, so nothing shows there.
+ */
+export function showLanding(root: HTMLElement, onCreate: () => void, release?: string): void {
   const create = el('button', { type: 'button', className: 'primary', textContent: 'Start a party' });
   create.addEventListener('click', onCreate);
   setScreen(
@@ -51,6 +57,10 @@ export function showLanding(root: HTMLElement, onCreate: () => void): void {
       el('a', { href: '/privacy.html', className: 'privacy', textContent: 'Privacy' })
     )
   );
+  if (release) {
+    const build = `build ${release.slice(0, SHORT_COMMIT_LENGTH)}`;
+    slot(root, 'screen').append(el('div', { className: 'build', textContent: build }));
+  }
 }
 
 export function showNotice(root: HTMLElement, text: string, linkText: string, href: string): void {
