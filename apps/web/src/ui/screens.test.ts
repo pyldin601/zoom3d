@@ -31,6 +31,23 @@ test('landing is a lobby-styled panel whose primary button calls onCreate', () =
   expect(panel.querySelector('a.privacy')?.getAttribute('href')).toBe('/privacy.html');
 });
 
+test('landing shows the build as the release commit, shortened, outside the panel', () => {
+  showLanding(root, () => {}, '64ee9d8608b1da08346223f1eca78653d2ac0d39');
+  const build = root.querySelector('.screen > .build') as HTMLElement;
+  expect(build.textContent).toBe('build 64ee9d8');
+});
+
+test.each([undefined, ''])('landing shows no build without a release commit (%j)', (release) => {
+  showLanding(root, () => {}, release);
+  expect(root.querySelector('.build')).toBeNull();
+});
+
+test('the build goes with the landing screen', () => {
+  showLanding(root, () => {}, '64ee9d8608b1da08346223f1eca78653d2ac0d39');
+  showNotice(root, 'Bad room link', 'Start a new room', '/');
+  expect(root.querySelector('.build')).toBeNull();
+});
+
 test('status overlay shows and clears independently of the screen', () => {
   showLanding(root, () => {});
   showStatus(root, 'Reconnecting…');
