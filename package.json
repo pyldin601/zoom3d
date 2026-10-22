@@ -19,7 +19,7 @@
     "bench:sprites": "pnpm --filter @zoom3d/server exec esbuild ../web/bench/sprites.ts --bundle --platform=node --format=esm --outfile=../../node_modules/.cache/bench-sprites.mjs --log-level=warning && node node_modules/.cache/bench-sprites.mjs"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.15",
+    "@biomejs/biome": "2.6.2",
     "@playwright/test": "1.64.1",
     "@types/node": "24",
     "typescript": "7.0.2",
