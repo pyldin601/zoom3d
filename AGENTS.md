@@ -165,8 +165,9 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
     production) starts it one patch from done, so its dock search shows within a minute.
   - **Drawing:** voxel models (`renderer/models/`) are drawn by `renderer/voxels.ts` inside `renderSprites`, far to
     near with the discs. Their lamp shadows and floor mirror are drawn earlier, in `renderWalls` (it takes the
-    `objects` too): shadows patch the frame's floor tables (`renderer/object-shadows.ts`), so never draw a round shadow
-    for them in `renderSprites`.
+    `objects` and `people` too): shadows patch the frame's floor tables (`renderer/object-shadows.ts`), so never draw a
+    round shadow for them in `renderSprites`. The floor mirror (`renderer/mirror.ts`) holds walls, people and objects in
+    one layer with one blur; anything new on the floor goes into it the same way.
   - **Sound:** the hum goes through `AudioEngine.attachNode`, not a `MediaStream`, and stays under voices
     (`VACUUM_GAIN`).
 - The ball (D26, ball spec `docs/superpowers/specs/2026-10-23-ball-design.md`): unlike every other object and peer,

@@ -120,6 +120,9 @@ floor light to take away), whatever the reflection mode. The unlit mode draws no
 
 ### 3.3 Floor mirror
 
+*Superseded in part 2026-10-23 by [the floor mirror spec](2026-10-23-floor-mirror-design.md): the walls and people
+are mirrored too, in one layer with one blur and a fade by the floor's distance.*
+
 **Geometry.** The same faces as `renderVoxel`, each corner's z negated, with the back-face test done against the
 mirrored normal.
 

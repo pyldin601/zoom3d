@@ -1,6 +1,7 @@
 # Floor mirror: design spec
 
-Status: draft for approval. Builds on [2026-10-23-voxel-shadows-and-mirror-design.md](2026-10-23-voxel-shadows-and-mirror-design.md)
+Status: approved design, implemented 2026-10-23 (blur at quarter resolution, its second cost fallback). Decision
+record: [open-decisions.md](../../open-decisions.md) D24. Builds on [2026-10-23-voxel-shadows-and-mirror-design.md](2026-10-23-voxel-shadows-and-mirror-design.md)
 §3.3, which mirrors only the voxel objects.
 
 Calls marked **(my call)** were made by the designer, not the product owner, and can be overridden.

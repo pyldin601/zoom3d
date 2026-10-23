@@ -493,6 +493,14 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     lit `renderWalls` 1.45 → 1.54 ms with shadows, 1.83 ms with the mirror too (before the cut's longer reach,
     unremeasured). The worst case is a near object: one ball 2–3 tiles off costs about 0.36 ms, nearly all of it the
     mirror's blur, which scales with its screen area. Shadow darkness, mirror strength and blur are untuned by eye.
+  - **The floor mirrors everything** (2026-10-23, spec `docs/superpowers/specs/2026-10-23-floor-mirror-design.md`;
+    product owner: "the floor reflects everything in the same way"). Walls (copied flipped from the drawn frame under
+    each wall's foot, so no new rays), people (their discs upside down, unlit like the faces) and voxel objects go
+    into one frame layer (`renderer/mirror.ts`), blurred once at quarter resolution by 0.06 tiles of the floor each
+    image lands on, faded by that floor's distance out to `REFLECTION_RANGE`, and added at 30%. People's and objects'
+    images hide the lamps' floor streaks behind them; walls' never do, as every lamp hangs in front of the wall behind
+    it. Cost: about 0.37 ms in `bench:walls` (`both` 1.16 → 1.53 ms, measured under load); at half resolution it was
+    0.6 ms.
   - Not done yet: rooms get no lamps of their own.
 
 ### D25 — A ray-traced renderer
