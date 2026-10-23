@@ -20,6 +20,12 @@ export interface VoxelModel {
   dirs: Uint8Array;
   /** Per face, 0..1: how much it glows. A glowing face shows its own colour, untouched by light and shadow. */
   glow: Float32Array;
+  /**
+   * Per face, a packed rgb() it gives off only in the dark (0 for none): in a lit room each channel adds it times how
+   * far that channel's light falls short of full, so it is gone in full light and whole in none. The plain (unlit)
+   * shading ignores it. Models build with none; a model may set it per face, as the ball does for its dark patches.
+   */
+  shine: Uint32Array;
   /** Top of the model above the floor, in tiles. */
   height: number;
   faceCount: number;
@@ -129,6 +135,7 @@ export function buildModel(
     base: Uint32Array.from(base),
     dirs: Uint8Array.from(dirs),
     glow: Float32Array.from(glows),
+    shine: new Uint32Array(colors.length),
     height: sz * voxel,
     faceCount: colors.length,
     shadowRadius: (Math.max(sx, sy) * voxel) / 2,
@@ -240,16 +247,20 @@ function projectFaces(view: View, v: VoxelInstance): void {
 
 /**
  * Face `f`'s colour in a lit room: unshaded, times `light` on its direction (see directionLight), which may overbright,
- * blended towards the colour itself as far as the face glows.
+ * blended towards the colour itself as far as the face glows, plus its shine as far as the light falls short of full.
  */
-function litColor({ base, dirs, glow: glows }: VoxelModel, f: number, light: Float64Array): number {
+function litColor({ base, dirs, glow: glows, shine: shines }: VoxelModel, f: number, light: Float64Array): number {
   const c = base[f] as number;
+  const s = shines[f] as number;
   const dir = dirs[f] as number;
   const glow = glows[f] as number;
   const lit = 1 - glow;
-  let r = ((c & 0xff) * ((light[dir * 3] as number) * lit + glow)) | 0;
-  let g = (((c >>> 8) & 0xff) * ((light[dir * 3 + 1] as number) * lit + glow)) | 0;
-  let b = (((c >>> 16) & 0xff) * ((light[dir * 3 + 2] as number) * lit + glow)) | 0;
+  const lr = light[dir * 3] as number;
+  const lg = light[dir * 3 + 1] as number;
+  const lb = light[dir * 3 + 2] as number;
+  let r = ((c & 0xff) * (lr * lit + glow) + (s & 0xff) * Math.max(0, 1 - lr) * lit) | 0;
+  let g = (((c >>> 8) & 0xff) * (lg * lit + glow) + ((s >>> 8) & 0xff) * Math.max(0, 1 - lg) * lit) | 0;
+  let b = (((c >>> 16) & 0xff) * (lb * lit + glow) + ((s >>> 16) & 0xff) * Math.max(0, 1 - lb) * lit) | 0;
   if (r > 255) {
     r = 255;
   }

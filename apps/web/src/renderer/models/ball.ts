@@ -7,6 +7,8 @@ import { buildModel, faceShade, type VoxelModel } from '../voxels';
 
 const WHITE = rgb(0xf0, 0xf0, 0xf0);
 const BLACK = rgb(0x20, 0x20, 0x20);
+/** What the dark patches give off in a dark room, so they still show there; a lit room lights them black. */
+export const BALL_SHINE = rgb(0x24, 0x24, 0x2a);
 const VOXEL = 0.05;
 const SIZE = Math.round((2 * BALL_RADIUS) / VOXEL);
 
@@ -120,9 +122,12 @@ function tidy(m: Float64Array): void {
   m.set([a0, a1, a2, b0, b1, b2, a1 * b2 - a2 * b1, a2 * b0 - a0 * b2, a0 * b1 - a1 * b0]);
 }
 
-/** Gives every face the pattern colour its world direction maps back to in the ball's own frame. */
+/**
+ * Gives every face the pattern colour its world direction maps back to in the ball's own frame, and the dark patches
+ * their shine.
+ */
 export function recolourBall(model: VoxelModel, roll: BallRoll): void {
-  const { corners, base, colors, dirs } = model;
+  const { corners, base, colors, dirs, shine } = model;
   const m = roll.m;
   for (let i = 0; i < model.faceCount; i++) {
     const at = i * 12;
@@ -139,6 +144,7 @@ export function recolourBall(model: VoxelModel, roll: BallRoll): void {
     const color = ballPatternAt(ox, oy, oz);
     base[i] = color;
     colors[i] = scaleRgb(color, faceShade(dirs[i] ?? 0));
+    shine[i] = color === BLACK ? BALL_SHINE : 0;
   }
 }
 

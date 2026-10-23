@@ -241,6 +241,49 @@ describe('renderVoxel with lighting', () => {
     expect(drawn(fb)).toEqual(new Set([scaled(RED, 0.725), scaled(RED, 0.68)]));
   });
 
+  describe('shine (ball: dark patches seen in the dark)', () => {
+    const GREY = rgb(60, 60, 60);
+    const shiningCube = () => {
+      const model = buildModel({ x: 1, y: 1, z: 1 }, 0.2, () => RED);
+      model.shine.fill(GREY);
+      return model;
+    };
+    const drawnIn = (model: ReturnType<typeof shiningCube>, ambient: number) => {
+      const fb = blank();
+      renderVoxel(fb, view, { ...box, model }, bakeLighting(room, [], ambient, RED, RED));
+      return drawn(fb);
+    };
+
+    test('plain models have none', () => {
+      expect(cube.shine.every((c) => c === 0)).toBe(true);
+    });
+
+    test('in a pitch-dark room a face shows its whole shine', () => {
+      expect(drawnIn(shiningCube(), 0)).toEqual(new Set([GREY]));
+    });
+
+    test('in full light the top shows no shine at all', () => {
+      expect(drawnIn(shiningCube(), 1)).toContain(RED);
+    });
+
+    test('in between, the darker a face the more it shines', () => {
+      // Top: lit 0.45, shine × 0.55; the face to the camera: lit 0.36, shine × 0.64.
+      const shined = (c: number, k: number) =>
+        rgb(
+          ((c & 0xff) * k + 60 * (1 - k)) | 0,
+          (((c >>> 8) & 0xff) * k + 60 * (1 - k)) | 0,
+          (((c >>> 16) & 0xff) * k + 60 * (1 - k)) | 0
+        );
+      expect(drawnIn(shiningCube(), 0.45)).toEqual(new Set([shined(RED, 0.45), shined(RED, 0.45 * 0.8)]));
+    });
+
+    test('the plain (unlit) shading ignores it', () => {
+      const fb = blank();
+      renderVoxel(fb, view, { ...box, model: shiningCube() }, null);
+      expect(drawn(fb)).toEqual(new Set([RED, scaled(RED, 0.8)]));
+    });
+  });
+
   test('renderSprites passes the lighting on to voxels', () => {
     const fb = blank();
     renderSprites(fb, { eye: player, people: [], objects: [box], lighting: bakeLighting(room, [], 0.45, RED, RED) });
