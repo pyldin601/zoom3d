@@ -1,6 +1,6 @@
 # Ball (first interactive object): design spec
 
-Status: draft, 2026-10-23. Decision record: [open-decisions.md](../../open-decisions.md) D26 (to add).
+Status: approved design, implemented 2026-10-23. Decision record: [open-decisions.md](../../open-decisions.md) D26.
 
 Calls marked **(my call)** were made by the designer, not by the product owner, and can be overridden.
 
