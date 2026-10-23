@@ -943,6 +943,38 @@ describe('renderWalls voxel mirror', () => {
     expect(firstDifference(render([ball(6.5)], o).pixels, render([], o).pixels)).toBe(-1);
   });
 
+  test('the ball’s image hides the far lamp’s reflection in the floor behind it', () => {
+    // A lamp far past the ball, out of its shadow's reach: only the ball's image in the floor can hide its streak.
+    const long = parseMap(
+      '11111111111111111111\n1S.................1\n1..................1\n1..................1\n11111111111111111111'
+    );
+    const lit = bakeLighting(long, [{ x: 17.5, y: 2.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 }], 0.3, FLOOR, CEILING);
+    const matte = { ...lit, floorLamp: new Int8Array(lit.floorLamp.length).fill(-1) };
+    const eye5 = { x: 5.0, y: 2.5, angle: 0 };
+    const o = (lighting: typeof lit) => ({ map: long, eye: eye5, lighting });
+    const shiny = render([ball(9.0)], o(lit));
+    const plain = render([ball(9.0)], o(matte));
+    const shinyBare = render([], o(lit));
+    const plainBare = render([], o(matte));
+    // Under the ball: its columns, from its foot down to where its image ends.
+    const half = shiny.width / 2;
+    const width = (0.15 * PROJ) / 4;
+    const foot = Math.ceil(shiny.height / 2 + (0.5 * PROJ) / 4) + 2;
+    const added = (a: ReturnType<typeof render>, b: ReturnType<typeof render>) => {
+      let sum = 0;
+      for (let y = foot; y < foot + 8; y++) {
+        for (let x = Math.floor(half - width); x < half + width; x++) {
+          const i = y * shiny.width + x;
+          sum += ((a.pixels[i] as number) & 0xff) - ((b.pixels[i] as number) & 0xff);
+        }
+      }
+      return sum;
+    };
+    const bare = added(shinyBare, plainBare);
+    expect(bare).toBeGreaterThan(100);
+    expect(added(shiny, plain)).toBeLessThan(bare * 0.5);
+  });
+
   test('a far ball’s mirror fades out', () => {
     expect(firstDifference(render([ball(10.0)]).pixels, render([]).pixels)).toBe(-1);
   });

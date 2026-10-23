@@ -25,7 +25,7 @@ import {
   WALL_U,
   WALL_V,
 } from './lighting';
-import { createMirrorBuffer } from './mirror';
+import { createMirrorBuffer, createMirrorLayer } from './mirror';
 import { type PatchedFloor, shadeFloor } from './object-shadows';
 import { GLOSS, REFLECTION_MATERIAL, RELIEF, RELIEF_LEVELS, type ReflectionMaterial, TEX } from './textures';
 import { renderVoxelMirror, type VoxelInstance, voxelDepth } from './voxels';
@@ -36,6 +36,11 @@ export const CEILING = rgb(0x38, 0x38, 0x38);
 export const FLOOR = rgb(0x70, 0x70, 0x70);
 /** A smooth, semi-glossy floor: lamps smear along it towards the eye. */
 const FLOOR_MATERIAL: ReflectionMaterial = { shininess: 16, f0: 0.1, tint: 0 };
+/**
+ * The floor adds this much of its objects' images' colour (voxel shadows spec §3.3). Under them it shows no lamp
+ * reflections, as the images stand in front of the lamps' in the floor.
+ */
+const MIRROR_STRENGTH = 0.3;
 /** Floor reflections are worked out every this many pixels along every other row, and blended between. */
 const FLOOR_REFLECTION_STEP_PX = 16;
 /**
@@ -93,7 +98,9 @@ interface LitRoom extends Room {
 
 const NO_GLOWS: readonly Glow[] = [];
 const NO_OBJECTS: readonly VoxelInstance[] = [];
-const mirror = createMirrorBuffer();
+const mirrorScratch = createMirrorBuffer();
+/** This frame's objects' images in the floor. */
+const mirrorLayer = createMirrorLayer();
 /** Objects in front of the eye, far to near, with their depths, for their mirrors. */
 const mirrorOrder: number[] = [];
 const mirrorDepths: number[] = [];
@@ -245,14 +252,18 @@ function drawLitRoom(fb: Framebuffer, room: LitRoom): void {
   const tables = floorAndCeilingColours(room);
   drawFloorAndCeiling(fb, room, tables.floor, tables.ceiling);
   if (reflectsOnFloor(room.reflections)) {
+    // The objects' images first: in the floor they stand in front of the lamps' reflections, hiding them.
+    mirrorObjects(fb, room);
     addFloorAndCeilingReflections(fb, room, tables.floorLampSeen);
-    drawObjectMirrors(fb, room);
+    mirrorLayer.addInto(fb, MIRROR_STRENGTH, wallEnd);
   }
 }
 
-/** The objects' images in the floor, far to near, under the floor's walls (voxel shadows spec §3.3). */
-function drawObjectMirrors(fb: Framebuffer, room: LitRoom): void {
+/** The objects' images in the floor, far to near, into mirrorLayer (voxel shadows spec §3.3). */
+function mirrorObjects(fb: Framebuffer, room: LitRoom): void {
   const { objects } = room;
+  mirrorLayer.fit(fb.width, fb.height);
+  mirrorLayer.clear();
   let count = 0;
   for (let i = 0; i < objects.length; i++) {
     const depth = voxelDepth(view, objects[i] as VoxelInstance);
@@ -265,7 +276,7 @@ function drawObjectMirrors(fb: Framebuffer, room: LitRoom): void {
   mirrorOrder.length = count;
   mirrorOrder.sort(mirrorsFarFirst);
   for (const i of mirrorOrder) {
-    renderVoxelMirror(fb, view, objects[i] as VoxelInstance, room.lighting, mirror, wallEnd);
+    renderVoxelMirror(fb, view, objects[i] as VoxelInstance, room.lighting, mirrorScratch, mirrorLayer);
   }
 }
 
@@ -844,6 +855,8 @@ function addRowReflection(fb: Framebuffer, room: LitRoom, y: number, floorSees: 
   const share = above ? CEILING_SHINE : 1;
   // Objects' shadows lie on the floor alone: the ceiling's light off the floor keeps the baked shares.
   const floorLampSeen = above ? room.lighting.floorLampSeen : floorSees;
+  const images = mirrorLayer.bounds;
+  const underImages = !above && reflectsOnFloor(room.reflections) && y >= images.top && y < images.bottom;
   const { x: startX, y: startY, stepX, stepY } = aimFloorRow(room.eye, y, w);
   const lastCellX = stride - 1;
   const lastCellY = rows - 1;
@@ -880,7 +893,8 @@ function addRowReflection(fb: Framebuffer, room: LitRoom, y: number, floorSees: 
       if (seen === 0) {
         continue;
       }
-      const s = blended * seen;
+      const hidden = underImages && col >= images.left && col < images.right ? mirrorLayer.coverageAt(col, y) : 0;
+      const s = blended * seen * (1 - hidden);
       const c = pixels[row + col] as number;
       pixels[row + col] = packClamped(
         (c & 0xff) + ((s * (colours[colour] as number)) | 0),

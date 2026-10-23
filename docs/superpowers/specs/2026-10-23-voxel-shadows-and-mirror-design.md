@@ -140,7 +140,15 @@ on-screen box only, with coverage, so the blur softens the outline into the floo
 (`proj · radius / depth`), so a far object isn't smeared into a blob. The starting radius is the builder's; the product
 owner tunes it by eye against the lamp reflections' softness (see §5).
 
-**Strength.** The blurred mirror is mixed over the floor at the floor's reflectance: a constant share (the
+**It hides the lamps' reflections behind it** (amended 2026-10-23, product owner: "I would expect to see a dark blurry
+ball in reflection under the real one"). In the floor an object's image stands in front of the lamps' images, so
+under it the floor's lamp reflections are hidden by its blurred coverage: an unlit ball shows as a dark, blurry ball in
+a lamp's streak. Each object's blurred image is merged, far to near, into one frame layer before the floor
+reflections are added; they are scaled by `1 − coverage`, and then the layer's own colour is added at
+`MIRROR_STRENGTH` (0.3, walls.ts), so a lit ball also shows as a faint lit ball. The ceiling's reflection is unchanged.
+This replaces the mix below.
+
+**Strength (superseded by the paragraph above).** The blurred mirror is mixed over the floor at the floor's reflectance: a constant share (the
 `FLOOR_MATERIAL` f0, 0.1, with a shallow-angle boost like `specular`'s if it reads better), times the distance fade
 `1 − (d / REFLECTION_RANGE)²` from the eye. Mixed in OKLab or plain RGB, as the builder finds cheaper with no visible
 difference **(my call)**.

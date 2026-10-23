@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { createView, setView } from './camera';
 import { createFramebuffer, rgb, scaleRgb } from './framebuffer';
 import { bakeLighting, type Light } from './lighting';
-import { createMirrorBuffer } from './mirror';
+import { createMirrorBuffer, createMirrorLayer } from './mirror';
 import { BALL_MODEL } from './models/ball';
 import { VACUUM_MODEL } from './models/vacuum';
 import { renderSprites, type Sprite } from './sprites';
@@ -360,7 +360,7 @@ describe('renderVoxelMirror', () => {
       { model: BALL_MODEL, x: 3.0, y: 4.5, angle: 0 },
       bakeLighting(room, [], 0.3, RED, RED),
       mirror,
-      new Int32Array(fb.width),
+      createMirrorLayer(),
       0
     );
     let covered = 0;
