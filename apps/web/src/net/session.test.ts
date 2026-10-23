@@ -584,3 +584,31 @@ test('object_state for an unknown object is ignored', () => {
   ws.receive({ ...objectState(1), id: 'zz' });
   expect([...session.objects.keys()]).toEqual(['v']);
 });
+
+// The ball (ball spec §3.3, §4): kicks go out with a counter, and every applied state reaches the prediction.
+test('sendKick sends the angle and the kick counter', () => {
+  const { session, ws } = withVacuum();
+  session.sendKick(1.25, 3);
+  expect(ws.sent.at(-1)).toEqual({ type: 'kick', angle: 1.25, k: 3 });
+});
+
+test('objectState hears every applied state with its velocity and echo, and never a stale one', () => {
+  const heard: unknown[] = [];
+  const { ws } = withVacuum({ objectState: (m) => heard.push(m) });
+  ws.receive({ ...objectState(2, 4, 'kick'), vx: 1, vy: 2, by: 'me', k: 1 });
+  ws.receive(objectState(1, 9));
+  expect(heard).toEqual([{ ...objectState(2, 4, 'kick'), vx: 1, vy: 2, by: 'me', k: 1 }]);
+});
+
+test("objectEvent carries a kick's kicker", () => {
+  const seen: unknown[] = [];
+  const { ws } = withVacuum({ objectEvent: (id, e, by) => seen.push([id, e, by]) });
+  ws.receive({ ...objectState(1, 4, 'kick'), by: 'p1', k: 2 });
+  expect(seen).toEqual([['v', 'kick', 'p1']]);
+});
+
+test('objectsReset hears the objects of every welcome', () => {
+  const heard: unknown[] = [];
+  withVacuum({ objectsReset: (objects) => heard.push(objects) });
+  expect(heard).toEqual([[vacuum]]);
+});

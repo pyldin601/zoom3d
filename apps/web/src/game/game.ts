@@ -111,6 +111,10 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
       get session() {
         return room?.session ?? null;
       },
+      /** The ball as this client predicts it. */
+      get ball() {
+        return room?.ball.ball ?? null;
+      },
       get call() {
         return room?.call ?? null;
       },

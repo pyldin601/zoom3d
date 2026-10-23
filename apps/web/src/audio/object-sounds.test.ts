@@ -63,3 +63,46 @@ test('the hum follows the robot’s motion from pose to pose', () => {
   sounds.sync(objects, new Map([[key, { x: 2.6, y: 2.5, angle: 0.2 }]]), 0.1);
   expect(motorHz().last?.[0]).toBe(110);
 });
+
+// Ball spec §6: the ball has no hum; its kicks and bounces play once each.
+const ballObject = (id: string): RemoteObject => ({
+  info: { id, kind: 'ball', x: 2.5, y: 2.5, angle: 0 },
+  buffer: new SnapshotBuffer(),
+  lastSeq: -1,
+});
+const thumps = () => ctx.byKind('oscillator').filter((o) => (o.frequency as FakeParam).value === 90);
+const taps = () => ctx.byKind('oscillator').filter((o) => (o.frequency as FakeParam).value === 140);
+const ballSetup = () => {
+  const engine = createAudioEngine({ ctx: asAudioContext(ctx), map: MAP });
+  const sounds = createObjectSounds(asAudioContext(ctx), engine, () => 'me');
+  sounds.sync(new Map([['b', ballObject('b')]]), new Map(), 0.016);
+  return sounds;
+};
+
+test('a ball gets no hum', () => {
+  ballSetup();
+  expect(motors()).toHaveLength(0);
+});
+
+test("someone else's kick and the vacuum's play the ball's thump", () => {
+  const sounds = ballSetup();
+  sounds.event('b', 'kick', 'other');
+  sounds.event('b', 'kick');
+  expect(thumps()).toHaveLength(2);
+});
+
+test("the local player's own kick echo is not played again", () => {
+  const sounds = ballSetup();
+  sounds.event('b', 'kick', 'me');
+  expect(thumps()).toHaveLength(0);
+});
+
+test("the server's bounces are left to the local ball, which plays its own", () => {
+  const sounds = ballSetup();
+  sounds.event('b', 'bounce');
+  expect(taps()).toHaveLength(0);
+  sounds.localEvent('b', 'bounce');
+  sounds.localEvent('b', 'kick');
+  expect(taps()).toHaveLength(1);
+  expect(thumps()).toHaveLength(1);
+});

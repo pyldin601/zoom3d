@@ -1,10 +1,11 @@
 // The other people and the world objects as the room frame shows them: their interpolated positions, for the audio
 // and the interest rule, and the discs, name labels and voxel models the renderer draws. Each peer keeps one record
 // from frame to frame, so a full room allocates nothing per frame (AGENTS.md: never block the render loop).
-import { INTERP_DELAY_MS, type PlayerState, type Point } from '@zoom3d/shared';
+import { type Ball, INTERP_DELAY_MS, type PlayerState, type Point } from '@zoom3d/shared';
 import { nearTier } from '../net/peer-delay';
 import { objectKey, type RemotePeer, type Session } from '../net/session';
 import { type Bob, createBob } from '../renderer/bob';
+import { BALL_MODEL } from '../renderer/models/ball';
 import { VACUUM_MODEL } from '../renderer/models/vacuum';
 import { gesturePose } from '../renderer/sip';
 import { ringRgb, type Sprite } from '../renderer/sprites';
@@ -37,8 +38,11 @@ export interface RemoteWorld {
   readonly sprites: readonly Sprite[];
   readonly labels: readonly PeerLabel[];
   readonly voxels: readonly VoxelInstance[];
-  /** Samples every peer's and object's position at `now`: every frame, and from the hidden-tab ticker. */
-  sample(session: Session, player: Point, now: number): void;
+  /**
+   * Samples every peer's and object's position at `now`: every frame, and from the hidden-tab ticker. The ball is the
+   * one object not drawn from its buffer: it is where the client's prediction has it, in the present (ball spec §3.3).
+   */
+  sample(session: Session, player: Point, now: number, ball?: Ball | null): void;
   /** Builds this frame's sprites, labels and voxels from the last sample; `dt` (seconds) walks the bobs. */
   collect(session: Session, media: PeerMedia, now: number, dt: number): void;
 }
@@ -76,14 +80,22 @@ export function createRemoteWorld(): RemoteWorld {
     }
   };
 
-  const sampleObjects = (s: Session, now: number) => {
+  const sampleObjects = (s: Session, now: number, ball: Ball | null) => {
     // Objects come every tick; each peer is drawn as late as its updates need (6d spec §2.3).
     const drawnAt = now - INTERP_DELAY_MS;
     for (const obj of s.objects.values()) {
-      if (!obj.buffer.sample(drawnAt, at)) {
+      const id = obj.info.id;
+      if (obj.info.kind === 'ball') {
+        if (ball?.id !== id) {
+          continue;
+        }
+        // Its pattern rolls in world axes (models/ball.ts), so the model itself never turns.
+        at.x = ball.x;
+        at.y = ball.y;
+        at.angle = 0;
+      } else if (!obj.buffer.sample(drawnAt, at)) {
         continue;
       }
-      const id = obj.info.id;
       let key = objectKeys.get(id);
       if (key === undefined) {
         key = objectKey(id);
@@ -153,10 +165,16 @@ export function createRemoteWorld(): RemoteWorld {
     labels.length = n;
   };
 
-  const collectVoxels = () => {
+  const collectVoxels = (s: Session) => {
     let n = 0;
-    for (const pose of objectPoses.values()) {
+    for (const obj of s.objects.values()) {
+      const key = objectKeys.get(obj.info.id);
+      const pose = key === undefined ? undefined : objectPoses.get(key);
+      if (!pose) {
+        continue;
+      }
       const v = voxels.at(n) ?? { model: VACUUM_MODEL, x: 0, y: 0, angle: 0 };
+      v.model = obj.info.kind === 'ball' ? BALL_MODEL : VACUUM_MODEL;
       v.x = pose.x;
       v.y = pose.y;
       v.angle = pose.angle;
@@ -171,14 +189,14 @@ export function createRemoteWorld(): RemoteWorld {
     sprites,
     labels,
     voxels,
-    sample(s, player, now) {
+    sample(s, player, now, ball = null) {
       forgetGone(s);
-      sampleObjects(s, now);
+      sampleObjects(s, now, ball);
       samplePeers(s, player, now);
     },
     collect(s, media, now, dt) {
       collectPeers(s, media, now, dt);
-      collectVoxels();
+      collectVoxels(s);
     },
   };
 }

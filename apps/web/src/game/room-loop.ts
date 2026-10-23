@@ -1,12 +1,13 @@
-// The room's frame: the local player steps, everyone else and the world objects are placed and heard, the view and
-// the HUD are drawn, then the subscription picks whose media to receive. While the tab is hidden rAF stops, so a timer
+// The room's frame: the local player steps, then the ball the client predicts, everyone else and the world objects are
+// placed and heard, the view and the HUD are drawn, then the subscription picks whose media to receive. While the tab is hidden rAF stops, so a timer
 // keeps the sound and the subscription going instead.
-import type { GameMap } from '@zoom3d/shared';
+import { type BallBody, type GameMap, PLAYER_RADIUS } from '@zoom3d/shared';
 import { HIDDEN_TICK_MS } from '../audio/ticker';
 import type { Input } from '../input/keyboard';
 import { createSubscription } from '../media/subscription';
 import { type RoomScene, renderHud, renderView } from '../renderer/frame';
 import type { Lighting } from '../renderer/lighting';
+import { BALL_MODEL, createBallRoll, recolourBall, rollBy } from '../renderer/models/ball';
 import { litReflections, type RenderMode } from '../ui/render-settings';
 import { type StatusLine, statusText } from '../ui/room-status';
 import type { FrameRateMeter } from './frame-rate';
@@ -56,6 +57,42 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     firstPerson: null,
   };
 
+  /** The local player as the ball feels them, with their velocity from the last frame's move. */
+  const self: BallBody = { kind: 'person', x: 0, y: 0, vx: 0, vy: 0, radius: PLAYER_RADIUS };
+  let selfSeen = false;
+  let roll = createBallRoll();
+  /** The ball the roll belongs to, and where it was last drawn. */
+  let rolling: { id: string; x: number; y: number } | null = null;
+
+  /** Steps the predicted ball, rolls its pattern by how far it went, and plays what it hit. */
+  const stepBall = (room: Room, now: number, dt: number) => {
+    const { pose } = localPlayer;
+    self.vx = selfSeen && dt > 0 ? (pose.x - self.x) / dt : 0;
+    self.vy = selfSeen && dt > 0 ? (pose.y - self.y) / dt : 0;
+    self.x = pose.x;
+    self.y = pose.y;
+    selfSeen = true;
+    const event = room.ball.step(dt, now, isConnected(room) ? self : null);
+    const ball = room.ball.ball;
+    if (!ball) {
+      return;
+    }
+    if (rolling?.id !== ball.id) {
+      roll = createBallRoll();
+      rolling = { id: ball.id, x: ball.x, y: ball.y };
+      recolourBall(BALL_MODEL, roll);
+    }
+    if (ball.x !== rolling.x || ball.y !== rolling.y) {
+      rollBy(roll, ball.x - rolling.x, ball.y - rolling.y);
+      rolling.x = ball.x;
+      rolling.y = ball.y;
+      recolourBall(BALL_MODEL, roll);
+    }
+    if (event) {
+      room.objectSounds.localEvent(ball.id, event);
+    }
+  };
+
   const stepLocalPlayer = (dt: number) => {
     // Consumed outside the room too, so a turn made before it doesn't land on the first frame in it.
     const turn = o.input.consumeMouseTurn();
@@ -66,7 +103,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
 
   const placeEveryoneElse = (room: Room, now: number, dt: number) => {
     const { session } = room;
-    world.sample(session, localPlayer.pose, now);
+    world.sample(session, localPlayer.pose, now, room.ball.ball);
     world.collect(session, peerMedia, now, dt);
     room.objectSounds.sync(session.objects, world.objectPoses, dt);
     // Bots count too: the client can't tell them from people.
@@ -106,6 +143,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       const room = o.room();
       if (room) {
         room.call.update(now);
+        stepBall(room, now, dt);
         placeEveryoneElse(room, now, dt);
       }
       const drawStart = performance.now();
@@ -126,7 +164,8 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
         return;
       }
       const now = performance.now();
-      world.sample(room.session, localPlayer.pose, now);
+      stepBall(room, now, HIDDEN_TICK_MS / 1000);
+      world.sample(room.session, localPlayer.pose, now, room.ball.ball);
       room.objectSounds.sync(room.session.objects, world.objectPoses, HIDDEN_TICK_MS / 1000);
       room.audio.update(now, localPlayer.pose, world.positions);
       chooseWhatToReceive(room, now, true);

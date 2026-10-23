@@ -9,6 +9,7 @@ import {
   type LiveKitAccess,
   type ObjectEvent,
   type ObjectInfo,
+  type ObjectStateMessage,
   type PeerInfo,
   type PlayerState,
   PROTOCOL_VERSION,
@@ -48,8 +49,12 @@ export interface SessionListener {
   peerJoined?(peer: PeerInfo): void;
   peerLeft?(id: string): void;
   peerMedia?(id: string, cam: boolean, mic: boolean): void;
-  /** Something an object did (a bump, a lost beep), after its pose was applied. */
-  objectEvent?(id: string, event: ObjectEvent): void;
+  /** Something an object did (a bump, a lost beep, a kick), after its pose was applied; `by` is a ball's kicker. */
+  objectEvent?(id: string, event: ObjectEvent, by?: string): void;
+  /** Every applied (not stale) object state, for the ball's prediction. */
+  objectState?(m: ObjectStateMessage): void;
+  /** The room's objects as a welcome lists them, after the session has taken them. */
+  objectsReset?(objects: readonly ObjectInfo[]): void;
   /** A new connection status. Timer and socket driven, so it keeps coming while the tab is hidden. */
   status?(status: ConnStatus): void;
 }
@@ -65,6 +70,8 @@ export interface Session {
   sendDrink(): void;
   /** Raises the held drink in a cheers; not resent after a reconnect. */
   sendCheers(): void;
+  /** Kicks the ball the way `angle` faces; `k` is the local kick counter the server echoes back. */
+  sendKick(angle: number, k: number): void;
   selfId(): string | null;
   selfColor(): string | null;
   status(): ConnStatus;
@@ -205,6 +212,7 @@ export function createSession(opts: SessionOptions): Session {
     for (const o of m.objects) {
       addObject(o);
     }
+    listener.objectsReset?.(m.objects);
     // Our pose goes out on the next tick: after a resume the server only has the one from before the outage
     // (moves sent into a dying socket were lost), and a fresh spawn costs one message.
     lastSent = null;
@@ -289,8 +297,9 @@ export function createSession(opts: SessionOptions): Session {
     obj.lastSeq = m.seq;
     Object.assign(obj.info, { x: m.x, y: m.y, angle: m.angle });
     obj.buffer.push({ t: now(), x: m.x, y: m.y, angle: m.angle });
+    listener.objectState?.(m);
     if (m.event) {
-      listener.objectEvent?.(m.id, m.event);
+      listener.objectEvent?.(m.id, m.event, m.by);
     }
   };
 
@@ -370,6 +379,7 @@ export function createSession(opts: SessionOptions): Session {
     },
     sendDrink: () => sendWhileOpen({ type: 'drink' }),
     sendCheers: () => sendWhileOpen({ type: 'cheers' }),
+    sendKick: (angle, k) => sendWhileOpen({ type: 'kick', angle, k }),
     selfId: () => selfId,
     selfColor: () => color,
     status: () => status,
