@@ -5,6 +5,7 @@ import { createFramebuffer, rgb, scaleRgb } from './framebuffer';
 import { bakeLighting, type Light } from './lighting';
 import { VACUUM_MODEL } from './models/vacuum';
 import { renderSprites, type Sprite } from './sprites';
+import { firstDifference } from './test-helpers';
 import { buildModel, glowing, renderVoxel, type VoxelInstance } from './voxels';
 
 // Voxel objects (robot vacuum spec §6): models described in code, drawn depth-correct among walls and discs.
@@ -81,7 +82,6 @@ describe('buildModel', () => {
     expect(byNormal.get('-1,0,0')).toBe(scaled(RED, 0.8));
     expect(byNormal.get('0,1,0')).toBe(scaled(RED, 0.62));
     expect(byNormal.get('0,-1,0')).toBe(scaled(RED, 0.62));
-    expect(m.shadowRadius).toBeCloseTo(0.05);
   });
 });
 
@@ -113,7 +113,6 @@ describe('the vacuum model', () => {
     expect(Math.max(...axis(1))).toBeCloseTo(0.35);
     expect(Math.min(...axis(1))).toBeCloseTo(-0.35);
     expect(Math.max(...axis(2))).toBeCloseTo(0.2);
-    expect(VACUUM_MODEL.shadowRadius).toBeCloseTo(0.35);
   });
 
   test('its eyes and the disc on top glow; nothing else does', () => {
@@ -201,6 +200,22 @@ describe('renderSprites with voxels', () => {
     }
     const overlap = [...painted(robotOnly).keys()].filter((i) => shownDisc.has(i));
     expect(overlap.length).toBeGreaterThan(0);
+  });
+
+  test('an object casts no round shadow: renderSprites draws only the object itself', () => {
+    const grey = () => {
+      const fb = blank();
+      fb.pixels.fill(rgb(0x70, 0x70, 0x70));
+      return fb;
+    };
+    // One voxel in the corner of a 4 × 4 footprint: most of the floor under the footprint shows.
+    const corner = buildModel({ x: 4, y: 4, z: 1 }, 0.1, (x, y) => (x === 0 && y === 0 ? RED : 0));
+    const object = { model: corner, x: 3.0, y: 4.5, angle: 0 };
+    const sprites = grey();
+    renderSprites(sprites, { eye: player, people: [], objects: [object], lighting: null });
+    const alone = grey();
+    renderVoxel(alone, view, object);
+    expect(firstDifference(sprites.pixels, alone.pixels)).toBe(-1);
   });
 
   test('a nearer robot covers the disc', () => {

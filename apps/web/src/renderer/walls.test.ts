@@ -4,8 +4,10 @@ import { createView, setView } from './camera';
 import { createFramebuffer, DEFAULT_FOV, scaleRgb } from './framebuffer';
 import { GLOW_RADIUS, GLOW_STRENGTH, type Glow } from './glow';
 import { bakeLighting, corridorLights, REFLECTION_RANGE, SIDE_SHADE } from './lighting';
+import { BALL_MODEL } from './models/ball';
 import { firstDifference } from './test-helpers';
 import { makeTextures, TEX } from './textures';
+import type { VoxelInstance } from './voxels';
 import { CEILING, FLOOR, renderWalls } from './walls';
 
 /** Opaque black: what the reflections-only view shows where nothing reflects. */
@@ -745,5 +747,156 @@ describe('renderWalls ceiling reflections', () => {
       }
     }
     expect(beyond).toBeGreaterThan(0);
+  });
+});
+
+describe('renderWalls voxel shadows', () => {
+  const corridor = parseMap('11111111111111\n1S...........1\n1............1\n1............1\n11111111111111');
+  const lamp = { x: 6.5, y: 2.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 };
+  const lit = bakeLighting(corridor, [lamp], 0.3, FLOOR, CEILING);
+  const matte = { ...lit, floorLamp: new Int8Array(lit.floorLamp.length).fill(-1) };
+  /** The floor where no lamp reaches: ambient light only. */
+  const ambientOnly = bakeLighting(corridor, [], 0.3, FLOOR, CEILING).floor[2 * 8 * lit.stride + 16] as number;
+  const ball = (x: number, y = 2.5): VoxelInstance => ({ model: BALL_MODEL, x, y, angle: 0 });
+  // Looking west from the corridor's east end, at the lamp past the ball: the shadow lies between the eye and the ball.
+  const west = { x: 11.5, y: 2.5, angle: Math.PI };
+  type Options = Partial<Parameters<typeof renderWalls>[1]> & { glows?: Glow[] };
+  const render = (objects: VoxelInstance[], o: Options = {}) => {
+    const fb = createFramebuffer();
+    const { glows = [], ...room } = o;
+    renderWalls(
+      fb,
+      { map: corridor, eye: west, textures, lighting: lit, reflections: 'walls', objects, ...room },
+      glows
+    );
+    return fb;
+  };
+  const channels = (c: number) => [c & 0xff, (c >>> 8) & 0xff, (c >>> 16) & 0xff];
+  /** How far ahead of the eye the floor at row y lies. */
+  const floorDistance = (fb: ReturnType<typeof createFramebuffer>, y: number) =>
+    (0.5 * PROJ) / (y + 0.5 - fb.height / 2);
+  /** The floor pixels of a frame, by index. */
+  const floorPixels = (fb: ReturnType<typeof createFramebuffer>) => {
+    const out: number[] = [];
+    for (let i = Math.ceil(fb.height / 2) * fb.width; i < fb.pixels.length; i++) {
+      const y = Math.floor(i / fb.width);
+      if (floorDistance(fb, y) < (fb.zbuffer[i % fb.width] as number)) {
+        out.push(i);
+      }
+    }
+    return out;
+  };
+
+  test('a ball darkens the floor behind it from the lamp, not in front', () => {
+    const shaded = render([ball(8.5)]);
+    const bare = render([]);
+    let darker = 0;
+    for (const i of floorPixels(bare)) {
+      const a = channels(shaded.pixels[i] as number);
+      const b = channels(bare.pixels[i] as number);
+      expect(a.every((v, k) => v <= (b[k] as number))).toBe(true);
+      if (a.some((v, k) => v < (b[k] as number))) {
+        darker++;
+        // Past the ball's near edge (8.3), give or take the floor cell (1/8 tile) the pixel shows.
+        expect(west.x - floorDistance(bare, Math.floor(i / bare.width))).toBeGreaterThan(8.3 - 1 / 8);
+      }
+    }
+    expect(darker).toBeGreaterThan(50);
+  });
+
+  test('shadows block the floor’s lamp reflection there', () => {
+    const shiny = render([ball(8.5)], { reflections: 'both' });
+    const plain = render([ball(8.5)], { reflections: 'both', lighting: matte });
+    const shinyBare = render([], { reflections: 'both' });
+    const plainBare = render([], { reflections: 'both', lighting: matte });
+    const added = (a: number, b: number) => channels(a).reduce((sum, v, k) => sum + v - (channels(b)[k] as number), 0);
+    let dimmed = 0;
+    for (const i of floorPixels(plain)) {
+      const shaded = added(shiny.pixels[i] as number, plain.pixels[i] as number);
+      const bare = added(shinyBare.pixels[i] as number, plainBare.pixels[i] as number);
+      // Two levels of slack: the reflection is added to the shadowed floor and clamped there.
+      expect(shaded).toBeLessThanOrEqual(bare + 2);
+      if (shaded < bare - 2) {
+        dimmed++;
+      }
+    }
+    expect(dimmed).toBeGreaterThan(0);
+  });
+
+  test('two balls never darken the floor below the lamp-less floor', () => {
+    const fb = render([ball(8.5, 2.3), ball(8.5, 2.7)]);
+    const least = channels(ambientOnly);
+    for (const i of floorPixels(fb)) {
+      expect(channels(fb.pixels[i] as number).every((v, k) => v >= (least[k] as number) - 1)).toBe(true);
+    }
+  });
+
+  test('the avatar glow still shows in a shadow', () => {
+    const glow = { x: 9.2, y: 2.5, r: GLOW_STRENGTH, g: GLOW_STRENGTH, b: GLOW_STRENGTH };
+    const bare = render([]);
+    const shaded = render([ball(8.5)]);
+    const glowing = render([ball(8.5)], { glows: [glow] });
+    let brighter = 0;
+    for (const i of floorPixels(bare)) {
+      if (shaded.pixels[i] !== bare.pixels[i] && glowing.pixels[i] !== shaded.pixels[i]) {
+        brighter++;
+      }
+    }
+    expect(brighter).toBeGreaterThan(0);
+  });
+
+  test('the floor is put back when the ball moves away', () => {
+    render([ball(8.5)]);
+    const after = render([ball(12.5, 1.5)]);
+    expect(firstDifference(after.pixels, render([]).pixels)).toBe(-1);
+  });
+
+  test('a ball behind the eye still casts its shadow ahead', () => {
+    // The lamp 2 tiles behind the eye throws the ball's shadow past the nearest floor the eye sees, 1.4 ahead.
+    const behind = bakeLighting(corridor, [{ ...lamp, x: 5.0 }], 0.3, FLOOR, CEILING);
+    const east = { x: 7.0, y: 2.5, angle: 0 };
+    const shaded = render([ball(6.8)], { eye: east, lighting: behind });
+    const bare = render([], { eye: east, lighting: behind });
+    expect(firstDifference(shaded.pixels, bare.pixels)).not.toBe(-1);
+  });
+
+  test('no shadow on a wall', () => {
+    const near = bakeLighting(corridor, [{ ...lamp, x: 10.5 }], 0.3, FLOOR, CEILING);
+    const east = { x: 8.5, y: 2.5, angle: 0 };
+    const shaded = render([ball(12.6)], { eye: east, lighting: near });
+    const bare = render([], { eye: east, lighting: near });
+    expect(firstDifference(shaded.pixels, bare.pixels)).not.toBe(-1);
+    for (let col = 0; col < bare.width; col++) {
+      const half = (0.5 * PROJ) / (bare.zbuffer[col] as number);
+      for (let y = Math.ceil(bare.height / 2 - half) + 1; y < bare.height / 2 + half - 1; y++) {
+        expect(shaded.pixels[y * bare.width + col]).toBe(bare.pixels[y * bare.width + col]);
+      }
+    }
+  });
+
+  test('no shadow unlit, with the reflections alone, or out of every lamp’s reach', () => {
+    expect(firstDifference(render([ball(8.5)], { lighting: null }).pixels, render([], { lighting: null }).pixels)).toBe(
+      -1
+    );
+    expect(
+      firstDifference(render([ball(8.5)], { reflections: 'only' }).pixels, render([], { reflections: 'only' }).pixels)
+    ).toBe(-1);
+    expect(firstDifference(render([ball(12.5, 1.5)]).pixels, render([]).pixels)).toBe(-1);
+  });
+
+  test('moving a little changes the floor a little', () => {
+    const east = { x: 1.5, y: 2.5, angle: 0 };
+    let previous = render([ball(10)], { eye: east }).pixels.slice();
+    for (let x = 10.02; x <= 11.5; x += 0.02) {
+      const next = render([ball(x)], { eye: east }).pixels;
+      let most = 0;
+      for (let i = 0; i < next.length; i++) {
+        const a = channels(next[i] as number);
+        const b = channels(previous[i] as number);
+        most = Math.max(most, ...a.map((v, k) => Math.abs(v - (b[k] as number))));
+      }
+      expect(most).toBeLessThanOrEqual(6);
+      previous = next.slice();
+    }
   });
 });

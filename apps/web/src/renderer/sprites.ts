@@ -176,8 +176,8 @@ export function renderSprites(fb: Framebuffer, scene: PeopleAndObjects, facts?: 
     countSeenColumns(fb);
   }
   orderVoxels(view, scene.objects);
-  // Shadows lie on the floor, so every disc and object (drawn next) covers every shadow.
-  drawVoxelShadows(fb, view, scene.objects);
+  // Shadows lie on the floor, so every disc and object (drawn next) covers every shadow. Objects cast theirs from the
+  // lamps, in the floor renderWalls draws.
   drawSpriteShadows(fb, view, scene.people);
   drawFarToNear(fb, view, scene);
 }
@@ -269,14 +269,6 @@ function orderVoxels(view: View, voxels: readonly VoxelInstance[]): void {
   // Written by index and trimmed after: `length = 0` would make V8 drop the array's storage every frame.
   voxelOrder.length = count;
   voxelOrder.sort(voxelsFarFirst);
-}
-
-/** Each object's shadow, as wide as its footprint. */
-function drawVoxelShadows(fb: Framebuffer, view: View, voxels: readonly VoxelInstance[]): void {
-  for (const i of voxelOrder) {
-    const v = voxels[i] as VoxelInstance;
-    drawShadow(fb, view, shadowUnder(v.x, v.y, voxelDepths[i] as number, v.model.shadowRadius));
-  }
 }
 
 /** Each visible avatar's shadow, and those of the drink and boombox it carries. */

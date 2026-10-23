@@ -1,6 +1,15 @@
 // Voxel objects' shadows (voxel shadows spec §3.2): how much of each lamp the floor sees past an object, from the
 // object's top-down height field, sampled across the lamp's disc so the edges and the tip are soft. Allocation-free.
-import { LAMP_RADIUS, type Light } from './lighting';
+import { tileAt } from '@zoom3d/shared';
+import {
+  FLOOR_SUB,
+  floorLampLight,
+  LAMP_RADIUS,
+  type Light,
+  type Lighting,
+  REFLECTION_LAMPS,
+  seenShare,
+} from './lighting';
 import type { VoxelInstance, VoxelModel } from './voxels';
 
 /**
@@ -122,4 +131,161 @@ function blocked(v: VoxelInstance, px: number, py: number, sx: number, sy: numbe
     }
   }
   return false;
+}
+
+/** The per-frame copies of a Lighting's floor tables that shadeFloor darkens. */
+export interface PatchedFloor {
+  floor: Uint32Array;
+  floorLampSeen: Uint8Array;
+  /** Marks a cell as patched this frame, so it's put back next frame. */
+  touch(cell: number): void;
+}
+
+/** Under half a step of brightness (×255 scale) a shadow changes nothing, so the cell isn't tested. */
+const UNSEEN_LOSS = 0.5;
+/** How much of a lamp's light an object's shadow takes away: 1 is all of it. */
+export const OBJECT_SHADOW_DARKNESS = 1;
+
+/** Per floor cell, the lamp pass that last shaded it: each cell is shaded once per lamp, however many objects. */
+let shadedIn = new Uint32Array(0);
+let pass = 0;
+
+/**
+ * Darkens the floor cells in each object's shadows from each lamp (voxel shadows spec §3.2): a cell loses the share of
+ * that lamp's light the objects hide, and its listed seen share of the lamp (for reflections) shrinks by it. `albedo`
+ * is the floor's colour the Lighting was baked with; only cells in shadows `inView` are worked out.
+ */
+export function shadeFloor(
+  lm: Lighting,
+  objects: readonly VoxelInstance[],
+  albedo: number,
+  tables: PatchedFloor,
+  inView: (x: number, y: number, reach: number) => boolean
+): void {
+  if (shadedIn.length !== lm.floor.length) {
+    shadedIn = new Uint32Array(lm.floor.length);
+    pass = 0;
+  }
+  for (let li = 0; li < lm.lights.length; li++) {
+    const l = lm.lights[li] as Light;
+    pass++;
+    for (const v of objects) {
+      if (reaches(v, l)) {
+        shadeBox(lm, objects, li, l, v, albedo, tables, inView);
+      }
+    }
+  }
+}
+
+/** Whether lamp `l` lights the floor round object `v`: its shadow lies within the lamp's reach. */
+const reaches = (v: VoxelInstance, l: Light) => (v.x - l.x) ** 2 + (v.y - l.y) ** 2 < l.radius * l.radius;
+
+/**
+ * Shades the cells of the box round object `v`'s shadow from lamp `l` (index `li`) that this lamp's pass hasn't yet:
+ * the box covers its footprint and its tip, where the shadow is widest (spread by the lamp's disc).
+ */
+function shadeBox(
+  lm: Lighting,
+  objects: readonly VoxelInstance[],
+  li: number,
+  l: Light,
+  v: VoxelInstance,
+  albedo: number,
+  tables: PatchedFloor,
+  inView: (x: number, y: number, reach: number) => boolean
+): void {
+  const r = footprintRadius(v.model);
+  const h = v.model.height;
+  const reach = shadowReach(v, l);
+  const awayX = v.x - l.x;
+  const awayY = v.y - l.y;
+  const away = Math.sqrt(awayX * awayX + awayY * awayY);
+  const tipX = away === 0 ? v.x : v.x + (awayX / away) * (reach - r);
+  const tipY = away === 0 ? v.y : v.y + (awayY / away) * (reach - r);
+  const tipRadius = ((r + LAMP_RADIUS) * l.z) / (l.z - h);
+  const left = Math.min(v.x - r, tipX - tipRadius);
+  const right = Math.max(v.x + r, tipX + tipRadius);
+  const top = Math.min(v.y - r, tipY - tipRadius);
+  const bottom = Math.max(v.y + r, tipY + tipRadius);
+  const halfDiagonal = Math.sqrt((right - left) ** 2 + (bottom - top) ** 2) / 2;
+  if (!inView((left + right) / 2, (top + bottom) / 2, halfDiagonal)) {
+    return;
+  }
+  const { stride, rows } = lm;
+  const brightest = Math.max(albedo & 0xff, (albedo >>> 8) & 0xff, (albedo >>> 16) & 0xff) * Math.max(l.r, l.g, l.b);
+  for (let cy = Math.max(0, Math.floor(top * FLOOR_SUB)); cy <= Math.min(rows - 1, bottom * FLOOR_SUB); cy++) {
+    for (let cx = Math.max(0, Math.floor(left * FLOOR_SUB)); cx <= Math.min(stride - 1, right * FLOOR_SUB); cx++) {
+      const cell = cy * stride + cx;
+      if (shadedIn[cell] === pass) {
+        continue;
+      }
+      shadedIn[cell] = pass;
+      const x = (cx + 0.5) / FLOOR_SUB;
+      const y = (cy + 0.5) / FLOOR_SUB;
+      const lamp = floorLampLight(l, x, y);
+      if (lamp * brightest < UNSEEN_LOSS || tileAt(lm.map, Math.floor(x), Math.floor(y)) !== 0) {
+        continue;
+      }
+      const objectSeen = seenPastObjects(objects, l, x, y);
+      if (objectSeen === 1) {
+        continue;
+      }
+      shadeCell(lm, li, l, cell, x, y, lamp * (1 - objectSeen) * OBJECT_SHADOW_DARKNESS, objectSeen, albedo, tables);
+    }
+  }
+}
+
+/** How much of lamp `l` the floor at (x, y) sees past every object it lights round: the product of their shares. */
+function seenPastObjects(objects: readonly VoxelInstance[], l: Light, x: number, y: number): number {
+  let seen = 1;
+  for (const v of objects) {
+    if (reaches(v, l)) {
+      seen *= objectSeenShare(v, l, x, y);
+    }
+  }
+  return seen;
+}
+
+/**
+ * Takes `hidden` of lamp `l`'s unobstructed light (times how much of the lamp the cell sees past walls, as baked) off
+ * the floor cell, and scales its listed seen share of the lamp by `objectSeen`.
+ */
+function shadeCell(
+  lm: Lighting,
+  li: number,
+  l: Light,
+  cell: number,
+  x: number,
+  y: number,
+  hidden: number,
+  objectSeen: number,
+  albedo: number,
+  tables: PatchedFloor
+): void {
+  const slot = listedSlot(lm, cell, li);
+  const pastWalls = slot >= 0 ? (lm.floorLampSeen[slot] as number) / 255 : seenShare(lm.map, x, y, l);
+  if (pastWalls === 0) {
+    return;
+  }
+  tables.touch(cell);
+  const k = hidden * pastWalls;
+  const c = tables.floor[cell] as number;
+  const r = Math.max(0, (c & 0xff) - Math.round((albedo & 0xff) * l.r * k));
+  const g = Math.max(0, ((c >>> 8) & 0xff) - Math.round(((albedo >>> 8) & 0xff) * l.g * k));
+  const b = Math.max(0, ((c >>> 16) & 0xff) - Math.round(((albedo >>> 16) & 0xff) * l.b * k));
+  tables.floor[cell] = ((c & 0xff000000) | (b << 16) | (g << 8) | r) >>> 0;
+  if (slot >= 0) {
+    tables.floorLampSeen[slot] = Math.round((tables.floorLampSeen[slot] as number) * objectSeen);
+  }
+}
+
+/** The slot of lamp `li` in the cell's reflection lamp list, or −1 when it isn't listed. */
+function listedSlot(lm: Lighting, cell: number, li: number): number {
+  const first = cell * REFLECTION_LAMPS;
+  for (let k = 0; k < REFLECTION_LAMPS; k++) {
+    if (lm.floorLamp[first + k] === li) {
+      return first + k;
+    }
+  }
+  return -1;
 }

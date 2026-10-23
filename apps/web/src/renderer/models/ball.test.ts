@@ -19,7 +19,6 @@ describe('the ball model', () => {
       expect(Math.hypot(x, y, z)).toBeGreaterThan(BALL_RADIUS - 0.05);
       expect(Math.hypot(x, y, z)).toBeLessThan(BALL_RADIUS + 0.05);
     }
-    expect(BALL_MODEL.shadowRadius).toBeCloseTo(BALL_RADIUS);
   });
 
   test('its columns rise to the ball’s height in the middle and are empty at the corners', () => {

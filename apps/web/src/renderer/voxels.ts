@@ -37,8 +37,6 @@ export interface VoxelModel {
    */
   tops: Float32Array;
   faceCount: number;
-  /** Floor shadow radius in tiles: half the footprint's larger side. */
-  shadowRadius: number;
 }
 
 export interface VoxelInstance {
@@ -152,7 +150,6 @@ export function buildModel(
     sizeY: sy,
     tops,
     faceCount: colors.length,
-    shadowRadius: (Math.max(sx, sy) * voxel) / 2,
   };
 }
 
