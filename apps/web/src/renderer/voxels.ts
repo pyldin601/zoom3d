@@ -65,6 +65,11 @@ const FACES: readonly { normal: readonly [number, number, number]; shade: number
   { normal: [0, -1, 0], shade: SHADE_SIDE, corners: [0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1] },
 ];
 
+/** The flat shade of a face facing lighting.ts's DIR_* `dir`, as buildModel bakes into `colors`. */
+export function faceShade(dir: number): number {
+  return FACES.at(dir)?.shade ?? SHADE_SIDE;
+}
+
 export function glowing(color: number, amount: number): GlowingVoxel {
   return { color, glow: amount };
 }
