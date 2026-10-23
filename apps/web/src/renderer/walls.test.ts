@@ -874,13 +874,11 @@ describe('renderWalls voxel shadows', () => {
     }
   });
 
-  test('no shadow unlit, with the reflections alone, or out of every lamp’s reach', () => {
+  // With the reflections alone the floor is black, so there is no light to take away; the mirror shows there.
+  test('no shadow unlit or out of every lamp’s reach', () => {
     expect(firstDifference(render([ball(8.5)], { lighting: null }).pixels, render([], { lighting: null }).pixels)).toBe(
       -1
     );
-    expect(
-      firstDifference(render([ball(8.5)], { reflections: 'only' }).pixels, render([], { reflections: 'only' }).pixels)
-    ).toBe(-1);
     expect(firstDifference(render([ball(12.5, 1.5)]).pixels, render([]).pixels)).toBe(-1);
   });
 
@@ -898,5 +896,54 @@ describe('renderWalls voxel shadows', () => {
       expect(most).toBeLessThanOrEqual(6);
       previous = next.slice();
     }
+  });
+});
+
+describe('renderWalls voxel mirror', () => {
+  const corridor = parseMap('11111111111111\n1S...........1\n1............1\n1............1\n11111111111111');
+  // No lamps: no shadows, so whatever an object changes in a frame is its mirror.
+  const dark = bakeLighting(corridor, [], 0.3, FLOOR, CEILING);
+  const ball = (x: number, y = 2.5): VoxelInstance => ({ model: BALL_MODEL, x, y, angle: 0 });
+  const east = { x: 1.5, y: 2.5, angle: 0 };
+  type Options = Partial<Parameters<typeof renderWalls>[1]>;
+  const render = (objects: VoxelInstance[], o: Options = {}) => {
+    const fb = createFramebuffer();
+    renderWalls(fb, { map: corridor, eye: east, textures, lighting: dark, reflections: 'both', objects, ...o });
+    return fb;
+  };
+
+  test('the ball shows in the floor below the eye line, round its own columns', () => {
+    const mirrored = render([ball(5.5)]);
+    const bare = render([]);
+    const depth = 4;
+    const ballHalfWidth = (0.2 * PROJ) / depth;
+    // Spread by the blur, at most 0.06 tiles each way.
+    const spread = (0.06 * PROJ) / depth + 1;
+    let changed = 0;
+    for (let i = 0; i < bare.pixels.length; i++) {
+      if (mirrored.pixels[i] !== bare.pixels[i]) {
+        changed++;
+        expect(Math.floor(i / bare.width)).toBeGreaterThanOrEqual(bare.height / 2);
+        expect(Math.abs((i % bare.width) + 0.5 - bare.width / 2)).toBeLessThan(ballHalfWidth + spread);
+      }
+    }
+    expect(changed).toBeGreaterThan(20);
+  });
+
+  test('no mirror with the reflections off or on the walls alone, or unlit', () => {
+    for (const o of [{ reflections: 'none' }, { reflections: 'walls' }, { lighting: null }] as const) {
+      expect(firstDifference(render([ball(5.5)], o).pixels, render([], o).pixels)).toBe(-1);
+    }
+  });
+
+  test('a ball behind a pillar shows no mirror', () => {
+    const pillar = parseMap('11111111111111\n1S...........1\n1...1........1\n1............1\n11111111111111');
+    const darkPillar = bakeLighting(pillar, [], 0.3, FLOOR, CEILING);
+    const o = { map: pillar, lighting: darkPillar };
+    expect(firstDifference(render([ball(6.5)], o).pixels, render([], o).pixels)).toBe(-1);
+  });
+
+  test('a far ball’s mirror fades out', () => {
+    expect(firstDifference(render([ball(10.0)]).pixels, render([]).pixels)).toBe(-1);
   });
 });

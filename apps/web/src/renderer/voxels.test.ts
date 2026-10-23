@@ -3,10 +3,12 @@ import { describe, expect, test } from 'vitest';
 import { createView, setView } from './camera';
 import { createFramebuffer, rgb, scaleRgb } from './framebuffer';
 import { bakeLighting, type Light } from './lighting';
+import { createMirrorBuffer } from './mirror';
+import { BALL_MODEL } from './models/ball';
 import { VACUUM_MODEL } from './models/vacuum';
 import { renderSprites, type Sprite } from './sprites';
 import { firstDifference } from './test-helpers';
-import { buildModel, glowing, renderVoxel, type VoxelInstance } from './voxels';
+import { buildModel, glowing, renderVoxel, renderVoxelMirror, type VoxelInstance } from './voxels';
 
 // Voxel objects (robot vacuum spec §6): models described in code, drawn depth-correct among walls and discs.
 const player: PlayerState = { x: 1.5, y: 4.5, angle: 0 };
@@ -344,5 +346,38 @@ describe('renderVoxel with lighting', () => {
     const fb = blank();
     renderSprites(fb, { eye: player, people: [], objects: [box], lighting: bakeLighting(room, [], 0.45, RED, RED) });
     expect(drawn(fb).has(scaled(RED, 0.45))).toBe(true);
+  });
+});
+
+describe('renderVoxelMirror', () => {
+  test('the ball’s underside shows: its mirror has no holes', () => {
+    const fb = blank();
+    const room = parseMap('1111111\n1S....1\n1.....1\n1.....1\n1.....1\n1.....1\n1111111');
+    const mirror = createMirrorBuffer();
+    renderVoxelMirror(
+      fb,
+      view,
+      { model: BALL_MODEL, x: 3.0, y: 4.5, angle: 0 },
+      bakeLighting(room, [], 0.3, RED, RED),
+      mirror,
+      new Int32Array(fb.width),
+      0
+    );
+    let covered = 0;
+    for (let y = 0; y < fb.height; y++) {
+      let first = -1;
+      let last = -1;
+      for (let x = 0; x < fb.width; x++) {
+        if (mirror.coverageAt(x, y) > 0) {
+          first = first < 0 ? x : first;
+          last = x;
+        }
+      }
+      for (let x = first; first >= 0 && x <= last; x++) {
+        expect(mirror.coverageAt(x, y)).toBe(1);
+        covered++;
+      }
+    }
+    expect(covered).toBeGreaterThan(100);
   });
 });

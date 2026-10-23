@@ -4,7 +4,8 @@
 import { EYE_HEIGHT, MIN_DEPTH, type View } from './camera';
 import { luma } from './colour';
 import { type Framebuffer, scaleRgb } from './framebuffer';
-import { ambientAt, directLight, type Lighting } from './lighting';
+import { ambientAt, directLight, type Lighting, REFLECTION_RANGE } from './lighting';
+import type { MirrorBuffer, ScreenBox } from './mirror';
 
 export interface VoxelModel {
   /** Voxel edge in tiles. */
@@ -185,7 +186,7 @@ export function renderVoxel(fb: Framebuffer, view: View, v: VoxelInstance, light
   if (lighting) {
     lightDirections(lighting, v);
   }
-  projectFaces(view, v);
+  projectFaces(view, v, 'upright');
   for (const f of faceOrder) {
     fillFace(fb, f, lighting ? litColor(model, f, directionLight) : (model.colors[f] as number));
   }
@@ -205,13 +206,15 @@ function lightDirections(lighting: Lighting, v: VoxelInstance): void {
 
 /**
  * Projects the faces turned towards the eye and wholly in front of it: their corners into `screenCorners`, their mean
- * depths into `faceDepths`, and the faces themselves into `faceOrder`, far to near.
+ * depths into `faceDepths`, and the faces themselves into `faceOrder`, far to near. 'mirrored' is the object's image
+ * in the floor: upside down under it, every height and normal negated.
  */
-function projectFaces(view: View, v: VoxelInstance): void {
+function projectFaces(view: View, v: VoxelInstance, side: 'upright' | 'mirrored'): void {
   const { dirX, dirY, planeX, planeY, invDet, proj, halfWidth, half } = view;
   const { corners, normals, faceCount } = v.model;
   const cos = Math.cos(v.angle);
   const sin = Math.sin(v.angle);
+  const up = side === 'upright' ? 1 : -1;
   let count = 0;
   // One loop: with the back-face test and the corner projection as functions it measured 1% slower (bench:sprites).
   for (let f = 0; f < faceCount; f++) {
@@ -220,10 +223,10 @@ function projectFaces(view: View, v: VoxelInstance): void {
     const firstY = corners[c + 1] as number;
     const nx = normals[f * 3] as number;
     const ny = normals[f * 3 + 1] as number;
-    const nz = normals[f * 3 + 2] as number;
+    const nz = (normals[f * 3 + 2] as number) * up;
     const toEyeX = view.x - (v.x + firstX * cos - firstY * sin);
     const toEyeY = view.y - (v.y + firstX * sin + firstY * cos);
-    const toEyeZ = EYE_HEIGHT - (corners[c + 2] as number);
+    const toEyeZ = EYE_HEIGHT - (corners[c + 2] as number) * up;
     const turnedAway = (nx * cos - ny * sin) * toEyeX + (nx * sin + ny * cos) * toEyeY + nz * toEyeZ <= 0;
     if (turnedAway) {
       continue;
@@ -242,7 +245,7 @@ function projectFaces(view: View, v: VoxelInstance): void {
         break;
       }
       screenCorners[f * 8 + k * 2] = halfWidth * (1 + lateral / depth);
-      screenCorners[f * 8 + k * 2 + 1] = half + (proj * (EYE_HEIGHT - (corners[c + k * 3 + 2] as number))) / depth;
+      screenCorners[f * 8 + k * 2 + 1] = half + (proj * (EYE_HEIGHT - (corners[c + k * 3 + 2] as number) * up)) / depth;
       depthSum += depth;
     }
     if (tooNear) {
@@ -332,6 +335,115 @@ function fillFace(fb: Framebuffer, f: number, colour: number): void {
     for (let col = firstCol; col <= lastCol; col++) {
       if (depth < (zbuffer[col] as number)) {
         pixels[row * w + col] = colour;
+      }
+    }
+  }
+}
+
+/** The floor mirrors an object at this share of its colour: the floor's reflectance (walls.ts FLOOR_MATERIAL f0). */
+const MIRROR_STRENGTH = 0.1;
+/** How far the floor's mirror smears each way, in tiles: as soft as its lamp reflections. */
+export const MIRROR_BLUR = 0.06;
+/** The mirror's screen box, reused. */
+const mirrorBox: ScreenBox = { left: 0, top: 0, right: 0, bottom: 0 };
+
+/**
+ * Draws one instance's image in the floor (voxel shadows spec §3.3): upside down under it, in its lit colours,
+ * depth-tested per column like the object, blurred `blurTiles` each way and mixed over the rows from `floorFrom[col]`
+ * down, fading out towards REFLECTION_RANGE. With `blurTiles` 0 it stops at the unblurred coverage in `mirror`.
+ */
+export function renderVoxelMirror(
+  fb: Framebuffer,
+  view: View,
+  v: VoxelInstance,
+  lighting: Lighting,
+  mirror: MirrorBuffer,
+  floorFrom: Int32Array,
+  blurTiles = MIRROR_BLUR
+): void {
+  const distance = Math.sqrt((v.x - view.x) ** 2 + (v.y - view.y) ** 2);
+  const depth = voxelDepth(view, v);
+  if (distance >= REFLECTION_RANGE || depth < 0) {
+    return;
+  }
+  const { model } = v;
+  if (faceDepths.length < model.faceCount) {
+    screenCorners = new Float64Array(model.faceCount * 8);
+    faceDepths = new Float64Array(model.faceCount);
+  }
+  lightDirections(lighting, v);
+  projectFaces(view, v, 'mirrored');
+  if (faceOrder.length === 0) {
+    return;
+  }
+  const radius = blurTiles === 0 ? 0 : Math.max(1, Math.round((view.proj * blurTiles) / depth));
+  fitMirrorBox(fb, radius);
+  mirror.fit(fb.width, fb.height);
+  mirror.clear(mirrorBox);
+  for (const f of faceOrder) {
+    plotFace(fb, mirror, f, litColor(model, f, directionLight));
+  }
+  if (blurTiles === 0) {
+    return;
+  }
+  const fade = distance / REFLECTION_RANGE;
+  mirror.blur(mirrorBox, radius);
+  mirror.blendInto(fb, mirrorBox, MIRROR_STRENGTH * (1 - fade * fade), floorFrom);
+}
+
+/** mirrorBox round the projected faces, grown by `radius` each way and clipped to the frame. */
+function fitMirrorBox(fb: Framebuffer, radius: number): void {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const f of faceOrder) {
+    for (let k = 0; k < 8; k += 2) {
+      minX = Math.min(minX, screenCorners[f * 8 + k] as number);
+      maxX = Math.max(maxX, screenCorners[f * 8 + k] as number);
+      minY = Math.min(minY, screenCorners[f * 8 + k + 1] as number);
+      maxY = Math.max(maxY, screenCorners[f * 8 + k + 1] as number);
+    }
+  }
+  mirrorBox.left = Math.max(0, Math.floor(minX) - radius);
+  mirrorBox.right = Math.min(fb.width, Math.ceil(maxX) + radius + 1);
+  mirrorBox.top = Math.max(0, Math.floor(minY) - radius);
+  mirrorBox.bottom = Math.min(fb.height, Math.ceil(maxY) + radius + 1);
+}
+
+/** Covers face `f` in `mirror` with `colour`, row by row, where it's nearer than the column's wall: fillFace's rule. */
+function plotFace(fb: Framebuffer, mirror: MirrorBuffer, f: number, colour: number): void {
+  const { width: w, height: h, zbuffer } = fb;
+  const s = f * 8;
+  const depth = faceDepths[f] as number;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (let k = 1; k < 8; k += 2) {
+    minY = Math.min(minY, screenCorners[s + k] as number);
+    maxY = Math.max(maxY, screenCorners[s + k] as number);
+  }
+  const firstRow = Math.max(0, Math.ceil(minY - 0.5));
+  const lastRow = Math.min(h - 1, Math.ceil(maxY - 0.5) - 1);
+  for (let row = firstRow; row <= lastRow; row++) {
+    const y = row + 0.5;
+    let left = Number.POSITIVE_INFINITY;
+    let right = Number.NEGATIVE_INFINITY;
+    for (let k = 0; k < 4; k++) {
+      const ax = screenCorners[s + k * 2] as number;
+      const ay = screenCorners[s + k * 2 + 1] as number;
+      const bx = screenCorners[s + ((k + 1) % 4) * 2] as number;
+      const by = screenCorners[s + ((k + 1) % 4) * 2 + 1] as number;
+      if ((ay <= y && y < by) || (by <= y && y < ay)) {
+        const x = ax + ((y - ay) * (bx - ax)) / (by - ay);
+        left = Math.min(left, x);
+        right = Math.max(right, x);
+      }
+    }
+    const firstCol = Math.max(0, Math.ceil(left - 0.5));
+    const lastCol = Math.min(w - 1, Math.ceil(right - 0.5) - 1);
+    for (let col = firstCol; col <= lastCol; col++) {
+      if (depth < (zbuffer[col] as number)) {
+        mirror.plot(col, row, colour);
       }
     }
   }

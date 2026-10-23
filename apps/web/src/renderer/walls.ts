@@ -25,9 +25,10 @@ import {
   WALL_U,
   WALL_V,
 } from './lighting';
+import { createMirrorBuffer } from './mirror';
 import { type PatchedFloor, shadeFloor } from './object-shadows';
 import { GLOSS, REFLECTION_MATERIAL, RELIEF, RELIEF_LEVELS, type ReflectionMaterial, TEX } from './textures';
-import type { VoxelInstance } from './voxels';
+import { renderVoxelMirror, type VoxelInstance, voxelDepth } from './voxels';
 
 /** The unlit ceiling's colour, and the colour the lit one is baked from. */
 export const CEILING = rgb(0x38, 0x38, 0x38);
@@ -92,6 +93,11 @@ interface LitRoom extends Room {
 
 const NO_GLOWS: readonly Glow[] = [];
 const NO_OBJECTS: readonly VoxelInstance[] = [];
+const mirror = createMirrorBuffer();
+/** Objects in front of the eye, far to near, with their depths, for their mirrors. */
+const mirrorOrder: number[] = [];
+const mirrorDepths: number[] = [];
+const mirrorsFarFirst = (a: number, b: number) => Math.sign((mirrorDepths[b] as number) - (mirrorDepths[a] as number));
 const view = createView();
 const hit = createRayHit();
 let litRoom: LitRoom | null = null;
@@ -240,6 +246,26 @@ function drawLitRoom(fb: Framebuffer, room: LitRoom): void {
   drawFloorAndCeiling(fb, room, tables.floor, tables.ceiling);
   if (reflectsOnFloor(room.reflections)) {
     addFloorAndCeilingReflections(fb, room, tables.floorLampSeen);
+    drawObjectMirrors(fb, room);
+  }
+}
+
+/** The objects' images in the floor, far to near, under the floor's walls (voxel shadows spec §3.3). */
+function drawObjectMirrors(fb: Framebuffer, room: LitRoom): void {
+  const { objects } = room;
+  let count = 0;
+  for (let i = 0; i < objects.length; i++) {
+    const depth = voxelDepth(view, objects[i] as VoxelInstance);
+    if (depth >= 0) {
+      mirrorDepths[i] = depth;
+      mirrorOrder[count++] = i;
+    }
+  }
+  // Written by index and trimmed after: `length = 0` would make V8 drop the array's storage every frame.
+  mirrorOrder.length = count;
+  mirrorOrder.sort(mirrorsFarFirst);
+  for (const i of mirrorOrder) {
+    renderVoxelMirror(fb, view, objects[i] as VoxelInstance, room.lighting, mirror, wallEnd);
   }
 }
 
