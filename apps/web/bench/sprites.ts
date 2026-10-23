@@ -48,6 +48,8 @@ const inRoom: PeopleAndObjects = { eye: room.eye, people: [], objects: [], light
 const bits = new Float64Array(1);
 const words = new Int32Array(bits.buffer);
 
+/** Whether renderWalls is handed the scene's people and objects (shadows, floor images): hashed frames and timings do. */
+let wallsShowObjects = true;
 let hash = 0;
 /** What the hashed frames show, so a reader can tell the bench draws something. */
 let seen = 0;
@@ -77,9 +79,14 @@ for (const mode of MODES) {
   time(mode, 300);
 }
 const times = new Map<Mode, number[]>(MODES.map((m) => [m, []]));
+const wallTimes = { without: [] as number[], with: [] as number[] };
 for (let round = 0; round < ROUNDS; round++) {
   for (const mode of MODES) {
     times.get(mode)?.push(time(mode, scenes.length * FRAMES_PER_POSE));
+  }
+  for (const objects of ['without', 'with'] as const) {
+    wallsShowObjects = objects === 'with';
+    wallTimes[objects].push(timeWalls('lit', scenes.length * FRAMES_PER_POSE));
   }
 }
 const avatars = scenes.reduce((n, s) => n + s.sprites.length, 0);
@@ -93,10 +100,15 @@ console.log(`sprite hash ${hash}`);
 for (const mode of MODES) {
   console.log(`${mode.padEnd(6)} ${(median(times.get(mode) ?? []) * 1000).toFixed(1)} µs/frame (renderSprites only)`);
 }
+for (const objects of ['without', 'with'] as const) {
+  console.log(`lit renderWalls ${objects} objects ${(median(wallTimes[objects]) * 1000).toFixed(1)} µs/frame`);
+}
 
 function drawWalls(mode: Mode, s: Scene): void {
   room.eye = s;
   room.lighting = mode === 'lit' ? lighting : null;
+  room.objects = wallsShowObjects ? s.voxels : [];
+  room.people = wallsShowObjects ? s.sprites : [];
   renderWalls(fb, room, s.glows);
 }
 
@@ -121,6 +133,18 @@ function time(mode: Mode, frames: number): number {
     }
   }
   return total / frames;
+}
+
+/** Mean ms per renderWalls call over `frames` frames, cycling through the scenes: what the objects' shadows cost. */
+function timeWalls(mode: Mode, frames: number): number {
+  const start = performance.now();
+  for (let f = 0; f < frames; f++) {
+    const scene = scenes.at(f % scenes.length);
+    if (scene) {
+      drawWalls(mode, scene);
+    }
+  }
+  return (performance.now() - start) / frames;
 }
 
 function median(values: number[]): number {

@@ -3,9 +3,12 @@ import { describe, expect, test } from 'vitest';
 import { createView, setView } from './camera';
 import { createFramebuffer, rgb, scaleRgb } from './framebuffer';
 import { bakeLighting, type Light } from './lighting';
+import { createFloorMirror } from './mirror';
+import { BALL_MODEL } from './models/ball';
 import { VACUUM_MODEL } from './models/vacuum';
 import { renderSprites, type Sprite } from './sprites';
-import { buildModel, glowing, renderVoxel, type VoxelInstance } from './voxels';
+import { firstDifference } from './test-helpers';
+import { buildModel, glowing, renderVoxel, renderVoxelMirror, type VoxelInstance } from './voxels';
 
 // Voxel objects (robot vacuum spec §6): models described in code, drawn depth-correct among walls and discs.
 const player: PlayerState = { x: 1.5, y: 4.5, angle: 0 };
@@ -39,11 +42,34 @@ const disc = (x: number): Sprite => ({
 const robot = (x: number, angle = 0): VoxelInstance => ({ model: VACUUM_MODEL, x, y: 4.5, angle });
 
 describe('buildModel', () => {
-  test('exposes only faces with an empty neighbour, never the bottom', () => {
+  test('exposes only faces with an empty neighbour, the bottom included', () => {
     const m = buildModel({ x: 2, y: 1, z: 1 }, 0.1, () => RED);
-    // 2 tops + 1 front + 1 back + 2 left + 2 right; the shared inner faces and the bottoms are absent.
-    expect(m.faceCount).toBe(8);
-    expect(m.corners).toHaveLength(8 * 12);
+    // 2 tops + 2 bottoms + 1 front + 1 back + 2 left + 2 right; the shared inner faces are absent.
+    expect(m.faceCount).toBe(10);
+    expect(m.corners).toHaveLength(10 * 12);
+  });
+
+  test('shades the bottom 0.5', () => {
+    const m = buildModel({ x: 1, y: 1, z: 1 }, 0.1, () => RED);
+    const bottom = [...Array(m.faceCount).keys()].find((f) => m.normals[f * 3 + 2] === -1);
+    expect(bottom).toBeDefined();
+    expect(m.colors[bottom ?? -1]).toBe(scaled(RED, 0.5));
+  });
+
+  test('keeps each column’s top height', () => {
+    const m = buildModel({ x: 2, y: 1, z: 3 }, 0.1, (x, _y, z) => (x === 0 || z === 0 ? RED : 0));
+    expect(m.sizeX).toBe(2);
+    expect(m.sizeY).toBe(1);
+    expect(m.tops.at(0)).toBeCloseTo(0.3);
+    expect(m.tops.at(1)).toBeCloseTo(0.1);
+  });
+
+  test('the eye never sees a bottom face', () => {
+    const fb = blank();
+    const cube = buildModel({ x: 1, y: 1, z: 1 }, 0.2, () => RED);
+    renderVoxel(fb, view, { model: cube, x: 3.5, y: 4.5, angle: 0.3 });
+    expect(fb.pixels.includes(scaled(RED, 0.5))).toBe(false);
+    expect(fb.pixels.includes(RED)).toBe(true);
   });
 
   test('shades faces 1.0 on top, 0.8 front and back, 0.62 at the sides', () => {
@@ -58,7 +84,6 @@ describe('buildModel', () => {
     expect(byNormal.get('-1,0,0')).toBe(scaled(RED, 0.8));
     expect(byNormal.get('0,1,0')).toBe(scaled(RED, 0.62));
     expect(byNormal.get('0,-1,0')).toBe(scaled(RED, 0.62));
-    expect(m.shadowRadius).toBeCloseTo(0.05);
   });
 });
 
@@ -90,7 +115,6 @@ describe('the vacuum model', () => {
     expect(Math.max(...axis(1))).toBeCloseTo(0.35);
     expect(Math.min(...axis(1))).toBeCloseTo(-0.35);
     expect(Math.max(...axis(2))).toBeCloseTo(0.2);
-    expect(VACUUM_MODEL.shadowRadius).toBeCloseTo(0.35);
   });
 
   test('its eyes and the disc on top glow; nothing else does', () => {
@@ -178,6 +202,22 @@ describe('renderSprites with voxels', () => {
     }
     const overlap = [...painted(robotOnly).keys()].filter((i) => shownDisc.has(i));
     expect(overlap.length).toBeGreaterThan(0);
+  });
+
+  test('an object casts no round shadow: renderSprites draws only the object itself', () => {
+    const grey = () => {
+      const fb = blank();
+      fb.pixels.fill(rgb(0x70, 0x70, 0x70));
+      return fb;
+    };
+    // One voxel in the corner of a 4 × 4 footprint: most of the floor under the footprint shows.
+    const corner = buildModel({ x: 4, y: 4, z: 1 }, 0.1, (x, y) => (x === 0 && y === 0 ? RED : 0));
+    const object = { model: corner, x: 3.0, y: 4.5, angle: 0 };
+    const sprites = grey();
+    renderSprites(sprites, { eye: player, people: [], objects: [object], lighting: null });
+    const alone = grey();
+    renderVoxel(alone, view, object);
+    expect(firstDifference(sprites.pixels, alone.pixels)).toBe(-1);
   });
 
   test('a nearer robot covers the disc', () => {
@@ -306,5 +346,38 @@ describe('renderVoxel with lighting', () => {
     const fb = blank();
     renderSprites(fb, { eye: player, people: [], objects: [box], lighting: bakeLighting(room, [], 0.45, RED, RED) });
     expect(drawn(fb).has(scaled(RED, 0.45))).toBe(true);
+  });
+});
+
+describe('renderVoxelMirror', () => {
+  test('the ball’s underside shows: its mirror has no holes', () => {
+    const fb = blank();
+    const room = parseMap('1111111\n1S....1\n1.....1\n1.....1\n1.....1\n1.....1\n1111111');
+    const mirror = createFloorMirror();
+    mirror.fit(fb.width, fb.height);
+    mirror.clear();
+    renderVoxelMirror(
+      fb,
+      view,
+      { model: BALL_MODEL, x: 3.0, y: 4.5, angle: 0 },
+      bakeLighting(room, [], 0.3, RED, RED),
+      mirror
+    );
+    let covered = 0;
+    for (let y = 0; y < fb.height; y++) {
+      let first = -1;
+      let last = -1;
+      for (let x = 0; x < fb.width; x++) {
+        if (mirror.shownAt(x, y)) {
+          first = first < 0 ? x : first;
+          last = x;
+        }
+      }
+      for (let x = first; first >= 0 && x <= last; x++) {
+        expect(mirror.shownAt(x, y)).toBe(true);
+        covered++;
+      }
+    }
+    expect(covered).toBeGreaterThan(100);
   });
 });

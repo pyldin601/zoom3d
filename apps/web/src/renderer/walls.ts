@@ -1,8 +1,9 @@
 // The room as the eye sees it: walls ray-cast column by column, then floor and ceiling row by row. Lit (decision D24)
 // by the baked lamps, the avatars' glow and the lamps' reflections; unlit, plain textures over a flat floor and
 // ceiling. Allocation-free per frame: scratch buffers are rebuilt only when the frame's size or FOV changes.
+
 import { castRay, createRayHit, type GameMap, type PlayerState } from '@zoom3d/shared';
-import { createView, EYE_HEIGHT, setView } from './camera';
+import { createView, EYE_HEIGHT, MIN_DEPTH, setView } from './camera';
 import { reflectedColour } from './colour';
 import { type Framebuffer, rgb, scaleRgb } from './framebuffer';
 import { GLOW_RADIUS, type Glow, glowLight } from './glow';
@@ -24,7 +25,11 @@ import {
   WALL_U,
   WALL_V,
 } from './lighting';
+import { createFloorMirror } from './mirror';
+import { type PatchedFloor, shadeFloor } from './object-shadows';
+import { mirrorDisc, type Sprite } from './sprites';
 import { GLOSS, REFLECTION_MATERIAL, RELIEF, RELIEF_LEVELS, type ReflectionMaterial, TEX } from './textures';
+import { renderVoxelMirror, type VoxelInstance, voxelDepth } from './voxels';
 
 /** The unlit ceiling's colour, and the colour the lit one is baked from. */
 export const CEILING = rgb(0x38, 0x38, 0x38);
@@ -32,6 +37,13 @@ export const CEILING = rgb(0x38, 0x38, 0x38);
 export const FLOOR = rgb(0x70, 0x70, 0x70);
 /** A smooth, semi-glossy floor: lamps smear along it towards the eye. */
 const FLOOR_MATERIAL: ReflectionMaterial = { shininess: 16, f0: 0.1, tint: 0 };
+/**
+ * The floor adds this much of its images' colour: the walls', people's and objects' (floor mirror spec §3.7). Under the
+ * people's and objects' it shows no lamp reflections, as they stand in front of the lamps' in the floor.
+ */
+const MIRROR_STRENGTH = 0.3;
+/** How far the floor's mirror smears each way, in tiles of the floor it lands on: as soft as its lamp reflections. */
+const MIRROR_BLUR = 0.06;
 /** Floor reflections are worked out every this many pixels along every other row, and blended between. */
 const FLOOR_REFLECTION_STEP_PX = 16;
 /**
@@ -63,6 +75,10 @@ export interface Room {
   lighting: Lighting | null;
   /** The surfaces that show the lamps' reflections in a lit room; 'both' when left out. */
   reflections?: ReflectionMode;
+  /** Voxel objects, whose shadows a lit room's floor shows; none when left out. */
+  objects?: readonly VoxelInstance[];
+  /** People, whose images the floor shows; none when left out. */
+  people?: readonly Sprite[];
 }
 
 /** The floor (or ceiling) points along one screen row, in lightmap cells. */
@@ -80,11 +96,21 @@ interface LitRoom extends Room {
   lighting: Lighting;
   reflections: ReflectionMode;
   glows: readonly Glow[];
+  objects: readonly VoxelInstance[];
+  people: readonly Sprite[];
   /** What one unit of each lamp's reflection adds, r, g, b, per texture then the floor (see reflectionColours). */
   reflectionColours: Float64Array;
 }
 
 const NO_GLOWS: readonly Glow[] = [];
+const NO_OBJECTS: readonly VoxelInstance[] = [];
+const NO_PEOPLE: readonly Sprite[] = [];
+/** This frame's images in the floor: the walls', then the objects', far to near (floor mirror spec §3). */
+const floorMirror = createFloorMirror();
+/** People then objects in front of the eye (an object's index after the people's), far to near, with their depths. */
+const mirrorOrder: number[] = [];
+const mirrorDepths: number[] = [];
+const mirrorsFarFirst = (a: number, b: number) => Math.sign((mirrorDepths[b] as number) - (mirrorDepths[a] as number));
 const view = createView();
 const hit = createRayHit();
 let litRoom: LitRoom | null = null;
@@ -93,6 +119,10 @@ let litRoom: LitRoom | null = null;
 let scratchSize = { width: 0, height: 0, fov: 0 };
 /** Per screen row, the perpendicular distance to the floor or ceiling it shows, in lightmap cells. */
 let rowDistance = new Float64Array(0);
+/** Per screen row, how far the floor's mirror blurs there (px) and how much of it shows (0 off the floor or past
+ * REFLECTION_RANGE). */
+let mirrorBlurPx = new Float64Array(0);
+let mirrorWeight = new Float64Array(0);
 /** Per screen column, the rows its wall covers, [start, end). */
 let wallStart = new Int32Array(0);
 let wallEnd = new Int32Array(0);
@@ -104,7 +134,7 @@ const floorRow: FloorRow = { x: 0, y: 0, stepX: 0, stepY: 0 };
 
 let reflectionColoursFor: { lm: Lighting; textures: Uint32Array[] } | null = null;
 let reflectionColourTable = new Float64Array(0);
-let blackTable = new Uint32Array(0);
+let blackTables: FloorTables | null = null;
 
 /** The wall column being drawn: filled by castColumnRay and findColumnFace, then read by the passes after them. */
 const column = {
@@ -140,20 +170,28 @@ const columnGlows: Glow[] = [];
 /** The avatars' glow on the column, r, g, b, at GLOW_HEIGHTS heights from the floor up. */
 const columnGlowLight = new Float64Array(GLOW_HEIGHTS * 3);
 
-/**
- * The floor and ceiling colours per floor cell with this frame's avatar glow: copies of a Lighting's, whose cells the
- * glow touched (the first `dirtyCount` of `dirty`) are put back next frame. `light` sums the glow on each cell, r, g, b.
- */
-let glowTables: {
-  lm: Lighting;
+/** A frame's floor and ceiling colours per floor cell, and how much of each listed lamp each floor cell sees. */
+interface FloorTables {
   floor: Uint32Array;
   ceiling: Uint32Array;
-  touched: Uint8Array;
-  /** A typed array and a count, not an array emptied each frame: V8 drops an array's storage at `length = 0`. */
-  dirty: Int32Array;
-  dirtyCount: number;
-  light: Float32Array;
-} | null = null;
+  floorLampSeen: Uint8Array;
+}
+
+/**
+ * The floor tables with this frame's object shadows and avatar glow: copies of a Lighting's, whose cells were patched
+ * (the first `dirtyCount` of `dirty`) are put back next frame. `light` sums the glow on each cell, r, g, b.
+ */
+let frameTables:
+  | (FloorTables &
+      PatchedFloor & {
+        lm: Lighting;
+        touched: Uint8Array;
+        /** A typed array and a count, not an array emptied each frame: V8 drops an array's storage at `length = 0`. */
+        dirty: Int32Array;
+        dirtyCount: number;
+        light: Float32Array;
+      })
+  | null = null;
 
 /**
  * Draws `room` into `fb` and fills its z-buffer. A lit room's walls, floor and ceiling show the lamps' reflections on
@@ -221,20 +259,62 @@ function drawPlainWallSlice(fb: Framebuffer, textures: Uint32Array[], shading: '
 function drawLitRoom(fb: Framebuffer, room: LitRoom): void {
   fitScratchToFrame(fb);
   drawWallColumns(fb, room);
-  const { floor, ceiling } = floorAndCeilingColours(room);
-  drawFloorAndCeiling(fb, room, floor, ceiling);
+  const tables = floorAndCeilingColours(room);
+  drawFloorAndCeiling(fb, room, tables.floor, tables.ceiling);
   if (reflectsOnFloor(room.reflections)) {
-    addFloorAndCeilingReflections(fb, room);
+    // The images first: in the floor the objects' stand in front of the lamps' reflections, hiding them.
+    floorMirror.fit(fb.width, fb.height);
+    floorMirror.clear();
+    floorMirror.addWalls(fb, wallStart, wallEnd, mirrorWeight);
+    mirrorPeopleAndObjects(fb, room);
+    floorMirror.blur(mirrorBlurPx);
+    addFloorAndCeilingReflections(fb, room, tables.floorLampSeen);
+    floorMirror.addInto(fb, MIRROR_STRENGTH, mirrorWeight, wallEnd);
   }
 }
 
+/** The people's and objects' images in the floor, far to near, over the walls' (floor mirror spec §3.1). */
+function mirrorPeopleAndObjects(fb: Framebuffer, room: LitRoom): void {
+  const { people, objects } = room;
+  let count = 0;
+  for (let i = 0; i < people.length + objects.length; i++) {
+    const depth = depthOfMirrored(room, i);
+    if (depth >= 0) {
+      mirrorDepths[i] = depth;
+      mirrorOrder[count++] = i;
+    }
+  }
+  // Written by index and trimmed after: `length = 0` would make V8 drop the array's storage every frame.
+  mirrorOrder.length = count;
+  mirrorOrder.sort(mirrorsFarFirst);
+  for (const i of mirrorOrder) {
+    if (i < people.length) {
+      mirrorDisc(fb, view, people[i] as Sprite, floorMirror);
+    } else {
+      renderVoxelMirror(fb, view, objects[i - people.length] as VoxelInstance, room.lighting, floorMirror);
+    }
+  }
+}
+
+/** The camera depth of the `i`th of the room's people then objects, or −1 behind the eye. */
+function depthOfMirrored({ people, objects }: LitRoom, i: number): number {
+  if (i >= people.length) {
+    return voxelDepth(view, objects[i - people.length] as VoxelInstance);
+  }
+  const s = people[i] as Sprite;
+  const depth = view.invDet * (-view.planeY * (s.x - view.x) + view.planeX * (s.y - view.y));
+  return depth < MIN_DEPTH ? -1 : depth;
+}
+
 function litRoomFor(room: Room, lighting: Lighting, glows: readonly Glow[]): LitRoom {
-  const { map, eye, textures, reflections = 'both' } = room;
+  const { map, eye, textures, reflections = 'both', objects = NO_OBJECTS, people = NO_PEOPLE } = room;
   const reflectionColours = reflectionColoursOf(textures, lighting);
   if (!litRoom) {
-    litRoom = { map, eye, lighting, textures, reflections, glows, reflectionColours };
+    litRoom = { map, eye, lighting, textures, reflections, glows, objects, people, reflectionColours };
     return litRoom;
   }
+  litRoom.objects = objects;
+  litRoom.people = people;
   litRoom.map = map;
   litRoom.eye = eye;
   litRoom.lighting = lighting;
@@ -253,8 +333,14 @@ function fitScratchToFrame(fb: Framebuffer): void {
   }
   const { proj, half } = view;
   rowDistance = new Float64Array(h);
+  mirrorBlurPx = new Float64Array(h);
+  mirrorWeight = new Float64Array(h);
   for (let y = 0; y < h; y++) {
     rowDistance[y] = ((EYE_HEIGHT * proj) / Math.abs(y + 0.5 - half)) * FLOOR_SUB;
+    const tiles = (rowDistance[y] as number) / FLOOR_SUB;
+    const far = tiles / REFLECTION_RANGE;
+    mirrorBlurPx[y] = (proj * MIRROR_BLUR) / tiles;
+    mirrorWeight[y] = y + 0.5 > half && far < 1 ? 1 - far * far : 0;
   }
   wallStart = new Int32Array(w);
   wallEnd = new Int32Array(w);
@@ -528,49 +614,87 @@ function drawLitWallSlice(fb: Framebuffer, room: LitRoom): void {
 
 // Floor and ceiling.
 
-/** The floor's and ceiling's colour per floor cell this frame. */
-function floorAndCeilingColours(room: LitRoom): { floor: Uint32Array; ceiling: Uint32Array } {
+/** The floor's and ceiling's colour per floor cell this frame, and what the floor sees of its lamps. */
+function floorAndCeilingColours(room: LitRoom): FloorTables {
+  const lm = room.lighting;
   if (!lampsLightTheRoom(room.reflections)) {
-    return blackFloorAndCeiling(room.lighting);
+    return blackFloorAndCeiling(lm);
   }
-  return room.glows.length > 0 ? glowLitFloorAndCeiling(room.lighting, room.glows) : room.lighting;
+  const shaded = room.objects.length > 0;
+  const glowing = room.glows.length > 0;
+  if (!shaded && !glowing) {
+    return lm;
+  }
+  const t = putBackFrameTables(lm);
+  if (shaded) {
+    shadeFloor(lm, room.objects, FLOOR, t, inView);
+  }
+  if (glowing) {
+    addGlow(lm, room.glows, t);
+  }
+  return t;
 }
 
-function blackFloorAndCeiling(lm: Lighting): { floor: Uint32Array; ceiling: Uint32Array } {
-  if (blackTable.length !== lm.floor.length) {
-    blackTable = new Uint32Array(lm.floor.length).fill(BLACK);
+const inView = (x: number, y: number, reach: number) => !outOfView(x, y, reach);
+
+function blackFloorAndCeiling(lm: Lighting): FloorTables {
+  if (blackTables?.floorLampSeen !== lm.floorLampSeen) {
+    const black = new Uint32Array(lm.floor.length).fill(BLACK);
+    blackTables = { floor: black, ceiling: black, floorLampSeen: lm.floorLampSeen };
   }
-  return { floor: blackTable, ceiling: blackTable };
+  return blackTables;
 }
 
-/**
- * Last frame's glow-lit cells are put back, then each avatar in view lights the cells within its reach,
- * √(GLOW_RADIUS² − ½²) of its disc. Glows add up, and a cell takes their sum where it's brighter than its baked light
- * (see withGlow). The cost is the cells near avatars in view, not the pixels showing them.
- *
- * The disc sits at eye height, half way between floor and ceiling, so the ceiling above a cell gets exactly the glow
- * its floor does: it is worked out once.
- */
-function glowLitFloorAndCeiling(lm: Lighting, glows: readonly Glow[]): { floor: Uint32Array; ceiling: Uint32Array } {
-  if (glowTables?.lm !== lm) {
-    glowTables = {
+/** The frame tables for `lm`, with last frame's patched cells put back. */
+function putBackFrameTables(lm: Lighting): NonNullable<typeof frameTables> {
+  if (frameTables?.lm !== lm) {
+    const touched = new Uint8Array(lm.floor.length);
+    const dirty = new Int32Array(lm.floor.length);
+    const light = new Float32Array(lm.floor.length * 3);
+    const t: NonNullable<typeof frameTables> = {
       lm,
       floor: lm.floor.slice(),
       ceiling: lm.ceiling.slice(),
-      touched: new Uint8Array(lm.floor.length),
-      dirty: new Int32Array(lm.floor.length),
+      floorLampSeen: lm.floorLampSeen.slice(),
+      touched,
+      dirty,
       dirtyCount: 0,
-      light: new Float32Array(lm.floor.length * 3),
+      light,
+      touch(i) {
+        if (touched[i] === 0) {
+          touched[i] = 1;
+          dirty[t.dirtyCount++] = i;
+          light.fill(0, i * 3, i * 3 + 3);
+        }
+      },
     };
+    frameTables = t;
   }
-  const t = glowTables;
+  const t = frameTables;
   for (let j = 0; j < t.dirtyCount; j++) {
     const i = t.dirty[j] as number;
     t.floor[i] = lm.floor[i] as number;
     t.ceiling[i] = lm.ceiling[i] as number;
+    const slots = i * REFLECTION_LAMPS;
+    // Copied by hand: subarray() would make a view object per cell.
+    for (let k = slots; k < slots + REFLECTION_LAMPS; k++) {
+      t.floorLampSeen[k] = lm.floorLampSeen[k] as number;
+    }
     t.touched[i] = 0;
   }
   t.dirtyCount = 0;
+  return t;
+}
+
+/**
+ * Each avatar in view lights the cells within its reach, √(GLOW_RADIUS² − ½²) of its disc. Glows add up, and a cell
+ * takes their sum where it's brighter than its light, shadows included (see withGlow). The cost is the cells near
+ * avatars in view, not the pixels showing them.
+ *
+ * The disc sits at eye height, half way between floor and ceiling, so the ceiling above a cell gets exactly the glow
+ * its floor does: it is worked out once.
+ */
+function addGlow(lm: Lighting, glows: readonly Glow[], t: NonNullable<typeof frameTables>): void {
   const { stride, rows } = lm;
   const reach = Math.sqrt(GLOW_RADIUS * GLOW_RADIUS - EYE_HEIGHT * EYE_HEIGHT);
   const span = Math.ceil(reach * FLOOR_SUB);
@@ -590,11 +714,7 @@ function glowLitFloorAndCeiling(lm: Lighting, glows: readonly Glow[]): { floor: 
           continue;
         }
         const i = cy * stride + cx;
-        if (t.touched[i] === 0) {
-          t.touched[i] = 1;
-          t.dirty[t.dirtyCount++] = i;
-          t.light.fill(0, i * 3, i * 3 + 3);
-        }
+        t.touch(i);
         t.light[i * 3] = (t.light[i * 3] as number) + g.r * onFloor;
         t.light[i * 3 + 1] = (t.light[i * 3 + 1] as number) + g.g * onFloor;
         t.light[i * 3 + 2] = (t.light[i * 3 + 2] as number) + g.b * onFloor;
@@ -607,10 +727,9 @@ function glowLitFloorAndCeiling(lm: Lighting, glows: readonly Glow[]): { floor: 
     const r = l[i * 3] as number;
     const g = l[i * 3 + 1] as number;
     const b = l[i * 3 + 2] as number;
-    t.floor[i] = withGlow(lm.floor[i] as number, FLOOR, r, g, b);
-    t.ceiling[i] = withGlow(lm.ceiling[i] as number, CEILING, r, g, b);
+    t.floor[i] = withGlow(t.floor[i] as number, FLOOR, r, g, b);
+    t.ceiling[i] = withGlow(t.ceiling[i] as number, CEILING, r, g, b);
   }
-  return t;
 }
 
 /** Whether everything within `reach` tiles of (x, y) lies behind the eye or past the left or right edge of the frame. */
@@ -697,7 +816,7 @@ const clampCell = (cell: number, last: number) => (cell < 0 ? 0 : cell > last ? 
  * FLOOR_REFLECTION_STEP_PX on every other row (reflectionAlongRow), blended between, and added where the cell sees the
  * lamp. It changes slowly down the screen, so the next row reuses it.
  */
-function addFloorAndCeilingReflections(fb: Framebuffer, room: LitRoom): void {
+function addFloorAndCeilingReflections(fb: Framebuffer, room: LitRoom, floorLampSeen: Uint8Array): void {
   const { width: w, height: h } = fb;
   const { half } = view;
   const floorTop = Math.ceil(half);
@@ -709,7 +828,7 @@ function addFloorAndCeilingReflections(fb: Framebuffer, room: LitRoom): void {
       shows = inRange && reflectionAlongRow(room, aimFloorRow(room.eye, y, w), above ? 'ceiling' : 'floor');
     }
     if (shows) {
-      addRowReflection(fb, room, y);
+      addRowReflection(fb, room, y, floorLampSeen);
     }
   }
 }
@@ -763,13 +882,18 @@ function reflectionAlongRow(room: LitRoom, row: FloorRow, surface: 'floor' | 'ce
  * or ceiling drawn there, times how much of the lamp each pixel's own cell sees, so its shadow edge is the floor
  * light's. A span between two samples that both show nothing is skipped whole: the blend never exceeds its ends.
  */
-function addRowReflection(fb: Framebuffer, room: LitRoom, y: number): void {
+function addRowReflection(fb: Framebuffer, room: LitRoom, y: number, floorSees: Uint8Array): void {
   const { width: w, pixels } = fb;
-  const { stride, rows, floorLamp, floorLampSeen, lights } = room.lighting;
+  const { stride, rows, floorLamp, lights } = room.lighting;
   const colours = room.reflectionColours;
   const floorTexture = room.textures.length;
   const above = y < view.half;
   const share = above ? CEILING_SHINE : 1;
+  // Objects' shadows lie on the floor alone: the ceiling's light off the floor keeps the baked shares.
+  const floorLampSeen = above ? room.lighting.floorLampSeen : floorSees;
+  const images = floorMirror.rows;
+  const underImages = !above && y >= images.top && y < images.bottom;
+  const imagesShow = mirrorWeight[y] as number;
   const { x: startX, y: startY, stepX, stepY } = aimFloorRow(room.eye, y, w);
   const lastCellX = stride - 1;
   const lastCellY = rows - 1;
@@ -806,7 +930,8 @@ function addRowReflection(fb: Framebuffer, room: LitRoom, y: number): void {
       if (seen === 0) {
         continue;
       }
-      const s = blended * seen;
+      const hidden = underImages ? floorMirror.hidingAt(col, y) * imagesShow : 0;
+      const s = blended * seen * (1 - hidden);
       const c = pixels[row + col] as number;
       pixels[row + col] = packClamped(
         (c & 0xff) + ((s * (colours[colour] as number)) | 0),

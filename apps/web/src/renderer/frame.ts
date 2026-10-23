@@ -13,7 +13,7 @@ import { type PeopleAndObjects, renderSprites } from './sprites';
 import { type Room, renderWalls } from './walls';
 
 /** Everything one frame shows. */
-export interface RoomScene extends Room, PeopleAndObjects {
+export interface RoomScene extends Omit<Room, 'objects' | 'people'>, PeopleAndObjects {
   reflections: ReflectionMode;
   /** Each person's name label and automap dot. */
   labels: readonly PersonLabel[];

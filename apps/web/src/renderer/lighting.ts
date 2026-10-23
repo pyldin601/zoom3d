@@ -36,7 +36,7 @@ const FIXTURE = rgb(255, 236, 190);
  * A lamp casts shadows as a disc this wide (radius, tiles), its fixture's size: a wall's edge hides part of it, so
  * shadows fade in over a few cells instead of stepping.
  */
-const LAMP_RADIUS = FIXTURE_RADIUS;
+export const LAMP_RADIUS = FIXTURE_RADIUS;
 /** Halvings to find where a wall's edge cuts a lamp: its share is then known to 1/2^(steps+1) of its width. */
 const SHADOW_STEPS = 5;
 /**
@@ -496,8 +496,7 @@ function bakeFloorAndCeiling(
         if (flat < FIXTURE_RADIUS) {
           fixture = true;
         }
-        const df = Math.sqrt(flat * flat + l.z * l.z);
-        const kf = falloff(df, l.radius) * (l.z / df) * seen;
+        const kf = floorLampLight(l, px, py) * seen;
         fr += l.r * kf;
         fg += l.g * kf;
         fb += l.b * kf;
@@ -516,6 +515,14 @@ function bakeFloorAndCeiling(
     }
   }
   return { floor, ceiling, floorLamp, floorLampSeen, stride, rows };
+}
+
+/** How brightly lamp `l` lights the floor at (px, py), 0..1 before its colour, as if nothing were in the way. */
+export function floorLampLight(l: Light, px: number, py: number): number {
+  const dx = l.x - px;
+  const dy = l.y - py;
+  const df = Math.sqrt(dx * dx + dy * dy + l.z * l.z);
+  return falloff(df, l.radius) * (l.z / df);
 }
 
 /**
@@ -567,7 +574,7 @@ function offerLamp(list: LampList, i: number, dx: number, dy: number, dist: numb
  * line to it, LAMP_RADIUS either side: when sight lines to its two ends disagree, a wall's edge cuts it, found by
  * halving, and the share is the disc's area on the seen side of the cut.
  */
-function seenShare(map: GameMap, x: number, y: number, l: Light): number {
+export function seenShare(map: GameMap, x: number, y: number, l: Light): number {
   const dx = l.x - x;
   const dy = l.y - y;
   const len = Math.hypot(dx, dy) || 1;
@@ -876,6 +883,7 @@ export const DIR_FRONT = 1;
 export const DIR_BACK = 2;
 export const DIR_RIGHT = 3;
 export const DIR_LEFT = 4;
+export const DIR_BOTTOM = 5;
 
 /**
  * Light from the lamps (ambient not included) reaching a moving object at (x, y, z) turned to `angle`, per face
@@ -902,6 +910,7 @@ export function directLight(lm: Lighting, x: number, y: number, z: number, angle
     addLight(out, DIR_BACK, l, k * Math.max(0, -fx));
     addLight(out, DIR_RIGHT, l, k * Math.max(0, fy));
     addLight(out, DIR_LEFT, l, k * Math.max(0, -fy));
+    addLight(out, DIR_BOTTOM, l, k * Math.max(0, -dz / dist));
   }
 }
 

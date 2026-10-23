@@ -36,14 +36,14 @@ const FACING_SOUTH = { dx: 0, dy: 1, dz: 0 };
 describe('directLight', () => {
   test('is zero everywhere with no lamps', () => {
     const lm = bakeLighting(map, [], 0.45, GREY, GREY);
-    const out = new Float64Array(15).fill(9);
+    const out = new Float64Array(18).fill(9);
     directLight(lm, 1.5, 2.5, 0.1, 0, out);
-    expect([...out]).toEqual(new Array(15).fill(0));
+    expect([...out]).toEqual(new Array(18).fill(0));
   });
 
   test('a lamp overhead lights the top more than the sides', () => {
     const lm = bakeLighting(map, [lamp(1.6, 2.5)], 0.45, GREY, GREY);
-    const out = new Float64Array(15);
+    const out = new Float64Array(18);
     directLight(lm, 1.5, 2.5, 0.1, 0, out);
     expect(out[DIR_TOP * 3] as number).toBeGreaterThan(0.5);
     expect(out[DIR_TOP * 3] as number).toBeGreaterThan(out[DIR_FRONT * 3] as number);
@@ -51,7 +51,7 @@ describe('directLight', () => {
 
   test('lights the face turned towards the lamp, not the one turned away', () => {
     const lm = bakeLighting(map, [lamp(4.5, 2.5)], 0.45, GREY, GREY);
-    const out = new Float64Array(15);
+    const out = new Float64Array(18);
     // Facing east (+x), the lamp is ahead: the front is lit, the back is not.
     directLight(lm, 2.5, 2.5, 0.1, 0, out);
     expect(out[DIR_FRONT * 3] as number).toBeGreaterThan(0);
@@ -64,16 +64,16 @@ describe('directLight', () => {
 
   test('a wall between the object and the lamp leaves it unlit', () => {
     const lm = bakeLighting(map, [lamp(4.5, 1.5)], 0.45, GREY, GREY);
-    const out = new Float64Array(15);
+    const out = new Float64Array(18);
     directLight(lm, 2.5, 1.5, 0.1, 0, out);
-    expect([...out]).toEqual(new Array(15).fill(0));
+    expect([...out]).toEqual(new Array(18).fill(0));
   });
 
   test('a lamp out of reach leaves it unlit', () => {
     const lm = bakeLighting(map, [{ ...lamp(5.5, 2.5), radius: 1 }], 0.45, GREY, GREY);
-    const out = new Float64Array(15);
+    const out = new Float64Array(18);
     directLight(lm, 1.5, 2.5, 0.1, 0, out);
-    expect([...out]).toEqual(new Array(15).fill(0));
+    expect([...out]).toEqual(new Array(18).fill(0));
   });
 });
 

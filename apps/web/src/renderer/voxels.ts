@@ -5,6 +5,7 @@ import { EYE_HEIGHT, MIN_DEPTH, type View } from './camera';
 import { luma } from './colour';
 import { type Framebuffer, scaleRgb } from './framebuffer';
 import { ambientAt, directLight, type Lighting } from './lighting';
+import type { FloorMirror } from './mirror';
 
 export interface VoxelModel {
   /** Voxel edge in tiles. */
@@ -28,9 +29,15 @@ export interface VoxelModel {
   shine: Uint32Array;
   /** Top of the model above the floor, in tiles. */
   height: number;
+  /** The grid's size in voxels along the model's x and y. */
+  sizeX: number;
+  sizeY: number;
+  /**
+   * Seen from above, per voxel column (y · sizeX + x): the height in tiles of the top of its highest voxel, 0 for an
+   * empty column. What a lamp's light has to pass over (object-shadows.ts).
+   */
+  tops: Float32Array;
   faceCount: number;
-  /** Floor shadow radius in tiles: half the footprint's larger side. */
-  shadowRadius: number;
 }
 
 export interface VoxelInstance {
@@ -58,10 +65,11 @@ export interface GlowingVoxel {
 const SHADE_TOP = 1;
 const SHADE_FRONT = 0.8;
 const SHADE_SIDE = 0.62;
+const SHADE_BOTTOM = 0.5;
 
 /**
- * The five faces a voxel can show (the bottom never faces the eye-height camera): normal, shade and corners on the
- * unit cube. Their order is lighting.ts's DIR_* (top, front, back, right, left).
+ * The six faces a voxel can show: normal, shade and corners on the unit cube. Their order is lighting.ts's DIR_* (top,
+ * front, back, right, left, bottom). The eye-height camera never sees a bottom; the floor's mirror does.
  */
 const FACES: readonly { normal: readonly [number, number, number]; shade: number; corners: readonly number[] }[] = [
   { normal: [0, 0, 1], shade: SHADE_TOP, corners: [0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1] },
@@ -69,6 +77,7 @@ const FACES: readonly { normal: readonly [number, number, number]; shade: number
   { normal: [-1, 0, 0], shade: SHADE_FRONT, corners: [0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1] },
   { normal: [0, 1, 0], shade: SHADE_SIDE, corners: [0, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1] },
   { normal: [0, -1, 0], shade: SHADE_SIDE, corners: [0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1] },
+  { normal: [0, 0, -1], shade: SHADE_BOTTOM, corners: [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0] },
 ];
 
 /** The flat shade of a face facing lighting.ts's DIR_* `dir`, as buildModel bakes into `colors`. */
@@ -98,6 +107,7 @@ export function buildModel(
   const base: number[] = [];
   const dirs: number[] = [];
   const shines: number[] = [];
+  const tops = new Float32Array(sx * sy);
   for (let z = 0; z < sz; z++) {
     for (let y = 0; y < sy; y++) {
       for (let x = 0; x < sx; x++) {
@@ -106,6 +116,7 @@ export function buildModel(
           continue;
         }
         const color = typeof cell === 'number' ? cell : cell.color;
+        tops[y * sx + x] = (z + 1) * voxel;
         for (const [dir, face] of FACES.entries()) {
           const [nx, ny, nz] = face.normal;
           if (cellAt(x + nx, y + ny, z + nz) !== 0) {
@@ -136,8 +147,10 @@ export function buildModel(
     dirs: Uint8Array.from(dirs),
     shine: Uint32Array.from(shines),
     height: sz * voxel,
+    sizeX: sx,
+    sizeY: sy,
+    tops,
     faceCount: colors.length,
-    shadowRadius: (Math.max(sx, sy) * voxel) / 2,
   };
 }
 
@@ -154,7 +167,7 @@ let faceDepths = new Float64Array(0);
 const faceOrder: number[] = [];
 /** Far to near. Math.sign: sort can't inline its comparator, and a small integer isn't boxed as a double is. */
 const facesFarFirst = (a: number, b: number) => Math.sign((faceDepths[b] as number) - (faceDepths[a] as number));
-/** Lamp light per face direction (r, g, b × 5), then ambient × shade added: this instance's multipliers. */
+/** Lamp light per face direction (r, g, b × 6), then ambient × shade added: this instance's multipliers. */
 const directionLight = new Float64Array(FACES.length * 3);
 /** The ambient light, r, g, b, where this instance stands. */
 const ambient = new Float64Array(3);
@@ -173,7 +186,7 @@ export function renderVoxel(fb: Framebuffer, view: View, v: VoxelInstance, light
   if (lighting) {
     lightDirections(lighting, v);
   }
-  projectFaces(view, v);
+  projectFaces(view, v, 'upright');
   for (const f of faceOrder) {
     fillFace(fb, f, lighting ? litColor(model, f, directionLight) : (model.colors[f] as number));
   }
@@ -193,13 +206,15 @@ function lightDirections(lighting: Lighting, v: VoxelInstance): void {
 
 /**
  * Projects the faces turned towards the eye and wholly in front of it: their corners into `screenCorners`, their mean
- * depths into `faceDepths`, and the faces themselves into `faceOrder`, far to near.
+ * depths into `faceDepths`, and the faces themselves into `faceOrder`, far to near. 'mirrored' is the object's image
+ * in the floor: upside down under it, every height and normal negated.
  */
-function projectFaces(view: View, v: VoxelInstance): void {
+function projectFaces(view: View, v: VoxelInstance, side: 'upright' | 'mirrored'): void {
   const { dirX, dirY, planeX, planeY, invDet, proj, halfWidth, half } = view;
   const { corners, normals, faceCount } = v.model;
   const cos = Math.cos(v.angle);
   const sin = Math.sin(v.angle);
+  const up = side === 'upright' ? 1 : -1;
   let count = 0;
   // One loop: with the back-face test and the corner projection as functions it measured 1% slower (bench:sprites).
   for (let f = 0; f < faceCount; f++) {
@@ -208,10 +223,10 @@ function projectFaces(view: View, v: VoxelInstance): void {
     const firstY = corners[c + 1] as number;
     const nx = normals[f * 3] as number;
     const ny = normals[f * 3 + 1] as number;
-    const nz = normals[f * 3 + 2] as number;
+    const nz = (normals[f * 3 + 2] as number) * up;
     const toEyeX = view.x - (v.x + firstX * cos - firstY * sin);
     const toEyeY = view.y - (v.y + firstX * sin + firstY * cos);
-    const toEyeZ = EYE_HEIGHT - (corners[c + 2] as number);
+    const toEyeZ = EYE_HEIGHT - (corners[c + 2] as number) * up;
     const turnedAway = (nx * cos - ny * sin) * toEyeX + (nx * sin + ny * cos) * toEyeY + nz * toEyeZ <= 0;
     if (turnedAway) {
       continue;
@@ -230,7 +245,7 @@ function projectFaces(view: View, v: VoxelInstance): void {
         break;
       }
       screenCorners[f * 8 + k * 2] = halfWidth * (1 + lateral / depth);
-      screenCorners[f * 8 + k * 2 + 1] = half + (proj * (EYE_HEIGHT - (corners[c + k * 3 + 2] as number))) / depth;
+      screenCorners[f * 8 + k * 2 + 1] = half + (proj * (EYE_HEIGHT - (corners[c + k * 3 + 2] as number) * up)) / depth;
       depthSum += depth;
     }
     if (tooNear) {
@@ -320,6 +335,71 @@ function fillFace(fb: Framebuffer, f: number, colour: number): void {
     for (let col = firstCol; col <= lastCol; col++) {
       if (depth < (zbuffer[col] as number)) {
         pixels[row * w + col] = colour;
+      }
+    }
+  }
+}
+
+/**
+ * Plots one instance's image in the floor (voxel shadows spec §3.3) into `mirror`: upside down under it, in its lit
+ * colours, depth-tested per column like the object. It hides the lamps' streaks behind it; the floor mirror blurs and
+ * fades it with everything else.
+ */
+export function renderVoxelMirror(
+  fb: Framebuffer,
+  view: View,
+  v: VoxelInstance,
+  lighting: Lighting,
+  mirror: FloorMirror
+): void {
+  if (voxelDepth(view, v) < 0) {
+    return;
+  }
+  const { model } = v;
+  if (faceDepths.length < model.faceCount) {
+    screenCorners = new Float64Array(model.faceCount * 8);
+    faceDepths = new Float64Array(model.faceCount);
+  }
+  lightDirections(lighting, v);
+  projectFaces(view, v, 'mirrored');
+  for (const f of faceOrder) {
+    plotFace(fb, mirror, f, litColor(model, f, directionLight));
+  }
+}
+
+/** Covers face `f` in `mirror` with `colour`, row by row, where it's nearer than the column's wall: fillFace's rule. */
+function plotFace(fb: Framebuffer, mirror: FloorMirror, f: number, colour: number): void {
+  const { width: w, height: h, zbuffer } = fb;
+  const s = f * 8;
+  const depth = faceDepths[f] as number;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (let k = 1; k < 8; k += 2) {
+    minY = Math.min(minY, screenCorners[s + k] as number);
+    maxY = Math.max(maxY, screenCorners[s + k] as number);
+  }
+  const firstRow = Math.max(0, Math.ceil(minY - 0.5));
+  const lastRow = Math.min(h - 1, Math.ceil(maxY - 0.5) - 1);
+  for (let row = firstRow; row <= lastRow; row++) {
+    const y = row + 0.5;
+    let left = Number.POSITIVE_INFINITY;
+    let right = Number.NEGATIVE_INFINITY;
+    for (let k = 0; k < 4; k++) {
+      const ax = screenCorners[s + k * 2] as number;
+      const ay = screenCorners[s + k * 2 + 1] as number;
+      const bx = screenCorners[s + ((k + 1) % 4) * 2] as number;
+      const by = screenCorners[s + ((k + 1) % 4) * 2 + 1] as number;
+      if ((ay <= y && y < by) || (by <= y && y < ay)) {
+        const x = ax + ((y - ay) * (bx - ax)) / (by - ay);
+        left = Math.min(left, x);
+        right = Math.max(right, x);
+      }
+    }
+    const firstCol = Math.max(0, Math.ceil(left - 0.5));
+    const lastCol = Math.min(w - 1, Math.ceil(right - 0.5) - 1);
+    for (let col = firstCol; col <= lastCol; col++) {
+      if (depth < (zbuffer[col] as number)) {
+        mirror.plot(col, row, colour, 'hides');
       }
     }
   }
