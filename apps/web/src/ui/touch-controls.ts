@@ -1,5 +1,6 @@
-// The room's touch controls (mobile spec §5): the move pad bottom-left, and bottom-right above the self-view a drink
-// button (tap to sip, hold to cheers) and a ⋯ button whose tray holds the occasional actions. DOM only: main.ts
+// The room's touch controls (mobile spec §5): the move pad bottom-left, and bottom-right above the self-view a kick
+// button while the ball is in reach (ball spec §7), a drink button (tap to sip, hold to cheers) and a ⋯ button whose
+// tray holds the occasional actions. DOM only: main.ts
 // wires the handlers, and input/touch.ts reads the pad.
 import type { HeldItem } from '@zoom3d/shared';
 import { touchIcon } from './icons';
@@ -11,6 +12,8 @@ export interface TouchControlsState {
   boombox: boolean;
   map: boolean;
   lighting: RenderMode;
+  /** The ball is within kick reach: the kick button shows. */
+  kick: boolean;
 }
 
 export interface TouchControlsOptions extends TouchControlsState {
@@ -23,6 +26,7 @@ export interface TouchControlsOptions extends TouchControlsState {
   onMap(): void;
   /** Steps to the next lighting mode; the new mode comes back through `update`. */
   onLighting(): void;
+  onKick(): void;
 }
 
 export interface TouchControls {
@@ -51,12 +55,16 @@ function iconButton(className: string, label: string, icon: SVGSVGElement, text?
 
 export function showTouchControls(root: HTMLElement, opts: TouchControlsOptions): TouchControls {
   const pad = createMovePad();
+  const kick = iconButton('kick', 'Kick the ball', touchIcon('ball'));
+  // On the press, not the click: a kick should land the moment the thumb does.
+  kick.addEventListener('pointerdown', () => opts.onKick());
   const drink = createDrinkButton(opts);
   const tray = createTray(opts);
-  const buttons = el('div', { className: 'touch-buttons' }, drink.button, tray.more);
+  const buttons = el('div', { className: 'touch-buttons' }, kick, drink.button, tray.more);
   root.append(pad, tray.tray, buttons);
 
   const update = (s: TouchControlsState) => {
+    kick.hidden = !s.kick;
     drink.update(s.held);
     tray.update(s);
   };

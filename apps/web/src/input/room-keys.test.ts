@@ -59,3 +59,21 @@ test('reconnecting, only the boombox key works: the music is local', () => {
 test('without a boombox, B does nothing', () => {
   expect(roomKey(press('KeyB'), { inRoom: true, hasBoombox: false })).toBeNull();
 });
+
+describe('the kick (ball spec §7)', () => {
+  test('Space kicks in the room', () => {
+    expect(roomKey(press('Space'), IN_ROOM)).toEqual({ kind: 'kick' });
+  });
+
+  test('a held, modified or out-of-room Space does not', () => {
+    expect(roomKey(press('Space', { repeat: true }), IN_ROOM)).toBeNull();
+    expect(roomKey(press('Space', { ctrlKey: true }), IN_ROOM)).toBeNull();
+    expect(roomKey(press('Space'), RECONNECTING)).toBeNull();
+  });
+
+  test('Space on a focused form control keeps its own meaning', () => {
+    for (const tagName of ['INPUT', 'SELECT', 'BUTTON', 'TEXTAREA']) {
+      expect(roomKey(press('Space', { target: { tagName } as unknown as EventTarget }), IN_ROOM)).toBeNull();
+    }
+  });
+});

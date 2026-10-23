@@ -1,7 +1,7 @@
 // The room's frame: the local player steps, then the ball the client predicts, everyone else and the world objects are
 // placed and heard, the view and the HUD are drawn, then the subscription picks whose media to receive. While the tab is hidden rAF stops, so a timer
 // keeps the sound and the subscription going instead.
-import { type BallBody, type GameMap, PLAYER_RADIUS } from '@zoom3d/shared';
+import { BALL_KICK_REACH, type BallBody, type GameMap, PLAYER_RADIUS } from '@zoom3d/shared';
 import { HIDDEN_TICK_MS } from '../audio/ticker';
 import type { Input } from '../input/keyboard';
 import { createSubscription } from '../media/subscription';
@@ -29,6 +29,8 @@ export interface RoomLoopOptions {
   renderMode(): RenderMode;
   roomLighting(): Lighting | null;
   showMap(): boolean;
+  /** Every frame: whether the local player can kick the ball (for the touch kick button). */
+  ballInReach(inReach: boolean): void;
 }
 
 export interface RoomLoop {
@@ -72,8 +74,10 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     self.x = pose.x;
     self.y = pose.y;
     selfSeen = true;
-    const event = room.ball.step(dt, now, isConnected(room) ? self : null);
+    const connected = isConnected(room);
+    const event = room.ball.step(dt, now, connected ? self : null);
     const ball = room.ball.ball;
+    o.ballInReach(connected && ball !== null && Math.hypot(ball.x - pose.x, ball.y - pose.y) <= BALL_KICK_REACH);
     if (!ball) {
       return;
     }
