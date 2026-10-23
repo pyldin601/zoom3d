@@ -2,6 +2,7 @@
 // faces, then drawn as flat-shaded quads far to near, depth-tested per column against the walls. Allocation-free per
 // frame.
 import { EYE_HEIGHT, MIN_DEPTH, type View } from './camera';
+import { luma } from './colour';
 import { type Framebuffer, scaleRgb } from './framebuffer';
 import { ambientAt, directLight, type Lighting } from './lighting';
 
@@ -255,7 +256,7 @@ const SHINE_GONE_AT = 0.6;
  * faint glow is drowned by light long before the light is full.
  */
 function shineFade(r: number, g: number, b: number): number {
-  const t = Math.min(1, Math.max(0, (0.2126 * r + 0.7152 * g + 0.0722 * b) / SHINE_GONE_AT));
+  const t = Math.min(1, Math.max(0, luma(r, g, b) / SHINE_GONE_AT));
   return 1 - t * t * (3 - 2 * t);
 }
 
