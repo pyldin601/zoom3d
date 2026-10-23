@@ -21,9 +21,10 @@ export interface VoxelModel {
   /** Per face, 0..1: how much it glows. A glowing face shows its own colour, untouched by light and shadow. */
   glow: Float32Array;
   /**
-   * Per face, a packed rgb() it gives off only in the dark (0 for none): in a lit room each channel adds it times how
-   * far that channel's light falls short of full, so it is gone in full light and whole in none. The plain (unlit)
-   * shading ignores it. Models build with none; a model may set it per face, as the ball does for its dark patches.
+   * Per face, a packed rgb() it gives off like glow-in-the-dark paint (0 for none). In a lit room the face reflects as
+   * any other, and the shine is added on top, fading out smoothly as the light on the face brightens (see
+   * shineFade): whole in the dark, gone in a bright room. The plain (unlit) shading ignores it. Models build with
+   * none; a model may set it per face, as the ball does for its dark patches.
    */
   shine: Uint32Array;
   /** Top of the model above the floor, in tiles. */
@@ -245,22 +246,36 @@ function projectFaces(view: View, v: VoxelInstance): void {
   faceOrder.sort(facesFarFirst);
 }
 
+/** At this brightness of the light on a face (luminance, 1 = full), its shine has faded out entirely. */
+const SHINE_GONE_AT = 0.6;
+
+/**
+ * How much of a face's shine shows under light (r, g, b): 1 − smoothstep(0, SHINE_GONE_AT, luminance). It follows the
+ * light's brightness, not each channel, so a coloured lamp dims the glow without tinting it; and it eases out, as a
+ * faint glow is drowned by light long before the light is full.
+ */
+function shineFade(r: number, g: number, b: number): number {
+  const t = Math.min(1, Math.max(0, (0.2126 * r + 0.7152 * g + 0.0722 * b) / SHINE_GONE_AT));
+  return 1 - t * t * (3 - 2 * t);
+}
+
 /**
  * Face `f`'s colour in a lit room: unshaded, times `light` on its direction (see directionLight), which may overbright,
- * blended towards the colour itself as far as the face glows, plus its shine as far as the light falls short of full.
+ * blended towards the colour itself as far as the face glows, plus whatever of its shine the light leaves visible.
  */
 function litColor({ base, dirs, glow: glows, shine: shines }: VoxelModel, f: number, light: Float64Array): number {
   const c = base[f] as number;
-  const s = shines[f] as number;
   const dir = dirs[f] as number;
   const glow = glows[f] as number;
   const lit = 1 - glow;
   const lr = light[dir * 3] as number;
   const lg = light[dir * 3 + 1] as number;
   const lb = light[dir * 3 + 2] as number;
-  let r = ((c & 0xff) * (lr * lit + glow) + (s & 0xff) * Math.max(0, 1 - lr) * lit) | 0;
-  let g = (((c >>> 8) & 0xff) * (lg * lit + glow) + ((s >>> 8) & 0xff) * Math.max(0, 1 - lg) * lit) | 0;
-  let b = (((c >>> 16) & 0xff) * (lb * lit + glow) + ((s >>> 16) & 0xff) * Math.max(0, 1 - lb) * lit) | 0;
+  const s = shines[f] as number;
+  const shown = s === 0 ? 0 : shineFade(lr, lg, lb) * lit;
+  let r = ((c & 0xff) * (lr * lit + glow) + (s & 0xff) * shown) | 0;
+  let g = (((c >>> 8) & 0xff) * (lg * lit + glow) + ((s >>> 8) & 0xff) * shown) | 0;
+  let b = (((c >>> 16) & 0xff) * (lb * lit + glow) + ((s >>> 16) & 0xff) * shown) | 0;
   if (r > 255) {
     r = 255;
   }

@@ -241,40 +241,56 @@ describe('renderVoxel with lighting', () => {
     expect(drawn(fb)).toEqual(new Set([scaled(RED, 0.725), scaled(RED, 0.68)]));
   });
 
-  describe('shine (ball: dark patches seen in the dark)', () => {
-    const GREY = rgb(60, 60, 60);
+  describe("shine (glow-in-the-dark: the ball's dark patches)", () => {
+    const GREEN = rgb(10, 60, 20);
     const shiningCube = () => {
       const model = buildModel({ x: 1, y: 1, z: 1 }, 0.2, () => RED);
-      model.shine.fill(GREY);
+      model.shine.fill(GREEN);
       return model;
     };
-    const drawnIn = (model: ReturnType<typeof shiningCube>, ambient: number) => {
+    const drawnIn = (model: ReturnType<typeof shiningCube>, ambient: number, lamps: Light[] = []) => {
       const fb = blank();
-      renderVoxel(fb, view, { ...box, model }, bakeLighting(room, [], ambient, RED, RED));
-      return drawn(fb);
+      renderVoxel(fb, view, { ...box, model }, bakeLighting(room, lamps, ambient, RED, RED));
+      return [...drawn(fb)];
     };
+    const channels = (c: number) => [c & 0xff, (c >>> 8) & 0xff, (c >>> 16) & 0xff];
+    /** The face as lit by grey light `light`, plus the shine faded by 1 − smoothstep(0, 0.6, light). */
+    const expected = (light: number) => {
+      const t = Math.min(1, light / 0.6);
+      const fade = 1 - t * t * (3 - 2 * t);
+      return channels(RED).map((c, i) => c * light + (channels(GREEN)[i] as number) * fade);
+    };
+    const near = (actual: number[], want: number[]) =>
+      actual.length === want.length && actual.every((c, i) => Math.abs(c - (want[i] as number)) <= 1);
 
     test('plain models have none', () => {
       expect(cube.shine.every((c) => c === 0)).toBe(true);
     });
 
-    test('in a pitch-dark room a face shows its whole shine', () => {
-      expect(drawnIn(shiningCube(), 0)).toEqual(new Set([GREY]));
+    test('in a pitch-dark room a face shows just its shine', () => {
+      expect(drawnIn(shiningCube(), 0)).toEqual([GREEN]);
     });
 
-    test('in full light the top shows no shine at all', () => {
-      expect(drawnIn(shiningCube(), 1)).toContain(RED);
+    test('in a bright room it reflects like any other face, with no shine at all', () => {
+      expect(new Set(drawnIn(shiningCube(), 1))).toEqual(new Set([RED, scaled(RED, 0.8)]));
+      // At 0.6 the shine is just gone on the top; the face to the camera, at 0.48, still keeps a trace.
+      expect(drawnIn(shiningCube(), 0.6)).toContain(scaled(RED, 0.6));
     });
 
-    test('in between, the darker a face the more it shines', () => {
-      // Top: lit 0.45, shine × 0.55; the face to the camera: lit 0.36, shine × 0.64.
-      const shined = (c: number, k: number) =>
-        rgb(
-          ((c & 0xff) * k + 60 * (1 - k)) | 0,
-          (((c >>> 8) & 0xff) * k + 60 * (1 - k)) | 0,
-          (((c >>> 16) & 0xff) * k + 60 * (1 - k)) | 0
-        );
-      expect(drawnIn(shiningCube(), 0.45)).toEqual(new Set([shined(RED, 0.45), shined(RED, 0.45 * 0.8)]));
+    test('in between, the shine fades smoothly as the light on the face grows', () => {
+      // The top takes 0.3 of the ambient light, the face to the camera 0.3 × 0.8.
+      const faces = drawnIn(shiningCube(), 0.3).map(channels);
+      expect(faces.some((f) => near(f, expected(0.3)))).toBe(true);
+      expect(faces.some((f) => near(f, expected(0.3 * 0.8)))).toBe(true);
+    });
+
+    test('a coloured light fades it by its brightness, so it never tints the shine', () => {
+      const redLamp: Light = { x: 3.5, y: 4.5, z: 0.85, radius: 4, r: 10, g: 0, b: 0 };
+      // Lit only red from above, the top must show no green or blue from the shine.
+      const top = drawnIn(shiningCube(), 0, [redLamp])
+        .map(channels)
+        .find(([r]) => r === 255);
+      expect(top).toEqual([255, 0, 0]);
     });
 
     test('the plain (unlit) shading ignores it', () => {

@@ -7,8 +7,8 @@ import { buildModel, faceShade, type VoxelModel } from '../voxels';
 
 const WHITE = rgb(0xf0, 0xf0, 0xf0);
 const BLACK = rgb(0x20, 0x20, 0x20);
-/** What the dark patches give off in a dark room, so they still show there; a lit room lights them black. */
-export const BALL_SHINE = rgb(0x24, 0x24, 0x2a);
+/** The dark patches' glow-in-the-dark: a faint green that shows them in a dark corner and is gone under a lamp. */
+export const BALL_SHINE = rgb(0x08, 0x2a, 0x10);
 const VOXEL = 0.05;
 const SIZE = Math.round((2 * BALL_RADIUS) / VOXEL);
 
