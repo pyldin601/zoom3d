@@ -35,17 +35,18 @@ describe('FloorMirror', () => {
 
   test('shows and hides are kept apart', () => {
     const m = mirrorOf();
-    for (let y = 10; y < 14; y++) {
-      for (let x = 10; x < 14; x++) {
+    // Blocks a whole blur texel wide and tall, so each texel is one or the other.
+    for (let y = 8; y < 16; y++) {
+      for (let x = 8; x < 16; x++) {
         m.plot(x, y, RED, 'shows');
-        m.plot(x + 10, y, RED, 'hides');
+        m.plot(x + 16, y, RED, 'hides');
       }
     }
     m.blur(flat(0));
     expect(m.coverageAt(12, 12)).toBe(1);
     expect(m.hidingAt(12, 12)).toBe(0);
-    expect(m.coverageAt(22, 12)).toBe(1);
-    expect(m.hidingAt(22, 12)).toBe(1);
+    expect(m.coverageAt(28, 12)).toBe(1);
+    expect(m.hidingAt(28, 12)).toBe(1);
   });
 
   test('the blur keeps a row’s coverage and is wider where the row’s radius is', () => {

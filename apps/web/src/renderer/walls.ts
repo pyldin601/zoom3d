@@ -265,26 +265,11 @@ function drawLitRoom(fb: Framebuffer, room: LitRoom): void {
     // The images first: in the floor the objects' stand in front of the lamps' reflections, hiding them.
     floorMirror.fit(fb.width, fb.height);
     floorMirror.clear();
-    mirrorWalls(fb);
+    floorMirror.addWalls(fb, wallStart, wallEnd, mirrorWeight);
     mirrorPeopleAndObjects(fb, room);
     floorMirror.blur(mirrorBlurPx);
     addFloorAndCeilingReflections(fb, room, tables.floorLampSeen);
     floorMirror.addInto(fb, MIRROR_STRENGTH, mirrorWeight, wallEnd);
-  }
-}
-
-/**
- * Each wall column's image under its foot (floor mirror spec §3.2): the floor row `wallEnd + k` shows the wall's row
- * `wallEnd − 1 − k`, read back from the drawn frame, for the wall's height or until the mirror fades out.
- */
-function mirrorWalls(fb: Framebuffer): void {
-  const { width: w, height: h, pixels } = fb;
-  for (let col = 0; col < w; col++) {
-    const end = wallEnd[col] as number;
-    const last = Math.min(h, end + (end - (wallStart[col] as number)));
-    for (let y = end; y < last && (mirrorWeight[y] as number) > 0; y++) {
-      floorMirror.plot(col, y, pixels[(2 * end - 1 - y) * w + col] as number, 'shows');
-    }
   }
 }
 

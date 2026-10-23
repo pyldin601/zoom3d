@@ -1,5 +1,6 @@
-// The floor's mirror (floor mirror spec §3): the walls' images, then the people's and objects', far to near, plotted
-// at full resolution into one layer and blurred once at half resolution, with a radius that grows towards the eye.
+// The floor's mirror (floor mirror spec §3): the walls' images, copied flipped from the drawn frame straight into half
+// resolution, then the people's and objects', far to near, plotted at full resolution over them; all blurred once at
+// half resolution, with a radius that grows towards the eye.
 // Under the people's and objects' images the floor's lamp reflections are hidden, as they stand in front of the
 // lamps' in the floor; then the layer's colour is added. Allocation-free once the buffers fit the frame.
 import type { Framebuffer } from './framebuffer';
@@ -17,6 +18,12 @@ export interface FloorMirror {
   fit(width: number, height: number): void;
   /** Empties everything plotted since the last clear. */
   clear(): void;
+  /**
+   * The walls' images (floor mirror spec §3.2): under each column's wall, rows `end[col]` on, the drawn wall's rows
+   * flipped about its foot, for the wall's height, on rows where `weight` > 0. Call before plotting anything over them,
+   * and keep `fb`'s walls as they are until the blur.
+   */
+  addWalls(fb: Framebuffer, start: Int32Array, end: Int32Array, weight: Float64Array): void;
   /** Covers pixel (x, y) with `colour`, a packed rgb(), over whatever was there. */
   plot(x: number, y: number, colour: number, kind: MirrorKind): void;
   /** Whether (x, y) was plotted, before the blur. */
@@ -32,7 +39,12 @@ export interface FloorMirror {
   addInto(fb: Framebuffer, strength: number, weight: Float64Array, floorFrom: Int32Array): void;
 }
 
-/** Channels per half-resolution texel: r, g, b (times coverage), coverage, hiding coverage. */
+/** The mirror is blurred at 1/2^SHIFT of the frame's resolution (quarter: half measured 0.6 ms in bench:walls). */
+const SHIFT = 2;
+const SCALE = 1 << SHIFT;
+/** Each frame pixel's share of its texel. */
+const SHARE = 1 / (SCALE * SCALE);
+/** Channels per texel: r, g, b (times coverage), coverage, hiding coverage. */
 const CHANNELS = 5;
 const NOTHING = 0;
 const SHOWS = 1;
@@ -43,94 +55,129 @@ export function createFloorMirror(): FloorMirror {
   let height = 0;
   let colours = new Uint32Array(0);
   let kinds = new Uint8Array(0);
-  /** Plotted rows, [top, bottom). */
+  /** Plotted rows, [top, bottom), and columns, [left, right). */
   let plottedTop = 0;
   let plottedBottom = 0;
+  let plottedLeft = 0;
+  let plottedRight = 0;
+  /** Whether anything plotted hides the lamps' streaks. */
+  let hides = false;
+  /** The walls' images: the frame they're read from, and per column the wall's foot and the image's rows. */
+  let wallPixels: Uint32Array = new Uint32Array(0);
+  let wallFoot = new Int32Array(0);
+  let imageFrom = new Int32Array(0);
+  let imageTo = new Int32Array(0);
+  /** Half-resolution rows the walls' images touch, [top, bottom). */
+  let wallTop = 0;
+  let wallBottom = 0;
   let halfWidth = 0;
   let halfHeight = 0;
   let texels = new Float32Array(0);
-  /** One half-resolution row or column of one channel, and a column's running totals. */
-  let line = new Float64Array(0);
+  /** One half-resolution row of texels, a column's running totals and a row's running sums, every channel. */
+  let line = new Float32Array(0);
   let totals = new Float64Array(0);
+  const sums = new Float64Array(CHANNELS);
   /** The blurred half-resolution rows, [top, bottom). */
   let blurredTop = 0;
   let blurredBottom = 0;
   const rows = { top: 0, bottom: 0 };
 
   const halfRadius = (radiusPx: Float64Array, halfRow: number) =>
-    Math.round((radiusPx[Math.min(height - 1, halfRow * 2)] as number) / 2);
+    Math.round((radiusPx[Math.min(height - 1, halfRow * SCALE)] as number) / SCALE);
 
+  /** Adds a quarter of colour `c` and of `coverage` to the texel over (x, y). */
+  const addQuarter = (x: number, y: number, c: number, coverage: number) => {
+    const at = ((y >> SHIFT) * halfWidth + (x >> SHIFT)) * CHANNELS;
+    texels[at] = (texels[at] as number) + (c & 0xff) * coverage * SHARE;
+    texels[at + 1] = (texels[at + 1] as number) + ((c >>> 8) & 0xff) * coverage * SHARE;
+    texels[at + 2] = (texels[at + 2] as number) + ((c >>> 16) & 0xff) * coverage * SHARE;
+    texels[at + 3] = (texels[at + 3] as number) + coverage * SHARE;
+  };
+
+  /** The plotted pixels into their texels, each over the wall's image it covers. */
   const downsample = () => {
-    for (let hy = blurredTop; hy < blurredBottom; hy++) {
-      for (let hx = 0; hx < halfWidth; hx++) {
-        const at = (hy * halfWidth + hx) * CHANNELS;
-        for (let dy = 0; dy < 2; dy++) {
-          const y = hy * 2 + dy;
-          for (let dx = 0; dx < 2 && y < height; dx++) {
-            const x = hx * 2 + dx;
-            const kind = x < width ? (kinds[y * width + x] as number) : NOTHING;
-            if (kind === NOTHING) {
-              continue;
-            }
-            const c = colours[y * width + x] as number;
-            texels[at] = (texels[at] as number) + (c & 0xff) / 4;
-            texels[at + 1] = (texels[at + 1] as number) + ((c >>> 8) & 0xff) / 4;
-            texels[at + 2] = (texels[at + 2] as number) + ((c >>> 16) & 0xff) / 4;
-            texels[at + 3] = (texels[at + 3] as number) + 1 / 4;
-            if (kind === HIDES) {
-              texels[at + 4] = (texels[at + 4] as number) + 1 / 4;
-            }
-          }
+    for (let y = plottedTop; y < plottedBottom; y++) {
+      for (let x = plottedLeft; x < plottedRight; x++) {
+        const kind = kinds[y * width + x] as number;
+        if (kind === NOTHING) {
+          continue;
+        }
+        if (y >= (imageFrom[x] as number) && y < (imageTo[x] as number)) {
+          const foot = wallFoot[x] as number;
+          addQuarter(x, y, wallPixels[(2 * foot - 1 - y) * width + x] as number, -1);
+        }
+        addQuarter(x, y, colours[y * width + x] as number, 1);
+        if (kind === HIDES) {
+          const at = ((y >> SHIFT) * halfWidth + (x >> SHIFT)) * CHANNELS + 4;
+          texels[at] = (texels[at] as number) + SHARE;
         }
       }
     }
   };
 
-  /** Across each row: a running sum over the row's window; past the row's ends counts as empty. */
+  /** The hiding coverage is blurred only when something hides: walls alone never do. */
+  const blurredChannels = () => (hides ? CHANNELS : CHANNELS - 1);
+
+  /** Across each row: running sums of every channel at once over the row's window; past its ends counts as empty. */
   const blurAcross = (radiusPx: Float64Array) => {
+    const channels = blurredChannels();
     for (let hy = blurredTop; hy < blurredBottom; hy++) {
       const radius = halfRadius(radiusPx, hy);
       if (radius === 0) {
         continue;
       }
+      const row = hy * halfWidth * CHANNELS;
+      // Copied by hand: subarray() would make a view object per row.
+      for (let i = 0; i < halfWidth * CHANNELS; i++) {
+        line[i] = texels[row + i] as number;
+      }
+      sums.fill(0);
+      for (let hx = 0; hx < Math.min(radius, halfWidth); hx++) {
+        for (let ch = 0; ch < channels; ch++) {
+          sums[ch] = (sums[ch] as number) + (line[hx * CHANNELS + ch] as number);
+        }
+      }
       const span = 2 * radius + 1;
-      for (let ch = 0; ch < CHANNELS; ch++) {
-        for (let hx = 0; hx < halfWidth; hx++) {
-          line[hx] = texels[(hy * halfWidth + hx) * CHANNELS + ch] as number;
-        }
-        let sum = 0;
-        for (let hx = 0; hx < Math.min(radius, halfWidth); hx++) {
-          sum += line[hx] as number;
-        }
-        for (let hx = 0; hx < halfWidth; hx++) {
-          if (hx + radius < halfWidth) {
-            sum += line[hx + radius] as number;
+      for (let hx = 0; hx < halfWidth; hx++) {
+        const entering = hx + radius < halfWidth ? (hx + radius) * CHANNELS : -1;
+        const leaving = hx - radius - 1 >= 0 ? (hx - radius - 1) * CHANNELS : -1;
+        for (let ch = 0; ch < channels; ch++) {
+          let sum = sums[ch] as number;
+          if (entering >= 0) {
+            sum += line[entering + ch] as number;
           }
-          if (hx - radius - 1 >= 0) {
-            sum -= line[hx - radius - 1] as number;
+          if (leaving >= 0) {
+            sum -= line[leaving + ch] as number;
           }
-          texels[(hy * halfWidth + hx) * CHANNELS + ch] = sum / span;
+          sums[ch] = sum;
+          texels[row + hx * CHANNELS + ch] = sum / span;
         }
       }
     }
   };
 
-  /** Down each column: running totals, so each row takes its own window. */
+  /** Down each column: running totals of every channel, so each row takes its own window. */
   const blurDown = (radiusPx: Float64Array) => {
+    const channels = blurredChannels();
     for (let hx = 0; hx < halfWidth; hx++) {
-      for (let ch = 0; ch < CHANNELS; ch++) {
-        totals[0] = 0;
-        for (let hy = blurredTop; hy < blurredBottom; hy++) {
-          const i = hy - blurredTop;
-          line[i] = texels[(hy * halfWidth + hx) * CHANNELS + ch] as number;
-          totals[i + 1] = (totals[i] as number) + (line[i] as number);
+      for (let ch = 0; ch < channels; ch++) {
+        totals[ch] = 0;
+      }
+      for (let hy = blurredTop; hy < blurredBottom; hy++) {
+        const i = (hy - blurredTop + 1) * CHANNELS;
+        const at = (hy * halfWidth + hx) * CHANNELS;
+        for (let ch = 0; ch < channels; ch++) {
+          totals[i + ch] = (totals[i - CHANNELS + ch] as number) + (texels[at + ch] as number);
         }
-        for (let hy = blurredTop; hy < blurredBottom; hy++) {
-          const radius = halfRadius(radiusPx, hy);
-          const first = Math.max(blurredTop, hy - radius) - blurredTop;
-          const last = Math.min(blurredBottom - 1, hy + radius) - blurredTop;
-          texels[(hy * halfWidth + hx) * CHANNELS + ch] =
-            ((totals[last + 1] as number) - (totals[first] as number)) / (2 * radius + 1);
+      }
+      for (let hy = blurredTop; hy < blurredBottom; hy++) {
+        const radius = halfRadius(radiusPx, hy);
+        const first = (Math.max(blurredTop, hy - radius) - blurredTop) * CHANNELS;
+        const last = (Math.min(blurredBottom - 1, hy + radius) - blurredTop + 1) * CHANNELS;
+        const span = 2 * radius + 1;
+        const at = (hy * halfWidth + hx) * CHANNELS;
+        for (let ch = 0; ch < channels; ch++) {
+          texels[at + ch] = ((totals[last + ch] as number) - (totals[first + ch] as number)) / span;
         }
       }
     }
@@ -144,19 +191,22 @@ export function createFloorMirror(): FloorMirror {
       }
       width = w;
       height = h;
-      halfWidth = Math.ceil(w / 2);
-      halfHeight = Math.ceil(h / 2);
+      halfWidth = Math.ceil(w / SCALE);
+      halfHeight = Math.ceil(h / SCALE);
       if (colours.length < w * h) {
         colours = new Uint32Array(w * h);
         kinds = new Uint8Array(w * h);
       }
       kinds.fill(NOTHING);
+      wallFoot = new Int32Array(w);
+      imageFrom = new Int32Array(w);
+      imageTo = new Int32Array(w);
       if (texels.length < halfWidth * halfHeight * CHANNELS) {
         texels = new Float32Array(halfWidth * halfHeight * CHANNELS);
       }
       texels.fill(0);
-      line = new Float64Array(Math.max(halfWidth, halfHeight));
-      totals = new Float64Array(halfHeight + 1);
+      line = new Float32Array(halfWidth * CHANNELS);
+      totals = new Float64Array((halfHeight + 1) * CHANNELS);
       plottedTop = 0;
       plottedBottom = 0;
       blurredTop = 0;
@@ -166,6 +216,11 @@ export function createFloorMirror(): FloorMirror {
     },
     clear() {
       kinds.fill(NOTHING, plottedTop * width, plottedBottom * width);
+      imageFrom.fill(0);
+      imageTo.fill(0);
+      wallTop = 0;
+      wallBottom = 0;
+      hides = false;
       texels.fill(0, blurredTop * halfWidth * CHANNELS, blurredBottom * halfWidth * CHANNELS);
       plottedTop = 0;
       plottedBottom = 0;
@@ -174,48 +229,81 @@ export function createFloorMirror(): FloorMirror {
       rows.top = 0;
       rows.bottom = 0;
     },
+    addWalls(fb, start, end, weight) {
+      wallPixels = fb.pixels;
+      const { pixels } = fb;
+      // Rows above `nearest` show no mirror: the weight only grows down the floor.
+      let nearest = height;
+      for (let y = height - 1; y >= 0 && (weight[y] as number) > 0; y--) {
+        nearest = y;
+      }
+      for (let x = 0; x < width; x++) {
+        const foot = end[x] as number;
+        const from = Math.max(foot, nearest);
+        const to = Math.min(height, foot + (foot - (start[x] as number)));
+        wallFoot[x] = foot;
+        imageFrom[x] = from;
+        imageTo[x] = Math.max(from, to);
+        for (let y = from; y < to; y++) {
+          addQuarter(x, y, pixels[(2 * foot - 1 - y) * width + x] as number, 1);
+        }
+        if (to > from) {
+          wallTop = wallBottom > wallTop ? Math.min(wallTop, from >> SHIFT) : from >> SHIFT;
+          wallBottom = Math.max(wallBottom, (to + SCALE - 1) >> SHIFT);
+        }
+      }
+    },
     plot(x, y, colour, kind) {
       colours[y * width + x] = colour;
       kinds[y * width + x] = kind === 'hides' ? HIDES : SHOWS;
+      hides ||= kind === 'hides';
       if (plottedBottom <= plottedTop) {
         plottedTop = y;
         plottedBottom = y + 1;
+        plottedLeft = x;
+        plottedRight = x + 1;
       } else {
         plottedTop = Math.min(plottedTop, y);
         plottedBottom = Math.max(plottedBottom, y + 1);
+        plottedLeft = Math.min(plottedLeft, x);
+        plottedRight = Math.max(plottedRight, x + 1);
       }
     },
     shownAt(x, y) {
       return kinds[y * width + x] !== NOTHING;
     },
     blur(radiusPx) {
-      if (plottedBottom <= plottedTop) {
+      const plotted = plottedBottom > plottedTop;
+      const walls = wallBottom > wallTop;
+      if (!plotted && !walls) {
         return;
       }
+      const top = Math.min(plotted ? plottedTop >> SHIFT : halfHeight, walls ? wallTop : halfHeight);
+      const bottom = Math.max(plotted ? (plottedBottom + SCALE - 1) >> SHIFT : 0, walls ? wallBottom : 0);
       let widest = 0;
-      for (let y = plottedTop; y < plottedBottom; y++) {
-        widest = Math.max(widest, radiusPx[y] as number);
+      for (let hy = top; hy < bottom; hy++) {
+        widest = Math.max(widest, radiusPx[Math.min(height - 1, hy * SCALE)] as number);
       }
-      const margin = Math.ceil(widest / 2) + 1;
-      blurredTop = Math.max(0, (plottedTop >> 1) - margin);
-      blurredBottom = Math.min(halfHeight, ((plottedBottom + 1) >> 1) + margin);
+      const margin = Math.ceil(widest / SCALE) + 1;
+      blurredTop = Math.max(0, top - margin);
+      blurredBottom = Math.min(halfHeight, bottom + margin);
       downsample();
       blurAcross(radiusPx);
       blurDown(radiusPx);
-      rows.top = blurredTop * 2;
-      rows.bottom = Math.min(height, blurredBottom * 2);
+      rows.top = blurredTop * SCALE;
+      rows.bottom = Math.min(height, blurredBottom * SCALE);
     },
     coverageAt(x, y) {
-      const hy = y >> 1;
+      const hy = y >> SHIFT;
       return hy < blurredTop || hy >= blurredBottom
         ? 0
-        : (texels[(hy * halfWidth + (x >> 1)) * CHANNELS + 3] as number);
+        : (texels[(hy * halfWidth + (x >> SHIFT)) * CHANNELS + 3] as number);
     },
     hidingAt(x, y) {
-      const hy = y >> 1;
+      const hy = y >> SHIFT;
       return hy < blurredTop || hy >= blurredBottom
         ? 0
-        : (texels[(hy * halfWidth + (x >> 1)) * CHANNELS + 4] as number);
+        : (texels[(hy * halfWidth + (x >> SHIFT)) * CHANNELS + 4] as number);
     },
     addInto(fb, strength, weight, floorFrom) {
       const { pixels } = fb;
@@ -224,9 +312,9 @@ export function createFloorMirror(): FloorMirror {
         if (k <= 0) {
           continue;
         }
-        const halfRow = (y >> 1) * halfWidth;
+        const halfRow = (y >> SHIFT) * halfWidth;
         for (let x = 0; x < width; x++) {
-          const at = (halfRow + (x >> 1)) * CHANNELS;
+          const at = (halfRow + (x >> SHIFT)) * CHANNELS;
           if ((texels[at + 3] as number) <= 0 || y < (floorFrom[x] as number)) {
             continue;
           }

@@ -1073,6 +1073,26 @@ describe('renderWalls floor mirror of walls', () => {
     expect(streak).toBeGreaterThan(0);
   });
 
+  test('a far wall’s image shows on the nearer floor it falls on', () => {
+    // The end wall 12 tiles off: its foot lies past REFLECTION_RANGE, the lower part of its image within it.
+    const long = parseMap(
+      '11111111111111111\n1...............1\n1S..............1\n1...............1\n11111111111111111'
+    );
+    const lit = bakeLighting(long, [], 0.3, FLOOR, CEILING);
+    const draw = (reflections: 'both' | 'walls') => {
+      const fb = createFramebuffer();
+      renderWalls(fb, { map: long, eye: { x: 3.5, y: 2.5, angle: 0 }, textures, lighting: lit, reflections });
+      return fb;
+    };
+    const mirrored = draw('both');
+    const plain = draw('walls');
+    const col = plain.width / 2;
+    const differs = [...Array(plain.height).keys()].some(
+      (y) => mirrored.pixels[y * plain.width + col] !== plain.pixels[y * plain.width + col]
+    );
+    expect(differs).toBe(true);
+  });
+
   test('standing against a wall leaves nothing to mirror', () => {
     const close = { x: 5.7, y: 2.5, angle: 0 };
     expect(firstDifference(render('both', close).pixels, render('walls', close).pixels)).toBe(-1);
