@@ -28,6 +28,14 @@ export interface VoxelModel {
   shine: Uint32Array;
   /** Top of the model above the floor, in tiles. */
   height: number;
+  /** The grid's size in voxels along the model's x and y. */
+  sizeX: number;
+  sizeY: number;
+  /**
+   * Seen from above, per voxel column (y · sizeX + x): the height in tiles of the top of its highest voxel, 0 for an
+   * empty column. What a lamp's light has to pass over (object-shadows.ts).
+   */
+  tops: Float32Array;
   faceCount: number;
   /** Floor shadow radius in tiles: half the footprint's larger side. */
   shadowRadius: number;
@@ -58,10 +66,11 @@ export interface GlowingVoxel {
 const SHADE_TOP = 1;
 const SHADE_FRONT = 0.8;
 const SHADE_SIDE = 0.62;
+const SHADE_BOTTOM = 0.5;
 
 /**
- * The five faces a voxel can show (the bottom never faces the eye-height camera): normal, shade and corners on the
- * unit cube. Their order is lighting.ts's DIR_* (top, front, back, right, left).
+ * The six faces a voxel can show: normal, shade and corners on the unit cube. Their order is lighting.ts's DIR_* (top,
+ * front, back, right, left, bottom). The eye-height camera never sees a bottom; the floor's mirror does.
  */
 const FACES: readonly { normal: readonly [number, number, number]; shade: number; corners: readonly number[] }[] = [
   { normal: [0, 0, 1], shade: SHADE_TOP, corners: [0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1] },
@@ -69,6 +78,7 @@ const FACES: readonly { normal: readonly [number, number, number]; shade: number
   { normal: [-1, 0, 0], shade: SHADE_FRONT, corners: [0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1] },
   { normal: [0, 1, 0], shade: SHADE_SIDE, corners: [0, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1] },
   { normal: [0, -1, 0], shade: SHADE_SIDE, corners: [0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1] },
+  { normal: [0, 0, -1], shade: SHADE_BOTTOM, corners: [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0] },
 ];
 
 /** The flat shade of a face facing lighting.ts's DIR_* `dir`, as buildModel bakes into `colors`. */
@@ -98,6 +108,7 @@ export function buildModel(
   const base: number[] = [];
   const dirs: number[] = [];
   const shines: number[] = [];
+  const tops = new Float32Array(sx * sy);
   for (let z = 0; z < sz; z++) {
     for (let y = 0; y < sy; y++) {
       for (let x = 0; x < sx; x++) {
@@ -106,6 +117,7 @@ export function buildModel(
           continue;
         }
         const color = typeof cell === 'number' ? cell : cell.color;
+        tops[y * sx + x] = (z + 1) * voxel;
         for (const [dir, face] of FACES.entries()) {
           const [nx, ny, nz] = face.normal;
           if (cellAt(x + nx, y + ny, z + nz) !== 0) {
@@ -136,6 +148,9 @@ export function buildModel(
     dirs: Uint8Array.from(dirs),
     shine: Uint32Array.from(shines),
     height: sz * voxel,
+    sizeX: sx,
+    sizeY: sy,
+    tops,
     faceCount: colors.length,
     shadowRadius: (Math.max(sx, sy) * voxel) / 2,
   };
@@ -154,7 +169,7 @@ let faceDepths = new Float64Array(0);
 const faceOrder: number[] = [];
 /** Far to near. Math.sign: sort can't inline its comparator, and a small integer isn't boxed as a double is. */
 const facesFarFirst = (a: number, b: number) => Math.sign((faceDepths[b] as number) - (faceDepths[a] as number));
-/** Lamp light per face direction (r, g, b × 5), then ambient × shade added: this instance's multipliers. */
+/** Lamp light per face direction (r, g, b × 6), then ambient × shade added: this instance's multipliers. */
 const directionLight = new Float64Array(FACES.length * 3);
 /** The ambient light, r, g, b, where this instance stands. */
 const ambient = new Float64Array(3);

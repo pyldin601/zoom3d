@@ -22,6 +22,13 @@ describe('the ball model', () => {
     expect(BALL_MODEL.shadowRadius).toBeCloseTo(BALL_RADIUS);
   });
 
+  test('its columns rise to the ball’s height in the middle and are empty at the corners', () => {
+    const { tops, sizeX } = BALL_MODEL;
+    const middle = (sizeX / 2) * sizeX + sizeX / 2;
+    expect(tops.at(middle)).toBeCloseTo(2 * BALL_RADIUS);
+    expect(tops.at(0)).toBe(0);
+  });
+
   test('shows both its colours', () => {
     expect(new Set(BALL_MODEL.base).size).toBe(2);
   });

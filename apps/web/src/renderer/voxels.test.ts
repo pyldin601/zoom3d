@@ -39,11 +39,34 @@ const disc = (x: number): Sprite => ({
 const robot = (x: number, angle = 0): VoxelInstance => ({ model: VACUUM_MODEL, x, y: 4.5, angle });
 
 describe('buildModel', () => {
-  test('exposes only faces with an empty neighbour, never the bottom', () => {
+  test('exposes only faces with an empty neighbour, the bottom included', () => {
     const m = buildModel({ x: 2, y: 1, z: 1 }, 0.1, () => RED);
-    // 2 tops + 1 front + 1 back + 2 left + 2 right; the shared inner faces and the bottoms are absent.
-    expect(m.faceCount).toBe(8);
-    expect(m.corners).toHaveLength(8 * 12);
+    // 2 tops + 2 bottoms + 1 front + 1 back + 2 left + 2 right; the shared inner faces are absent.
+    expect(m.faceCount).toBe(10);
+    expect(m.corners).toHaveLength(10 * 12);
+  });
+
+  test('shades the bottom 0.5', () => {
+    const m = buildModel({ x: 1, y: 1, z: 1 }, 0.1, () => RED);
+    const bottom = [...Array(m.faceCount).keys()].find((f) => m.normals[f * 3 + 2] === -1);
+    expect(bottom).toBeDefined();
+    expect(m.colors[bottom ?? -1]).toBe(scaled(RED, 0.5));
+  });
+
+  test('keeps each column’s top height', () => {
+    const m = buildModel({ x: 2, y: 1, z: 3 }, 0.1, (x, _y, z) => (x === 0 || z === 0 ? RED : 0));
+    expect(m.sizeX).toBe(2);
+    expect(m.sizeY).toBe(1);
+    expect(m.tops.at(0)).toBeCloseTo(0.3);
+    expect(m.tops.at(1)).toBeCloseTo(0.1);
+  });
+
+  test('the eye never sees a bottom face', () => {
+    const fb = blank();
+    const cube = buildModel({ x: 1, y: 1, z: 1 }, 0.2, () => RED);
+    renderVoxel(fb, view, { model: cube, x: 3.5, y: 4.5, angle: 0.3 });
+    expect(fb.pixels.includes(scaled(RED, 0.5))).toBe(false);
+    expect(fb.pixels.includes(RED)).toBe(true);
   });
 
   test('shades faces 1.0 on top, 0.8 front and back, 0.62 at the sides', () => {

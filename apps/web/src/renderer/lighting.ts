@@ -876,6 +876,7 @@ export const DIR_FRONT = 1;
 export const DIR_BACK = 2;
 export const DIR_RIGHT = 3;
 export const DIR_LEFT = 4;
+export const DIR_BOTTOM = 5;
 
 /**
  * Light from the lamps (ambient not included) reaching a moving object at (x, y, z) turned to `angle`, per face
@@ -902,6 +903,7 @@ export function directLight(lm: Lighting, x: number, y: number, z: number, angle
     addLight(out, DIR_BACK, l, k * Math.max(0, -fx));
     addLight(out, DIR_RIGHT, l, k * Math.max(0, fy));
     addLight(out, DIR_LEFT, l, k * Math.max(0, -fy));
+    addLight(out, DIR_BOTTOM, l, k * Math.max(0, -dz / dist));
   }
 }
 
