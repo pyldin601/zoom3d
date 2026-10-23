@@ -1,6 +1,6 @@
 # Voxel shadows and floor mirror: design spec
 
-Status: draft for approval.
+Status: approved design, implemented 2026-10-23. Decision record: [open-decisions.md](../../open-decisions.md) D24.
 
 Calls marked **(my call)** were made by the designer, not the product owner, and can be overridden.
 

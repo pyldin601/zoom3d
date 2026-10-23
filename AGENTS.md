@@ -164,7 +164,9 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
     shared with the landing page), bumping connected people only. It is saved in the state file, keyed by `mapFingerprint`. `VACUUM_NEARLY_DONE=1` (ignored in
     production) starts it one patch from done, so its dock search shows within a minute.
   - **Drawing:** voxel models (`renderer/models/`) are drawn by `renderer/voxels.ts` inside `renderSprites`, far to
-    near with the discs.
+    near with the discs. Their lamp shadows and floor mirror are drawn earlier, in `renderWalls` (it takes the
+    `objects` too): shadows patch the frame's floor tables (`renderer/object-shadows.ts`), so never draw a round shadow
+    for them in `renderSprites`.
   - **Sound:** the hum goes through `AudioEngine.attachNode`, not a `MediaStream`, and stays under voices
     (`VACUUM_GAIN`).
 - The ball (D26, ball spec `docs/superpowers/specs/2026-10-23-ball-design.md`): unlike every other object and peer,

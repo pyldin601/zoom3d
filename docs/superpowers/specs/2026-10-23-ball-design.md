@@ -162,7 +162,8 @@ The ball is drawn at the **local** ball's position: in the present, not at the o
   The ball keeps its own accumulated rotation (a small quaternion or matrix, client-only, not synced), writes into the
   model's existing `base`/`colors` arrays in place, and allocates nothing. The silhouette is a sphere anyway, so this
   reads as a real roll.
-- Banded floor shadow like avatars and the vacuum (`shadowRadius` 0.2).
+- Banded floor shadow like avatars and the vacuum (`shadowRadius` 0.2). *Superseded 2026-10-23:* lamp shadows and a
+  floor mirror instead, see `2026-10-23-voxel-shadows-and-mirror-design.md`.
 - Not on the landing page.
 
 ## 6. Sound

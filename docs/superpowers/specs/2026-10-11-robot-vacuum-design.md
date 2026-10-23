@@ -292,7 +292,8 @@ fits the budget better.
 ### 6.4 Placement and shadow
 
 - **Position:** comes from the same interpolation as peers (`SnapshotBuffer`, `INTERP_DELAY_MS`).
-- **Shadow:** `renderShadow` is module-private in `sprites.ts`. Export or generalise it.
+- **Shadow:** `renderShadow` is module-private in `sprites.ts`. Export or generalise it. *Superseded 2026-10-23:* lamp
+  shadows instead, see `2026-10-23-voxel-shadows-and-mirror-design.md`.
 - **Landing page:** the landing scene doesn't show the robot.
 
 ## 7. Testing
