@@ -4,6 +4,7 @@ import { defined } from '../vacuum/test-helpers';
 import {
   BALL_KICK_REACH,
   BALL_MAX_SPEED,
+  BALL_PUSH_MAX_SPEED,
   BALL_RADIUS,
   type Ball,
   type BallBody,
@@ -218,5 +219,20 @@ describe('restart survival', () => {
 
   test('a save inside a wall reads as null', () => {
     expect(restoreBall(ROOM, { ...saveBall(ROOM, createBall('b', 3, 2)), x: 5.5, y: 1.5 }, 'b2')).toBeNull();
+  });
+});
+
+describe('implausible bodies (review: bunched poses)', () => {
+  test('a body reported at 200 tiles/s neither launches it nor sends it through a wall', () => {
+    const ball = createBall('b', 4.6, 2.5);
+    stepBall(ROOM, ball, DT, [person(4.2, 2.5, 200, 0)]);
+    expect(ball.x).toBeLessThan(5);
+    expect(speed(ball)).toBeLessThanOrEqual(BALL_MAX_SPEED);
+  });
+
+  test('a body reported at 50 tiles/s pushes no harder than a fast walker', () => {
+    const ball = createBall('b', 3, 4.5);
+    stepBall(ROOM, ball, DT, [person(2.6, 4.5, 50, 0)]);
+    expect(ball.vx).toBeLessThanOrEqual(BALL_PUSH_MAX_SPEED);
   });
 });

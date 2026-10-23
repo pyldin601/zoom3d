@@ -63,6 +63,15 @@ describe('holding the local touch', () => {
     expect(ballOf(p).vx).toBe(0);
   });
 
+  test('a still player resting against the ball does not hold off the server', () => {
+    const p = predicted(3, 3.5);
+    p.server(state(5, 3.5), 'me', 0);
+    for (let i = 0; i < 30; i++) {
+      p.step(DT, i * 16, walker(2.55, 3.5, 0));
+    }
+    expect(ballOf(p).x).toBeGreaterThan(4);
+  });
+
   test('the own kick echo ends the hold', () => {
     const p = predicted();
     const k = p.kick({ x: 2.6, y: 3.5 }, 0, 0);
@@ -78,6 +87,15 @@ describe('holding the local touch', () => {
     p.server(state(6, 3.5, { event: 'kick', by: 'other', k: 1 }), 'me', 50);
     p.step(0, 50, null);
     expect(ballOf(p).x).toBe(3);
+  });
+
+  test('a second kick within 250 ms is not made, as the server would drop it', () => {
+    const p = predicted();
+    expect(p.kick({ x: 2.6, y: 3.5 }, 0, 0)).toBe(1);
+    ballOf(p).vx = 0;
+    expect(p.kick({ x: 2.6, y: 3.5 }, Math.PI, 100)).toBeNull();
+    expect(ballOf(p).vx).toBe(0);
+    expect(p.kick({ x: 2.6, y: 3.5 }, 0, 260)).toBe(2);
   });
 
   test('a kick out of reach does nothing and sends nothing', () => {

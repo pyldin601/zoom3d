@@ -5,6 +5,7 @@
 // A room is a map of peers by id: people (with a connection, or within their resume grace without one) and bots. A
 // room opens with its first person and closes with its last; bots and the world objects never keep it open.
 import {
+  BALL_KICK_GAP_MS,
   type Ball,
   type BallBody,
   type BallSave,
@@ -105,8 +106,6 @@ export interface LobbyOptions {
   ball?: boolean;
 }
 
-/** One kick per person per this long (ball spec §3.2). */
-const KICK_GAP_MS = 250;
 /** The server sees a kicker a little late, so it allows them this much further away than the client does. */
 const KICK_SLACK = 0.5;
 /** A walker whose last pose is older than this is standing still, as far as the ball can tell. */
@@ -358,7 +357,7 @@ export class Lobby {
     const found = this.peerOf(conn);
     const ball = found && this.balls.get(found.roomId);
     const now = this.opts.now();
-    if (!found || !ball || now - found.peer.lastKickAt < KICK_GAP_MS) {
+    if (!found || !ball || now - found.peer.lastKickAt < BALL_KICK_GAP_MS) {
       return;
     }
     if (kickBall(ball, found.peer, msg.angle, KICK_SLACK)) {

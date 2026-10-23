@@ -2,6 +2,7 @@
 // only body, so the local player's pushes and kicks act at once. Everyone else's touches and the vacuum's arrive in
 // the server's states, which the local ball eases onto whenever the local player hasn't touched it lately.
 import {
+  BALL_KICK_GAP_MS,
   BALL_RADIUS,
   type Ball,
   type BallBody,
@@ -23,6 +24,8 @@ const EASE_S = 0.1;
 const SNAP_TILES = 1.5;
 /** Two balls at rest this close are one ball: snap, so every screen shows the same spot. */
 const REST_SNAP_TILES = 0.05;
+/** Tiles/s under which the local player counts as standing still. */
+const STILL_SPEED = 0.05;
 /** The server's ball already holds everyone's touches. */
 const NO_BODIES: readonly BallBody[] = [];
 
@@ -46,11 +49,18 @@ export function createBallPrediction(map: GameMap): BallPrediction {
   const bodies: BallBody[] = [];
   let holdUntil = Number.NEGATIVE_INFINITY;
   let kicks = 0;
+  let lastKickAt = Number.NEGATIVE_INFINITY;
   /** The local kick whose echo hasn't come back yet. */
   let unechoed: number | null = null;
 
-  const touching = (self: BallBody) =>
-    ball !== null && Math.hypot(ball.x - self.x, ball.y - self.y) < self.radius + BALL_RADIUS + 1e-6;
+  /**
+   * Only a moving touch is one the server can't have yet: a still player against the ball is a body the server sees
+   * just as well, so holding off the server for them would freeze the ball for as long as they stand there.
+   */
+  const pushing = (self: BallBody) =>
+    ball !== null &&
+    Math.hypot(self.vx, self.vy) > STILL_SPEED &&
+    Math.hypot(ball.x - self.x, ball.y - self.y) < self.radius + BALL_RADIUS + 1e-6;
 
   const easeOntoServer = (b: Ball, s: Ball, dt: number) => {
     const error = Math.hypot(s.x - b.x, s.y - b.y);
@@ -101,7 +111,7 @@ export function createBallPrediction(map: GameMap): BallPrediction {
       if (!ball) {
         return null;
       }
-      if (self && touching(self)) {
+      if (self && pushing(self)) {
         holdUntil = now + HOLD_MS;
       }
       if (server) {
@@ -118,9 +128,10 @@ export function createBallPrediction(map: GameMap): BallPrediction {
     },
 
     kick(from, angle, now) {
-      if (!ball || !kickBall(ball, from, angle)) {
+      if (!ball || now - lastKickAt < BALL_KICK_GAP_MS || !kickBall(ball, from, angle)) {
         return null;
       }
+      lastKickAt = now;
       kicks++;
       unechoed = kicks;
       holdUntil = now + HOLD_MS;

@@ -1,6 +1,6 @@
 // The ball (ball spec §2): rolls on the floor with constant friction and bounces off walls, people and the robot
 // vacuum. Pure, so the server and every client run the same physics. No allocations per step.
-import { PLAYER_RADIUS } from '../../geometry/movement';
+import { MOVE_SPEED, PLAYER_RADIUS } from '../../geometry/movement';
 import { type GameMap, isWallAt } from '../../map/map';
 import type { ObjectInfo } from '../../protocol/protocol';
 import { mapFingerprint } from '../vacuum/nav';
@@ -11,12 +11,21 @@ export const BALL_FRICTION = 2;
 export const BALL_KICK_SPEED = 8; // tiles/s
 /** A squeeze between two people can't launch it faster than this, tiles/s. */
 export const BALL_MAX_SPEED = 10;
+/** One kick per person per this long; the server drops the rest, so clients don't make them either. */
+export const BALL_KICK_GAP_MS = 250;
 /** How far from the ball's centre a kicker may stand. */
 export const BALL_KICK_REACH = PLAYER_RADIUS + BALL_RADIUS + 0.5;
 const WALL_RESTITUTION = 0.6;
 const BODY_RESTITUTION = 0.4;
 /** A walker sends it a little faster than they walk, so it rolls ahead of their feet instead of sticking to them. */
 const PUSH_FACTOR = 1.2;
+/**
+ * A body's speed as the ball feels it is capped at a brisk walk: a person's velocity comes from pose messages, and two
+ * that arrive bunched after a network stall read as hundreds of tiles/s.
+ */
+const BODY_MAX_SPEED = MOVE_SPEED * 1.5;
+/** The hardest a push can send it. */
+export const BALL_PUSH_MAX_SPEED = BODY_MAX_SPEED * PUSH_FACTOR;
 /** The vacuum's 0.6 tiles/s would barely nudge it, so a vacuum driving into it kicks it at least this fast. */
 const VACUUM_KICK_SPEED = 2.5;
 const STOP_SPEED = 0.05;
@@ -126,7 +135,7 @@ function collide(map: GameMap, ball: Ball, body: BallBody, note: (e: BallEvent) 
   }
   slide(map, ball, nx * (touching - distance), ny * (touching - distance));
   const ballNormal = ball.vx * nx + ball.vy * ny;
-  const bodyNormal = body.vx * nx + body.vy * ny;
+  const bodyNormal = Math.min(body.vx * nx + body.vy * ny, BODY_MAX_SPEED);
   if (bodyNormal > 0) {
     const pushed = bodyNormal * PUSH_FACTOR;
     const target = body.kind === 'vacuum' ? Math.max(pushed, VACUUM_KICK_SPEED) : pushed;
