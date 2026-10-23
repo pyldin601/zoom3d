@@ -109,6 +109,18 @@ describe('FloorMirror', () => {
     expect(fb.pixels[30 * 40 + 20]).toBe(rgb(200, 100, 100));
   });
 
+  test('a frame whose size isn’t a whole number of blur texels keeps its last texels whole', () => {
+    const m = mirrorOf(10, 10);
+    for (let y = 0; y < 10; y++) {
+      for (let x = 0; x < 10; x++) {
+        m.plot(x, y, RED, 'hides');
+      }
+    }
+    m.blur(new Float64Array(10));
+    expect(m.coverageAt(9, 9)).toBeCloseTo(1, 5);
+    expect(m.hidingAt(9, 0)).toBeCloseTo(1, 5);
+  });
+
   test('refits to a new frame size', () => {
     const m = mirrorOf();
     m.plot(20, 20, RED, 'shows');

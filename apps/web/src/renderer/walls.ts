@@ -38,8 +38,8 @@ export const FLOOR = rgb(0x70, 0x70, 0x70);
 /** A smooth, semi-glossy floor: lamps smear along it towards the eye. */
 const FLOOR_MATERIAL: ReflectionMaterial = { shininess: 16, f0: 0.1, tint: 0 };
 /**
- * The floor adds this much of its objects' images' colour (voxel shadows spec §3.3). Under them it shows no lamp
- * reflections, as the images stand in front of the lamps' in the floor.
+ * The floor adds this much of its images' colour: the walls', people's and objects' (floor mirror spec §3.7). Under the
+ * people's and objects' it shows no lamp reflections, as they stand in front of the lamps' in the floor.
  */
 const MIRROR_STRENGTH = 0.3;
 /** How far the floor's mirror smears each way, in tiles of the floor it lands on: as soft as its lamp reflections. */
@@ -676,7 +676,10 @@ function putBackFrameTables(lm: Lighting): NonNullable<typeof frameTables> {
     t.floor[i] = lm.floor[i] as number;
     t.ceiling[i] = lm.ceiling[i] as number;
     const slots = i * REFLECTION_LAMPS;
-    t.floorLampSeen.set(lm.floorLampSeen.subarray(slots, slots + REFLECTION_LAMPS), slots);
+    // Copied by hand: subarray() would make a view object per cell.
+    for (let k = slots; k < slots + REFLECTION_LAMPS; k++) {
+      t.floorLampSeen[k] = lm.floorLampSeen[k] as number;
+    }
     t.touched[i] = 0;
   }
   t.dirtyCount = 0;

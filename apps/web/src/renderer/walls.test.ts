@@ -859,6 +859,14 @@ describe('renderWalls voxel shadows', () => {
     expect(firstDifference(after.pixels, render([]).pixels)).toBe(-1);
   });
 
+  test('the floor’s reflection is put back too when the ball moves away', () => {
+    const both = { reflections: 'both' as const };
+    render([ball(8.5)], both);
+    const after = render([ball(12.5, 1.5)], both);
+    const bare = render([ball(12.5, 1.5)], both);
+    expect(firstDifference(after.pixels, bare.pixels)).toBe(-1);
+  });
+
   test('a ball behind the eye still casts its shadow ahead', () => {
     // The lamp 2 tiles behind the eye throws the ball's shadow past the nearest floor the eye sees, 1.4 ahead.
     const behind = bakeLighting(corridor, [{ ...lamp, x: 5.0 }], 0.3, FLOOR, CEILING);

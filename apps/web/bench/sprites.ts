@@ -48,7 +48,7 @@ const inRoom: PeopleAndObjects = { eye: room.eye, people: [], objects: [], light
 const bits = new Float64Array(1);
 const words = new Int32Array(bits.buffer);
 
-/** Whether renderWalls is handed the scene's objects (their shadows and mirror): the hashed frames and timings do. */
+/** Whether renderWalls is handed the scene's people and objects (shadows, floor images): hashed frames and timings do. */
 let wallsShowObjects = true;
 let hash = 0;
 /** What the hashed frames show, so a reader can tell the bench draws something. */
@@ -108,6 +108,7 @@ function drawWalls(mode: Mode, s: Scene): void {
   room.eye = s;
   room.lighting = mode === 'lit' ? lighting : null;
   room.objects = wallsShowObjects ? s.voxels : [];
+  room.people = wallsShowObjects ? s.sprites : [];
   renderWalls(fb, room, s.glows);
 }
 
