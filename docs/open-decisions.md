@@ -479,5 +479,22 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     spec and plan are removed. D24's lit renderer is the only one. A browser that saved the traced mode loads the
     default ("Shadows and reflections"). The touch tray's Lighting button, added with it, stays.
 
+### D26 — The ball, the first interactive object
+- *Resolved 2026-10-23* ([spec](superpowers/specs/2026-10-23-ball-design.md)): every room gets a ball. People dribble it
+  by walking into it and kick it with Space (a kick button on phones, shown while it is in reach). It stays on the
+  floor: friction, bounces off walls, people and the vacuum, no height.
+  - **Server authoritative, client predicted** (owner's pick over a server-only ball, which made dribbling lag, and
+    last-toucher authority). The shared physics (`packages/shared/src/objects/ball/`) runs in `Lobby.stepWorld` and in
+    every client (`game/ball-prediction.ts`). The client applies only the local player's touches, ignores the server
+    for 300 ms after them, and otherwise eases onto the server's ball. A kick is echoed with the kicker's id and kick
+    counter so the kicker knows when the server has it.
+  - **The vacuum kicks it** (owner): a vacuum driving into the ball knocks it off at 2.5 tiles/s or more. The vacuum
+    itself doesn't react.
+  - **Bots never touch it,** for the same reason they never bump the vacuum.
+  - **It rolls by recolouring:** the voxel renderer only turns models about the vertical, so the sphere stays put and
+    its football pattern turns.
+  - **Sound:** a thump on a kick, a tap on a bounce, under voices (`BALL_GAIN`). Bounces play from the local ball only.
+  - No goals, scores or other game rules, and no `PROTOCOL_VERSION` bump (older tabs ignore the new kind).
+
 ## Resolved
 _(none yet)_

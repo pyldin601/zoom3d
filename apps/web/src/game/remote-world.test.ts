@@ -1,7 +1,9 @@
-import { type ObjectInfo, type PeerInfo, SnapshotBuffer } from '@zoom3d/shared';
+import { createBall, type ObjectInfo, type PeerInfo, SnapshotBuffer } from '@zoom3d/shared';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { PeerDelay } from '../net/peer-delay';
 import { objectKey, type RemoteObject, type RemotePeer, type Session } from '../net/session';
+import { BALL_MODEL } from '../renderer/models/ball';
+import { VACUUM_MODEL } from '../renderer/models/vacuum';
 import { hexToRgb } from '../renderer/sprites';
 import { createRemoteWorld, type PeerMedia } from './remote-world';
 
@@ -39,8 +41,8 @@ function fakeSession() {
     addPeer(id: string, x: number, y: number) {
       peers.set(id, { info: info(id, x, y), buffer: standing(x, y), delay: new PeerDelay(), gesture: null });
     },
-    addObject(id: string, x: number, y: number, angle: number) {
-      const objectInfo = { id, kind: 'vacuum', x, y, angle } as unknown as ObjectInfo;
+    addObject(id: string, x: number, y: number, angle: number, kind: ObjectInfo['kind'] = 'vacuum') {
+      const objectInfo: ObjectInfo = { id, kind, x, y, angle };
       objects.set(id, { info: objectInfo, buffer: standing(x, y, angle), lastSeq: 0 });
     },
     peers,
@@ -151,5 +153,31 @@ describe('collect', () => {
     world.collect(room.session, media, NOW, 0);
     expect(world.voxels).toHaveLength(1);
     expect(world.voxels.at(0)).toMatchObject({ x: 4, y: 5, angle: 1 });
+  });
+
+  test('the ball is drawn where the prediction says, not where its buffer is', () => {
+    const world = createRemoteWorld();
+    room.addObject('b1', 4, 5, 0, 'ball');
+    world.sample(room.session, player, NOW, { ...createBall('b1', 6, 7), heading: 2 });
+    world.collect(room.session, media, NOW, 0);
+    expect(world.voxels.at(0)).toMatchObject({ model: BALL_MODEL, x: 6, y: 7, angle: 0 });
+    expect(world.positions.get(objectKey('b1'))).toMatchObject({ x: 6, y: 7 });
+  });
+
+  test('a vacuum and a ball get their own models', () => {
+    const world = createRemoteWorld();
+    room.addObject('v1', 4, 5, 1);
+    room.addObject('b1', 2, 2, 0, 'ball');
+    world.sample(room.session, player, NOW, createBall('b1', 2, 2));
+    world.collect(room.session, media, NOW, 0);
+    expect(world.voxels.map((v) => v.model)).toEqual([VACUUM_MODEL, BALL_MODEL]);
+  });
+
+  test('a ball with no prediction yet is not drawn', () => {
+    const world = createRemoteWorld();
+    room.addObject('b1', 2, 2, 0, 'ball');
+    world.sample(room.session, player, NOW, null);
+    world.collect(room.session, media, NOW, 0);
+    expect(world.voxels).toHaveLength(0);
   });
 });

@@ -167,6 +167,11 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
     near with the discs.
   - **Sound:** the hum goes through `AudioEngine.attachNode`, not a `MediaStream`, and stays under voices
     (`VACUUM_GAIN`).
+- The ball (D26, ball spec `docs/superpowers/specs/2026-10-23-ball-design.md`): unlike every other object and peer,
+  it is drawn from the client's own prediction (`game/ball-prediction.ts`) in the present. Never put it through the
+  interpolation delay, or dribbling lags. The server steps it in `Lobby.stepWorld` and has the last word; bots never
+  touch it, the vacuum kicks it. Its bounce sounds play from the local ball only, and its pattern rolls by recolouring
+  (`renderer/models/ball.ts`), so the instance angle stays 0.
 - Telemetry privacy: logs, metrics labels, Sentry and Amplitude never get names, resume tokens or IPs, nor raw room
   ids: a room link is the room's only key. Server logs use `roomRef()` (a short hash), and the browser Sentry
   `beforeSend` scrubs `/r/<id>`.

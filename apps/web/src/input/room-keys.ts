@@ -1,5 +1,6 @@
 // The room's one-key shortcuts besides walking (keyboard.ts): ` the console, Tab the map, B the boombox (spec §3),
-// 0–3 the drinks (held items spec §2.4), M and C the mic and camera (media-keys.ts). Pure: main.ts listens and acts.
+// 0–3 the drinks (held items spec §2.4), M and C the mic and camera (media-keys.ts), Space the kick (ball spec §7).
+// Pure: main.ts listens and acts.
 import type { HeldItem } from '@zoom3d/shared';
 import { heldForKey } from '../ui/held-store';
 import { mediaKey } from './media-keys';
@@ -11,7 +12,8 @@ export type RoomKey =
   | { kind: 'boombox' }
   /** `code` is the key's, for its release. */
   | { kind: 'drink'; item: HeldItem | null; code: string }
-  | { kind: 'media'; control: 'mic' | 'cam' };
+  | { kind: 'media'; control: 'mic' | 'cam' }
+  | { kind: 'kick' };
 
 export interface RoomKeyState {
   /** In the room and connected; only the boombox key works while reconnecting (the music is local). */
@@ -41,6 +43,10 @@ export function roomKey(e: KeyEvent, state: RoomKeyState): RoomKey | null {
   if (e.code === 'Backquote') {
     return e.repeat ? null : { kind: 'console' };
   }
+  // A focused button or select would take Space as a press of its own.
+  if (e.code === 'Space') {
+    return e.repeat || shortcut || isFormControl(e.target) ? null : { kind: 'kick' };
+  }
   const item = heldForKey(e.code);
   if (item !== undefined) {
     return e.repeat || shortcut ? null : { kind: 'drink', item, code: e.code };
@@ -51,4 +57,10 @@ export function roomKey(e: KeyEvent, state: RoomKeyState): RoomKey | null {
 
 function inInput(target: EventTarget | null): boolean {
   return (target as { tagName?: string } | null)?.tagName === 'INPUT';
+}
+
+const FORM_CONTROLS = ['INPUT', 'SELECT', 'BUTTON', 'TEXTAREA'];
+
+function isFormControl(target: EventTarget | null): boolean {
+  return FORM_CONTROLS.includes((target as { tagName?: string } | null)?.tagName ?? '');
 }

@@ -37,12 +37,21 @@ const TOUCH_ICONS = {
   boombox: ['M3 9h18v11H3z', 'M8 9V5h8v4', 'M6 13h4v4H6z', 'M14 13h4v4h-4z'],
   map: ['M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z', 'M9 3v15', 'M15 6v15'],
   lighting: ['M9 18h6', 'M10 21h4', 'M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0 0 12 3'],
+  ball: [
+    'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18',
+    'M12 8l3.8 2.8-1.5 4.4h-4.6l-1.5-4.4z',
+    'M12 3v5',
+    'M21 10l-5.2.8',
+    'M3 10l5.2.8',
+    'M17.5 19l-3.2-3.8',
+    'M6.5 19l3.2-3.8',
+  ],
   more: [dot(5), dot(12), dot(19)],
   link: ['M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1', 'M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1'],
 } as const;
 
 /**
- * Icons for the touch controls (mobile spec §5): drinks, boombox, map, lighting and the ⋯ button; also the lobby's
+ * Icons for the touch controls (mobile spec §5): drinks, boombox, map, lighting, the ball and the ⋯ button; also the lobby's
  * invite link.
  */
 export function touchIcon(kind: keyof typeof TOUCH_ICONS): SVGSVGElement {

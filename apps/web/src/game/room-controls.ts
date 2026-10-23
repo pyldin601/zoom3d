@@ -28,12 +28,15 @@ export interface RoomControls {
   showTouchControls(): void;
   /** The local player's drink, boombox, the map or the lighting changed. */
   refresh(): void;
+  /** Whether the ball is within kick reach; the touch controls change only when it flips. */
+  setKickInReach(inReach: boolean): void;
 }
 
 export function createRoomControls(o: RoomControlsOptions): RoomControls {
   const { localPlayer, drinkKey } = o;
   let mapShown = false;
   let touchControls: TouchControls | null = null;
+  let kickInReach = false;
   const inRoom = () => isConnected(o.room());
 
   const refresh = () =>
@@ -42,6 +45,7 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
       boombox: localPlayer.boombox,
       map: mapShown,
       lighting: o.renderMode(),
+      kick: kickInReach,
     });
 
   const toggleMap = () => {
@@ -77,6 +81,10 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
           drinkKey.down(e.timeStamp, key.code);
         }
         break;
+      case 'kick':
+        e.preventDefault();
+        o.room()?.kick();
+        break;
       case 'media':
         // The same as pressing the mic button or the self-view circle (feedback, a camera that can't start, a missing
         // device and all).
@@ -94,6 +102,7 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
       boombox: localPlayer.boombox,
       map: mapShown,
       lighting: o.renderMode(),
+      kick: kickInReach,
       onPick(item) {
         if (inRoom()) {
           o.chooseDrink(item);
@@ -115,6 +124,11 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
       onLighting: () => {
         o.setRenderMode(nextRenderMode(o.renderMode()));
         refresh();
+      },
+      onKick: () => {
+        if (inRoom()) {
+          o.room()?.kick();
+        }
       },
     });
     o.touch.attachPad(touchControls.pad);
@@ -146,5 +160,11 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
     },
     showTouchControls: showTouch,
     refresh,
+    setKickInReach(inReach) {
+      if (inReach !== kickInReach) {
+        kickInReach = inReach;
+        refresh();
+      }
+    },
   };
 }

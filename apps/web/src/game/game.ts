@@ -97,6 +97,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     renderMode: () => renderSettings.mode,
     roomLighting,
     showMap: () => controls.mapShown,
+    ballInReach: (inReach) => controls.setKickInReach(inReach),
   });
   // rAF stops while the tab is hidden: keep voices (and newcomers) audible from a timer meanwhile.
   startHiddenTicker(roomLoop.whileHidden, () => document.hidden);
@@ -110,6 +111,10 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
       input,
       get session() {
         return room?.session ?? null;
+      },
+      /** The ball as this client predicts it. */
+      get ball() {
+        return room?.ball.ball ?? null;
       },
       get call() {
         return room?.call ?? null;

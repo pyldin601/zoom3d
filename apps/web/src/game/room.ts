@@ -1,5 +1,6 @@
 // The room from Join on: the game session, the call carrying everyone's media, the spatial audio, the world objects'
-// sounds, the player's boombox and the analytics tracker, made together on Join and kept together.
+// sounds, the ball as this client predicts it, the player's boombox and the analytics tracker, made together on Join
+// and kept together.
 import type { GameMap, HeldItem, PlayerState } from '@zoom3d/shared';
 import { createDoorbell, withDoorbell } from '../audio/doorbell';
 import { type AudioEngine, createAudioEngine } from '../audio/engine';
@@ -14,6 +15,7 @@ import { createSession, type Session } from '../net/session';
 import { track } from '../telemetry/analytics';
 import { createRoomTracker, type RoomTracker, withRoomTracker } from '../telemetry/room-tracker';
 import { botsParam } from '../ui/route';
+import { type BallPrediction, createBallPrediction } from './ball-prediction';
 
 export interface Room {
   readonly session: Session;
@@ -22,6 +24,9 @@ export interface Room {
   readonly objectSounds: ObjectSounds;
   readonly boombox: Boombox;
   readonly tracker: RoomTracker;
+  readonly ball: BallPrediction;
+  /** Kicks the ball the way the local player faces, if it is in reach: at once here, and on to the server. */
+  kick(): void;
 }
 
 export interface JoinOptions {
@@ -43,13 +48,25 @@ export interface JoinOptions {
 
 export function joinRoom(opts: JoinOptions): Room {
   const audio = createAudioEngine({ ctx: opts.audioCtx, map: opts.map });
-  const objectSounds = createObjectSounds(opts.audioCtx, audio);
+  let session: Session | null = null;
+  const objectSounds = createObjectSounds(opts.audioCtx, audio, () => session?.selfId() ?? null);
   const call = createRoomCall(opts, audio);
   const tracker = createRoomTracker(track, () => performance.now());
-  const session = connectSession(opts, call, tracker, objectSounds);
-  call.attach(session);
-  const boombox = createOwnBoombox(opts, call, session);
-  return { session, call, audio, objectSounds, boombox, tracker };
+  const ball = createBallPrediction(opts.map);
+  const joined = connectSession(opts, call, tracker, objectSounds, ball);
+  session = joined;
+  call.attach(joined);
+  const boombox = createOwnBoombox(opts, call, joined);
+  const kick = () => {
+    const { player } = opts;
+    const k = ball.kick(player, player.angle, performance.now());
+    const kicked = ball.ball;
+    if (k !== null && kicked) {
+      joined.sendKick(player.angle, k);
+      objectSounds.localEvent(kicked.id, 'kick');
+    }
+  };
+  return { session: joined, call, audio, objectSounds, boombox, tracker, ball, kick };
 }
 
 /** In the room and connected: not joining, reconnecting or failed. */
@@ -68,7 +85,13 @@ function createRoomCall(opts: JoinOptions, audio: AudioEngine): Call {
   });
 }
 
-function connectSession(opts: JoinOptions, call: Call, tracker: RoomTracker, sounds: ObjectSounds): Session {
+function connectSession(
+  opts: JoinOptions,
+  call: Call,
+  tracker: RoomTracker,
+  sounds: ObjectSounds,
+  ball: BallPrediction
+): Session {
   const session: Session = createSession({
     url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
     roomId: opts.roomId,
@@ -79,7 +102,9 @@ function connectSession(opts: JoinOptions, call: Call, tracker: RoomTracker, sou
     now: () => performance.now(),
     listener: {
       ...withRoomTracker(withDoorbell(call.listener, createDoorbell(opts.audioCtx)), tracker, () => session),
-      objectEvent: (id, e) => sounds.event(id, e),
+      objectEvent: (id, e, by) => sounds.event(id, e, by),
+      objectState: (m) => ball.server(m, session.selfId(), performance.now()),
+      objectsReset: (objects) => ball.reset(objects.find((o) => o.kind === 'ball') ?? null),
     },
   });
   session.setHeld(opts.drink);

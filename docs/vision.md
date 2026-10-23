@@ -21,7 +21,8 @@ and see people in proportion to where they are.
 
 ## Non-goals (for now)
 - Interactive map elements (doors, pickups, screens), combat, game rules. Ambient world objects, like the robot
-  vacuum (decision D22), are in; interactive elements are still out.
+  vacuum (decision D22), are in, and so is one ball to kick about (D26); other interactive elements and game rules
+  are still out.
 - Native apps.
 - Recording, chat history, screen sharing.
 - Accounts/identity beyond what invites require.

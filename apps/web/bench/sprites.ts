@@ -10,6 +10,7 @@ import type { PeerFacts } from '../src/media/interest';
 import { createFramebuffer, rgb } from '../src/renderer/framebuffer';
 import type { Glow } from '../src/renderer/glow';
 import { bakeLighting, corridorLights } from '../src/renderer/lighting';
+import { BALL_MODEL } from '../src/renderer/models/ball';
 import { VACUUM_MODEL } from '../src/renderer/models/vacuum';
 import { type PeopleAndObjects, renderSprites, type Sprite } from '../src/renderer/sprites';
 import { averageColour, makeTextures } from '../src/renderer/textures';
@@ -82,11 +83,12 @@ for (let round = 0; round < ROUNDS; round++) {
   }
 }
 const avatars = scenes.reduce((n, s) => n + s.sprites.length, 0);
-const vacuums = scenes.reduce((n, s) => n + s.voxels.length, 0);
+const vacuums = scenes.reduce((n, s) => n + s.voxels.filter((v) => v.model === VACUUM_MODEL).length, 0);
+const balls = scenes.reduce((n, s) => n + s.voxels.filter((v) => v.model === BALL_MODEL).length, 0);
 console.log(
   `LEVEL1, ${scenes.length} poses, ${avatars} avatars (${seen / 2} seen, ${held / 2} of those holding a drink)`
 );
-console.log(`and ${vacuums} vacuums, 640×360`);
+console.log(`and ${vacuums} vacuums and ${balls} balls, 640×360`);
 console.log(`sprite hash ${hash}`);
 for (const mode of MODES) {
   console.log(`${mode.padEnd(6)} ${(median(times.get(mode) ?? []) * 1000).toFixed(1)} µs/frame (renderSprites only)`);
@@ -199,6 +201,11 @@ function scenesNearLamps(): Scene[] {
       glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2 });
       const spot = ahead(0.6);
       const voxels = open(spot.x, spot.y) ? [{ model: VACUUM_MODEL, x: spot.x, y: spot.y, angle: rand() * 7 }] : [];
+      // Straight ahead, so the seeded poses (and the hash of everything else) stay as they were.
+      const kick = { x: x + Math.cos(angle) * 1.2, y: y + Math.sin(angle) * 1.2 };
+      if (open(kick.x, kick.y)) {
+        voxels.push({ model: BALL_MODEL, x: kick.x, y: kick.y, angle: 0 });
+      }
       out.push({ x, y, angle, sprites, voxels, glows });
     }
   }
