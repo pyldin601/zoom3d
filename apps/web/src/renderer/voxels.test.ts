@@ -256,11 +256,11 @@ describe('renderVoxel with lighting', () => {
       return [...drawn(fb)];
     };
     const channels = (c: number) => [c & 0xff, (c >>> 8) & 0xff, (c >>> 16) & 0xff];
-    /** The face as lit by grey light `light`, plus the shine faded by 1 − smoothstep(0, 0.6, light). */
+    /** Per channel, the brighter of the face lit by grey light `light` and the shine faded by 1 − smoothstep(0, 0.6, light). */
     const expected = (light: number) => {
       const t = Math.min(1, light / 0.6);
       const fade = 1 - t * t * (3 - 2 * t);
-      return channels(RED).map((c, i) => c * light + (channels(GREEN)[i] as number) * fade);
+      return channels(RED).map((c, i) => Math.max(c * light, (channels(GREEN)[i] as number) * fade));
     };
     const near = (actual: number[], want: number[]) =>
       actual.length === want.length && actual.every((c, i) => Math.abs(c - (want[i] as number)) <= 1);
@@ -279,7 +279,7 @@ describe('renderVoxel with lighting', () => {
       expect(drawnIn(shiningCube(), 0.6)).toContain(scaled(RED, 0.6));
     });
 
-    test('in between, the shine fades smoothly as the light on the face grows', () => {
+    test('in between, each channel is the brighter of the lit colour and the fading shine, never their sum', () => {
       // The top takes 0.3 of the ambient light, the face to the camera 0.3 × 0.8.
       const faces = drawnIn(shiningCube(), 0.3).map(channels);
       expect(faces.some((f) => near(f, expected(0.3)))).toBe(true);

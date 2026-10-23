@@ -20,9 +20,9 @@ export interface VoxelModel {
   base: Uint32Array;
   dirs: Uint8Array;
   /**
-   * Per face, a packed rgb() it gives off, like glow-in-the-dark paint or a small lamp (0 for none). In a lit room the
-   * face reflects as any other, and the shine is added on top, fading out smoothly as the light on the face brightens
-   * (see shineFade): whole in the dark, gone in a bright room. The plain (unlit) shading ignores it. buildModel makes
+   * Per face, a packed rgb() it gives off, like glow-in-the-dark paint or a small lamp (0 for none). In a lit room each
+   * channel shows the brighter of the face's reflected light and its shine, which fades out smoothly as the light on
+   * the face brightens (see shineFade): whole in the dark, gone in a bright room. The plain (unlit) shading ignores it. buildModel makes
    * it from glowing() voxels; a model may also set it per face, as the ball does for its dark patches.
    */
   shine: Uint32Array;
@@ -259,7 +259,8 @@ function shineFade(r: number, g: number, b: number): number {
 
 /**
  * Face `f`'s colour in a lit room: unshaded, times `light` on its direction (see directionLight), which may overbright,
- * plus whatever of its shine the light leaves visible.
+ * or whatever of its shine the light leaves visible where that is brighter, channel by channel. A max rather than a sum:
+ * a glow shows where the reflection is dimmer, and never brightens what is already lit past either.
  */
 function litColor({ base, dirs, shine: shines }: VoxelModel, f: number, light: Float64Array): number {
   const c = base[f] as number;
@@ -269,9 +270,9 @@ function litColor({ base, dirs, shine: shines }: VoxelModel, f: number, light: F
   const lb = light[dir * 3 + 2] as number;
   const s = shines[f] as number;
   const shown = s === 0 ? 0 : shineFade(lr, lg, lb);
-  let r = ((c & 0xff) * lr + (s & 0xff) * shown) | 0;
-  let g = (((c >>> 8) & 0xff) * lg + ((s >>> 8) & 0xff) * shown) | 0;
-  let b = (((c >>> 16) & 0xff) * lb + ((s >>> 16) & 0xff) * shown) | 0;
+  let r = Math.max((c & 0xff) * lr, (s & 0xff) * shown) | 0;
+  let g = Math.max(((c >>> 8) & 0xff) * lg, ((s >>> 8) & 0xff) * shown) | 0;
+  let b = Math.max(((c >>> 16) & 0xff) * lb, ((s >>> 16) & 0xff) * shown) | 0;
   if (r > 255) {
     r = 255;
   }

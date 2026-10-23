@@ -368,9 +368,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     by ambient, lamps, shadows and flat shading; at 1 it's always full colour. Glow lights nothing around it. The
     vacuum's eyes and the disc on top glow fully.
     - *Amended 2026-10-23* (owner): one emission rule for every voxel, the ball's. A glow becomes the face's
-      **shine** (its colour × L). The face reflects light like paint, and the shine adds on top, fading with the
-      luminance of the light on it (`1 − smoothstep(0, 0.6, luma)`): whole in the dark, gone in a bright spot, never
-      tinted by a coloured lamp. Flat shading ignores it. The vacuum's eyes and disc are full colour in the dark and
+      **shine** (its colour × L). Each channel shows the brighter of the face's reflected light and its shine (a max,
+      owner's call, so a glow never brightens what is already lit). The shine fades with the luminance of the light on
+      the face (`1 − smoothstep(0, 0.6, luma)`): whole in the dark, gone in a bright spot, never tinted by a coloured
+      lamp. Flat shading ignores it. The vacuum's eyes and disc are full colour in the dark and
       plain cream and yellow paint under a lamp; the ball's dark patches glow a faint green.
   - **Brick relief, lit by the lamps** (2026-10-13): stone and blue-stone bricks catch lamp light on their top row,
     darken on their bottom row and shade the mortar under them (`RELIEF` in `renderer/textures.ts`, lit from above
