@@ -25,7 +25,7 @@ import {
   WALL_U,
   WALL_V,
 } from './lighting';
-import { createMirrorBuffer, createMirrorLayer } from './mirror';
+import { createFloorMirror } from './mirror';
 import { type PatchedFloor, shadeFloor } from './object-shadows';
 import { GLOSS, REFLECTION_MATERIAL, RELIEF, RELIEF_LEVELS, type ReflectionMaterial, TEX } from './textures';
 import { renderVoxelMirror, type VoxelInstance, voxelDepth } from './voxels';
@@ -41,6 +41,8 @@ const FLOOR_MATERIAL: ReflectionMaterial = { shininess: 16, f0: 0.1, tint: 0 };
  * reflections, as the images stand in front of the lamps' in the floor.
  */
 const MIRROR_STRENGTH = 0.3;
+/** How far the floor's mirror smears each way, in tiles of the floor it lands on: as soft as its lamp reflections. */
+const MIRROR_BLUR = 0.06;
 /** Floor reflections are worked out every this many pixels along every other row, and blended between. */
 const FLOOR_REFLECTION_STEP_PX = 16;
 /**
@@ -98,9 +100,8 @@ interface LitRoom extends Room {
 
 const NO_GLOWS: readonly Glow[] = [];
 const NO_OBJECTS: readonly VoxelInstance[] = [];
-const mirrorScratch = createMirrorBuffer();
-/** This frame's objects' images in the floor. */
-const mirrorLayer = createMirrorLayer();
+/** This frame's images in the floor: the walls', then the objects', far to near (floor mirror spec §3). */
+const floorMirror = createFloorMirror();
 /** Objects in front of the eye, far to near, with their depths, for their mirrors. */
 const mirrorOrder: number[] = [];
 const mirrorDepths: number[] = [];
@@ -113,6 +114,10 @@ let litRoom: LitRoom | null = null;
 let scratchSize = { width: 0, height: 0, fov: 0 };
 /** Per screen row, the perpendicular distance to the floor or ceiling it shows, in lightmap cells. */
 let rowDistance = new Float64Array(0);
+/** Per screen row, how far the floor's mirror blurs there (px) and how much of it shows (0 off the floor or past
+ * REFLECTION_RANGE). */
+let mirrorBlurPx = new Float64Array(0);
+let mirrorWeight = new Float64Array(0);
 /** Per screen column, the rows its wall covers, [start, end). */
 let wallStart = new Int32Array(0);
 let wallEnd = new Int32Array(0);
@@ -252,18 +257,35 @@ function drawLitRoom(fb: Framebuffer, room: LitRoom): void {
   const tables = floorAndCeilingColours(room);
   drawFloorAndCeiling(fb, room, tables.floor, tables.ceiling);
   if (reflectsOnFloor(room.reflections)) {
-    // The objects' images first: in the floor they stand in front of the lamps' reflections, hiding them.
+    // The images first: in the floor the objects' stand in front of the lamps' reflections, hiding them.
+    floorMirror.fit(fb.width, fb.height);
+    floorMirror.clear();
+    mirrorWalls(fb);
     mirrorObjects(fb, room);
+    floorMirror.blur(mirrorBlurPx);
     addFloorAndCeilingReflections(fb, room, tables.floorLampSeen);
-    mirrorLayer.addInto(fb, MIRROR_STRENGTH, wallEnd);
+    floorMirror.addInto(fb, MIRROR_STRENGTH, mirrorWeight, wallEnd);
   }
 }
 
-/** The objects' images in the floor, far to near, into mirrorLayer (voxel shadows spec §3.3). */
+/**
+ * Each wall column's image under its foot (floor mirror spec §3.2): the floor row `wallEnd + k` shows the wall's row
+ * `wallEnd − 1 − k`, read back from the drawn frame, for the wall's height or until the mirror fades out.
+ */
+function mirrorWalls(fb: Framebuffer): void {
+  const { width: w, height: h, pixels } = fb;
+  for (let col = 0; col < w; col++) {
+    const end = wallEnd[col] as number;
+    const last = Math.min(h, end + (end - (wallStart[col] as number)));
+    for (let y = end; y < last && (mirrorWeight[y] as number) > 0; y++) {
+      floorMirror.plot(col, y, pixels[(2 * end - 1 - y) * w + col] as number, 'shows');
+    }
+  }
+}
+
+/** The objects' images in the floor, far to near, over the walls' (voxel shadows spec §3.3). */
 function mirrorObjects(fb: Framebuffer, room: LitRoom): void {
   const { objects } = room;
-  mirrorLayer.fit(fb.width, fb.height);
-  mirrorLayer.clear();
   let count = 0;
   for (let i = 0; i < objects.length; i++) {
     const depth = voxelDepth(view, objects[i] as VoxelInstance);
@@ -276,7 +298,7 @@ function mirrorObjects(fb: Framebuffer, room: LitRoom): void {
   mirrorOrder.length = count;
   mirrorOrder.sort(mirrorsFarFirst);
   for (const i of mirrorOrder) {
-    renderVoxelMirror(fb, view, objects[i] as VoxelInstance, room.lighting, mirrorScratch, mirrorLayer);
+    renderVoxelMirror(fb, view, objects[i] as VoxelInstance, room.lighting, floorMirror);
   }
 }
 
@@ -306,8 +328,14 @@ function fitScratchToFrame(fb: Framebuffer): void {
   }
   const { proj, half } = view;
   rowDistance = new Float64Array(h);
+  mirrorBlurPx = new Float64Array(h);
+  mirrorWeight = new Float64Array(h);
   for (let y = 0; y < h; y++) {
     rowDistance[y] = ((EYE_HEIGHT * proj) / Math.abs(y + 0.5 - half)) * FLOOR_SUB;
+    const tiles = (rowDistance[y] as number) / FLOOR_SUB;
+    const far = tiles / REFLECTION_RANGE;
+    mirrorBlurPx[y] = (proj * MIRROR_BLUR) / tiles;
+    mirrorWeight[y] = y + 0.5 > half && far < 1 ? 1 - far * far : 0;
   }
   wallStart = new Int32Array(w);
   wallEnd = new Int32Array(w);
@@ -855,8 +883,9 @@ function addRowReflection(fb: Framebuffer, room: LitRoom, y: number, floorSees: 
   const share = above ? CEILING_SHINE : 1;
   // Objects' shadows lie on the floor alone: the ceiling's light off the floor keeps the baked shares.
   const floorLampSeen = above ? room.lighting.floorLampSeen : floorSees;
-  const images = mirrorLayer.bounds;
-  const underImages = !above && reflectsOnFloor(room.reflections) && y >= images.top && y < images.bottom;
+  const images = floorMirror.rows;
+  const underImages = !above && y >= images.top && y < images.bottom;
+  const imagesShow = mirrorWeight[y] as number;
   const { x: startX, y: startY, stepX, stepY } = aimFloorRow(room.eye, y, w);
   const lastCellX = stride - 1;
   const lastCellY = rows - 1;
@@ -893,7 +922,7 @@ function addRowReflection(fb: Framebuffer, room: LitRoom, y: number, floorSees: 
       if (seen === 0) {
         continue;
       }
-      const hidden = underImages && col >= images.left && col < images.right ? mirrorLayer.coverageAt(col, y) : 0;
+      const hidden = underImages ? floorMirror.hidingAt(col, y) * imagesShow : 0;
       const s = blended * seen * (1 - hidden);
       const c = pixels[row + col] as number;
       pixels[row + col] = packClamped(

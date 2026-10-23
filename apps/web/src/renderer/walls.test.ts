@@ -187,7 +187,11 @@ describe('renderWalls reflections', () => {
         continue;
       }
       far++;
-      const differs = column(shiny, col).some((c, y) => c !== plain.pixels[y * plain.width + col]);
+      // The wall's own rows: the floor below takes the near walls' images, blurred across columns.
+      const half = (0.5 * PROJ) / (plain.zbuffer[col] as number);
+      const differs = column(shiny, col).some(
+        (c, y) => Math.abs(y + 0.5 - plain.height / 2) < half && c !== plain.pixels[y * plain.width + col]
+      );
       expect(differs).toBe(false);
     }
     expect(far).toBeGreaterThan(0);
@@ -414,7 +418,12 @@ describe('renderWalls reflection modes', () => {
     const col = i % fb.width;
     const y = Math.floor(i / fb.width);
     const lineH = PROJ / (fb.zbuffer[col] as number);
-    return Math.abs(y - fb.height / 2) < lineH / 2;
+    return Math.abs(y + 0.5 - fb.height / 2) < lineH / 2;
+  };
+  /** A wall pixel a row clear of its top and foot, where rounding can't make it floor or ceiling. */
+  const isInsideWall = (fb: ReturnType<typeof render>, i: number) => {
+    const lineH = PROJ / (fb.zbuffer[i % fb.width] as number);
+    return Math.abs(Math.floor(i / fb.width) + 0.5 - fb.height / 2) < lineH / 2 - 1;
   };
 
   test('none draws no reflections at all', () => {
@@ -450,7 +459,9 @@ describe('renderWalls reflection modes', () => {
       for (const shift of [0, 8, 16]) {
         wrong += ((c >>> shift) & 0xff) > ((lit >>> shift) & 0xff) ? 1 : 0;
       }
-      wrong += c === BLACK ? 1 : 0;
+      // The floor's mirror of the lit walls lights the floor in 'both', but those walls are black here, and so is their
+      // image: only a wall must never be black where the lit room reflects.
+      wrong += c === BLACK && isInsideWall(matte, i) ? 1 : 0;
       if (isWallPixel(matte, i)) {
         wall++;
       } else {
@@ -468,11 +479,8 @@ describe('renderWalls floor reflections in shadow', () => {
   // so floor with only ambient light is in its shadow, not just out of reach.
   const hall = parseMap('1111111111111\n1...........1\n1S.....1....1\n1...........1\n1111111111111');
   const hallLit = bakeLighting(hall, [{ x: 9.5, y: 2.5, z: 0.85, radius: 20, r: 1, g: 1, b: 1 }], 0.45, FLOOR, CEILING);
-  const hallMatte = {
-    ...hallLit,
-    wallLamp: new Int8Array(hallLit.wallLamp.length).fill(-1),
-    floorLamp: new Int8Array(hallLit.floorLamp.length).fill(-1),
-  };
+  // Walls as lit as in hallLit, so their images in the floor match: only the floor's reflections differ.
+  const hallMatte = { ...hallLit, floorLamp: new Int8Array(hallLit.floorLamp.length).fill(-1) };
   // The floor where no lamp reaches: ambient light only.
   const shadow = hallLit.floor[0] as number;
 
@@ -917,8 +925,8 @@ describe('renderWalls voxel mirror', () => {
     const bare = render([]);
     const depth = 4;
     const ballHalfWidth = (0.2 * PROJ) / depth;
-    // Spread by the blur, at most 0.06 tiles each way.
-    const spread = (0.06 * PROJ) / depth + 1;
+    // Spread by the blur: 0.06 tiles of the nearest floor shown (1.37 tiles off), at half resolution.
+    const spread = (0.06 * PROJ) / 1.3 + 4;
     let changed = 0;
     for (let i = 0; i < bare.pixels.length; i++) {
       if (mirrored.pixels[i] !== bare.pixels[i]) {
@@ -975,7 +983,70 @@ describe('renderWalls voxel mirror', () => {
     expect(added(shiny, plain)).toBeLessThan(bare * 0.5);
   });
 
-  test('a far ball’s mirror fades out', () => {
-    expect(firstDifference(render([ball(10.0)]).pixels, render([]).pixels)).toBe(-1);
+  test('a ball whose whole image lies past REFLECTION_RANGE shows no mirror', () => {
+    // Its image lies on floor at least 0.55 of its distance off: 16 tiles away, past 8.
+    const long = parseMap(
+      '11111111111111111111\n1S.................1\n1..................1\n1..................1\n11111111111111111111'
+    );
+    const o = { map: long, lighting: bakeLighting(long, [], 0.3, FLOOR, CEILING) };
+    expect(firstDifference(render([ball(17.5)], o).pixels, render([], o).pixels)).toBe(-1);
+  });
+});
+
+describe('renderWalls floor mirror of walls', () => {
+  const room = parseMap('1111111\n1.....1\n1..S..1\n1.....1\n1111111');
+  const dark = bakeLighting(room, [], 0.3, FLOOR, CEILING);
+  const eye = { x: 3.5, y: 2.5, angle: 0 };
+  const render = (reflections: 'both' | 'walls' | 'only', pose = eye) => {
+    const fb = createFramebuffer();
+    renderWalls(fb, { map: room, eye: pose, textures, lighting: dark, reflections });
+    return fb;
+  };
+  /** The rows the middle column's wall covers, [start, end). */
+  const wallRows = (fb: ReturnType<typeof createFramebuffer>) => {
+    const half = (0.5 * PROJ) / (fb.zbuffer[fb.width / 2] as number);
+    return { start: Math.ceil(fb.height / 2 - half), end: Math.ceil(fb.height / 2 + half) };
+  };
+
+  test('the floor under a wall’s foot takes some of the wall’s colour', () => {
+    const mirrored = render('both');
+    const plain = render('walls');
+    const { start, end } = wallRows(plain);
+    const col = plain.width / 2;
+    const at = (fb: ReturnType<typeof createFramebuffer>, y: number) =>
+      (fb.pixels[y * fb.width + col] as number) & 0xff;
+    expect(at(mirrored, end + 2)).toBeGreaterThan(at(plain, end + 2));
+    // Past the image's end and its blur, the floor is untouched.
+    const past = end + (end - start) + 30;
+    for (let y = past; y < plain.height; y++) {
+      expect(mirrored.pixels[y * plain.width + col]).toBe(plain.pixels[y * plain.width + col]);
+    }
+  });
+
+  test('a wall’s image never hides a lamp’s streak', () => {
+    const hall = parseMap('1111111111111\n1S..........1\n1...........1\n1...........1\n1111111111111');
+    const lit = bakeLighting(hall, [{ x: 7.5, y: 2.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 }], 0.45, FLOOR, CEILING);
+    const matte = { ...lit, floorLamp: new Int8Array(lit.floorLamp.length).fill(-1) };
+    const draw = (lighting: typeof lit) => {
+      const fb = createFramebuffer();
+      renderWalls(fb, { map: hall, eye: { x: 2.5, y: 2.5, angle: 0 }, textures, lighting, reflections: 'both' });
+      return fb;
+    };
+    const shiny = draw(lit);
+    const plain = draw(matte);
+    const { start, end } = wallRows(plain);
+    let streak = 0;
+    for (let y = end; y < Math.min(plain.height, end + (end - start)); y++) {
+      for (let x = plain.width / 2 - 20; x < plain.width / 2 + 20; x++) {
+        const i = y * plain.width + x;
+        streak += ((shiny.pixels[i] as number) & 0xff) - ((plain.pixels[i] as number) & 0xff);
+      }
+    }
+    expect(streak).toBeGreaterThan(0);
+  });
+
+  test('standing against a wall leaves nothing to mirror', () => {
+    const close = { x: 5.7, y: 2.5, angle: 0 };
+    expect(firstDifference(render('both', close).pixels, render('walls', close).pixels)).toBe(-1);
   });
 });

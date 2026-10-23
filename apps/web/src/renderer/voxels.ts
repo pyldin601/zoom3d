@@ -4,8 +4,8 @@
 import { EYE_HEIGHT, MIN_DEPTH, type View } from './camera';
 import { luma } from './colour';
 import { type Framebuffer, scaleRgb } from './framebuffer';
-import { ambientAt, directLight, type Lighting, REFLECTION_RANGE } from './lighting';
-import type { MirrorBuffer, MirrorLayer, ScreenBox } from './mirror';
+import { ambientAt, directLight, type Lighting } from './lighting';
+import type { FloorMirror } from './mirror';
 
 export interface VoxelModel {
   /** Voxel edge in tiles. */
@@ -340,28 +340,19 @@ function fillFace(fb: Framebuffer, f: number, colour: number): void {
   }
 }
 
-/** How far the floor's mirror smears each way, in tiles: as soft as its lamp reflections. */
-export const MIRROR_BLUR = 0.06;
-/** The mirror's screen box, reused. */
-const mirrorBox: ScreenBox = { left: 0, top: 0, right: 0, bottom: 0 };
-
 /**
- * Draws one instance's image in the floor (voxel shadows spec §3.3) into `scratch`: upside down under it, in its lit
- * colours, depth-tested per column like the object. Then blurs it `blurTiles` each way and merges it into `layer`,
- * fading out towards REFLECTION_RANGE. With `blurTiles` 0 it stops at the unblurred coverage in `scratch`.
+ * Plots one instance's image in the floor (voxel shadows spec §3.3) into `mirror`: upside down under it, in its lit
+ * colours, depth-tested per column like the object. It hides the lamps' streaks behind it; the floor mirror blurs and
+ * fades it with everything else.
  */
 export function renderVoxelMirror(
   fb: Framebuffer,
   view: View,
   v: VoxelInstance,
   lighting: Lighting,
-  scratch: MirrorBuffer,
-  layer: MirrorLayer,
-  blurTiles = MIRROR_BLUR
+  mirror: FloorMirror
 ): void {
-  const distance = Math.sqrt((v.x - view.x) ** 2 + (v.y - view.y) ** 2);
-  const depth = voxelDepth(view, v);
-  if (distance >= REFLECTION_RANGE || depth < 0) {
+  if (voxelDepth(view, v) < 0) {
     return;
   }
   const { model } = v;
@@ -371,46 +362,13 @@ export function renderVoxelMirror(
   }
   lightDirections(lighting, v);
   projectFaces(view, v, 'mirrored');
-  if (faceOrder.length === 0) {
-    return;
-  }
-  const radius = blurTiles === 0 ? 0 : Math.max(1, Math.round((view.proj * blurTiles) / depth));
-  fitMirrorBox(fb, radius);
-  scratch.fit(fb.width, fb.height);
-  scratch.clear(mirrorBox);
   for (const f of faceOrder) {
-    plotFace(fb, scratch, f, litColor(model, f, directionLight));
+    plotFace(fb, mirror, f, litColor(model, f, directionLight));
   }
-  if (blurTiles === 0) {
-    return;
-  }
-  const fade = distance / REFLECTION_RANGE;
-  scratch.blur(mirrorBox, radius);
-  layer.merge(scratch, mirrorBox, 1 - fade * fade);
-}
-
-/** mirrorBox round the projected faces, grown by `radius` each way and clipped to the frame. */
-function fitMirrorBox(fb: Framebuffer, radius: number): void {
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-  for (const f of faceOrder) {
-    for (let k = 0; k < 8; k += 2) {
-      minX = Math.min(minX, screenCorners[f * 8 + k] as number);
-      maxX = Math.max(maxX, screenCorners[f * 8 + k] as number);
-      minY = Math.min(minY, screenCorners[f * 8 + k + 1] as number);
-      maxY = Math.max(maxY, screenCorners[f * 8 + k + 1] as number);
-    }
-  }
-  mirrorBox.left = Math.max(0, Math.floor(minX) - radius);
-  mirrorBox.right = Math.min(fb.width, Math.ceil(maxX) + radius + 1);
-  mirrorBox.top = Math.max(0, Math.floor(minY) - radius);
-  mirrorBox.bottom = Math.min(fb.height, Math.ceil(maxY) + radius + 1);
 }
 
 /** Covers face `f` in `mirror` with `colour`, row by row, where it's nearer than the column's wall: fillFace's rule. */
-function plotFace(fb: Framebuffer, mirror: MirrorBuffer, f: number, colour: number): void {
+function plotFace(fb: Framebuffer, mirror: FloorMirror, f: number, colour: number): void {
   const { width: w, height: h, zbuffer } = fb;
   const s = f * 8;
   const depth = faceDepths[f] as number;
@@ -441,7 +399,7 @@ function plotFace(fb: Framebuffer, mirror: MirrorBuffer, f: number, colour: numb
     const lastCol = Math.min(w - 1, Math.ceil(right - 0.5) - 1);
     for (let col = firstCol; col <= lastCol; col++) {
       if (depth < (zbuffer[col] as number)) {
-        mirror.plot(col, row, colour);
+        mirror.plot(col, row, colour, 'hides');
       }
     }
   }

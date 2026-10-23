@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { createView, setView } from './camera';
 import { createFramebuffer, rgb, scaleRgb } from './framebuffer';
 import { bakeLighting, type Light } from './lighting';
-import { createMirrorBuffer, createMirrorLayer } from './mirror';
+import { createFloorMirror } from './mirror';
 import { BALL_MODEL } from './models/ball';
 import { VACUUM_MODEL } from './models/vacuum';
 import { renderSprites, type Sprite } from './sprites';
@@ -353,28 +353,28 @@ describe('renderVoxelMirror', () => {
   test('the ball’s underside shows: its mirror has no holes', () => {
     const fb = blank();
     const room = parseMap('1111111\n1S....1\n1.....1\n1.....1\n1.....1\n1.....1\n1111111');
-    const mirror = createMirrorBuffer();
+    const mirror = createFloorMirror();
+    mirror.fit(fb.width, fb.height);
+    mirror.clear();
     renderVoxelMirror(
       fb,
       view,
       { model: BALL_MODEL, x: 3.0, y: 4.5, angle: 0 },
       bakeLighting(room, [], 0.3, RED, RED),
-      mirror,
-      createMirrorLayer(),
-      0
+      mirror
     );
     let covered = 0;
     for (let y = 0; y < fb.height; y++) {
       let first = -1;
       let last = -1;
       for (let x = 0; x < fb.width; x++) {
-        if (mirror.coverageAt(x, y) > 0) {
+        if (mirror.shownAt(x, y)) {
           first = first < 0 ? x : first;
           last = x;
         }
       }
       for (let x = first; first >= 0 && x <= last; x++) {
-        expect(mirror.coverageAt(x, y)).toBe(1);
+        expect(mirror.shownAt(x, y)).toBe(true);
         covered++;
       }
     }
