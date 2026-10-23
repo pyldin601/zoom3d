@@ -1,6 +1,6 @@
 // The lobby written on shutdown and read back on the next start, so a deploy doesn't drop the rooms.
 import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { isValidAvatar, isValidRoomId, MAX_PEERS, parsePeerInfo, type VacuumSave } from '@zoom3d/shared';
+import { type BallSave, isValidAvatar, isValidRoomId, MAX_PEERS, parsePeerInfo, type VacuumSave } from '@zoom3d/shared';
 import type { LobbySnapshot, SnapshotPeer } from './lobby';
 import type { Logger } from './log';
 
@@ -36,6 +36,14 @@ function snapshotVacuum(v: unknown): VacuumSave | null {
   return { id: v.id, x: x as number, y: y as number, angle: angle as number, phase, clean, map: v.map };
 }
 
+/** A saved ball, or null if anything about it is off (the room then gets a fresh one). */
+function snapshotBall(v: unknown): BallSave | null {
+  if (!isObj(v) || typeof v.map !== 'string' || !Number.isFinite(v.x) || !Number.isFinite(v.y)) {
+    return null;
+  }
+  return { x: v.x as number, y: v.y as number, map: v.map };
+}
+
 /** Invalid peers are dropped, then any room left empty, oversized or with a bad id. */
 export function parseSnapshot(raw: string): LobbySnapshot | null {
   let v: unknown;
@@ -55,7 +63,8 @@ export function parseSnapshot(raw: string): LobbySnapshot | null {
     const peers = r.peers.map(snapshotPeer).filter((p) => p !== null);
     if (peers.length > 0 && peers.length <= MAX_PEERS) {
       const vacuum = snapshotVacuum(r.vacuum);
-      rooms.push({ id: r.id, peers, ...(vacuum ? { vacuum } : {}) });
+      const ball = snapshotBall(r.ball);
+      rooms.push({ id: r.id, peers, ...(vacuum ? { vacuum } : {}), ...(ball ? { ball } : {}) });
     }
   }
   return { version: 1, rooms };

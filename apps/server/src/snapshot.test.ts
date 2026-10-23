@@ -109,3 +109,14 @@ test('a valid vacuum is kept and an invalid one dropped, keeping the room', () =
     expect(room && 'vacuum' in room).toBe(false);
   }
 });
+
+test('a valid ball is kept and an invalid one dropped, keeping the room', () => {
+  const ball = { x: 2.5, y: 3.5, map: '0badc0de' };
+  const withBall = (b: unknown) => JSON.stringify({ version: 1, rooms: [{ id: ROOM, peers: [peer('a')], ball: b }] });
+  expect(parseSnapshot(withBall(ball))?.rooms[0]?.ball).toEqual(ball);
+  for (const bad of [{ ...ball, x: 'no' }, { ...ball, y: Number.NaN }, { ...ball, map: 5 }, 'junk']) {
+    const room = parseSnapshot(withBall(bad))?.rooms[0];
+    expect(room?.peers).toHaveLength(1);
+    expect(room && 'ball' in room).toBe(false);
+  }
+});

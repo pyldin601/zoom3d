@@ -1,10 +1,17 @@
-// Room membership, colours, resume grace and move validation, plus opt-in wandering bots and each room's robot vacuum.
+// Room membership, colours, resume grace and move validation, plus opt-in wandering bots and each room's robot vacuum
+// and ball.
 // Pure: no sockets or timers (the server drives tick(), fanOut() and stepWorld()).
 //
 // A room is a map of peers by id: people (with a connection, or within their resume grace without one) and bots. A
-// room opens with its first person and closes with its last; bots and the vacuum never keep it open.
+// room opens with its first person and closes with its last; bots and the world objects never keep it open.
 import {
+  type Ball,
+  type BallBody,
+  type BallSave,
   type BoomboxMessage,
+  ballInfo,
+  ballMoving,
+  createBall,
   createVacuum,
   createVacuumNav,
   DRINK_GAP_MS,
@@ -14,20 +21,27 @@ import {
   isValidAvatar,
   isValidRoomId,
   type JoinMessage,
+  type KickMessage,
+  kickBall,
   type LiveKitAccess,
   MAX_PEERS,
   type MediaMessage,
   type PeerInfo,
+  PLAYER_RADIUS,
   type Point,
   PROTOCOL_VERSION,
   RESUME_GRACE_MS,
+  restoreBall,
   restoreVacuum,
   type ServerMessage,
   type StateMessage,
   sanitizeName,
+  saveBall,
   saveVacuum,
   spawnPoint,
+  stepBall,
   stepVacuum,
+  VACUUM_RADIUS,
   type Vacuum,
   type VacuumNav,
   type VacuumSave,
@@ -87,7 +101,16 @@ export interface LobbyOptions {
   vacuum?: boolean;
   /** Dev only: new vacuums start with every patch but their own clean, to reach the dock search in a minute. */
   vacuumNearlyDone?: boolean;
+  /** Every new room gets a ball (ball spec §3.2). Off unless set, so tests opt in. */
+  ball?: boolean;
 }
+
+/** One kick per person per this long (ball spec §3.2). */
+const KICK_GAP_MS = 250;
+/** The server sees a kicker a little late, so it allows them this much further away than the client does. */
+const KICK_SLACK = 0.5;
+/** A walker whose last pose is older than this is standing still, as far as the ball can tell. */
+const MOVING_POSE_MS = 200;
 
 interface Peer extends PeerInfo {
   resumeToken: string;
@@ -98,6 +121,11 @@ interface Peer extends PeerInfo {
   disconnectedAt: number | null;
   /** The picture itself (a JPEG data URL) behind `avatar`, its id in the avatar store. */
   picture: string | null;
+  /** Tiles/s, from the last two poses: how hard walking into the ball pushes it. */
+  vx: number;
+  vy: number;
+  /** When this person last kicked the ball. */
+  lastKickAt: number;
   /** Bumped whenever the pose changes, so fan-out sends only what moved. */
   poseVersion: number;
   /** When the pose last changed: batches carry its age, so receivers can place it on its real timeline. */
@@ -122,7 +150,7 @@ export interface SnapshotPeer extends Omit<PeerInfo, 'slot'> {
 /** Bump `version` when SnapshotPeer changes in a way parsePeerInfo's defaults can't absorb. */
 export interface LobbySnapshot {
   version: 1;
-  rooms: { id: string; peers: SnapshotPeer[]; vacuum?: VacuumSave }[];
+  rooms: { id: string; peers: SnapshotPeer[]; vacuum?: VacuumSave; ball?: BallSave }[];
 }
 
 const isPerson = (p: Peer) => p.bot === undefined;
@@ -172,8 +200,18 @@ function savePeer(p: Peer): SnapshotPeer {
 }
 
 /** The bookkeeping every new or restored peer starts with: no gesture yet, a fresh pose, nothing sent. */
-function freshTracking(now: number): Pick<Peer, 'lastGestureAt' | 'poseVersion' | 'poseAt' | 'sent'> {
-  return { lastGestureAt: Number.NEGATIVE_INFINITY, poseVersion: 0, poseAt: now, sent: new Map() };
+function freshTracking(
+  now: number
+): Pick<Peer, 'lastGestureAt' | 'lastKickAt' | 'vx' | 'vy' | 'poseVersion' | 'poseAt' | 'sent'> {
+  return {
+    lastGestureAt: Number.NEGATIVE_INFINITY,
+    lastKickAt: Number.NEGATIVE_INFINITY,
+    vx: 0,
+    vy: 0,
+    poseVersion: 0,
+    poseAt: now,
+    sent: new Map(),
+  };
 }
 
 export class Lobby {
@@ -185,6 +223,12 @@ export class Lobby {
   private nav: VacuumNav | null = null;
   /** Each room's robot vacuum, by room id. Not a peer: it never keeps a room open. */
   private readonly vacuums = new Map<string, Vacuum>();
+  /** Each vacuum's velocity over its last step, by room id: how hard it knocks the ball. */
+  private readonly vacuumVelocities = new Map<string, { vx: number; vy: number }>();
+  /** Each room's ball, by room id. Not a peer either. */
+  private readonly balls = new Map<string, Ball>();
+  /** A person's kick since the ball's last broadcast, echoed in it so the kicker recognises its own kick. */
+  private readonly kicks = new Map<string, { by: string; k: number }>();
   /** Each room's next peer slot: a counter, so a late batch can never move the wrong peer. */
   private readonly nextSlot = new Map<string, number>();
   private readonly avatars = new AvatarStore();
@@ -265,6 +309,10 @@ export class Lobby {
     }
     // An idle heartbeat repeats the pose: it keeps the move check's clock, but there is nothing to send.
     if (msg.x !== peer.x || msg.y !== peer.y || msg.angle !== peer.angle) {
+      const sincePose = now - peer.poseAt;
+      const moving = sincePose > 0 && sincePose <= MOVING_POSE_MS;
+      peer.vx = moving ? ((msg.x - peer.x) * 1000) / sincePose : 0;
+      peer.vy = moving ? ((msg.y - peer.y) * 1000) / sincePose : 0;
       peer.x = msg.x;
       peer.y = msg.y;
       peer.angle = msg.angle;
@@ -303,6 +351,20 @@ export class Lobby {
     const { room, peer } = found;
     peer.boombox = msg.on;
     this.broadcast(room, peer.id, { type: 'peer_boombox', id: peer.id, on: msg.on });
+  }
+
+  /** Kicks the room's ball from where the server last saw the kicker, if they're near enough and not kicking too often. */
+  kick(conn: string, msg: KickMessage): void {
+    const found = this.peerOf(conn);
+    const ball = found && this.balls.get(found.roomId);
+    const now = this.opts.now();
+    if (!found || !ball || now - found.peer.lastKickAt < KICK_GAP_MS) {
+      return;
+    }
+    if (kickBall(ball, found.peer, msg.angle, KICK_SLACK)) {
+      found.peer.lastKickAt = now;
+      this.kicks.set(found.roomId, { by: found.peer.id, k: msg.k });
+    }
   }
 
   /** Relays a sip, only from a peer holding a drink and at most one gesture per DRINK_GAP_MS. */
@@ -364,11 +426,12 @@ export class Lobby {
     }
   }
 
-  /** Moves every room's bots and robot vacuum; rooms with nobody connected stand still. */
+  /** Moves every room's bots, robot vacuum and ball; rooms with nobody connected stand still. */
   stepWorld(dtMs: number): void {
     const dt = dtMs / 1000;
     this.stepBots(dt);
     this.stepVacuums(dt);
+    this.stepBalls(dt);
   }
 
   // Restart survival.
@@ -378,10 +441,12 @@ export class Lobby {
       version: 1,
       rooms: [...this.rooms].map(([id, room]) => {
         const vacuum = this.vacuums.get(id);
+        const ball = this.balls.get(id);
         return {
           id,
           peers: peopleIn(room).map(savePeer),
           ...(vacuum ? { vacuum: saveVacuum(this.vacuumNav(), vacuum) } : {}),
+          ...(ball ? { ball: saveBall(this.opts.map, ball) } : {}),
         };
       }),
     };
@@ -390,7 +455,7 @@ export class Lobby {
   /** Loads a snapshot into an empty lobby. Every slot starts a fresh grace period, waiting for its owner to resume. */
   restore(snap: LobbySnapshot): void {
     const now = this.opts.now();
-    for (const { id, peers, vacuum } of snap.rooms) {
+    for (const { id, peers, vacuum, ball } of snap.rooms) {
       const room: Room = new Map();
       for (const saved of peers) {
         room.set(saved.id, {
@@ -410,6 +475,12 @@ export class Lobby {
         this.vacuums.set(id, restored);
       } else {
         this.spawnVacuum(id);
+      }
+      const restoredBall = this.opts.ball && ball ? restoreBall(this.opts.map, ball, this.opts.newToken()) : null;
+      if (restoredBall) {
+        this.balls.set(id, restoredBall);
+      } else {
+        this.spawnBall(id);
       }
     }
   }
@@ -501,6 +572,7 @@ export class Lobby {
       this.emit({ type: 'bots_spawned', roomId, count: bots });
     }
     this.spawnVacuum(roomId);
+    this.spawnBall(roomId);
   }
 
   /** Removes a person whose grace ran out, and tells the room. */
@@ -519,6 +591,9 @@ export class Lobby {
   private closeRoom(roomId: string): void {
     this.rooms.delete(roomId);
     this.vacuums.delete(roomId);
+    this.vacuumVelocities.delete(roomId);
+    this.balls.delete(roomId);
+    this.kicks.delete(roomId);
     this.nextSlot.delete(roomId);
     this.emit({ type: 'room_closed', roomId });
   }
@@ -534,6 +609,7 @@ export class Lobby {
       }
     }
     const vacuum = this.vacuums.get(roomId);
+    const ball = this.balls.get(roomId);
     this.opts.out.send(conn, {
       type: 'welcome',
       selfId: self.id,
@@ -542,7 +618,7 @@ export class Lobby {
       spawn: { x: self.x, y: self.y, angle: self.angle },
       peers: [...room.values()].filter((p) => p.id !== self.id).map(peerInfo),
       livekit: this.opts.liveKitFor(roomId, self.id),
-      objects: vacuum ? [vacuumInfo(vacuum)] : [],
+      objects: [...(vacuum ? [vacuumInfo(vacuum)] : []), ...(ball ? [ballInfo(ball)] : [])],
     });
   }
 
@@ -553,7 +629,7 @@ export class Lobby {
     this.emit({ type: 'rejected', reason });
   }
 
-  // The world: bots and robot vacuums.
+  // The world: bots, robot vacuums and balls.
 
   private spawnBots(roomId: string, room: Room, count: number): void {
     const { newToken, now } = this.opts;
@@ -635,7 +711,9 @@ export class Lobby {
       if (conns.length === 0) {
         continue;
       }
+      const { x, y } = vacuum;
       const event = stepVacuum(nav, vacuum, dt, this.opts.rng, people);
+      this.vacuumVelocities.set(roomId, { vx: (vacuum.x - x) / dt, vy: (vacuum.y - y) / dt });
       vacuum.seq++;
       this.opts.out.broadcast(conns, {
         type: 'object_state',
@@ -645,6 +723,81 @@ export class Lobby {
         angle: vacuum.angle,
         seq: vacuum.seq,
         ...(event ? { event } : {}),
+      });
+    }
+  }
+
+  private spawnBall(roomId: string): void {
+    if (this.opts.ball) {
+      this.floor ??= floorTiles(this.opts.map);
+      const tile = this.floor[Math.floor(this.opts.rng() * this.floor.length)] ?? this.opts.map.spawn;
+      this.balls.set(roomId, createBall(this.opts.newToken(), tile.x + 0.5, tile.y + 0.5));
+    }
+  }
+
+  /**
+   * Steps each room's ball against its connected people (never bots) and its vacuum, and relays it as `object_state`
+   * whenever it moved, stopped or was kicked. A ball at rest costs nothing.
+   */
+  private stepBalls(dt: number): void {
+    const now = this.opts.now();
+    for (const [roomId, ball] of this.balls) {
+      const room = this.rooms.get(roomId);
+      if (!room) {
+        continue;
+      }
+      const conns: string[] = [];
+      const bodies: BallBody[] = [];
+      for (const p of room.values()) {
+        if (p.conn !== null && isPerson(p)) {
+          conns.push(p.conn);
+          const moving = now - p.poseAt <= MOVING_POSE_MS;
+          bodies.push({
+            kind: 'person',
+            x: p.x,
+            y: p.y,
+            vx: moving ? p.vx : 0,
+            vy: moving ? p.vy : 0,
+            radius: PLAYER_RADIUS,
+          });
+        }
+      }
+      if (conns.length === 0) {
+        continue;
+      }
+      const vacuum = this.vacuums.get(roomId);
+      if (vacuum) {
+        const v = this.vacuumVelocities.get(roomId);
+        bodies.push({
+          kind: 'vacuum',
+          x: vacuum.x,
+          y: vacuum.y,
+          vx: v?.vx ?? 0,
+          vy: v?.vy ?? 0,
+          radius: VACUUM_RADIUS,
+        });
+      }
+      const { x, y, vx, vy } = ball;
+      const event = stepBall(this.opts.map, ball, dt, bodies);
+      const kick = this.kicks.get(roomId);
+      this.kicks.delete(roomId);
+      const changed = ball.x !== x || ball.y !== y || ball.vx !== vx || ball.vy !== vy;
+      if (!changed && !kick && !ballMoving(ball)) {
+        continue;
+      }
+      ball.seq++;
+      const said = kick ? { event: 'kick' as const, by: kick.by, k: kick.k } : event ? { event } : {};
+      const { id, heading: angle } = ball;
+      this.opts.out.broadcast(conns, {
+        type: 'object_state',
+        id,
+        x: ball.x,
+        y: ball.y,
+        angle,
+        seq: ball.seq,
+        vx: ball.vx,
+        vy: ball.vy,
+        ...said,
       });
     }
   }

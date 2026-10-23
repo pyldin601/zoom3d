@@ -41,6 +41,8 @@ export interface ServerOptions {
   vacuum?: boolean;
   /** Dev only: new vacuums start one patch from done (`VACUUM_NEARLY_DONE=1`). */
   vacuumNearlyDone?: boolean;
+  /** Every new room gets a ball; on unless set to false. */
+  ball?: boolean;
 }
 
 export interface RunningServer {
@@ -144,6 +146,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     liveKitFor: (roomId, peerId) => ({ url: livekit.url, token: liveKitTokenFor(livekit, roomId, peerId) }),
     onEvent: (e) => observe(e, log, metrics),
     vacuum: opts.vacuum ?? true,
+    ball: opts.ball ?? true,
     vacuumNearlyDone: opts.vacuumNearlyDone,
   });
   const restored = opts.stateFile ? loadSnapshot(opts.stateFile, log) : null;
@@ -229,6 +232,8 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         lobby.cheers(conn);
       } else if (msg.type === 'boombox') {
         lobby.boombox(conn, msg);
+      } else if (msg.type === 'kick') {
+        lobby.kick(conn, msg);
       }
     });
     // The close reason is client-chosen text, so only the code is logged.
