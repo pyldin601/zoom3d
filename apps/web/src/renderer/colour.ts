@@ -30,7 +30,8 @@ function fromOklab(lightness: number, a: number, b: number): [number, number, nu
   ];
 }
 
-const luma = (r: number, g: number, b: number) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+/** Perceived brightness of linear r, g, b (Rec. 709 weights), on whatever scale the channels use. */
+export const luma = (r: number, g: number, b: number) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
 /**
  * What one unit of `light` reflected off a surface of colour `base` adds to it, per channel, never shifting it to a

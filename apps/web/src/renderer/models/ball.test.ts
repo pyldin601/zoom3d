@@ -1,6 +1,6 @@
 import { BALL_RADIUS } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
-import { BALL_MODEL, ballPatternAt, createBallRoll, recolourBall, rollBy } from './ball';
+import { BALL_MODEL, BALL_SHINE, ballPatternAt, createBallRoll, recolourBall, rollBy } from './ball';
 
 // Ball spec §5: a voxel sphere whose pattern rolls (the geometry stays put; the colours turn).
 const centreOf = (i: number) => {
@@ -61,5 +61,16 @@ describe('rolling', () => {
     recolourBall(BALL_MODEL, createBallRoll());
     expect(BALL_MODEL.colors).toBe(colors);
     expect(BALL_MODEL.base).toBe(base);
+  });
+
+  test('its dark patches shine and its white ones do not, as they roll', () => {
+    const roll = createBallRoll();
+    rollBy(roll, 0.13, -0.07);
+    recolourBall(BALL_MODEL, roll);
+    const white = Math.max(...BALL_MODEL.base);
+    for (const i of faces) {
+      expect(BALL_MODEL.shine[i]).toBe(BALL_MODEL.base[i] === white ? 0 : BALL_SHINE);
+    }
+    recolourBall(BALL_MODEL, createBallRoll());
   });
 });
