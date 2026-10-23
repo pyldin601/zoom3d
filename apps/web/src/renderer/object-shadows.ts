@@ -38,13 +38,14 @@ export function footprintRadius(model: VoxelModel): number {
 
 /**
  * The farthest any of object `v`'s shadow from lamp `l` lies from its centre, in tiles: its footprint, plus how far its
- * top throws a shadow past its far edge. Capped at the lamp's reach past the footprint, where the lamp lights nothing.
+ * top throws a shadow past its far edge. Capped where the shadow's cut of the lamp's reflection has faded out
+ * (REFLECTION_CUT_REACH), past the footprint.
  */
 export function shadowReach(v: VoxelInstance, l: Light): number {
   const r = footprintRadius(v.model);
   const h = v.model.height;
   const d = Math.sqrt((v.x - l.x) * (v.x - l.x) + (v.y - l.y) * (v.y - l.y));
-  return Math.min(r + ((d + r) * h) / (l.z - h), l.radius + r);
+  return Math.min(r + ((d + r) * h) / (l.z - h), l.radius * REFLECTION_CUT_REACH + r);
 }
 
 /** How much of lamp `l`'s disc the floor point (px, py) sees past object `v`, 0..1. */
@@ -53,7 +54,9 @@ export function objectSeenShare(v: VoxelInstance, l: Light, px: number, py: numb
   const oy = py - v.y;
   const r = footprintRadius(v.model);
   const reach = shadowReach(v, l);
-  const onLampSide = ox * (v.x - l.x) + oy * (v.y - l.y) < -r * Math.sqrt((v.x - l.x) ** 2 + (v.y - l.y) ** 2);
+  const lampDistance = Math.sqrt((v.x - l.x) ** 2 + (v.y - l.y) ** 2);
+  // Nearer the lamp than its disc's edge, sight lines to the disc's far side cross the object from either side.
+  const onLampSide = lampDistance > r + LAMP_RADIUS && ox * (v.x - l.x) + oy * (v.y - l.y) < -r * lampDistance;
   if (ox * ox + oy * oy > reach * reach || onLampSide) {
     return 1;
   }
@@ -143,6 +146,12 @@ export interface PatchedFloor {
 
 /** Under half a step of brightness (×255 scale) a shadow changes nothing, so the cell isn't tested. */
 const UNSEEN_LOSS = 0.5;
+/**
+ * A lamp's floor light ends at its radius, but its reflection on the floor never does (lighting.ts lampLit). Past the
+ * radius a shadow still cuts the reflection, fading out by this many radii from the lamp: cut off sharply there, the
+ * reflection came back along a hard row.
+ */
+const REFLECTION_CUT_REACH = 1.5;
 /** How much of a lamp's light an object's shadow takes away: 1 is all of it. */
 export const OBJECT_SHADOW_DARKNESS = 1;
 
@@ -177,8 +186,18 @@ export function shadeFloor(
   }
 }
 
-/** Whether lamp `l` lights the floor round object `v`: its shadow lies within the lamp's reach. */
-const reaches = (v: VoxelInstance, l: Light) => (v.x - l.x) ** 2 + (v.y - l.y) ** 2 < l.radius * l.radius;
+/** Whether object `v`'s shadow from lamp `l` shows: it stands within the reach of the lamp's light or its cut reflection. */
+const reaches = (v: VoxelInstance, l: Light) =>
+  (v.x - l.x) ** 2 + (v.y - l.y) ** 2 < (l.radius * REFLECTION_CUT_REACH) ** 2;
+
+/**
+ * How much of a shadow's cut of lamp `l`'s reflection shows `distance` tiles from it: all of it within the lamp's
+ * radius, easing out to none at REFLECTION_CUT_REACH radii.
+ */
+function reflectionCut(l: Light, distance: number): number {
+  const t = Math.min(1, Math.max(0, (distance - l.radius) / (l.radius * (REFLECTION_CUT_REACH - 1))));
+  return 1 - t * t * (3 - 2 * t);
+}
 
 /**
  * Shades the cells of the box round object `v`'s shadow from lamp `l` (index `li`) that this lamp's pass hasn't yet:
@@ -223,14 +242,17 @@ function shadeBox(
       const x = (cx + 0.5) / FLOOR_SUB;
       const y = (cy + 0.5) / FLOOR_SUB;
       const lamp = floorLampLight(l, x, y);
-      if (lamp * brightest < UNSEEN_LOSS || tileAt(lm.map, Math.floor(x), Math.floor(y)) !== 0) {
+      const slot = listedSlot(lm, cell, li);
+      const cut = slot < 0 ? 0 : reflectionCut(l, Math.sqrt((x - l.x) ** 2 + (y - l.y) ** 2));
+      if ((lamp * brightest < UNSEEN_LOSS && cut === 0) || tileAt(lm.map, Math.floor(x), Math.floor(y)) !== 0) {
         continue;
       }
       const objectSeen = seenPastObjects(objects, l, x, y);
       if (objectSeen === 1) {
         continue;
       }
-      shadeCell(lm, li, l, cell, x, y, lamp * (1 - objectSeen) * OBJECT_SHADOW_DARKNESS, objectSeen, albedo, tables);
+      const hidden = lamp * (1 - objectSeen) * OBJECT_SHADOW_DARKNESS;
+      shadeCell(lm, l, cell, slot, x, y, hidden, 1 - (1 - objectSeen) * cut, albedo, tables);
     }
   }
 }
@@ -248,21 +270,21 @@ function seenPastObjects(objects: readonly VoxelInstance[], l: Light, x: number,
 
 /**
  * Takes `hidden` of lamp `l`'s unobstructed light (times how much of the lamp the cell sees past walls, as baked) off
- * the floor cell, and scales its listed seen share of the lamp by `objectSeen`.
+ * the floor cell, and scales its seen share of the lamp in the reflection lists (at `slot`, −1 when unlisted) by
+ * `reflectionSeen`.
  */
 function shadeCell(
   lm: Lighting,
-  li: number,
   l: Light,
   cell: number,
+  slot: number,
   x: number,
   y: number,
   hidden: number,
-  objectSeen: number,
+  reflectionSeen: number,
   albedo: number,
   tables: PatchedFloor
 ): void {
-  const slot = listedSlot(lm, cell, li);
   const pastWalls = slot >= 0 ? (lm.floorLampSeen[slot] as number) / 255 : seenShare(lm.map, x, y, l);
   if (pastWalls === 0) {
     return;
@@ -275,7 +297,7 @@ function shadeCell(
   const b = Math.max(0, ((c >>> 16) & 0xff) - Math.round(((albedo >>> 16) & 0xff) * l.b * k));
   tables.floor[cell] = ((c & 0xff000000) | (b << 16) | (g << 8) | r) >>> 0;
   if (slot >= 0) {
-    tables.floorLampSeen[slot] = Math.round((tables.floorLampSeen[slot] as number) * objectSeen);
+    tables.floorLampSeen[slot] = Math.round((tables.floorLampSeen[slot] as number) * reflectionSeen);
   }
 }
 

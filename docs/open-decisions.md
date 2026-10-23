@@ -481,13 +481,16 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     cells the object hides from it, per frame, in patched copies of the floor tables (the avatar glow's path,
     `renderer/object-shadows.ts`): the share is sampled at 13 points across the lamp's disc against the model's
     top-down column heights, so the sides and the tip are soft, on the same 1/8-tile cells as the walls' shadows. The
-    cell's `floorLampSeen` shrinks by the same share, so the floor's lamp reflection is cut there too. Shadows stay on
+    cell's `floorLampSeen` shrinks by the same share, so the floor's lamp reflection is cut there too; the floor light
+    ends at the lamp's radius but its reflection doesn't, so the cut eases out between 1 and 1.5 radii from the lamp
+    instead of stopping at a hard row. Shadows stay on
     the floor (a long ball shadow stops at a wall's base), and none where no lamp reaches: the round contact shadow
     went (product owner: "let em float"). The floor also mirrors each object: drawn upside down in its lit colours
     (models gained bottom faces for it), box-blurred 0.06 tiles, mixed at 10% and fading out by `REFLECTION_RANGE`,
     in reflection modes `both` and `only`. Cost (`pnpm bench:sprites`, LEVEL1 at 640×360, about 1.3 objects a pose):
-    lit `renderWalls` 1.45 → 1.54 ms with shadows, 1.83 ms with the mirror too. Shadow darkness, mirror strength and
-    blur are untuned by eye.
+    lit `renderWalls` 1.45 → 1.54 ms with shadows, 1.83 ms with the mirror too (before the cut's longer reach,
+    unremeasured). The worst case is a near object: one ball 2–3 tiles off costs about 0.36 ms, nearly all of it the
+    mirror's blur, which scales with its screen area. Shadow darkness, mirror strength and blur are untuned by eye.
   - Not done yet: rooms get no lamps of their own.
 
 ### D25 — A ray-traced renderer
