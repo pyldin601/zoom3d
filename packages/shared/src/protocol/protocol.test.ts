@@ -456,6 +456,56 @@ describe('world objects', () => {
   });
 });
 
+describe('the ball (ball spec §4)', () => {
+  const state = { type: 'object_state', id: 'b', x: 1, y: 2, angle: 0.5, seq: 3 };
+
+  test('parses a kick', () => {
+    expect(parseClientMessage(json({ type: 'kick', angle: 1.5, k: 2 }))).toEqual({ type: 'kick', angle: 1.5, k: 2 });
+  });
+
+  test('rejects a kick with a bad angle or counter', () => {
+    expect(parseClientMessage('{"type":"kick","angle":"1","k":1}')).toBeNull();
+    expect(parseClientMessage(json({ type: 'kick', angle: 1, k: -1 }))).toBeNull();
+    expect(parseClientMessage(json({ type: 'kick', angle: 1, k: 1.5 }))).toBeNull();
+    expect(parseClientMessage(json({ type: 'kick', angle: 1 }))).toBeNull();
+  });
+
+  test("object_state carries a ball's velocity and kick echo", () => {
+    const kicked = { ...state, vx: 1, vy: -2, event: 'kick', by: 'p1', k: 3 };
+    expect(parseServerMessage(json(kicked))).toEqual(kicked);
+  });
+
+  test('a bad velocity drops only the velocity', () => {
+    expect(parseServerMessage(json({ ...state, vx: 'fast', vy: 1 }))).toEqual(state);
+  });
+
+  test('a half kick echo is dropped', () => {
+    expect(parseServerMessage(json({ ...state, event: 'kick', by: 'p1' }))).toEqual({ ...state, event: 'kick' });
+  });
+
+  test('bounce parses as an event', () => {
+    expect(parseServerMessage(json({ ...state, event: 'bounce' }))).toEqual({ ...state, event: 'bounce' });
+  });
+
+  test('welcome objects keep a ball with its velocity, and one without reads as absent', () => {
+    const welcome = {
+      type: 'welcome',
+      selfId: 'p2',
+      resumeToken: 't',
+      color: '#3cb44b',
+      spawn: { x: 1, y: 2, angle: 0 },
+      peers: [],
+      livekit: { url: 'wss://lk.example', token: 'jwt' },
+    };
+    const moving = { id: 'b', kind: 'ball', x: 1, y: 2, angle: 0, vx: 3, vy: 0 };
+    const resting = { id: 'c', kind: 'ball', x: 1, y: 2, angle: 0 };
+    expect(parseServerMessage(json({ ...welcome, objects: [moving, resting] }))).toEqual({
+      ...welcome,
+      objects: [moving, resting],
+    });
+  });
+});
+
 describe('server fan-out (6d)', () => {
   test('constants', () => {
     expect(FANOUT_TICK_MS).toBe(66);

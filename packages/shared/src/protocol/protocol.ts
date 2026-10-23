@@ -59,12 +59,12 @@ export interface PeerInfo {
   boombox: boolean;
 }
 
-/** A server-driven thing in the room that isn't a person, like the robot vacuum (robot vacuum spec §4). */
-export type ObjectKind = 'vacuum';
-/** Something an object did on one step, for its sound (robot vacuum spec §5.2). */
-export type ObjectEvent = 'bump' | 'lost';
-const OBJECT_KINDS: readonly ObjectKind[] = ['vacuum'];
-const OBJECT_EVENTS: readonly ObjectEvent[] = ['bump', 'lost'];
+/** A server-driven thing in the room that isn't a person: the robot vacuum and the ball (robot vacuum spec §4). */
+export type ObjectKind = 'vacuum' | 'ball';
+/** Something an object did on one step, for its sound (robot vacuum spec §5.2, ball spec §4). */
+export type ObjectEvent = 'bump' | 'lost' | 'kick' | 'bounce';
+const OBJECT_KINDS: readonly ObjectKind[] = ['vacuum', 'ball'];
+const OBJECT_EVENTS: readonly ObjectEvent[] = ['bump', 'lost', 'kick', 'bounce'];
 
 export interface ObjectInfo {
   id: string;
@@ -72,6 +72,9 @@ export interface ObjectInfo {
   x: number;
   y: number;
   angle: number;
+  /** The ball's velocity in tiles/s; absent when still, and on the vacuum. */
+  vx?: number;
+  vy?: number;
 }
 
 /** Where and how a peer joins the room's LiveKit SFU (LiveKit spec §3). */
@@ -97,6 +100,8 @@ export type HeldMessage = { type: 'held'; item: HeldItem | null };
 export type DrinkMessage = { type: 'drink' };
 export type CheersMessage = { type: 'cheers' };
 export type BoomboxMessage = { type: 'boombox'; on: boolean };
+/** Kicks the ball the way `angle` faces; `k` counts the sender's kicks, so it recognises its own in `object_state`. */
+export type KickMessage = { type: 'kick'; angle: number; k: number };
 export type ClientMessage =
   | JoinMessage
   | StateMessage
@@ -104,7 +109,8 @@ export type ClientMessage =
   | HeldMessage
   | DrinkMessage
   | CheersMessage
-  | BoomboxMessage;
+  | BoomboxMessage
+  | KickMessage;
 
 export type ErrorCode = 'room_full' | 'invalid_room' | 'invalid_name' | 'not_joined' | 'outdated';
 const ERROR_CODES: readonly ErrorCode[] = ['room_full', 'invalid_room', 'invalid_name', 'not_joined', 'outdated'];
@@ -134,9 +140,23 @@ export type ServerMessage =
   | { type: 'peer_boombox'; id: string; on: boolean }
   | { type: 'peer_left'; id: string }
   | { type: 'peers'; s: PeerEntry[] }
-  | { type: 'object_state'; id: string; x: number; y: number; angle: number; seq: number; event?: ObjectEvent }
+  | {
+      type: 'object_state';
+      id: string;
+      x: number;
+      y: number;
+      angle: number;
+      seq: number;
+      event?: ObjectEvent;
+      vx?: number;
+      vy?: number;
+      /** On a person's kick of the ball: who kicked, and their kick counter from `kick`. */
+      by?: string;
+      k?: number;
+    }
   | { type: 'correction'; x: number; y: number; angle: number; seq: number }
   | { type: 'error'; code: ErrorCode; message: string };
+export type ObjectStateMessage = Extract<ServerMessage, { type: 'object_state' }>;
 
 const ROOM_ID = /^[A-Za-z0-9_-]{22}$/;
 const B64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -307,6 +327,9 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   if (m.type === 'boombox') {
     return isBool(m.on) ? { type: 'boombox', on: m.on } : null;
   }
+  if (m.type === 'kick') {
+    return isNum(m.angle) && isSeq(m.k) ? { type: 'kick', angle: m.angle, k: m.k } : null;
+  }
   return null;
 }
 
@@ -339,7 +362,12 @@ export function parseObjectInfo(v: unknown): ObjectInfo | null {
     return null;
   }
   const p = pose(v);
-  return p && { id: v.id, kind: v.kind as ObjectKind, ...p };
+  return p && { id: v.id, kind: v.kind as ObjectKind, ...p, ...velocity(v) };
+}
+
+/** A ball's velocity, kept only when both parts are numbers. */
+function velocity(m: Obj): { vx: number; vy: number } | Record<string, never> {
+  return isNum(m.vx) && isNum(m.vy) ? { vx: m.vx, vy: m.vy } : {};
 }
 
 export function parseServerMessage(raw: string): ServerMessage | null {
@@ -399,7 +427,8 @@ export function parseServerMessage(raw: string): ServerMessage | null {
         return null;
       }
       const event = OBJECT_EVENTS.includes(m.event as ObjectEvent) ? { event: m.event as ObjectEvent } : {};
-      return { type: 'object_state', id: m.id, ...p, seq: m.seq, ...event };
+      const echo = isStr(m.by) && isSeq(m.k) ? { by: m.by, k: m.k } : {};
+      return { type: 'object_state', id: m.id, ...p, seq: m.seq, ...event, ...velocity(m), ...echo };
     }
     case 'correction': {
       const p = pose(m);
