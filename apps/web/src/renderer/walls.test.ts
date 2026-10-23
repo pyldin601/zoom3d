@@ -1,7 +1,7 @@
 import { castRay, createRayHit, LEVEL1, parseMap } from '@zoom3d/shared';
 import { describe, expect, test, vi } from 'vitest';
 import { createView, setView } from './camera';
-import { createFramebuffer, DEFAULT_FOV, scaleRgb } from './framebuffer';
+import { createFramebuffer, DEFAULT_FOV, rgb, scaleRgb } from './framebuffer';
 import { GLOW_RADIUS, GLOW_STRENGTH, type Glow } from './glow';
 import { bakeLighting, corridorLights, REFLECTION_RANGE, SIDE_SHADE } from './lighting';
 import { BALL_MODEL } from './models/ball';
@@ -933,6 +933,34 @@ describe('renderWalls voxel mirror', () => {
         changed++;
         expect(Math.floor(i / bare.width)).toBeGreaterThanOrEqual(bare.height / 2);
         expect(Math.abs((i % bare.width) + 0.5 - bare.width / 2)).toBeLessThan(ballHalfWidth + spread);
+      }
+    }
+    expect(changed).toBeGreaterThan(20);
+  });
+
+  test('a person shows in the floor', () => {
+    const person = {
+      key: 'p',
+      x: 4.5,
+      y: 2.5,
+      color: rgb(10, 200, 10),
+      face: null,
+      speaking: 0,
+      bob: 0,
+      itemBob: 0,
+      sip: 0,
+      cheers: 0,
+      wobble: 0,
+      held: null,
+      boombox: false,
+    };
+    const shown = render([], { people: [person] });
+    const bare = render([]);
+    let changed = 0;
+    for (let i = 0; i < bare.pixels.length; i++) {
+      if (shown.pixels[i] !== bare.pixels[i]) {
+        changed++;
+        expect(Math.floor(i / bare.width)).toBeGreaterThanOrEqual(bare.height / 2);
       }
     }
     expect(changed).toBeGreaterThan(20);

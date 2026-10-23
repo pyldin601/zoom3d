@@ -19,6 +19,7 @@ import {
   sipTop,
 } from './held-items';
 import type { Lighting } from './lighting';
+import type { FloorMirror } from './mirror';
 import { type HeldPose, poseBlend } from './sip';
 import { renderVoxel, type VoxelInstance, voxelDepth } from './voxels';
 
@@ -433,6 +434,50 @@ function drawDisc(fb: Framebuffer, s: Sprite, { screenX, depth, size }: Projecti
       } else {
         pixels[row * w + col] = color;
       }
+    }
+  }
+}
+
+/** mirrorDisc's projection, reused. */
+const mirrored: Projection = { screenX: 0, depth: 0, size: 0 };
+
+/**
+ * Plots the person's image in the floor (floor mirror spec §3.3): the disc upside down, as far under the floor as it
+ * floats over it, its face read bottom to top, depth-tested per column like the disc. Unlit, as the disc is.
+ */
+export function mirrorDisc(fb: Framebuffer, view: View, s: Sprite, mirror: FloorMirror): void {
+  if (!projectSprite(view, s.x, s.y, mirrored)) {
+    return;
+  }
+  const { width: w, height: h, zbuffer } = fb;
+  const { screenX, depth, size } = mirrored;
+  const { color, face } = s;
+  const ring = ringColour(s);
+  const r = size / 2;
+  const r2 = r * r;
+  const faceR2 = r2 * FACE_RADIUS * FACE_RADIUS;
+  const faceR = r * FACE_RADIUS;
+  // The disc's centre is EYE_HEIGHT plus its bob over the floor; its image as far under it.
+  const centreY = h / 2 + (2 * EYE_HEIGHT * view.proj) / depth + s.bob * BOB_HEIGHT * r;
+  const firstCol = Math.max(0, Math.floor(screenX - r));
+  const lastCol = Math.min(w - 1, Math.ceil(screenX + r));
+  const firstRow = Math.max(0, Math.floor(centreY - r));
+  const lastRow = Math.min(h - 1, Math.ceil(centreY + r));
+  for (let col = firstCol; col <= lastCol; col++) {
+    if (depth >= (zbuffer[col] as number)) {
+      continue;
+    }
+    const dx = col + 0.5 - screenX;
+    const u = faceTexel(dx, faceR, FACE_SIZE);
+    for (let row = firstRow; row <= lastRow; row++) {
+      const dy = row + 0.5 - centreY;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > r2) {
+        continue;
+      }
+      const colour =
+        d2 > faceR2 ? ring : face ? (face[faceTexel(-dy, faceR, FACE_SIZE) * FACE_SIZE + u] as number) : color;
+      mirror.plot(col, row, colour, 'hides');
     }
   }
 }

@@ -3,7 +3,7 @@
 // ceiling. Allocation-free per frame: scratch buffers are rebuilt only when the frame's size or FOV changes.
 
 import { castRay, createRayHit, type GameMap, type PlayerState } from '@zoom3d/shared';
-import { createView, EYE_HEIGHT, setView } from './camera';
+import { createView, EYE_HEIGHT, MIN_DEPTH, setView } from './camera';
 import { reflectedColour } from './colour';
 import { type Framebuffer, rgb, scaleRgb } from './framebuffer';
 import { GLOW_RADIUS, type Glow, glowLight } from './glow';
@@ -27,6 +27,7 @@ import {
 } from './lighting';
 import { createFloorMirror } from './mirror';
 import { type PatchedFloor, shadeFloor } from './object-shadows';
+import { mirrorDisc, type Sprite } from './sprites';
 import { GLOSS, REFLECTION_MATERIAL, RELIEF, RELIEF_LEVELS, type ReflectionMaterial, TEX } from './textures';
 import { renderVoxelMirror, type VoxelInstance, voxelDepth } from './voxels';
 
@@ -76,6 +77,8 @@ export interface Room {
   reflections?: ReflectionMode;
   /** Voxel objects, whose shadows a lit room's floor shows; none when left out. */
   objects?: readonly VoxelInstance[];
+  /** People, whose images the floor shows; none when left out. */
+  people?: readonly Sprite[];
 }
 
 /** The floor (or ceiling) points along one screen row, in lightmap cells. */
@@ -94,15 +97,17 @@ interface LitRoom extends Room {
   reflections: ReflectionMode;
   glows: readonly Glow[];
   objects: readonly VoxelInstance[];
+  people: readonly Sprite[];
   /** What one unit of each lamp's reflection adds, r, g, b, per texture then the floor (see reflectionColours). */
   reflectionColours: Float64Array;
 }
 
 const NO_GLOWS: readonly Glow[] = [];
 const NO_OBJECTS: readonly VoxelInstance[] = [];
+const NO_PEOPLE: readonly Sprite[] = [];
 /** This frame's images in the floor: the walls', then the objects', far to near (floor mirror spec §3). */
 const floorMirror = createFloorMirror();
-/** Objects in front of the eye, far to near, with their depths, for their mirrors. */
+/** People then objects in front of the eye (an object's index after the people's), far to near, with their depths. */
 const mirrorOrder: number[] = [];
 const mirrorDepths: number[] = [];
 const mirrorsFarFirst = (a: number, b: number) => Math.sign((mirrorDepths[b] as number) - (mirrorDepths[a] as number));
@@ -261,7 +266,7 @@ function drawLitRoom(fb: Framebuffer, room: LitRoom): void {
     floorMirror.fit(fb.width, fb.height);
     floorMirror.clear();
     mirrorWalls(fb);
-    mirrorObjects(fb, room);
+    mirrorPeopleAndObjects(fb, room);
     floorMirror.blur(mirrorBlurPx);
     addFloorAndCeilingReflections(fb, room, tables.floorLampSeen);
     floorMirror.addInto(fb, MIRROR_STRENGTH, mirrorWeight, wallEnd);
@@ -283,12 +288,12 @@ function mirrorWalls(fb: Framebuffer): void {
   }
 }
 
-/** The objects' images in the floor, far to near, over the walls' (voxel shadows spec §3.3). */
-function mirrorObjects(fb: Framebuffer, room: LitRoom): void {
-  const { objects } = room;
+/** The people's and objects' images in the floor, far to near, over the walls' (floor mirror spec §3.1). */
+function mirrorPeopleAndObjects(fb: Framebuffer, room: LitRoom): void {
+  const { people, objects } = room;
   let count = 0;
-  for (let i = 0; i < objects.length; i++) {
-    const depth = voxelDepth(view, objects[i] as VoxelInstance);
+  for (let i = 0; i < people.length + objects.length; i++) {
+    const depth = depthOfMirrored(room, i);
     if (depth >= 0) {
       mirrorDepths[i] = depth;
       mirrorOrder[count++] = i;
@@ -298,18 +303,33 @@ function mirrorObjects(fb: Framebuffer, room: LitRoom): void {
   mirrorOrder.length = count;
   mirrorOrder.sort(mirrorsFarFirst);
   for (const i of mirrorOrder) {
-    renderVoxelMirror(fb, view, objects[i] as VoxelInstance, room.lighting, floorMirror);
+    if (i < people.length) {
+      mirrorDisc(fb, view, people[i] as Sprite, floorMirror);
+    } else {
+      renderVoxelMirror(fb, view, objects[i - people.length] as VoxelInstance, room.lighting, floorMirror);
+    }
   }
 }
 
+/** The camera depth of the `i`th of the room's people then objects, or −1 behind the eye. */
+function depthOfMirrored({ people, objects }: LitRoom, i: number): number {
+  if (i >= people.length) {
+    return voxelDepth(view, objects[i - people.length] as VoxelInstance);
+  }
+  const s = people[i] as Sprite;
+  const depth = view.invDet * (-view.planeY * (s.x - view.x) + view.planeX * (s.y - view.y));
+  return depth < MIN_DEPTH ? -1 : depth;
+}
+
 function litRoomFor(room: Room, lighting: Lighting, glows: readonly Glow[]): LitRoom {
-  const { map, eye, textures, reflections = 'both', objects = NO_OBJECTS } = room;
+  const { map, eye, textures, reflections = 'both', objects = NO_OBJECTS, people = NO_PEOPLE } = room;
   const reflectionColours = reflectionColoursOf(textures, lighting);
   if (!litRoom) {
-    litRoom = { map, eye, lighting, textures, reflections, glows, objects, reflectionColours };
+    litRoom = { map, eye, lighting, textures, reflections, glows, objects, people, reflectionColours };
     return litRoom;
   }
   litRoom.objects = objects;
+  litRoom.people = people;
   litRoom.map = map;
   litRoom.eye = eye;
   litRoom.lighting = lighting;

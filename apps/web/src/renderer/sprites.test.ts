@@ -20,10 +20,12 @@ import {
   sipTop,
 } from './held-items';
 import { SIDE_SHADE } from './lighting';
+import { createFloorMirror } from './mirror';
 import {
   AVATAR_RADIUS,
   BOB_HEIGHT,
   hexToRgb,
+  mirrorDisc,
   mixWhite,
   type Projection,
   projectSprite,
@@ -987,4 +989,77 @@ test('projectSprite size scales with 1/tan(fov/2)', () => {
   projectSprite(viewOf(296, (66 * Math.PI) / 180), player.x + 2, player.y, a);
   projectSprite(viewOf(296, (50 * Math.PI) / 180), player.x + 2, player.y, b);
   expect(b.size / a.size).toBeCloseTo(Math.tan((33 * Math.PI) / 180) / Math.tan((25 * Math.PI) / 180), 9);
+});
+
+describe('mirrorDisc', () => {
+  const RED = rgb(200, 0, 0);
+  const BLUE = rgb(0, 0, 200);
+  const eye: PlayerState = { x: 1.5, y: 2.5, angle: 0 };
+  /** A face red on its top half, blue on its bottom half. */
+  const face = Uint32Array.from({ length: FACE_SIZE * FACE_SIZE }, (_, i) =>
+    i < (FACE_SIZE * FACE_SIZE) / 2 ? RED : BLUE
+  );
+  const person = (x: number, y = 2.5): Sprite => ({
+    key: 'p',
+    x,
+    y,
+    color: rgb(10, 200, 10),
+    face,
+    speaking: 0,
+    bob: 0,
+    itemBob: 0,
+    sip: 0,
+    cheers: 0,
+    wobble: 0,
+    held: null,
+    boombox: false,
+  });
+  const mirrorOf = (s: Sprite) => {
+    const fb = createFramebuffer();
+    fb.zbuffer.fill(Number.POSITIVE_INFINITY);
+    const view = setView(createView(), fb, eye);
+    const mirror = createFloorMirror();
+    mirror.fit(fb.width, fb.height);
+    mirror.clear();
+    mirrorDisc(fb, view, s, mirror);
+    return { fb, mirror };
+  };
+  /** The shown rows of the middle column, top to bottom. */
+  const shownRows = (fb: Framebuffer, mirror: ReturnType<typeof createFloorMirror>, col: number) =>
+    [...Array(fb.height).keys()].filter((y) => mirror.shownAt(col, y));
+
+  test('a person’s image is upside down under the disc', () => {
+    const { fb, mirror } = mirrorOf(person(4.5));
+    const col = fb.width / 2;
+    const rows = shownRows(fb, mirror, col);
+    expect(rows.length).toBeGreaterThan(10);
+    expect(rows.every((y) => y > fb.height / 2)).toBe(true);
+    // The face's middle: its top half (red) lands lowest in the floor.
+    const faceRows = rows.slice(Math.floor(rows.length * 0.2), Math.ceil(rows.length * 0.8));
+    mirror.blur(new Float64Array(fb.height));
+    const colourAt = (y: number) => {
+      const out = createFramebuffer();
+      out.pixels.fill(rgb(0, 0, 0));
+      mirror.addInto(out, 1, new Float64Array(fb.height).fill(1), new Int32Array(fb.width));
+      return out.pixels[y * fb.width + col] as number;
+    };
+    expect(colourAt(faceRows.at(-1) ?? 0) & 0xff).toBeGreaterThan(100);
+    expect((colourAt(faceRows.at(0) ?? 0) >>> 16) & 0xff).toBeGreaterThan(100);
+  });
+
+  test('a person off the frame’s edge plots only on screen', () => {
+    const { fb, mirror } = mirrorOf(person(3.5, 3.4));
+    let shown = 0;
+    for (let y = 0; y < fb.height; y++) {
+      for (let x = 0; x < fb.width; x++) {
+        shown += mirror.shownAt(x, y) ? 1 : 0;
+      }
+    }
+    expect(shown).toBeGreaterThan(0);
+  });
+
+  test('a person behind the eye has no image', () => {
+    const { fb, mirror } = mirrorOf(person(0.8));
+    expect([...Array(fb.width).keys()].some((x) => shownRows(fb, mirror, x).length > 0)).toBe(false);
+  });
 });
