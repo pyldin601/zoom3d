@@ -118,6 +118,13 @@ export function createFloorMirror(): FloorMirror {
   /** The hiding coverage is blurred only when something hides: walls alone never do. */
   const blurredChannels = () => (hides ? CHANNELS : CHANNELS - 1);
 
+  /**
+   * How many texels of a window `radius` each way from `at` lie in the frame, `size` long: the window's average counts
+   * only those, or an image would fade towards the frame's edges where the room goes on.
+   */
+  const inFrame = (at: number, radius: number, size: number) =>
+    Math.min(at + radius, size - 1) - Math.max(at - radius, 0) + 1;
+
   /** Across each row: running sums of every channel at once over the row's window; past its ends counts as empty. */
   const blurAcross = (radiusPx: Float64Array) => {
     const channels = blurredChannels();
@@ -137,8 +144,8 @@ export function createFloorMirror(): FloorMirror {
           sums[ch] = (sums[ch] as number) + (line[hx * CHANNELS + ch] as number);
         }
       }
-      const span = 2 * radius + 1;
       for (let hx = 0; hx < halfWidth; hx++) {
+        const span = inFrame(hx, radius, halfWidth);
         const entering = hx + radius < halfWidth ? (hx + radius) * CHANNELS : -1;
         const leaving = hx - radius - 1 >= 0 ? (hx - radius - 1) * CHANNELS : -1;
         for (let ch = 0; ch < channels; ch++) {
@@ -174,7 +181,8 @@ export function createFloorMirror(): FloorMirror {
         const radius = halfRadius(radiusPx, hy);
         const first = (Math.max(blurredTop, hy - radius) - blurredTop) * CHANNELS;
         const last = (Math.min(blurredBottom - 1, hy + radius) - blurredTop + 1) * CHANNELS;
-        const span = 2 * radius + 1;
+        // Rows between the blurred ones and the frame's edges are empty; past the edges there's nothing to count.
+        const span = inFrame(hy, radius, halfHeight);
         const at = (hy * halfWidth + hx) * CHANNELS;
         for (let ch = 0; ch < channels; ch++) {
           texels[at + ch] = ((totals[last + ch] as number) - (totals[first + ch] as number)) / span;

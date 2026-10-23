@@ -66,6 +66,25 @@ describe('FloorMirror', () => {
     expect(reach(across(25)) - reach(across(15))).toBeGreaterThanOrEqual(4);
   });
 
+  test('the blur keeps an image whole up to the frame’s edges', () => {
+    const m = mirrorOf();
+    for (let y = 0; y < 40; y++) {
+      for (let x = 0; x < 40; x++) {
+        m.plot(x, y, RED, 'shows');
+      }
+    }
+    m.blur(flat(8));
+    for (const [x, y] of [
+      [0, 20],
+      [39, 20],
+      [20, 39],
+      [0, 39],
+      [39, 0],
+    ] as const) {
+      expect(m.coverageAt(x, y)).toBeCloseTo(1, 5);
+    }
+  });
+
   test('clear empties what was plotted', () => {
     const m = mirrorOf();
     m.plot(20, 20, RED, 'hides');
