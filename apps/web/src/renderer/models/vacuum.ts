@@ -6,7 +6,7 @@ import { buildModel, glowing } from '../voxels';
 const SKIRT = rgb(0x3c, 0x32, 0x2d);
 const BODY = rgb(0xe8, 0x78, 0x28);
 const TOP = rgb(0xf5, 0x8c, 0x37);
-/** The disc on top and the eyes glow: full colour even in the dark, untouched by lamps and shadows. */
+/** The disc on top and the eyes glow: their full colour in the dark, fading to plain lit paint under a bright lamp. */
 const TOP_CENTRE = glowing(rgb(0xfa, 0xd2, 0x50), 1);
 const BUMPER = rgb(0x46, 0x46, 0x4b);
 const EYES = glowing(rgb(0xff, 0xff, 0xd2), 1);

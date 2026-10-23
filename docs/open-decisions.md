@@ -364,9 +364,14 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - `?lights=off` shows the old flat look.
   - **Voxel objects are lit too** (2026-10-13), per frame: the lamps in reach and in sight of the object's centre
     light each of its five face directions. The old flat shading only scales the ambient part.
-  - **Voxels can glow** (`glow(colour, L)` in a model, L 0..1): the face is blended towards its own colour, untouched
+  - **Voxels can glow** (`glowing(colour, L)` in a model, L 0..1): the face is blended towards its own colour, untouched
     by ambient, lamps, shadows and flat shading; at 1 it's always full colour. Glow lights nothing around it. The
     vacuum's eyes and the disc on top glow fully.
+    - *Amended 2026-10-23* (owner): one emission rule for every voxel, the ball's. A glow becomes the face's
+      **shine** (its colour × L). The face reflects light like paint, and the shine adds on top, fading with the
+      luminance of the light on it (`1 − smoothstep(0, 0.6, luma)`): whole in the dark, gone in a bright spot, never
+      tinted by a coloured lamp. Flat shading ignores it. The vacuum's eyes and disc are full colour in the dark and
+      plain cream and yellow paint under a lamp; the ball's dark patches glow a faint green.
   - **Brick relief, lit by the lamps** (2026-10-13): stone and blue-stone bricks catch lamp light on their top row,
     darken on their bottom row and shade the mortar under them (`RELIEF` in `renderer/textures.ts`, lit from above
     like the ceiling lamps). Only lamp light is scaled, so relief fades away between lamps. The bake stores each wall

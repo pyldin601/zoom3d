@@ -1,7 +1,7 @@
 import { type PlayerState, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { createView, setView } from './camera';
-import { createFramebuffer, rgb } from './framebuffer';
+import { createFramebuffer, rgb, scaleRgb } from './framebuffer';
 import { bakeLighting, type Light } from './lighting';
 import { VACUUM_MODEL } from './models/vacuum';
 import { renderSprites, type Sprite } from './sprites';
@@ -63,15 +63,15 @@ describe('buildModel', () => {
 });
 
 describe('glowing voxels', () => {
-  test("buildModel keeps each face's glow; plain colours get none", () => {
+  test('buildModel turns a glow into its shine: the colour times the amount; plain colours get none', () => {
     const m = buildModel({ x: 2, y: 1, z: 1 }, 0.1, (x) => (x === 0 ? RED : glowing(RED, 0.75)));
     const byX = new Map<number, Set<number>>();
     for (let f = 0; f < m.faceCount; f++) {
       const x = Math.min(m.corners[f * 12] as number, m.corners[f * 12 + 3] as number) < 0 ? 0 : 1;
-      byX.set(x, (byX.get(x) ?? new Set()).add(m.glow[f] as number));
+      byX.set(x, (byX.get(x) ?? new Set()).add(m.shine[f] as number));
     }
     expect(byX.get(0)).toEqual(new Set([0]));
-    expect(byX.get(1)).toEqual(new Set([0.75]));
+    expect(byX.get(1)).toEqual(new Set([scaleRgb(RED, 0.75)]));
   });
 
   test('a glowing voxel keeps its colour in the plain (unlit) shading', () => {
@@ -96,9 +96,9 @@ describe('the vacuum model', () => {
   test('its eyes and the disc on top glow; nothing else does', () => {
     const glowingColours = new Set<number>();
     for (let f = 0; f < VACUUM_MODEL.faceCount; f++) {
-      if ((VACUUM_MODEL.glow[f] as number) > 0) {
+      if ((VACUUM_MODEL.shine[f] as number) !== 0) {
         glowingColours.add(VACUUM_MODEL.base[f] as number);
-        expect(VACUUM_MODEL.glow[f]).toBe(1);
+        expect(VACUUM_MODEL.shine[f]).toBe(VACUUM_MODEL.base[f]);
       }
     }
     expect(glowingColours).toEqual(new Set([rgb(0xff, 0xff, 0xd2), rgb(0xfa, 0xd2, 0x50)]));
@@ -222,23 +222,25 @@ describe('renderVoxel with lighting', () => {
     expect(red(lit)).toBeGreaterThan(red(dark));
   });
 
-  test('a fully glowing voxel shows its own colour on every face, whatever the light', () => {
-    const lit = (l: Light[]) => {
+  describe('glowing voxels shine like the ball (one emission rule for every model)', () => {
+    const glowingIn = (amount: number, ambient: number) => {
       const fb = blank();
-      const model = buildModel({ x: 1, y: 1, z: 1 }, 0.2, () => glowing(RED, 1));
-      renderVoxel(fb, view, { ...box, model }, bakeLighting(room, l, 0.45, RED, RED));
+      const model = buildModel({ x: 1, y: 1, z: 1 }, 0.2, () => glowing(RED, amount));
+      renderVoxel(fb, view, { ...box, model }, bakeLighting(room, [], ambient, RED, RED));
       return drawn(fb);
     };
-    expect(lit([])).toEqual(new Set([RED]));
-    expect(lit([lamp])).toEqual(new Set([RED]));
-  });
 
-  test('half a glow is halfway between lit and its own colour', () => {
-    const fb = blank();
-    const model = buildModel({ x: 1, y: 1, z: 1 }, 0.2, () => glowing(RED, 0.5));
-    renderVoxel(fb, view, { ...box, model }, bakeLighting(room, [], 0.45, RED, RED));
-    // Top: 0.45 × 0.5 + 0.5; the face to the camera: 0.45 × 0.8 × 0.5 + 0.5.
-    expect(drawn(fb)).toEqual(new Set([scaled(RED, 0.725), scaled(RED, 0.68)]));
+    test('in a pitch-dark room a full glow shows its own colour on every face', () => {
+      expect(glowingIn(1, 0)).toEqual(new Set([RED]));
+    });
+
+    test('half a glow shows half its colour in the dark', () => {
+      expect(glowingIn(0.5, 0)).toEqual(new Set([scaleRgb(RED, 0.5)]));
+    });
+
+    test('in a bright room a glowing voxel reflects like paint', () => {
+      expect(glowingIn(1, 1)).toEqual(new Set([RED, scaled(RED, 0.8)]));
+    });
   });
 
   describe("shine (glow-in-the-dark: the ball's dark patches)", () => {

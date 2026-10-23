@@ -19,13 +19,11 @@ export interface VoxelModel {
   /** The same colours unshaded, and each face's direction (lighting.ts DIR_*), for lit rooms. */
   base: Uint32Array;
   dirs: Uint8Array;
-  /** Per face, 0..1: how much it glows. A glowing face shows its own colour, untouched by light and shadow. */
-  glow: Float32Array;
   /**
-   * Per face, a packed rgb() it gives off like glow-in-the-dark paint (0 for none). In a lit room the face reflects as
-   * any other, and the shine is added on top, fading out smoothly as the light on the face brightens (see
-   * shineFade): whole in the dark, gone in a bright room. The plain (unlit) shading ignores it. Models build with
-   * none; a model may set it per face, as the ball does for its dark patches.
+   * Per face, a packed rgb() it gives off, like glow-in-the-dark paint or a small lamp (0 for none). In a lit room the
+   * face reflects as any other, and the shine is added on top, fading out smoothly as the light on the face brightens
+   * (see shineFade): whole in the dark, gone in a bright room. The plain (unlit) shading ignores it. buildModel makes
+   * it from glowing() voxels; a model may also set it per face, as the ball does for its dark patches.
    */
   shine: Uint32Array;
   /** Top of the model above the floor, in tiles. */
@@ -50,7 +48,7 @@ export interface VoxelGridSize {
   z: number;
 }
 
-/** A voxel that glows: `glow` 0 is lit like any other, 1 always shows `color` itself. */
+/** A voxel that glows: its shine is `color` times `glow` (0 none, 1 its whole colour in the dark). */
 export interface GlowingVoxel {
   color: number;
   glow: number;
@@ -99,7 +97,7 @@ export function buildModel(
   const colors: number[] = [];
   const base: number[] = [];
   const dirs: number[] = [];
-  const glows: number[] = [];
+  const shines: number[] = [];
   for (let z = 0; z < sz; z++) {
     for (let y = 0; y < sy; y++) {
       for (let x = 0; x < sx; x++) {
@@ -124,7 +122,7 @@ export function buildModel(
           colors.push(scaleRgb(color, face.shade));
           base.push(color);
           dirs.push(dir);
-          glows.push(typeof cell === 'number' ? 0 : cell.glow);
+          shines.push(typeof cell === 'number' ? 0 : scaleRgb(color, cell.glow));
         }
       }
     }
@@ -136,8 +134,7 @@ export function buildModel(
     colors: Uint32Array.from(colors),
     base: Uint32Array.from(base),
     dirs: Uint8Array.from(dirs),
-    glow: Float32Array.from(glows),
-    shine: new Uint32Array(colors.length),
+    shine: Uint32Array.from(shines),
     height: sz * voxel,
     faceCount: colors.length,
     shadowRadius: (Math.max(sx, sy) * voxel) / 2,
@@ -262,21 +259,19 @@ function shineFade(r: number, g: number, b: number): number {
 
 /**
  * Face `f`'s colour in a lit room: unshaded, times `light` on its direction (see directionLight), which may overbright,
- * blended towards the colour itself as far as the face glows, plus whatever of its shine the light leaves visible.
+ * plus whatever of its shine the light leaves visible.
  */
-function litColor({ base, dirs, glow: glows, shine: shines }: VoxelModel, f: number, light: Float64Array): number {
+function litColor({ base, dirs, shine: shines }: VoxelModel, f: number, light: Float64Array): number {
   const c = base[f] as number;
   const dir = dirs[f] as number;
-  const glow = glows[f] as number;
-  const lit = 1 - glow;
   const lr = light[dir * 3] as number;
   const lg = light[dir * 3 + 1] as number;
   const lb = light[dir * 3 + 2] as number;
   const s = shines[f] as number;
-  const shown = s === 0 ? 0 : shineFade(lr, lg, lb) * lit;
-  let r = ((c & 0xff) * (lr * lit + glow) + (s & 0xff) * shown) | 0;
-  let g = (((c >>> 8) & 0xff) * (lg * lit + glow) + ((s >>> 8) & 0xff) * shown) | 0;
-  let b = (((c >>> 16) & 0xff) * (lb * lit + glow) + ((s >>> 16) & 0xff) * shown) | 0;
+  const shown = s === 0 ? 0 : shineFade(lr, lg, lb);
+  let r = ((c & 0xff) * lr + (s & 0xff) * shown) | 0;
+  let g = (((c >>> 8) & 0xff) * lg + ((s >>> 8) & 0xff) * shown) | 0;
+  let b = (((c >>> 16) & 0xff) * lb + ((s >>> 16) & 0xff) * shown) | 0;
   if (r > 255) {
     r = 255;
   }
