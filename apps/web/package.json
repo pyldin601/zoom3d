@@ -8,7 +8,7 @@
     "e2e": "playwright test"
   },
   "dependencies": {
-    "@amplitude/analytics-browser": "2.47.5",
+    "@amplitude/analytics-browser": "2.48.1",
     "@mediapipe/tasks-vision": "1.1.1",
     "@sentry/browser": "11.8.0",
     "@zoom3d/shared": "workspace:*",
