@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@amplitude/analytics-browser": "2.47.5",
-    "@mediapipe/tasks-vision": "1.1.1",
+    "@mediapipe/tasks-vision": "1.2.0",
     "@sentry/browser": "11.8.0",
     "@zoom3d/shared": "workspace:*",
     "livekit-client": "2.22.4"
