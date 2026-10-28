@@ -673,7 +673,10 @@ function drawLitWallSlice(fb: Framebuffer, room: LitRoom): void {
 
 // Floor and ceiling.
 
-/** The frame's floor tables: built by its first pass, reused by its windows' passes (they cost per frame, not per pass). */
+/**
+ * The frame's floor tables: built by its first pass, reused by its windows' passes (they cost per frame, not per
+ * pass).
+ */
 function floorTablesForPass(room: LitRoom): FloorTables {
   if (!isWindowPass(pass) || passFloorTables === null) {
     passFloorTables = floorAndCeilingColours(room);

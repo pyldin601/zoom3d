@@ -187,7 +187,10 @@ export function renderSprites(fb: Framebuffer, scene: PeopleAndObjects, facts?: 
   drawFarToNear(fb, view, scene, pass);
 }
 
-/** Zeroes every entry in `facts` (but in a window's pass), then points spriteFacts at each sprite's, adding the missing ones. */
+/**
+ * Zeroes every entry in `facts` (but in a window's pass), then points spriteFacts at each sprite's, adding the missing
+ * ones.
+ */
 function bindFacts(sprites: readonly Sprite[], facts: Map<string, PeerFacts> | undefined, pass: Pass): void {
   if (!isWindowPass(pass)) {
     facts?.forEach(zeroFacts);

@@ -43,7 +43,10 @@ export interface FloorMirror {
   hidingAt(x: number, y: number): number;
   /** The frame rows the blurred mirror covers, [top, bottom); empty when they're equal. */
   readonly rows: { top: number; bottom: number };
-  /** Adds `strength · weight[y]` of the mirror's colour to `fb`'s columns [fromCol, toCol), on rows from `floorFrom[x]` down. */
+  /**
+   * Adds `strength · weight[y]` of the mirror's colour to `fb`'s columns [fromCol, toCol), on rows from `floorFrom[x]`
+   * down.
+   */
   addInto(
     fb: Framebuffer,
     strength: number,
