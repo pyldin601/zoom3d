@@ -14,6 +14,8 @@ export function createPortalRayHit(): PortalRayHit {
 }
 
 const MAX_STEPS = 256;
+/** Tiles. A window pass starts on a plane its caller measured; this keeps rounding from stopping the ray on it. */
+const PLANE_EPSILON = 1e-6;
 
 /**
  * castRay from the eye, walking from nearDepth along (dx, dy) on; distances are still measured from the eye.
@@ -105,7 +107,7 @@ function stopsAtPlane(
   }
   const acrossNorthSouth = portal.door.axis === 'ns';
   const depth = acrossNorthSouth ? (portal.cy - ey) / dy : (portal.cx - ex) / dx;
-  if (!(depth > nearDepth)) {
+  if (!(depth > nearDepth + PLANE_EPSILON)) {
     return false;
   }
   const along = acrossNorthSouth ? ex + depth * dx : ey + depth * dy;

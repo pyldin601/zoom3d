@@ -110,4 +110,34 @@ describe('castPortalRay', () => {
     expect(hit.side).toBe(0);
     expect(hit.portal).toBe(-1);
   });
+
+  describe('a window pass starting on a plane', () => {
+    // Two doorways in one column, both facing north: a ray heading south meets A at depth 2, then B at depth 5.
+    const column = parseMap('1111111\n1.....1\n1..S..1\n11.1111\n1.....1\n1.....1\n11.1111\n1.....1\n1111111');
+    const doorAt = (y: number, to: number): Portal => ({
+      ...portalAt(2, to, 1),
+      door: { x: 2, y, axis: 'ns' },
+      cy: y + 0.5,
+    });
+    const doors: Portals = {
+      map: column,
+      list: [doorAt(3, 1), doorAt(6, 0)],
+      byTile: Int32Array.from({ length: column.width * column.height }, (_, tile) => {
+        const tileX = tile % column.width;
+        const tileY = Math.floor(tile / column.width);
+        return tileX === 2 && tileY === 3 ? 0 : tileX === 2 && tileY === 6 ? 1 : -1;
+      }),
+    };
+    const depthToA = 2;
+
+    it.each([
+      ['exact', depthToA],
+      ['one ulp above', depthToA * (1 + Number.EPSILON)],
+      ['one ulp below', depthToA * (1 - Number.EPSILON)],
+    ])('passes the plane it starts on and stops at the next (%s)', (_, nearDepth) => {
+      const hit = castPortalRay(column, doors, 2.5, 1.5, 0, 1, nearDepth, createPortalRayHit());
+      expect(hit.portal).toBe(1);
+      expect(hit.distance).toBeCloseTo(5);
+    });
+  });
 });
