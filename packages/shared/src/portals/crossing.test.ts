@@ -108,6 +108,14 @@ describe('stepPlayer through a portal', () => {
     expect(p.angle).toBeCloseTo(FACING_SOUTH + Math.PI);
   });
 
+  test('stepping in place (out is the state) still goes through', () => {
+    const pose = player(2.5, 3.3, FACING_SOUTH);
+    stepPlayer(MAP, pose, walkSouth, 0.1, pose, PORTALS);
+    expect(pose.x).toBeCloseTo(4.5);
+    expect(pose.y).toBeCloseTo(3.4);
+    expect(pose.angle).toBeCloseTo(FACING_SOUTH + Math.PI);
+  });
+
   test('the same input without portals ends where it always did', () => {
     const p = stepPlayer(MAP, player(2.5, 3.3, FACING_SOUTH), walkSouth, 0.1, player(0, 0));
     expect(p.x).toBeCloseTo(2.5);

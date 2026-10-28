@@ -74,10 +74,12 @@ export function stepPlayer(
   const dx = (forward * cos - strafe * sin) * step;
   const dy = (forward * sin + strafe * cos) * step;
 
-  const moved = moveWithCollision(map, s.x, s.y, dx, dy);
+  const startX = s.x;
+  const startY = s.y;
+  const moved = moveWithCollision(map, startX, startY, dx, dy);
   out.x = moved.x;
   out.y = moved.y;
   out.angle = angle;
-  carryThroughPortal(portals, s.x, s.y, out);
+  carryThroughPortal(portals, startX, startY, out);
   return out;
 }
