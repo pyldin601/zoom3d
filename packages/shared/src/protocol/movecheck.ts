@@ -7,7 +7,7 @@ import type { Portals } from '../portals/wiring';
 const SPEED_TOLERANCE = 1.5;
 const SLACK_TILES = 0.5;
 
-const apparentTarget: Apparent = { x: 0, y: 0, sees: false, through: 0 };
+const apparentTarget: Apparent = { x: 0, y: 0, sees: false, through: 0, cos: 1, sin: 0 };
 
 /** With portals, a step through a doorway is short as seen from `from`: the distance is to where `to` appears. */
 export function isPlausibleMove(

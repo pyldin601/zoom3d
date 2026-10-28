@@ -26,6 +26,9 @@ export interface Apparent {
   sees: boolean;
   /** How many portals the target is seen through. */
   through: 0 | 1 | 2;
+  /** Turns a direction in the target's frame into the listener's (the identity when `through` is 0). */
+  cos: number;
+  sin: number;
 }
 
 type Point = { x: number; y: number };
@@ -33,7 +36,7 @@ type Point = { x: number; y: number };
 const NEAR_TILES_SQUARED = NEAR_TILES * NEAR_TILES;
 
 const crossing = { t: 0 };
-const best = { x: 0, y: 0, sees: false, through: 0 as Apparent['through'], distanceSquared: 0 };
+const best = { x: 0, y: 0, sees: false, through: 0 as Apparent['through'], distanceSquared: 0, cos: 1, sin: 0 };
 const virtualEye: Point = { x: 0, y: 0 };
 const deeperImage: Point = { x: 0, y: 0 };
 const image: Point = { x: 0, y: 0 };
@@ -62,6 +65,8 @@ export function apparentPosition(
   best.y = toY;
   best.sees = hasPortalLineOfSight(map, p, fromX, fromY, toX, toY);
   best.through = 0;
+  best.cos = 1;
+  best.sin = 0;
   best.distanceSquared = distanceSquared(fromX, fromY, toX, toY);
   if (p !== null) {
     considerImages(map, p, fromX, fromY, toX, toY, maxDepth);
@@ -70,6 +75,8 @@ export function apparentPosition(
   out.y = best.y;
   out.sees = best.sees;
   out.through = best.through;
+  out.cos = best.cos;
+  out.sin = best.sin;
   return out;
 }
 
@@ -137,6 +144,16 @@ function considerImage(
   best.y = image.y;
   best.sees = chain.sees;
   best.through = second < 0 ? 1 : 2;
+  const firstTurn = p.list.at(first)?.fromDest;
+  const secondTurn = second < 0 ? undefined : p.list.at(second)?.fromDest;
+  best.cos = firstTurn?.cos ?? 1;
+  best.sin = firstTurn?.sin ?? 0;
+  if (secondTurn !== undefined) {
+    // Turns about one point commute, so the order of the two doesn't matter.
+    const { cos, sin } = best;
+    best.cos = cos * secondTurn.cos - sin * secondTurn.sin;
+    best.sin = sin * secondTurn.cos + cos * secondTurn.sin;
+  }
   best.distanceSquared = imageDistanceSquared;
 }
 

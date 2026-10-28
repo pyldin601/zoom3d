@@ -46,7 +46,6 @@ import {
   stepBall,
   stepVacuum,
   VACUUM_RADIUS,
-  VACUUM_SPEED,
   type Vacuum,
   type VacuumNav,
   type VacuumSave,
@@ -116,7 +115,7 @@ export interface LobbyOptions {
 
 /** The server sees a kicker a little late, so it allows them this much further away than the client does. */
 const KICK_SLACK = 0.5;
-const seen: Apparent = { x: 0, y: 0, sees: false, through: 0 };
+const seen: Apparent = { x: 0, y: 0, sees: false, through: 0, cos: 1, sin: 0 };
 
 /** A walker whose last pose is older than this is standing still, as far as the ball can tell. */
 const MOVING_POSE_MS = 200;
@@ -324,8 +323,10 @@ export class Lobby {
     if (msg.x !== peer.x || msg.y !== peer.y || msg.angle !== peer.angle) {
       const sincePose = now - peer.poseAt;
       const moving = sincePose > 0 && sincePose <= MOVING_POSE_MS;
-      peer.vx = moving ? ((msg.x - peer.x) * 1000) / sincePose : 0;
-      peer.vy = moving ? ((msg.y - peer.y) * 1000) / sincePose : 0;
+      // A move only a portal explains is a jump, not a speed.
+      const walked = moving && isPlausibleMove(this.opts.map, peer, msg, sincePose, null);
+      peer.vx = walked ? ((msg.x - peer.x) * 1000) / sincePose : 0;
+      peer.vy = walked ? ((msg.y - peer.y) * 1000) / sincePose : 0;
       peer.x = msg.x;
       peer.y = msg.y;
       peer.angle = msg.angle;
@@ -392,7 +393,9 @@ export class Lobby {
       return;
     }
     const portals = this.activePortals(found.roomId);
-    if (kickBall(ball, this.seenFrom(portals, ball, found.peer), msg.angle, KICK_SLACK)) {
+    const kicker = this.seenFrom(portals, ball, found.peer);
+    const angle = msg.angle + Math.atan2(kicker.sin, kicker.cos);
+    if (kickBall(ball, kicker, angle, KICK_SLACK)) {
       found.peer.lastKickAt = now;
       this.kicks.set(found.roomId, { by: found.peer.id, k: msg.k });
     }
@@ -741,26 +744,20 @@ export class Lobby {
       if (!room) {
         continue;
       }
-      const portals = this.activePortals(roomId);
       const conns: string[] = [];
       const people: Point[] = [];
       for (const p of room.values()) {
         if (p.conn !== null && isPerson(p)) {
           conns.push(p.conn);
-          people.push(portals === null ? p : { ...this.seenFrom(portals, vacuum, p) });
+          people.push(p);
         }
       }
       if (conns.length === 0) {
         continue;
       }
       const { x, y } = vacuum;
-      const event = stepVacuum(nav, vacuum, dt, this.opts.rng, people, portals);
-      // A jump through a portal is not a speed: the robot knocks nothing for that step.
-      const jumped = Math.hypot(vacuum.x - x, vacuum.y - y) > VACUUM_SPEED * dt * 2;
-      this.vacuumVelocities.set(
-        roomId,
-        jumped ? { vx: 0, vy: 0 } : { vx: (vacuum.x - x) / dt, vy: (vacuum.y - y) / dt }
-      );
+      const event = stepVacuum(nav, vacuum, dt, this.opts.rng, people);
+      this.vacuumVelocities.set(roomId, { vx: (vacuum.x - x) / dt, vy: (vacuum.y - y) / dt });
       vacuum.seq++;
       this.opts.out.broadcast(conns, {
         type: 'object_state',
@@ -800,13 +797,13 @@ export class Lobby {
         if (p.conn !== null && isPerson(p)) {
           conns.push(p.conn);
           const moving = now - p.poseAt <= MOVING_POSE_MS;
-          const { x: bodyX, y: bodyY } = this.seenFrom(portals, ball, p);
+          const body = this.seenFrom(portals, ball, p);
           bodies.push({
             kind: 'person',
-            x: bodyX,
-            y: bodyY,
-            vx: moving ? p.vx : 0,
-            vy: moving ? p.vy : 0,
+            x: body.x,
+            y: body.y,
+            vx: moving ? body.cos * p.vx - body.sin * p.vy : 0,
+            vy: moving ? body.sin * p.vx + body.cos * p.vy : 0,
             radius: PLAYER_RADIUS,
           });
         }
@@ -817,13 +814,15 @@ export class Lobby {
       const vacuum = this.vacuums.get(roomId);
       if (vacuum) {
         const v = this.vacuumVelocities.get(roomId);
-        const { x: bodyX, y: bodyY } = this.seenFrom(portals, ball, vacuum);
+        const body = this.seenFrom(portals, ball, vacuum);
+        const vacuumVx = v?.vx ?? 0;
+        const vacuumVy = v?.vy ?? 0;
         bodies.push({
           kind: 'vacuum',
-          x: bodyX,
-          y: bodyY,
-          vx: v?.vx ?? 0,
-          vy: v?.vy ?? 0,
+          x: body.x,
+          y: body.y,
+          vx: body.cos * vacuumVx - body.sin * vacuumVy,
+          vy: body.sin * vacuumVx + body.cos * vacuumVy,
           radius: VACUUM_RADIUS,
         });
       }
@@ -862,10 +861,19 @@ export class Lobby {
 
   /**
    * Where `target` appears to be from `viewer`, one portal deep (contacts reach through at most one): the target
-   * itself without portals. The result is shared scratch, valid until the next call.
+   * itself without portals, with the turn that takes its directions into the viewer's frame. The result is shared
+   * scratch, valid until the next call.
    */
-  private seenFrom(portals: Portals | null, viewer: Point, target: Point): Point {
-    return portals === null ? target : apparentPosition(portals.map, portals, viewer, target, seen, 1);
+  private seenFrom(portals: Portals | null, viewer: Point, target: Point): Apparent {
+    if (portals !== null) {
+      return apparentPosition(portals.map, portals, viewer, target, seen, 1);
+    }
+    seen.x = target.x;
+    seen.y = target.y;
+    seen.through = 0;
+    seen.cos = 1;
+    seen.sin = 0;
+    return seen;
   }
 
   private portalMode(roomId: string): { on: boolean; flippedAt: number } {

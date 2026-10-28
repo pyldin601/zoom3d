@@ -279,7 +279,10 @@ describe('restart survival', () => {
 
 describe('through portals', () => {
   const portals = wirePortals(map, ROOM);
-  const portal = defined(portals.list.find((p) => p.door.axis === 'ns') ?? portals.list.at(0), 'doorway');
+  const portal = defined(
+    portals.list.find((p) => p.toDest.cos !== 1) ?? portals.list.at(0),
+    'doorway that turns what goes through it'
+  );
   const other = defined(portals.list.at(portal.to), 'destination doorway');
   const alongFront = (p: typeof portal, d: number) => ({ x: p.cx + p.nx * d, y: p.cy + p.ny * d });
 
@@ -318,11 +321,42 @@ describe('through portals', () => {
     expect(ballStates('A')).toEqual([]);
   });
 
-  test('a kick from past B reaches a ball before A', () => {
-    setUp(alongFront(other, 0.3), alongFront(portal, -0.3));
+  test('a kick from past B reaches a ball before A and sends it the way the kicker faces, turned with the portal', () => {
+    setUp(alongFront(other, 0.3), alongFront(portal, -1));
     time += 1000;
     lobby.kick('A', { type: 'kick', angle: 0, k: 1 });
     step();
-    expect(ballStates('A').some((s) => s.event === 'kick')).toBe(true);
+    const kicked = defined(
+      ballStates('A').find((s) => s.event === 'kick'),
+      'kick state'
+    );
+    const turn = portal.fromDest;
+    expect(Math.cos(Math.atan2(kicked.vy ?? 0, kicked.vx ?? 0) - Math.atan2(turn.sin, turn.cos))).toBeCloseTo(1);
+  });
+
+  test('a walker heading for the ball through the doorway pushes it, whichever way the portal turns', () => {
+    const standing = (d: number) => alongFront(other, d);
+    setUp(standing(0.55), alongFront(portal, -0.1));
+    time += 1000;
+    lobby.state('A', { type: 'state', ...standing(0.4), angle: 0, seq: 1 });
+    time += 50;
+    lobby.state('A', { type: 'state', ...standing(0.25), angle: 0, seq: 2 });
+    step();
+    const pushed = defined(ballStates('A').at(-1), 'ball state');
+    expect((pushed.vx ?? 0) * -portal.nx + (pushed.vy ?? 0) * -portal.ny).toBeGreaterThan(2);
+  });
+
+  test('stepping through the doorway is a jump, not a speed: it knocks nothing at the exit', () => {
+    const start = alongFront(portal, -0.1);
+    const arrival = alongFront(other, 0.1);
+    setUp(start, alongFront(other, 0.3));
+    time += 1000;
+    lobby.state('A', { type: 'state', ...start, angle: 0, seq: 1 });
+    time += 50;
+    lobby.state('A', { type: 'state', ...arrival, angle: 0, seq: 2 });
+    step();
+    const knocked = ballStates('A').at(-1);
+    expect(knocked?.vx ?? 0).toBe(0);
+    expect(knocked?.vy ?? 0).toBe(0);
   });
 });

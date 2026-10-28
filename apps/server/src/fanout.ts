@@ -23,7 +23,7 @@ export interface Subject {
 /** Per recipient: for each other peer, the pose version last sent to it and when. */
 export type SentLog = Map<string, { version: number; at: number }>;
 
-const apparent: Apparent = { x: 0, y: 0, sees: false, through: 0 };
+const apparent: Apparent = { x: 0, y: 0, sees: false, through: 0, cos: 1, sin: 0 };
 
 /** Whether `subject` is within NEAR_TILES of `self`, walls ignored; with portals, where it appears to be seen from. */
 function isNear(self: { x: number; y: number }, subject: Subject, portals: Portals | null): boolean {

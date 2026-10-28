@@ -204,3 +204,19 @@ describe('restart survival', () => {
     }
   });
 });
+
+describe("with the room's portals on", () => {
+  const poses = (portalsOn: boolean) => {
+    lobby = makeLobby();
+    join('A');
+    if (portalsOn) {
+      lobby.portals('A');
+    }
+    step(3000);
+    return objectStates('A').map((s) => [s.x, s.y, s.angle]);
+  };
+
+  test('the vacuum drives exactly as with them off: doorways are ordinary doors for it', () => {
+    expect(poses(true)).toEqual(poses(false));
+  });
+});

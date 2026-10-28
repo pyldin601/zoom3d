@@ -32,7 +32,7 @@ function portalsOf(map: GameMap, specs: PortalSpec[]): Portals {
 }
 
 const at = (x: number, y: number) => ({ x, y });
-const blank = (): Apparent => ({ x: 0, y: 0, sees: false, through: 0 });
+const blank = (): Apparent => ({ x: 0, y: 0, sees: false, through: 0, cos: 1, sin: 0 });
 
 // Two rooms above a hall, apart from each other. Doorway A at (2, 3), front north; B at (6, 3), front south.
 const ROOMS = parseMap('111111111\n1...1...1\n1S..1...1\n11.111.11\n1.......1\n1.......1\n111111111');
@@ -70,9 +70,9 @@ describe('hasPortalLineOfSight', () => {
 describe('apparentPosition', () => {
   test('without portals it is the real position with the plain line of sight', () => {
     const out = apparentPosition(ROOMS, null, at(2.5, 1.5), BEHIND_B, blank());
-    expect(out).toEqual({ ...BEHIND_B, sees: hasLineOfSight(ROOMS, 2.5, 1.5, 6.5, 2.5), through: 0 });
+    expect(out).toEqual({ ...BEHIND_B, sees: hasLineOfSight(ROOMS, 2.5, 1.5, 6.5, 2.5), through: 0, cos: 1, sin: 0 });
     const inSight = apparentPosition(ROOMS, null, at(2.5, 4.5), at(6.5, 4.5), blank());
-    expect(inSight).toEqual({ x: 6.5, y: 4.5, sees: true, through: 0 });
+    expect(inSight).toEqual({ x: 6.5, y: 4.5, sees: true, through: 0, cos: 1, sin: 0 });
   });
 
   test('a target just behind B appears straight ahead through A, seen', () => {
@@ -83,9 +83,17 @@ describe('apparentPosition', () => {
     expect(out.y).toBeCloseTo(4.5);
   });
 
+  test('the turn of the portal it is seen through takes its directions into the listener frame', () => {
+    const through = apparentPosition(ROOMS, ROOM_PORTALS, at(2.5, 1.5), BEHIND_B, blank());
+    expect(through.cos).toBeCloseTo(-1);
+    expect(through.sin).toBeCloseTo(0);
+    const straight = apparentPosition(ROOMS, null, at(2.5, 1.5), BEHIND_B, blank());
+    expect([straight.cos, straight.sin]).toEqual([1, 0]);
+  });
+
   test('from the back side of A there is no image: the real position, unseen', () => {
     const out = apparentPosition(ROOMS, ROOM_PORTALS, at(2.5, 4.5), BEHIND_B, blank());
-    expect(out).toEqual({ ...BEHIND_B, sees: false, through: 0 });
+    expect(out).toEqual({ ...BEHIND_B, sees: false, through: 0, cos: 1, sin: 0 });
   });
 
   test('an image off the line through the opening is never chosen, even with floor beside the doorway', () => {
@@ -94,17 +102,17 @@ describe('apparentPosition', () => {
     const target = at(7.5, 1.5);
     const portals = portalsOf(floorBesideDoors, ROOM_SPECS);
     const out = apparentPosition(floorBesideDoors, portals, at(1.5, 1.5), target, blank());
-    expect(out).toEqual({ ...target, sees: false, through: 0 });
+    expect(out).toEqual({ ...target, sees: false, through: 0, cos: 1, sin: 0 });
   });
 
   test('a target in plain sight stays where it is', () => {
     const target = at(3.5, 1.5);
     const out = apparentPosition(ROOMS, ROOM_PORTALS, at(1.5, 1.5), target, blank());
-    expect(out).toEqual({ ...target, sees: true, through: 0 });
+    expect(out).toEqual({ ...target, sees: true, through: 0, cos: 1, sin: 0 });
   });
 
   test('out may be the target itself', () => {
-    const target = { ...BEHIND_B, sees: false, through: 0 as const };
+    const target = { ...BEHIND_B, sees: false, through: 0 as const, cos: 1, sin: 0 };
     apparentPosition(ROOMS, ROOM_PORTALS, at(2.5, 1.5), target, target);
     expect(target.through).toBe(1);
     expect(target.y).toBeCloseTo(4.5);
@@ -156,7 +164,7 @@ describe('apparentPosition, seen and unseen', () => {
     // Through A the target is 3 tiles away, but the pillar hides it; straight along the row it is 4 tiles, in sight.
     const target = at(5.5, 1.5);
     const out = apparentPosition(OPEN, OPEN_PORTALS, at(1.5, 1.5), target, blank());
-    expect(out).toEqual({ ...target, sees: true, through: 0 });
+    expect(out).toEqual({ ...target, sees: true, through: 0, cos: 1, sin: 0 });
   });
 
   test('a farther, seen image beats a nearer, unseen real position', () => {
@@ -179,11 +187,13 @@ describe('apparentPosition through two portals', () => {
     expect(out.sees).toBe(true);
     expect(out.x).toBeCloseTo(1.5);
     expect(out.y).toBeCloseTo(5.5);
+    expect(out.cos).toBeCloseTo(1);
+    expect(out.sin).toBeCloseTo(0);
   });
 
   test('with maxDepth 1 it is the real position', () => {
     const out = apparentPosition(CORRIDORS, CHAIN, listener, behindD, blank(), 1);
-    expect(out).toEqual({ ...behindD, sees: false, through: 0 });
+    expect(out).toEqual({ ...behindD, sees: false, through: 0, cos: 1, sin: 0 });
   });
 });
 
@@ -204,6 +214,6 @@ describe('apparentPosition beyond the near range', () => {
 
   test('a portal 17 tiles away is never tried', () => {
     const out = apparentPosition(LONG, LONG_PORTALS, at(1.5, 1.5), behindB, blank());
-    expect(out).toEqual({ ...behindB, sees: false, through: 0 });
+    expect(out).toEqual({ ...behindB, sees: false, through: 0, cos: 1, sin: 0 });
   });
 });
