@@ -554,13 +554,13 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     - **With portals off, a local teleport over 2 tiles** zeroes the ball body's velocity and peers snap instead of
       gliding: a tiny change to today's behaviour that falls out of the shared jump handling.
     - **Fan-out costs more with portals on** (the apparent-position search per pair): measured below.
-  - **Measured** (2026-10-28, LEVEL1 at 640×360, lit, reflections `both`; the machine was loaded, read the ratios):
+  - **Measured** (2026-10-28, against base 0572557, origin/main when the branch was cut; LEVEL1 at 640×360, lit, reflections `both`; the machine was loaded, read the ratios):
     - `bench:walls`, existing modes with portals off: unchanged hashes, `both` 1.51 ms on the base vs 1.56 ms here.
       From 1.5 tiles in front of 8 doorways: `renderWalls` 1.58 ms off, 0.92 ms on (the window passes are cheaper than
       the corridor they replace, which the main pass draws in full when off).
     - `bench:sprites`, hashes unchanged, `renderSprites` 392 / 396 µs on the base vs 395 / 397 µs here (unlit / lit).
       Whole frames (`renderView`) from the same doorways with people and a vacuum ahead: 2.29 ms off, 2.65 ms on.
-    - Server tick (`Lobby.stepWorld` + `fanOut`, Node, one room with 100 bots, no sockets or JSON, so the
+    - Server tick (`pnpm bench:tick`, `apps/server/bench/tick.ts`: `Lobby.stepWorld` + `fanOut`, Node, one room with 100 bots, no sockets or JSON, so the
       serialisation is not counted; 600 ticks, bots and people walking): 4 connected people, `fanOut` 0.01 ms off vs
       0.19 ms on; 100 connected people, 0.53 ms off vs 11.3 ms on (p99 12.3 ms), `stepWorld` under 0.1 ms both ways.
       Inside the 66 ms budget, but the near tier's apparent-position work is wasted on pairs that are near anyway
