@@ -104,9 +104,19 @@ describe('collect', () => {
     expect(world.sprites.at(0)).toMatchObject({ face: FACE, speaking: 0.5, color: hexToRgb('#ff0000'), held: 'beer' });
     expect(world.sprites.at(1)).toMatchObject({ face: null, speaking: 0 });
     expect(world.labels).toEqual([
-      { x: 2, y: 3, color: '#ff0000', name: 'ada', mic: true },
-      { x: 7, y: 1, color: '#ff0000', name: 'bob', mic: false },
+      { x: 2, y: 3, shownX: 2, shownY: 3, color: '#ff0000', name: 'ada', mic: true },
+      { x: 7, y: 1, shownX: 7, shownY: 1, color: '#ff0000', name: 'bob', mic: false },
     ]);
+  });
+
+  test('a label is shown at the apparent position and keeps the real one for the automap', () => {
+    const world = createRemoteWorld();
+    room.addPeer('ada', 2, 3);
+    world.sample(room.session, player, NOW);
+    const apparent = new Map([['ada', { x: 9, y: 8, sees: true, through: 1 as const, cos: 1, sin: 0 }]]);
+    world.collect(room.session, media, NOW, 0, apparent);
+    expect(world.labels.at(0)).toMatchObject({ x: 2, y: 3, shownX: 9, shownY: 8 });
+    expect(world.sprites.at(0)).toMatchObject({ x: 2, y: 3 });
   });
 
   test("a peer's sip or cheers shows on their disc", () => {

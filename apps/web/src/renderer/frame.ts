@@ -4,7 +4,7 @@ import type { PeerFacts } from '../media/interest';
 import { type AutomapPeer, drawAutomap } from './automap';
 import type { Framebuffer } from './framebuffer';
 import { createAvatarGlows, type Glow, type GlowSource } from './glow';
-import { drawLabels } from './labels';
+import { drawLabels, type NameLabel } from './labels';
 import type { ReflectionMode } from './lighting';
 import { renderOwnBoombox } from './own-boombox';
 import { type HeldStep, renderOwnHeld } from './own-held';
@@ -23,7 +23,7 @@ export interface RoomScene extends Omit<Room, 'objects' | 'people'>, PeopleAndOb
   firstPerson: FirstPerson | null;
 }
 
-export type PersonLabel = AutomapPeer & { mic: boolean };
+export type PersonLabel = AutomapPeer & NameLabel;
 
 export interface FirstPerson {
   drink: HeldItem | null;

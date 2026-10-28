@@ -76,6 +76,23 @@ describe('createAudioEngine', () => {
     expect(dry?.gain.last?.[2]).toBe(0.15);
   });
 
+  test('a source that says it is seen is not muffled by a wall between the real positions', () => {
+    const e = engine(WALLED);
+    e.attach('b', stream());
+    e.update(0, listener, new Map([['b', { x: 4.5, y: 1.5, sees: true }]]));
+    e.update(100, listener, new Map([['b', { x: 4.5, y: 1.5, sees: true }]]));
+    expect(param('biquad', 'frequency').targets).toEqual([]);
+    const [dry] = one('biquad').connections as (FakeNode & { gain: FakeParam })[];
+    expect(dry?.gain.last?.[0]).toBeCloseTo(voiceGains(3, false, DEFAULT_AUDIO_SETTINGS).dry);
+  });
+
+  test('a source that says it is unseen is muffled even in the open', () => {
+    const e = engine(OPEN);
+    e.attach('b', stream());
+    e.update(0, listener, new Map([['b', { x: 2.5, y: 1.5, sees: false }]]));
+    expect(param('biquad', 'frequency').last).toEqual([700, ctx.currentTime, 0.15]);
+  });
+
   test('a voice that loses its position is ramped to silence', () => {
     const e = engine();
     e.attach('b', stream());

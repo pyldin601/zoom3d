@@ -1,7 +1,7 @@
 // The room's frame: the local player steps, then the ball the client predicts, everyone else and the world objects are
 // placed and heard, the view and the HUD are drawn, then the subscription picks whose media to receive. While the tab is hidden rAF stops, so a timer
 // keeps the sound and the subscription going instead.
-import { BALL_KICK_REACH, type BallBody, type GameMap, JUMP_TILES, PLAYER_RADIUS } from '@zoom3d/shared';
+import { type Apparent, BALL_KICK_REACH, type BallBody, type GameMap, JUMP_TILES, PLAYER_RADIUS } from '@zoom3d/shared';
 import { HIDDEN_TICK_MS } from '../audio/ticker';
 import type { Input } from '../input/keyboard';
 import { createSubscription } from '../media/subscription';
@@ -10,6 +10,7 @@ import type { Lighting } from '../renderer/lighting';
 import { BALL_MODEL, createBallRoll, recolourBall, rollBy } from '../renderer/models/ball';
 import { litReflections, type RenderMode } from '../ui/render-settings';
 import { type StatusLine, statusText } from '../ui/room-status';
+import { createApparentWorld } from './apparent-world';
 import type { FrameRateMeter } from './frame-rate';
 import type { LocalPlayer } from './local-player';
 import { createRemoteWorld, type PeerMedia } from './remote-world';
@@ -42,6 +43,10 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   const { localPlayer, screen } = o;
   const world = createRemoteWorld();
   const subscription = createSubscription();
+  const apparentWorld = createApparentWorld();
+  /** The remote things (people and world objects) with their places, reused from frame to frame. */
+  let apparent: ReadonlyMap<string, Apparent> = new Map();
+  const things: { id: string; x: number; y: number }[] = [];
   const peerMedia: PeerMedia = {
     faceOf: (id) => o.room()?.call.faceOf(id) ?? null,
     speaking: (id) => o.room()?.audio.speaking(id) ?? 0,
@@ -106,15 +111,30 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     }
   };
 
+  /** Where everyone and everything appears to the local player's eye, through the room's portals when they are on. */
+  const placeApparently = (room: Room) => {
+    let n = 0;
+    for (const [id, pos] of world.positions) {
+      const thing = things.at(n) ?? { id, x: 0, y: 0 };
+      thing.id = id;
+      thing.x = pos.x;
+      thing.y = pos.y;
+      things[n++] = thing;
+    }
+    things.length = n;
+    apparent = apparentWorld.update(o.map, room.portals(), localPlayer.pose, things);
+  };
+
   const placeEveryoneElse = (room: Room, now: number, dt: number) => {
     const { session } = room;
     world.sample(session, localPlayer.pose, now, room.ball.ball);
-    world.collect(session, peerMedia, now, dt);
+    placeApparently(room);
+    world.collect(session, peerMedia, now, dt, apparent);
     room.objectSounds.sync(session.objects, world.objectPoses, dt);
     // Bots count too: the client can't tell them from people.
     const people = session.status() === 'open' ? session.peers.size + 1 : null;
     o.statusLine.show(statusText(session.status(), session.error()), people);
-    room.audio.update(now, localPlayer.pose, world.positions);
+    room.audio.update(now, localPlayer.pose, apparent);
   };
 
   const describeScene = (now: number) => {
@@ -132,7 +152,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     subscription.choose(now, {
       call: room.call,
       people: room.session.peers,
-      positions: world.positions,
+      positions: apparent,
       player: localPlayer.pose,
       fov: screen.fb.fov,
       map: o.map,
@@ -171,8 +191,9 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       const now = performance.now();
       stepBall(room, now, HIDDEN_TICK_MS / 1000);
       world.sample(room.session, localPlayer.pose, now, room.ball.ball);
+      placeApparently(room);
       room.objectSounds.sync(room.session.objects, world.objectPoses, HIDDEN_TICK_MS / 1000);
-      room.audio.update(now, localPlayer.pose, world.positions);
+      room.audio.update(now, localPlayer.pose, apparent);
       chooseWhatToReceive(room, now, true);
     },
   };

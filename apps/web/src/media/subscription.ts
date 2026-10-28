@@ -2,13 +2,14 @@
 // receive, from where people are and what the last frame drew of them, and only the changes go to the call.
 import type { GameMap, PlayerState, Point } from '@zoom3d/shared';
 import type { Call } from './call';
-import { createInterest, INTEREST_MS, type PeerFacts, type Want } from './interest';
+import { createInterest, INTEREST_MS, type InterestPeer, type PeerFacts, type Want } from './interest';
 
 export interface Surroundings {
   call: Pick<Call, 'publishes' | 'setWanted'>;
   /** The people in the room, by id: other keys in `positions` are world objects. */
   people: ReadonlyMap<string, unknown>;
-  positions: ReadonlyMap<string, Point>;
+  /** Where each appears to the player (`sees`: the line of sight through portals, when known). */
+  positions: ReadonlyMap<string, Point & { sees?: boolean }>;
   player: PlayerState;
   /** Radians. */
   fov: number;
@@ -33,7 +34,7 @@ export function createSubscription(): Subscription {
   let sentTo: Surroundings['call'] | null = null;
   let chosenAt = Number.NEGATIVE_INFINITY;
 
-  const forgetUnseen = (positions: ReadonlyMap<string, Point>) => {
+  const forgetUnseen = (positions: Surroundings['positions']) => {
     for (const id of seen.keys()) {
       if (!positions.has(id)) {
         seen.delete(id);
@@ -43,10 +44,10 @@ export function createSubscription(): Subscription {
 
   /** Bots publish nothing: they must not take anyone's video or voice slot. */
   const peopleWithMedia = (around: Surroundings) => {
-    const peers: { id: string; x: number; y: number }[] = [];
+    const peers: InterestPeer[] = [];
     for (const [id, pos] of around.positions) {
       if (around.people.has(id) && around.call.publishes(id)) {
-        peers.push({ id, x: pos.x, y: pos.y });
+        peers.push({ id, x: pos.x, y: pos.y, sees: pos.sees });
       }
     }
     return peers;
