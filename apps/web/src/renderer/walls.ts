@@ -2,8 +2,15 @@
 // by the baked lamps, the avatars' glow and the lamps' reflections; unlit, plain textures over a flat floor and
 // ceiling. Allocation-free per frame: scratch buffers are rebuilt only when the frame's size or FOV changes.
 
-import { castRay, createRayHit, type GameMap, type PlayerState } from '@zoom3d/shared';
-import { createView, EYE_HEIGHT, MIN_DEPTH, setView } from './camera';
+import {
+  castPortalRay,
+  castRay,
+  createPortalRayHit,
+  type GameMap,
+  type PlayerState,
+  type Portals,
+} from '@zoom3d/shared';
+import { createView, EYE_HEIGHT, isWindowPass, MIN_DEPTH, type Pass, setView, WHOLE_FRAME } from './camera';
 import { reflectedColour } from './colour';
 import { type Framebuffer, rgb, scaleRgb } from './framebuffer';
 import { GLOW_RADIUS, type Glow, glowLight } from './glow';
@@ -79,6 +86,10 @@ export interface Room {
   objects?: readonly VoxelInstance[];
   /** People, whose images the floor shows; none when left out. */
   people?: readonly Sprite[];
+  /** The map's portal wiring while the room's portals are on: doorways seen from the front are windows. */
+  portals?: Portals | null;
+  /** The columns and near limit drawn; the whole frame when left out. */
+  pass?: Pass;
 }
 
 /** The floor (or ceiling) points along one screen row, in lightmap cells. */
@@ -112,8 +123,15 @@ const mirrorOrder: number[] = [];
 const mirrorDepths: number[] = [];
 const mirrorsFarFirst = (a: number, b: number) => Math.sign((mirrorDepths[b] as number) - (mirrorDepths[a] as number));
 const view = createView();
-const hit = createRayHit();
+const hit = createPortalRayHit();
 let litRoom: LitRoom | null = null;
+/** The pass being drawn, its columns [firstCol, endCol) on this frame, and the portals it sees; set by renderWalls. */
+let pass = WHOLE_FRAME;
+let firstCol = 0;
+let endCol = 0;
+let portals: Portals | null = null;
+/** The floor tables the frame's first pass built: its windows' passes reuse them. */
+let passFloorTables: FloorTables | null = null;
 
 /** Rebuilt by fitScratchToFrame when the frame's size or FOV changes. */
 let scratchSize = { width: 0, height: 0, fov: 0 };
@@ -139,6 +157,8 @@ let blackTables: FloorTables | null = null;
 /** The wall column being drawn: filled by castColumnRay and findColumnFace, then read by the passes after them. */
 const column = {
   col: 0,
+  /** A wall (or nothing), a portal's window left for its own pass, or a window past the last level, drawn black. */
+  surface: 'wall' as 'wall' | 'window' | 'black',
   /** Rows the wall covers, [start, end); equal when it shows none. */
   start: 0,
   end: 0,
@@ -199,6 +219,10 @@ let frameTables:
  */
 export function renderWalls(fb: Framebuffer, room: Room, glows: readonly Glow[] = NO_GLOWS): void {
   setView(view, fb, room.eye);
+  pass = room.pass ?? WHOLE_FRAME;
+  firstCol = pass.fromCol;
+  endCol = Math.min(fb.width, pass.toCol);
+  portals = room.portals ?? null;
   if (room.lighting) {
     drawLitRoom(fb, litRoomFor(room, room.lighting, glows));
   } else {
@@ -214,10 +238,14 @@ const lampsLightTheRoom = (mode: ReflectionMode) => mode !== 'only';
 // The unlit room.
 
 function drawUnlitRoom(fb: Framebuffer, room: Room): void {
-  for (let col = 0; col < fb.width; col++) {
+  for (let col = firstCol; col < endCol; col++) {
     castColumnRay(fb, room, col);
     fillColumn(fb, col, 0, column.start, CEILING);
-    drawPlainWallSlice(fb, room.textures, column.side === Y_SIDE ? 'shaded' : 'unshaded');
+    if (column.surface === 'wall') {
+      drawPlainWallSlice(fb, room.textures, column.side === Y_SIDE ? 'shaded' : 'unshaded');
+    } else if (column.surface === 'black') {
+      fillColumn(fb, col, column.start, column.end, BLACK);
+    }
     fillColumn(fb, col, column.end, fb.height, FLOOR);
   }
 }
@@ -259,17 +287,17 @@ function drawPlainWallSlice(fb: Framebuffer, textures: Uint32Array[], shading: '
 function drawLitRoom(fb: Framebuffer, room: LitRoom): void {
   fitScratchToFrame(fb);
   drawWallColumns(fb, room);
-  const tables = floorAndCeilingColours(room);
+  const tables = floorTablesForPass(room);
   drawFloorAndCeiling(fb, room, tables.floor, tables.ceiling);
   if (reflectsOnFloor(room.reflections)) {
     // The images first: in the floor the objects' stand in front of the lamps' reflections, hiding them.
     floorMirror.fit(fb.width, fb.height);
     floorMirror.clear();
-    floorMirror.addWalls(fb, wallStart, wallEnd, mirrorWeight);
+    floorMirror.addWalls(fb, wallStart, wallEnd, mirrorWeight, firstCol, endCol);
     mirrorPeopleAndObjects(fb, room);
     floorMirror.blur(mirrorBlurPx);
     addFloorAndCeilingReflections(fb, room, tables.floorLampSeen);
-    floorMirror.addInto(fb, MIRROR_STRENGTH, mirrorWeight, wallEnd);
+    floorMirror.addInto(fb, MIRROR_STRENGTH, mirrorWeight, wallEnd, firstCol, endCol);
   }
 }
 
@@ -289,9 +317,9 @@ function mirrorPeopleAndObjects(fb: Framebuffer, room: LitRoom): void {
   mirrorOrder.sort(mirrorsFarFirst);
   for (const i of mirrorOrder) {
     if (i < people.length) {
-      mirrorDisc(fb, view, people[i] as Sprite, floorMirror);
+      mirrorDisc(fb, view, people[i] as Sprite, floorMirror, pass);
     } else {
-      renderVoxelMirror(fb, view, objects[i - people.length] as VoxelInstance, room.lighting, floorMirror);
+      renderVoxelMirror(fb, view, objects[i - people.length] as VoxelInstance, room.lighting, floorMirror, pass);
     }
   }
 }
@@ -395,9 +423,12 @@ function meanShinyTexel(tex: Uint32Array, gloss: Uint8Array | undefined): readon
 
 function drawWallColumns(fb: Framebuffer, room: LitRoom): void {
   const glowsLightWalls = lampsLightTheRoom(room.reflections) && room.glows.length > 0;
-  for (let col = 0; col < fb.width; col++) {
+  for (let col = firstCol; col < endCol; col++) {
     castColumnRay(fb, room, col);
-    if (column.end === column.start) {
+    if (column.surface === 'black') {
+      fillColumn(fb, col, column.start, column.end, BLACK);
+    }
+    if (column.surface !== 'wall' || column.end === column.start) {
       continue;
     }
     findColumnFace(room);
@@ -412,19 +443,29 @@ function drawWallColumns(fb: Framebuffer, room: LitRoom): void {
   }
 }
 
-/** Casts screen column `col` into `column`: what the ray hit, the rows its wall covers, and the z-buffer. */
+/**
+ * Casts screen column `col` into `column`: what the ray hit, the rows its wall covers, and the z-buffer. A portal's
+ * window stands in for a wall at its plane: its depth goes in the z-buffer and the portal in fb.portalAt.
+ */
 function castColumnRay(fb: Framebuffer, { map, eye }: Room, col: number): void {
   const { width: w, height: h } = fb;
-  const { dirX, dirY, planeX, planeY, proj, half } = view;
+  const { dirX, dirY, planeX, planeY, proj } = view;
   const cameraX = (2 * col) / w - 1;
   const rayX = dirX + planeX * cameraX;
   const rayY = dirY + planeY * cameraX;
-  castRay(map, eye.x, eye.y, rayX, rayY, hit);
+  if (portals) {
+    castPortalRay(map, portals, eye.x, eye.y, rayX, rayY, nearDepthAt(col), hit);
+  } else {
+    castRay(map, eye.x, eye.y, rayX, rayY, hit);
+    hit.portal = -1;
+  }
   fb.zbuffer[col] = hit.distance;
+  const window = hit.portal >= 0;
+  column.surface = !window ? 'wall' : pass.lastLevel ? 'black' : 'window';
+  fb.portalAt[col] = column.surface === 'window' ? hit.portal : -1;
 
-  const wallHeightPx = hit.tile === 0 ? 0 : proj / hit.distance;
-  const start = Math.max(0, Math.floor(half - wallHeightPx / 2));
-  const end = Math.max(start, Math.min(h, Math.floor(half + wallHeightPx / 2)));
+  const wallHeightPx = hit.tile === 0 && !window ? 0 : proj / hit.distance;
+  const { start, end } = rowsCovered(h, wallHeightPx);
   wallStart[col] = start;
   wallEnd[col] = end;
   let texX = Math.floor(hit.wallX * TEX);
@@ -440,6 +481,18 @@ function castColumnRay(fb: Framebuffer, { map, eye }: Room, col: number): void {
   column.side = hit.side;
   column.rayX = rayX;
   column.rayY = rayY;
+}
+
+const nearDepthAt = (col: number) => (pass.nearDepth === null ? 0 : (pass.nearDepth[col] as number));
+
+const coveredRows = { start: 0, end: 0 };
+
+/** The rows a wall `wallHeightPx` tall covers on a frame `height` px tall, [start, end): returns a reused object. */
+export function rowsCovered(height: number, wallHeightPx: number): { start: number; end: number } {
+  const half = height / 2;
+  coveredRows.start = Math.max(0, Math.floor(half - wallHeightPx / 2));
+  coveredRows.end = Math.max(coveredRows.start, Math.min(height, Math.floor(half + wallHeightPx / 2)));
+  return coveredRows;
 }
 
 /** Which face of its tile the column's ray hit, where, and where that face's light is baked. */
@@ -614,6 +667,14 @@ function drawLitWallSlice(fb: Framebuffer, room: LitRoom): void {
 
 // Floor and ceiling.
 
+/** The frame's floor tables: built by its first pass, reused by its windows' passes (they cost per frame, not per pass). */
+function floorTablesForPass(room: LitRoom): FloorTables {
+  if (!isWindowPass(pass) || passFloorTables === null) {
+    passFloorTables = floorAndCeilingColours(room);
+  }
+  return passFloorTables;
+}
+
 /** The floor's and ceiling's colour per floor cell this frame, and what the floor sees of its lamps. */
 function floorAndCeilingColours(room: LitRoom): FloorTables {
   const lm = room.lighting;
@@ -627,7 +688,7 @@ function floorAndCeilingColours(room: LitRoom): FloorTables {
   }
   const t = putBackFrameTables(lm);
   if (shaded) {
-    shadeFloor(lm, room.objects, FLOOR, t, inView);
+    shadeFloor(lm, room.objects, FLOOR, t, mayShow);
   }
   if (glowing) {
     addGlow(lm, room.glows, t);
@@ -635,7 +696,8 @@ function floorAndCeilingColours(room: LitRoom): FloorTables {
   return t;
 }
 
-const inView = (x: number, y: number, reach: number) => !outOfView(x, y, reach);
+/** Whether anything within `reach` tiles of (x, y) may show this frame: through portals, its windows look anywhere. */
+const mayShow = (x: number, y: number, reach: number) => portals !== null || !outOfView(x, y, reach);
 
 function blackFloorAndCeiling(lm: Lighting): FloorTables {
   if (blackTables?.floorLampSeen !== lm.floorLampSeen) {
@@ -700,7 +762,7 @@ function addGlow(lm: Lighting, glows: readonly Glow[], t: NonNullable<typeof fra
   const span = Math.ceil(reach * FLOOR_SUB);
   const cellsReach = ((span + 1) * Math.SQRT2) / FLOOR_SUB;
   for (const g of glows) {
-    if (outOfView(g.x, g.y, cellsReach)) {
+    if (!mayShow(g.x, g.y, cellsReach)) {
       continue;
     }
     const gx = Math.floor(g.x * FLOOR_SUB);
@@ -768,14 +830,16 @@ function drawFloorAndCeiling(fb: Framebuffer, room: LitRoom, floor: Uint32Array,
   const { stride, rows } = room.lighting;
   const lastCellX = stride - 1;
   const lastCellY = rows - 1;
+  const fromCol = firstCol;
+  const toCol = endCol;
   for (let y = 0; y < h; y++) {
     const above = y < view.half;
     const colours = above ? ceiling : floor;
     const { x: startX, y: startY, stepX, stepY } = aimFloorRow(room.eye, y, w);
-    let fx = startX;
-    let fy = startY;
+    let fx = startX + stepX * fromCol;
+    let fy = startY + stepY * fromCol;
     const row = y * w;
-    for (let col = 0; col < w; col++, fx += stepX, fy += stepY) {
+    for (let col = fromCol; col < toCol; col++, fx += stepX, fy += stepY) {
       if (above ? y >= (wallStart[col] as number) : y < (wallEnd[col] as number)) {
         continue;
       }
@@ -847,7 +911,9 @@ function reflectionAlongRow(room: LitRoom, row: FloorRow, surface: 'floor' | 'ce
   const dx = row.stepX / FLOOR_SUB;
   const dy = row.stepY / FLOOR_SUB;
   let shows = false;
-  for (let i = 0; i < rowShine.length; i++) {
+  // The samples either side of the pass's columns: on the whole frame, every one.
+  const lastSample = Math.min(rowShine.length - 1, Math.floor((endCol - 1) / FLOOR_REFLECTION_STEP_PX) + 1);
+  for (let i = Math.floor(firstCol / FLOOR_REFLECTION_STEP_PX); i <= lastSample; i++) {
     const x = x0 + dx * i * FLOOR_REFLECTION_STEP_PX;
     const y = y0 + dy * i * FLOOR_REFLECTION_STEP_PX;
     const far2 = ((x - eye.x) ** 2 + (y - eye.y) ** 2) / (REFLECTION_RANGE * REFLECTION_RANGE);
@@ -898,7 +964,7 @@ function addRowReflection(fb: Framebuffer, room: LitRoom, y: number, floorSees: 
   const lastCellX = stride - 1;
   const lastCellY = rows - 1;
   const row = y * w;
-  for (let i = 0; i * FLOOR_REFLECTION_STEP_PX < w; i++) {
+  for (let i = Math.floor(firstCol / FLOOR_REFLECTION_STEP_PX); i * FLOOR_REFLECTION_STEP_PX < endCol; i++) {
     const left = rowShine[i] as number;
     const right = rowShine[i + 1] as number;
     // A hair under the threshold, so the blend's rounding can't matter.
@@ -908,8 +974,8 @@ function addRowReflection(fb: Framebuffer, room: LitRoom, y: number, floorSees: 
     const lamp = rowShineLamp[left >= right ? i : i + 1] as number;
     const colour = (floorTexture * lights.length + lamp) * 3;
     const first = i * FLOOR_REFLECTION_STEP_PX;
-    const last = Math.min(w, first + FLOOR_REFLECTION_STEP_PX);
-    for (let col = first; col < last; col++) {
+    const last = Math.min(endCol, first + FLOOR_REFLECTION_STEP_PX);
+    for (let col = Math.max(first, firstCol); col < last; col++) {
       if (above ? y >= (wallStart[col] as number) : y < (wallEnd[col] as number)) {
         continue;
       }

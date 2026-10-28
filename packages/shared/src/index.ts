@@ -11,6 +11,7 @@ export * from './objects/vacuum/vacuum';
 export * from './portals/apparent';
 export * from './portals/crossing';
 export * from './portals/doorways';
+export * from './portals/ray';
 export * from './portals/transform';
 export * from './portals/wiring';
 export * from './protocol/movecheck';

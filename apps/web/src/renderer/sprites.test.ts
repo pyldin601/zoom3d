@@ -4,7 +4,7 @@ import { FACE_SIZE } from '../media/faces';
 import { MOUTH_Y_IN_CROP } from '../media/framing';
 import type { PeerFacts } from '../media/interest';
 import { BOOMBOX_LEFT, BOOMBOX_SPRITE, BOOMBOX_TOP } from './boombox';
-import { createView, setView } from './camera';
+import { createView, type Pass, setView } from './camera';
 import { createFramebuffer, DEFAULT_FOV, type Framebuffer, rgb, scaleRgb } from './framebuffer';
 import {
   CHEERS_LEFT,
@@ -34,6 +34,7 @@ import {
   SHADOW_RADIUS,
   type Sprite,
 } from './sprites';
+import { firstDifference } from './test-helpers';
 import { makeTextures } from './textures';
 import { FLOOR, renderWalls } from './walls';
 
@@ -1040,7 +1041,7 @@ describe('mirrorDisc', () => {
     const colourAt = (y: number) => {
       const out = createFramebuffer();
       out.pixels.fill(rgb(0, 0, 0));
-      mirror.addInto(out, 1, new Float64Array(fb.height).fill(1), new Int32Array(fb.width));
+      mirror.addInto(out, 1, new Float64Array(fb.height).fill(1), new Int32Array(fb.width), 0, fb.width);
       return out.pixels[y * fb.width + col] as number;
     };
     expect(colourAt(faceRows.at(-1) ?? 0) & 0xff).toBeGreaterThan(100);
@@ -1061,5 +1062,57 @@ describe('mirrorDisc', () => {
   test('a person behind the eye has no image', () => {
     const { fb, mirror } = mirrorOf(person(0.8));
     expect([...Array(fb.width).keys()].some((x) => shownRows(fb, mirror, x).length > 0)).toBe(false);
+  });
+});
+
+describe('renderSprites in a pass', () => {
+  // A red disc with a beer, 2 tiles straight ahead: centred on column 320.
+  const someone: Sprite = {
+    key: 's',
+    x: 3.5,
+    y: 4.5,
+    color: RED,
+    face: null,
+    speaking: 0,
+    bob: 0,
+    itemBob: 0,
+    sip: 0,
+    cheers: 0,
+    wobble: 0,
+    held: 'beer',
+    boombox: true,
+  };
+  const drawIn = (pass: Pass, facts?: Map<string, PeerFacts>) => {
+    const fb = frame();
+    renderSprites(fb, { eye: player, people: [someone], objects: [], lighting: null, pass }, facts);
+    return fb;
+  };
+  const redColumns = (fb: Framebuffer) =>
+    [...Array(fb.width).keys()].filter((x) => px(fb, x, 180) === RED || px(fb, x, 180) === shade(RED));
+
+  test("draws on the pass's columns only", () => {
+    const cols = redColumns(drawIn({ fromCol: 300, toCol: 320, nearDepth: null, lastLevel: false }));
+    expect(cols.length).toBeGreaterThan(0);
+    expect(cols.every((x) => x >= 300 && x < 320)).toBe(true);
+  });
+
+  test('draws no disc or held things at or before the near limit; the shadow is left to the floor', () => {
+    const plain = frame();
+    const nearDepth = new Float64Array(plain.width).fill(2);
+    const fb = drawIn({ fromCol: 0, toCol: plain.width, nearDepth, lastLevel: false });
+    // Everything above the floor is as the walls left it.
+    expect(firstDifference(fb.pixels.subarray(0, 220 * fb.width), plain.pixels.subarray(0, 220 * fb.width))).toBe(-1);
+    nearDepth.fill(1.9);
+    expect(redColumns(drawIn({ fromCol: 0, toCol: plain.width, nearDepth, lastLevel: false })).length).toBeGreaterThan(
+      0
+    );
+  });
+
+  test("a window's pass adds to the facts rather than zeroing them", () => {
+    const facts = new Map<string, PeerFacts>([['s', { drawnColumns: 5, projectedSize: 1 }]]);
+    const nearDepth = new Float64Array(640);
+    drawIn({ fromCol: 300, toCol: 320, nearDepth, lastLevel: false }, facts);
+    expect(facts.get('s')?.drawnColumns).toBe(25);
+    expect(facts.get('s')?.projectedSize).toBeCloseTo((2 * AVATAR_RADIUS * PROJ) / 2);
   });
 });

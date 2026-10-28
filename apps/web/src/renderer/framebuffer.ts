@@ -10,12 +10,21 @@ export interface Framebuffer {
   pixels: Uint32Array;
   /** Perpendicular wall distance per column, for the sprite pass. */
   zbuffer: Float64Array;
+  /** Per column, the portal whose window the column shows, or −1 (portal doorways spec §2.5). */
+  portalAt: Int32Array;
   /** Horizontal field of view, radians: every projection onto this buffer uses it. */
   fov: number;
 }
 
 export function createFramebuffer(width = INTERNAL_W, height = INTERNAL_H, fov = DEFAULT_FOV): Framebuffer {
-  return { width, height, pixels: new Uint32Array(width * height), zbuffer: new Float64Array(width), fov };
+  return {
+    width,
+    height,
+    pixels: new Uint32Array(width * height),
+    zbuffer: new Float64Array(width),
+    portalAt: new Int32Array(width).fill(-1),
+    fov,
+  };
 }
 
 /** Packs an opaque colour as 0xFFBBGGRR. */

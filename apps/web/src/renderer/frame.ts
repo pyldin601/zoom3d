@@ -1,8 +1,10 @@
-// One frame of the room, drawn back to front, then the HUD on its own canvas over it.
-import type { HeldItem } from '@zoom3d/shared';
+// One frame of the room, drawn back to front, then the HUD on its own canvas over it. With portals on, each window is
+// the room drawn again from the eye carried through its portal, for the window's columns (portal doorways spec §2.5).
+import { applyAngle, applyPoint, type HeldItem, type PlayerState } from '@zoom3d/shared';
 import type { PeerFacts } from '../media/interest';
 import { type AutomapPeer, drawAutomap } from './automap';
-import type { Framebuffer } from './framebuffer';
+import { createView, type Pass, setView, WHOLE_FRAME } from './camera';
+import { createFramebuffer, type Framebuffer } from './framebuffer';
 import { createAvatarGlows, type Glow, type GlowSource } from './glow';
 import { drawLabels, type NameLabel } from './labels';
 import type { ReflectionMode } from './lighting';
@@ -10,11 +12,13 @@ import { renderOwnBoombox } from './own-boombox';
 import { type HeldStep, renderOwnHeld } from './own-held';
 import type { HeldPose } from './sip';
 import { type PeopleAndObjects, renderSprites } from './sprites';
-import { type Room, renderWalls } from './walls';
+import { type Room, renderWalls, rowsCovered } from './walls';
+
+/** What one pass draws: the room, its people and objects, from one eye, on the pass's columns. */
+type PassScene = Omit<Room, 'objects' | 'people'> & PeopleAndObjects & { reflections: ReflectionMode };
 
 /** Everything one frame shows. */
-export interface RoomScene extends Omit<Room, 'objects' | 'people'>, PeopleAndObjects {
-  reflections: ReflectionMode;
+export interface RoomScene extends PassScene {
   /** Each person's name label and automap dot. */
   labels: readonly PersonLabel[];
   /** The local player's own face lights the room round them, as everyone's does; null until they have a colour. */
@@ -34,14 +38,182 @@ export interface FirstPerson {
 
 const avatarGlows = createAvatarGlows();
 
+/** Windows within windows are drawn this deep; a window seen at the last level is black (spec §2.5). */
+const WINDOW_LEVELS = 2;
+
+/** One level of windows: the frame they are drawn into, at the frame's size, and the scene they are drawn from. */
+interface WindowLevel {
+  fb: Framebuffer;
+  scene: PassScene & { eye: PlayerState; pass: Pass };
+}
+
+/** Index 0 is level 1. */
+const windowLevels: WindowLevel[] = [];
+/** What the windows' passes drew of each person, added to `seen` after the frame's own pass zeroes and fills it. */
+const seenThroughWindows = new Map<string, PeerFacts>();
+const frameView = createView();
+
 /** `seen` gets, per person, how much of them this frame drew (dynamic subscription reads it). */
 export function renderView(fb: Framebuffer, scene: RoomScene, seen?: Map<string, PeerFacts>): void {
   const glows = avatarGlows.update(scene.people, scene.ownGlow);
-  drawRoom(fb, scene, glows);
-  drawPeopleAndObjects(fb, scene, seen);
+  if (scene.portals) {
+    fitWindowLevels(fb);
+    seenThroughWindows.forEach(zeroFacts);
+  }
+  drawPass(fb, scene, glows, seen, 0);
+  if (scene.portals && seen) {
+    seenThroughWindows.forEach(addToSeen, seen);
+  }
   if (scene.firstPerson) {
     drawFirstPerson(fb, scene.firstPerson);
   }
+}
+
+/**
+ * The room, its windows, then the people and objects in front of them: a window's rows are copied in before the
+ * people are drawn over them. The window's depths go into the z-buffer last, as the people are clipped at its plane.
+ */
+function drawPass(
+  fb: Framebuffer,
+  scene: PassScene,
+  glows: readonly Glow[],
+  seen: Map<string, PeerFacts> | undefined,
+  level: number
+): void {
+  drawRoom(fb, scene, glows);
+  if (scene.portals) {
+    drawWindows(fb, scene, glows, seen, level);
+  }
+  drawPeopleAndObjects(fb, scene, level === 0 ? seen : seen && seenThroughWindows);
+  if (scene.portals) {
+    takeDepthsBeyondWindows(fb, scene, level);
+  }
+}
+
+/** Each run of columns showing one portal's window, drawn at the next level and copied in. */
+function drawWindows(
+  fb: Framebuffer,
+  scene: PassScene,
+  glows: readonly Glow[],
+  seen: Map<string, PeerFacts> | undefined,
+  level: number
+): void {
+  const { portalAt } = fb;
+  const { fromCol, toCol } = passOf(scene);
+  const endCol = Math.min(fb.width, toCol);
+  let col = fromCol;
+  while (col < endCol) {
+    const portal = portalAt[col] as number;
+    let runEnd = col + 1;
+    while (runEnd < endCol && portalAt[runEnd] === portal) {
+      runEnd++;
+    }
+    if (portal >= 0) {
+      drawWindow(fb, scene, glows, seen, level, portal, col, runEnd);
+    }
+    col = runEnd;
+  }
+}
+
+/** The window onto `portal` on columns [fromCol, toCol): the scene from the eye carried through it, past its plane. */
+function drawWindow(
+  fb: Framebuffer,
+  scene: PassScene,
+  glows: readonly Glow[],
+  seen: Map<string, PeerFacts> | undefined,
+  level: number,
+  portal: number,
+  fromCol: number,
+  toCol: number
+): void {
+  const toDest = scene.portals?.list.at(portal)?.toDest;
+  const next = windowLevels.at(level);
+  if (!toDest || !next) {
+    return;
+  }
+  const beyond = next.scene;
+  applyPoint(toDest, scene.eye.x, scene.eye.y, beyond.eye);
+  beyond.eye.angle = applyAngle(toDest, scene.eye.angle);
+  beyond.pass.fromCol = fromCol;
+  beyond.pass.toCol = toCol;
+  beyond.pass.nearDepth = fb.zbuffer;
+  beyond.pass.lastLevel = level + 1 === WINDOW_LEVELS;
+  beyond.map = scene.map;
+  beyond.textures = scene.textures;
+  beyond.lighting = scene.lighting;
+  beyond.reflections = scene.reflections;
+  beyond.people = scene.people;
+  beyond.objects = scene.objects;
+  beyond.portals = scene.portals;
+  drawPass(next.fb, beyond, glows, seen, level + 1);
+  copyWindowRows(next.fb, fb, scene.eye, fromCol, toCol);
+}
+
+/** Copies each column's window rows, those a wall at its plane would cover, from `from` into `to`. */
+function copyWindowRows(from: Framebuffer, to: Framebuffer, eye: PlayerState, fromCol: number, toCol: number): void {
+  const { width: w, height: h, zbuffer } = to;
+  const { proj } = setView(frameView, to, eye);
+  for (let col = fromCol; col < toCol; col++) {
+    const { start, end } = rowsCovered(h, proj / (zbuffer[col] as number));
+    for (let row = start; row < end; row++) {
+      to.pixels[row * w + col] = from.pixels[row * w + col] as number;
+    }
+  }
+}
+
+/** The depths seen through each window replace its plane's in the z-buffer, so labels hide behind what it shows. */
+function takeDepthsBeyondWindows(fb: Framebuffer, scene: PassScene, level: number): void {
+  const beyond = windowLevels.at(level)?.fb;
+  if (!beyond) {
+    return;
+  }
+  const { fromCol, toCol } = passOf(scene);
+  for (let col = fromCol; col < Math.min(fb.width, toCol); col++) {
+    if ((fb.portalAt[col] as number) >= 0) {
+      fb.zbuffer[col] = beyond.zbuffer[col] as number;
+    }
+  }
+}
+
+const passOf = (scene: PassScene) => scene.pass ?? WHOLE_FRAME;
+
+/** Makes the windows' frames match `fb`'s size and FOV: they are rebuilt only when it changes. */
+function fitWindowLevels(fb: Framebuffer): void {
+  for (let i = 0; i < WINDOW_LEVELS; i++) {
+    const level = windowLevels.at(i);
+    if (level && level.fb.width === fb.width && level.fb.height === fb.height && level.fb.fov === fb.fov) {
+      continue;
+    }
+    windowLevels[i] = {
+      fb: createFramebuffer(fb.width, fb.height, fb.fov),
+      scene: {
+        map: { width: 0, height: 0, tiles: new Uint8Array(0), spawn: { x: 0, y: 0 } },
+        textures: [],
+        eye: { x: 0, y: 0, angle: 0 },
+        lighting: null,
+        reflections: 'none',
+        people: [],
+        objects: [],
+        portals: null,
+        pass: { fromCol: 0, toCol: 0, nearDepth: null, lastLevel: false },
+      },
+    };
+  }
+}
+
+function zeroFacts(f: PeerFacts): void {
+  f.drawnColumns = 0;
+  f.projectedSize = 0;
+}
+
+/** Adds a window's facts to the frame's: its columns, and its size where the frame's own pass drew none of them. */
+function addToSeen(this: Map<string, PeerFacts>, through: PeerFacts, key: string): void {
+  const f = this.get(key);
+  if (!f || through.drawnColumns === 0) {
+    return;
+  }
+  f.projectedSize = f.drawnColumns === 0 ? through.projectedSize : Math.max(f.projectedSize, through.projectedSize);
+  f.drawnColumns += through.drawnColumns;
 }
 
 export function renderHud(hud: CanvasRenderingContext2D, fb: Framebuffer, scene: RoomScene, showMap: boolean): void {
@@ -53,11 +225,11 @@ export function renderHud(hud: CanvasRenderingContext2D, fb: Framebuffer, scene:
   }
 }
 
-function drawRoom(fb: Framebuffer, scene: RoomScene, glows: readonly Glow[]): void {
+function drawRoom(fb: Framebuffer, scene: PassScene, glows: readonly Glow[]): void {
   renderWalls(fb, scene, glows);
 }
 
-function drawPeopleAndObjects(fb: Framebuffer, scene: RoomScene, seen: Map<string, PeerFacts> | undefined): void {
+function drawPeopleAndObjects(fb: Framebuffer, scene: PassScene, seen: Map<string, PeerFacts> | undefined): void {
   renderSprites(fb, scene, seen);
 }
 

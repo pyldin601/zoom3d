@@ -54,3 +54,20 @@ export function setView(view: View, fb: Pick<Framebuffer, 'width' | 'height' | '
   view.half = fb.height / 2;
   return view;
 }
+
+/**
+ * The part of a frame one pass draws: columns [fromCol, toCol), and per column a near limit (tiles along the view),
+ * at or before which nothing is drawn; null for none. A window's pass draws what lies beyond its portal's plane
+ * (portal doorways spec §2.5).
+ */
+export interface Pass {
+  fromCol: number;
+  toCol: number;
+  nearDepth: Float64Array | null;
+  /** Whether the windows this pass sees are filled black rather than drawn: recursion stops here. */
+  lastLevel: boolean;
+}
+
+export const WHOLE_FRAME: Pass = { fromCol: 0, toCol: Number.POSITIVE_INFINITY, nearDepth: null, lastLevel: false };
+
+export const isWindowPass = (pass: Pass) => pass.nearDepth !== null;

@@ -19,11 +19,19 @@ export interface FloorMirror {
   /** Empties everything plotted since the last clear. */
   clear(): void;
   /**
-   * The walls' images (floor mirror spec §3.2): under each column's wall, rows `end[col]` on, the drawn wall's rows
-   * flipped about its foot, for the wall's height, on rows where `weight` > 0. Call before plotting anything over them,
-   * and keep `fb`'s walls as they are until the blur.
+   * The walls' images (floor mirror spec §3.2): under each column's wall in [fromCol, toCol), rows `end[col]` on, the
+   * drawn wall's rows flipped about its foot, for the wall's height, on rows where `weight` > 0. A portal's window
+   * (fb.portalAt) has none: its rows are drawn after the mirror. Call before plotting anything over them, and keep
+   * `fb`'s walls as they are until the blur.
    */
-  addWalls(fb: Framebuffer, start: Int32Array, end: Int32Array, weight: Float64Array): void;
+  addWalls(
+    fb: Framebuffer,
+    start: Int32Array,
+    end: Int32Array,
+    weight: Float64Array,
+    fromCol: number,
+    toCol: number
+  ): void;
   /** Covers pixel (x, y) with `colour`, a packed rgb(), over whatever was there. */
   plot(x: number, y: number, colour: number, kind: MirrorKind): void;
   /** Whether (x, y) was plotted, before the blur. */
@@ -35,8 +43,15 @@ export interface FloorMirror {
   hidingAt(x: number, y: number): number;
   /** The frame rows the blurred mirror covers, [top, bottom); empty when they're equal. */
   readonly rows: { top: number; bottom: number };
-  /** Adds `strength · weight[y]` of the mirror's colour to `fb`, on rows from `floorFrom[x]` down. */
-  addInto(fb: Framebuffer, strength: number, weight: Float64Array, floorFrom: Int32Array): void;
+  /** Adds `strength · weight[y]` of the mirror's colour to `fb`'s columns [fromCol, toCol), on rows from `floorFrom[x]` down. */
+  addInto(
+    fb: Framebuffer,
+    strength: number,
+    weight: Float64Array,
+    floorFrom: Int32Array,
+    fromCol: number,
+    toCol: number
+  ): void;
 }
 
 /** The mirror is blurred at 1/2^SHIFT of the frame's resolution (quarter: half measured 0.6 ms in bench:walls). */
@@ -244,15 +259,18 @@ export function createFloorMirror(): FloorMirror {
       rows.top = 0;
       rows.bottom = 0;
     },
-    addWalls(fb, start, end, weight) {
+    addWalls(fb, start, end, weight, fromCol, toCol) {
       wallPixels = fb.pixels;
-      const { pixels } = fb;
+      const { pixels, portalAt } = fb;
       // Rows above `nearest` show no mirror: the weight only grows down the floor.
       let nearest = height;
       for (let y = height - 1; y >= 0 && (weight[y] as number) > 0; y--) {
         nearest = y;
       }
-      for (let x = 0; x < width; x++) {
+      for (let x = fromCol; x < toCol; x++) {
+        if ((portalAt[x] as number) >= 0) {
+          continue;
+        }
         const foot = end[x] as number;
         const from = Math.max(foot, nearest);
         const to = Math.min(height, foot + (foot - (start[x] as number)));
@@ -320,7 +338,7 @@ export function createFloorMirror(): FloorMirror {
         ? 0
         : (texels[(hy * texelsAcross + (x >> SHIFT)) * CHANNELS + 4] as number);
     },
-    addInto(fb, strength, weight, floorFrom) {
+    addInto(fb, strength, weight, floorFrom, fromCol, toCol) {
       const { pixels } = fb;
       for (let y = rows.top; y < rows.bottom; y++) {
         const k = strength * (weight[y] as number);
@@ -328,7 +346,7 @@ export function createFloorMirror(): FloorMirror {
           continue;
         }
         const texelRow = (y >> SHIFT) * texelsAcross;
-        for (let x = 0; x < width; x++) {
+        for (let x = fromCol; x < toCol; x++) {
           const at = (texelRow + (x >> SHIFT)) * CHANNELS;
           if ((texels[at + 3] as number) <= 0 || y < (floorFrom[x] as number)) {
             continue;

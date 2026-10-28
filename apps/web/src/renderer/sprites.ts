@@ -4,7 +4,7 @@ import type { HeldItem, PlayerState } from '@zoom3d/shared';
 import { FACE_SIZE } from '../media/faces';
 import type { PeerFacts } from '../media/interest';
 import { BOOMBOX_LEFT, BOOMBOX_SPRITE, BOOMBOX_TOP } from './boombox';
-import { createView, EYE_HEIGHT, MIN_DEPTH, setView, type View } from './camera';
+import { createView, EYE_HEIGHT, isWindowPass, MIN_DEPTH, type Pass, setView, type View, WHOLE_FRAME } from './camera';
 import { type Framebuffer, rgb, scaleRgb } from './framebuffer';
 import {
   blitHeldSprite,
@@ -81,6 +81,8 @@ export interface PeopleAndObjects {
   objects: readonly VoxelInstance[];
   /** null draws the objects unlit. */
   lighting: Lighting | null;
+  /** The columns and near limit drawn; the whole frame when left out. */
+  pass?: Pass;
 }
 
 export interface Projection {
@@ -167,25 +169,29 @@ const shadow: FloorShadow = { x: 0, y: 0, depth: 0, radius: 0, strength: 0 };
 /**
  * Draws the people's discs, and the objects interleaved with them far to near. With `facts`, also writes, per sprite
  * key, how many of its disc's columns are seen (in front of the walls and not hidden behind a nearer disc) and the
- * disc's diameter (both 0 when not drawn); every key in the map is zeroed first, and objects are reused.
+ * disc's diameter (both 0 when not drawn); every key in the map is zeroed first, and objects are reused. A window's
+ * pass adds its columns to the facts instead, and keeps the larger diameter.
  */
 export function renderSprites(fb: Framebuffer, scene: PeopleAndObjects, facts?: Map<string, PeerFacts>): void {
   const view = setView(frameView, fb, scene.eye);
-  bindFacts(scene.people, facts);
+  const pass = scene.pass ?? WHOLE_FRAME;
+  bindFacts(scene.people, facts, pass);
   projectVisible(view, scene.people);
   if (facts) {
-    countSeenColumns(fb);
+    countSeenColumns(fb, pass);
   }
   orderVoxels(view, scene.objects);
   // Shadows lie on the floor, so every disc and object (drawn next) covers every shadow. Objects cast theirs from the
   // lamps, in the floor renderWalls draws.
-  drawSpriteShadows(fb, view, scene.people);
-  drawFarToNear(fb, view, scene);
+  drawSpriteShadows(fb, view, scene.people, pass);
+  drawFarToNear(fb, view, scene, pass);
 }
 
-/** Zeroes every entry in `facts`, then points spriteFacts at each sprite's, adding the missing ones. */
-function bindFacts(sprites: readonly Sprite[], facts: Map<string, PeerFacts> | undefined): void {
-  facts?.forEach(zeroFacts);
+/** Zeroes every entry in `facts` (but in a window's pass), then points spriteFacts at each sprite's, adding the missing ones. */
+function bindFacts(sprites: readonly Sprite[], facts: Map<string, PeerFacts> | undefined, pass: Pass): void {
+  if (!isWindowPass(pass)) {
+    facts?.forEach(zeroFacts);
+  }
   spriteFacts.length = sprites.length;
   for (let i = 0; i < sprites.length; i++) {
     const { key } = sprites[i] as Sprite;
@@ -223,8 +229,9 @@ function projectVisible(view: View, sprites: readonly Sprite[]): void {
  * column of a farther disc is hidden when a nearer disc's slice in that column is at least as tall; the walking bob
  * is ignored. Only touches each disc's columns once and allocates only when the frame width changes.
  */
-function countSeenColumns(fb: Framebuffer): void {
+function countSeenColumns(fb: Framebuffer, pass: Pass): void {
   const { width: w, zbuffer } = fb;
+  const near = pass.nearDepth;
   if (cover.length !== w) {
     cover = new Float64Array(w);
   } else {
@@ -237,12 +244,12 @@ function countSeenColumns(fb: Framebuffer): void {
       continue;
     }
     const { screenX, depth, size } = projections[i] as Projection;
-    f.projectedSize = size;
+    const columnsBefore = f.drawnColumns;
     const r = size / 2;
-    const firstCol = Math.max(0, Math.floor(screenX - r));
-    const lastCol = Math.min(w - 1, Math.ceil(screenX + r));
+    const firstCol = Math.max(pass.fromCol, Math.floor(screenX - r));
+    const lastCol = Math.min(w - 1, pass.toCol - 1, Math.ceil(screenX + r));
     for (let col = firstCol; col <= lastCol; col++) {
-      if (depth >= (zbuffer[col] as number)) {
+      if (depth >= (zbuffer[col] as number) || (near !== null && depth <= (near[col] as number))) {
         continue;
       }
       const dx = col + 0.5 - screenX;
@@ -254,6 +261,11 @@ function countSeenColumns(fb: Framebuffer): void {
         f.drawnColumns++;
         cover[col] = slice;
       }
+    }
+    if (!isWindowPass(pass)) {
+      f.projectedSize = size;
+    } else if (f.drawnColumns > columnsBefore) {
+      f.projectedSize = Math.max(f.projectedSize, size);
     }
   }
 }
@@ -273,16 +285,16 @@ function orderVoxels(view: View, voxels: readonly VoxelInstance[]): void {
 }
 
 /** Each visible avatar's shadow, and those of the drink and boombox it carries. */
-function drawSpriteShadows(fb: Framebuffer, view: View, sprites: readonly Sprite[]): void {
+function drawSpriteShadows(fb: Framebuffer, view: View, sprites: readonly Sprite[], pass: Pass): void {
   for (const i of visible) {
     const s = sprites[i] as Sprite;
     const { depth } = projections[i] as Projection;
-    drawShadow(fb, view, shadowUnder(s.x, s.y, depth, SHADOW_RADIUS));
+    drawShadow(fb, view, shadowUnder(s.x, s.y, depth, SHADOW_RADIUS), pass);
     if (s.held && drinkLift(s) < 1) {
-      drawShadow(fb, view, drinkShadow(view, s, s.held, depth));
+      drawShadow(fb, view, drinkShadow(view, s, s.held, depth), pass);
     }
     if (s.boombox) {
-      drawShadow(fb, view, shadowBeside(view, s, BOOMBOX_SHADOW_OFFSET, BOOMBOX_SHADOW_RADIUS, depth));
+      drawShadow(fb, view, shadowBeside(view, s, BOOMBOX_SHADOW_OFFSET, BOOMBOX_SHADOW_RADIUS, depth), pass);
     }
   }
 }
@@ -318,7 +330,12 @@ function shadowBeside(view: View, s: Sprite, offset: number, radius: number, dep
 }
 
 /** Darkens the floor under `shadow`: each pixel nearer than its wall is cast back to the floor point it shows. */
-function drawShadow(fb: Framebuffer, view: View, { x: sx, y: sy, depth, radius, strength }: FloorShadow): void {
+function drawShadow(
+  fb: Framebuffer,
+  view: View,
+  { x: sx, y: sy, depth, radius, strength }: FloorShadow,
+  pass: Pass
+): void {
   const { width: w, height: h, pixels, zbuffer } = fb;
   const { dirX, dirY, planeX, planeY, proj, half } = view;
   const nearest = Math.max(depth - radius, MIN_DEPTH);
@@ -327,10 +344,11 @@ function drawShadow(fb: Framebuffer, view: View, { x: sx, y: sy, depth, radius, 
   const lastRow = Math.min(h - 1, Math.ceil(half + eyeHeightPx / nearest));
   const centreX = view.halfWidth * (1 + lateralOf(view, sx, sy) / depth);
   const halfWidthPx = (radius * proj) / nearest;
-  const firstCol = Math.max(0, Math.floor(centreX - halfWidthPx));
-  const lastCol = Math.min(w - 1, Math.ceil(centreX + halfWidthPx));
+  const firstCol = Math.max(pass.fromCol, Math.floor(centreX - halfWidthPx));
+  const lastCol = Math.min(w - 1, pass.toCol - 1, Math.ceil(centreX + halfWidthPx));
   const radius2 = radius * radius;
-  // Row by row: the floor distance is the row's, so it's one division per row, not per pixel.
+  // Row by row: the floor distance is the row's, so it's one division per row, not per pixel. A window's pass needs
+  // no near limit here: floor before its plane lies below the window's rows, which are all that is kept of the pass.
   for (let row = firstRow; row <= lastRow; row++) {
     const dist = eyeHeightPx / (row + 0.5 - half);
     for (let col = firstCol; col <= lastCol; col++) {
@@ -365,17 +383,17 @@ function lateralOf(view: View, x: number, y: number): number {
 const shadowTexelCentre = (offset: number) => (Math.floor(offset * SHADOW_TEXELS_PER_TILE) + 0.5) * SHADOW_TEXEL;
 
 /** The visible avatars far to near, each object drawn just before the first avatar nearer than it. */
-function drawFarToNear(fb: Framebuffer, view: View, scene: PeopleAndObjects): void {
+function drawFarToNear(fb: Framebuffer, view: View, scene: PeopleAndObjects, pass: Pass): void {
   let nextVoxel = 0;
   for (const i of visible) {
     const projection = projections[i] as Projection;
     while (nextVoxel < voxelOrder.length && depthOfVoxel(nextVoxel) > projection.depth) {
-      drawVoxel(fb, view, scene, nextVoxel++);
+      drawVoxel(fb, view, scene, nextVoxel++, pass);
     }
-    drawAvatar(fb, scene.people[i] as Sprite, projection);
+    drawAvatar(fb, scene.people[i] as Sprite, projection, pass);
   }
   while (nextVoxel < voxelOrder.length) {
-    drawVoxel(fb, view, scene, nextVoxel++);
+    drawVoxel(fb, view, scene, nextVoxel++, pass);
   }
 }
 
@@ -383,23 +401,23 @@ function drawFarToNear(fb: Framebuffer, view: View, scene: PeopleAndObjects): vo
 const depthOfVoxel = (k: number) => voxelDepths[voxelOrder[k] as number] as number;
 
 /** Draws the `k`th object in voxelOrder. */
-function drawVoxel(fb: Framebuffer, view: View, { objects, lighting }: PeopleAndObjects, k: number): void {
-  renderVoxel(fb, view, objects[voxelOrder[k] as number] as VoxelInstance, lighting);
+function drawVoxel(fb: Framebuffer, view: View, { objects, lighting }: PeopleAndObjects, k: number, pass: Pass): void {
+  renderVoxel(fb, view, objects[voxelOrder[k] as number] as VoxelInstance, lighting, pass);
 }
 
 /** One avatar: its disc, then the drink and boombox it carries in front of it. */
-function drawAvatar(fb: Framebuffer, s: Sprite, projection: Projection): void {
-  drawDisc(fb, s, projection);
+function drawAvatar(fb: Framebuffer, s: Sprite, projection: Projection, pass: Pass): void {
+  drawDisc(fb, s, projection, pass);
   if (s.held) {
-    drawDrink(fb, s, s.held, projection);
+    drawDrink(fb, s, s.held, projection, pass);
   }
   if (s.boombox) {
-    drawBoombox(fb, s, projection);
+    drawBoombox(fb, s, projection, pass);
   }
 }
 
 /** The disc, lifted by the walking bob and depth-tested per column: the face (or flat colour) inside the ring. */
-function drawDisc(fb: Framebuffer, s: Sprite, { screenX, depth, size }: Projection): void {
+function drawDisc(fb: Framebuffer, s: Sprite, { screenX, depth, size }: Projection, pass: Pass): void {
   const { width: w, height: h, pixels, zbuffer } = fb;
   const { color, face } = s;
   const faceSize = FACE_SIZE;
@@ -408,13 +426,14 @@ function drawDisc(fb: Framebuffer, s: Sprite, { screenX, depth, size }: Projecti
   const r2 = r * r;
   const faceR2 = r2 * FACE_RADIUS * FACE_RADIUS;
   const faceR = r * FACE_RADIUS;
-  const firstCol = Math.max(0, Math.floor(screenX - r));
-  const lastCol = Math.min(w - 1, Math.ceil(screenX + r));
+  const near = pass.nearDepth;
+  const firstCol = Math.max(pass.fromCol, Math.floor(screenX - r));
+  const lastCol = Math.min(w - 1, pass.toCol - 1, Math.ceil(screenX + r));
   const centreY = h / 2 - s.bob * BOB_HEIGHT * r;
   const firstRow = Math.max(0, Math.floor(centreY - r));
   const lastRow = Math.min(h - 1, Math.ceil(centreY + r));
   for (let col = firstCol; col <= lastCol; col++) {
-    if (depth >= (zbuffer[col] as number)) {
+    if (depth >= (zbuffer[col] as number) || (near !== null && depth <= (near[col] as number))) {
       continue;
     }
     const dx = col + 0.5 - screenX;
@@ -445,7 +464,7 @@ const mirrored: Projection = { screenX: 0, depth: 0, size: 0 };
  * Plots the person's image in the floor (floor mirror spec §3.3): the disc upside down, as far under the floor as it
  * floats over it, its face read bottom to top, depth-tested per column like the disc. Unlit, as the disc is.
  */
-export function mirrorDisc(fb: Framebuffer, view: View, s: Sprite, mirror: FloorMirror): void {
+export function mirrorDisc(fb: Framebuffer, view: View, s: Sprite, mirror: FloorMirror, pass = WHOLE_FRAME): void {
   if (!projectSprite(view, s.x, s.y, mirrored)) {
     return;
   }
@@ -457,14 +476,15 @@ export function mirrorDisc(fb: Framebuffer, view: View, s: Sprite, mirror: Floor
   const r2 = r * r;
   const faceR2 = r2 * FACE_RADIUS * FACE_RADIUS;
   const faceR = r * FACE_RADIUS;
+  const near = pass.nearDepth;
   // The disc's centre is EYE_HEIGHT plus its bob over the floor; its image as far under it.
   const centreY = h / 2 + (2 * EYE_HEIGHT * view.proj) / depth + s.bob * BOB_HEIGHT * r;
-  const firstCol = Math.max(0, Math.floor(screenX - r));
-  const lastCol = Math.min(w - 1, Math.ceil(screenX + r));
+  const firstCol = Math.max(pass.fromCol, Math.floor(screenX - r));
+  const lastCol = Math.min(w - 1, pass.toCol - 1, Math.ceil(screenX + r));
   const firstRow = Math.max(0, Math.floor(centreY - r));
   const lastRow = Math.min(h - 1, Math.ceil(centreY + r));
   for (let col = firstCol; col <= lastCol; col++) {
-    if (depth >= (zbuffer[col] as number)) {
+    if (depth >= (zbuffer[col] as number) || (near !== null && depth <= (near[col] as number))) {
       continue;
     }
     const dx = col + 0.5 - screenX;
@@ -493,18 +513,24 @@ const faceTexel = (offsetPx: number, faceRadiusPx: number, faceSize: number) =>
   Math.min(faceSize - 1, Math.max(0, ((offsetPx / faceRadiusPx + 1) * 0.5 * faceSize) | 0));
 
 /** The drink in the hand on the viewer's right, part way to the mouth or raised as `s` says, bobbing with the step. */
-function drawDrink(fb: Framebuffer, s: Sprite, drink: HeldItem, { screenX, depth, size }: Projection): void {
+function drawDrink(
+  fb: Framebuffer,
+  s: Sprite,
+  drink: HeldItem,
+  { screenX, depth, size }: Projection,
+  pass: Pass
+): void {
   const r = size / 2;
   const left = screenX + drinkLeft(drink, s) * r;
   const top = fb.height / 2 - (drinkTop(drink, s) + s.itemBob * BOB_HEIGHT) * r;
-  blitHeldSprite(fb, HELD_SPRITES[drink], left, top, HELD_TEXEL * r, depth);
+  blitHeldSprite(fb, HELD_SPRITES[drink], left, top, HELD_TEXEL * r, depth, pass);
 }
 
 /** The boombox in the hand on the viewer's left, bobbing with the step. */
-function drawBoombox(fb: Framebuffer, s: Sprite, { screenX, depth, size }: Projection): void {
+function drawBoombox(fb: Framebuffer, s: Sprite, { screenX, depth, size }: Projection, pass: Pass): void {
   const r = size / 2;
   const top = fb.height / 2 - (BOOMBOX_TOP + s.itemBob * BOB_HEIGHT) * r;
-  blitHeldSprite(fb, BOOMBOX_SPRITE, screenX + BOOMBOX_LEFT * r, top, HELD_TEXEL * r, depth);
+  blitHeldSprite(fb, BOOMBOX_SPRITE, screenX + BOOMBOX_LEFT * r, top, HELD_TEXEL * r, depth, pass);
 }
 
 /** The drink's left edge in `pose`, in disc radii right of the disc's centre. */

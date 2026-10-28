@@ -62,6 +62,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     labels: world.labels,
     ownGlow: null,
     firstPerson: null,
+    portals: null,
   };
 
   /** The local player as the ball feels them, with their velocity from the last frame's move. */
@@ -143,6 +144,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     scene.lighting = reflections === null ? null : o.roomLighting();
     scene.reflections = reflections ?? 'none';
     const room = o.room();
+    scene.portals = room?.portals() ?? null;
     scene.ownGlow = localPlayer.glow(now, room?.session.selfColor() ?? null);
     scene.firstPerson = isConnected(room) ? localPlayer.firstPerson(now) : null;
     return scene;

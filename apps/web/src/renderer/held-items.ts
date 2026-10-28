@@ -3,6 +3,7 @@
 // handle, the wine glass by the stem.
 import type { HeldItem } from '@zoom3d/shared';
 import { MOUTH_Y_IN_CROP } from '../media/framing';
+import { WHOLE_FRAME } from './camera';
 import { type Framebuffer, rgb } from './framebuffer';
 
 /**
@@ -123,8 +124,8 @@ export const HELD_SPRITES: Record<HeldItem, HeldSprite> = {
 };
 
 /**
- * Draws `sprite` with texels `texelPx` wide from (left, top), clipped to the frame, in the columns whose wall is
- * farther than `depth`.
+ * Draws `sprite` with texels `texelPx` wide from (left, top), clipped to the frame and the pass, in the columns whose
+ * wall is farther than `depth`.
  */
 export function blitHeldSprite(
   fb: Framebuffer,
@@ -132,16 +133,18 @@ export function blitHeldSprite(
   left: number,
   top: number,
   texelPx: number,
-  depth: number
+  depth: number,
+  pass = WHOLE_FRAME
 ): void {
   const { width: w, height: h, pixels, zbuffer } = fb;
   const { w: tw, h: th, texels } = sprite;
-  const firstCol = Math.max(0, Math.floor(left));
-  const lastCol = Math.min(w - 1, Math.ceil(left + tw * texelPx) - 1);
+  const near = pass.nearDepth;
+  const firstCol = Math.max(pass.fromCol, Math.floor(left));
+  const lastCol = Math.min(w - 1, pass.toCol - 1, Math.ceil(left + tw * texelPx) - 1);
   const firstRow = Math.max(0, Math.floor(top));
   const lastRow = Math.min(h - 1, Math.ceil(top + th * texelPx) - 1);
   for (let col = firstCol; col <= lastCol; col++) {
-    if (depth >= (zbuffer[col] as number)) {
+    if (depth >= (zbuffer[col] as number) || (near !== null && depth <= (near[col] as number))) {
       continue;
     }
     const u = Math.floor((col + 0.5 - left) / texelPx);

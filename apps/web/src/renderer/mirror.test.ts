@@ -29,7 +29,7 @@ describe('FloorMirror', () => {
     expect(m.coverageAt(20, 20)).toBe(1);
     const fb = createFramebuffer(40, 40);
     fb.pixels.fill(rgb(0, 0, 0));
-    m.addInto(fb, 1, ones, new Int32Array(40));
+    m.addInto(fb, 1, ones, new Int32Array(40), 0, 40);
     expect(fb.pixels[20 * 40 + 20]).toBe(BLUE);
   });
 
@@ -104,7 +104,7 @@ describe('FloorMirror', () => {
     m.blur(flat(0));
     const fb = createFramebuffer(40, 40);
     fb.pixels.fill(GREY);
-    m.addInto(fb, 1, new Float64Array(40).fill(0.5), new Int32Array(40).fill(20));
+    m.addInto(fb, 1, new Float64Array(40).fill(0.5), new Int32Array(40).fill(20), 0, 40);
     expect(fb.pixels[19 * 40 + 20]).toBe(GREY);
     expect(fb.pixels[30 * 40 + 20]).toBe(rgb(200, 100, 100));
   });
