@@ -40,10 +40,11 @@ const ROOMS = parseMap('111111111\n1...1...1\n1S..1...1\n11.111.11\n1.......1\n1
 const A_TO_B: RigidTransform = { cos: -1, sin: 0, tx: 9, ty: 7 };
 const A = 0;
 const B = 1;
-const ROOM_PORTALS = portalsOf(ROOMS, [
+const ROOM_SPECS: PortalSpec[] = [
   { x: 2, y: 3, ny: 1, to: B, toDest: A_TO_B },
   { x: 6, y: 3, ny: -1, to: A, toDest: invert(A_TO_B) },
-]);
+];
+const ROOM_PORTALS = portalsOf(ROOMS, ROOM_SPECS);
 const BEHIND_B = at(6.5, 2.5);
 
 describe('hasPortalLineOfSight', () => {
@@ -87,10 +88,12 @@ describe('apparentPosition', () => {
     expect(out).toEqual({ ...BEHIND_B, sees: false, through: 0 });
   });
 
-  test('an image behind a wall, off the line through the opening, is never chosen', () => {
-    // Through A the target's image is (1.5, 5.5): straight down from the listener, through the wall beside A.
+  test('an image off the line through the opening is never chosen, even with floor beside the doorway', () => {
+    // Through A the target's image is (1.5, 5.5): straight down from the listener, past A's opening.
+    const floorBesideDoors = parseMap('111111111\n1...1...1\n1S..1...1\n1..111..1\n1.......1\n1.......1\n111111111');
     const target = at(7.5, 1.5);
-    const out = apparentPosition(ROOMS, ROOM_PORTALS, at(1.5, 1.5), target, blank());
+    const portals = portalsOf(floorBesideDoors, ROOM_SPECS);
+    const out = apparentPosition(floorBesideDoors, portals, at(1.5, 1.5), target, blank());
     expect(out).toEqual({ ...target, sees: false, through: 0 });
   });
 
@@ -118,6 +121,53 @@ const CHAIN = portalsOf(CORRIDORS, [
   { x: 3, y: 3, ny: 1, to: 3, toDest: shift(2, -1) },
   { x: 5, y: 2, ny: 1, to: 2, toDest: shift(-2, 1) },
 ]);
+
+// Two closed corridors. A (1, 2) leads to B (3, 2), both fronts north; a pillar stands in B's corridor at (3, 4).
+const PILLAR = parseMap('11111\n1S1.1\n1.1.1\n1.1.1\n1.111\n1.1.1\n11111');
+const PILLAR_PORTALS = portalsOf(PILLAR, [
+  { x: 1, y: 2, ny: 1, to: 1, toDest: shift(2, 0) },
+  { x: 3, y: 2, ny: 1, to: 0, toDest: shift(-2, 0) },
+]);
+
+// One open room. A (1, 2), front north, leads to B (5, 3), front south; a pillar at (5, 2) stands just behind B.
+const OPEN = parseMap('1111111\n1S....1\n1....11\n1.....1\n1111111');
+const OPEN_PORTALS = portalsOf(OPEN, [
+  { x: 1, y: 2, ny: 1, to: 1, toDest: { cos: -1, sin: 0, tx: 7, ty: 6 } },
+  { x: 5, y: 3, ny: -1, to: 0, toDest: { cos: -1, sin: 0, tx: 7, ty: 6 } },
+]);
+
+// Two long corridors. A (1, 2), front north, leads to B (3, 8) at the far end of the other, front south.
+const LONG_WAY = parseMap(`11111\n1S1.1\n${'1.1.1\n'.repeat(7)}11111`);
+const LONG_WAY_PORTALS = portalsOf(LONG_WAY, [
+  { x: 1, y: 2, ny: 1, to: 1, toDest: { cos: -1, sin: 0, tx: 5, ty: 11 } },
+  { x: 3, y: 8, ny: -1, to: 0, toDest: { cos: -1, sin: 0, tx: 5, ty: 11 } },
+]);
+
+describe('apparentPosition, seen and unseen', () => {
+  test('an occluded image through a portal beats a farther, unseen real position', () => {
+    const out = apparentPosition(PILLAR, PILLAR_PORTALS, at(1.5, 1.5), at(3.5, 5.5), blank());
+    expect(out.through).toBe(1);
+    expect(out.sees).toBe(false);
+    expect(out.x).toBeCloseTo(1.5);
+    expect(out.y).toBeCloseTo(5.5);
+  });
+
+  test('a seen real position beats a nearer, unseen image', () => {
+    // Through A the target is 3 tiles away, but the pillar hides it; straight along the row it is 4 tiles, in sight.
+    const target = at(5.5, 1.5);
+    const out = apparentPosition(OPEN, OPEN_PORTALS, at(1.5, 1.5), target, blank());
+    expect(out).toEqual({ ...target, sees: true, through: 0 });
+  });
+
+  test('a farther, seen image beats a nearer, unseen real position', () => {
+    // The target is 2 tiles away through the wall, and 8 tiles away through A and up B's corridor.
+    const out = apparentPosition(LONG_WAY, LONG_WAY_PORTALS, at(1.5, 1.5), at(3.5, 1.5), blank());
+    expect(out.through).toBe(1);
+    expect(out.sees).toBe(true);
+    expect(out.x).toBeCloseTo(1.5);
+    expect(out.y).toBeCloseTo(9.5);
+  });
+});
 
 describe('apparentPosition through two portals', () => {
   const listener = at(1.5, 1.5);

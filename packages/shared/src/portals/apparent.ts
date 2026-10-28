@@ -40,8 +40,12 @@ const image: Point = { x: 0, y: 0 };
 const onPlane: Point = { x: 0, y: 0 };
 const hop: Point = { x: 0, y: 0 };
 const aim: Point = { x: 0, y: 0 };
+const chain = { sees: false };
 
-/** Writes into `out` (which may be `to`); the nearest image in sight wins, else the real position. */
+/**
+ * Writes into `out` (which may be `to`). Candidates are the real position and every image whose chain passes the
+ * doorways' openings in order; a seen one beats an unseen one, then the nearer wins.
+ */
 export function apparentPosition(
   map: GameMap,
   p: Portals | null,
@@ -108,7 +112,7 @@ function isWorthTrying(portal: Portal, eyeX: number, eyeY: number): boolean {
   return facesEye && distanceSquared(eyeX, eyeY, portal.cx, portal.cy) <= NEAR_TILES_SQUARED;
 }
 
-/** Takes `image` as the best when it beats the best so far and the chain to it is in sight. */
+/** Takes `image` as the best when its chain counts and it beats the best: seen over unseen, then nearer. */
 function considerImage(
   map: GameMap,
   p: Portals,
@@ -120,19 +124,27 @@ function considerImage(
   second: number
 ): void {
   const imageDistanceSquared = distanceSquared(fromX, fromY, image.x, image.y);
-  const beatsBest = !best.sees || imageDistanceSquared < best.distanceSquared;
-  if (!beatsBest || !isChainInSight(map, p, fromX, fromY, toX, toY, first, second)) {
+  const isNearer = imageDistanceSquared < best.distanceSquared;
+  const mightBeatBest = !best.sees || isNearer;
+  if (!mightBeatBest || !chainCounts(map, p, fromX, fromY, toX, toY, first, second)) {
+    return;
+  }
+  const beatsBest = chain.sees ? !best.sees || isNearer : !best.sees && isNearer;
+  if (!beatsBest) {
     return;
   }
   best.x = image.x;
   best.y = image.y;
-  best.sees = true;
+  best.sees = chain.sees;
   best.through = second < 0 ? 1 : 2;
   best.distanceSquared = imageDistanceSquared;
 }
 
-/** The segment eye→image goes through `first` then `second` (−1: none) in order, every leg a line of sight. */
-function isChainInSight(
+/**
+ * Whether the segment eye→image goes through the opening of `first`, then of `second` (−1: none), in order (spec
+ * 2.6). `chain.sees` says whether every leg is also a line of sight.
+ */
+function chainCounts(
   map: GameMap,
   p: Portals,
   fromX: number,
@@ -142,18 +154,21 @@ function isChainInSight(
   first: number,
   second: number
 ): boolean {
+  chain.sees = true;
   if (!passesThrough(map, p, first, fromX, fromY, image.x, image.y)) {
     return false;
   }
   if (second >= 0 && !passesThrough(map, p, second, hop.x, hop.y, aim.x, aim.y)) {
     return false;
   }
-  return hasPortalLineOfSight(map, p, hop.x, hop.y, toX, toY);
+  chain.sees = chain.sees && hasPortalLineOfSight(map, p, hop.x, hop.y, toX, toY);
+  return true;
 }
 
 /**
- * Whether start→end crosses `index` first, inside its opening, with a line of sight up to the plane. If so, `hop` is
- * the crossing carried to the destination's plane and `aim` is `end` carried likewise.
+ * Whether start→end crosses `index` first, inside its opening. If so, `hop` is the crossing carried to the
+ * destination's plane, `aim` is `end` carried likewise, and `chain.sees` is cleared when the leg up to the plane is
+ * no line of sight.
  */
 function passesThrough(
   map: GameMap,
@@ -172,9 +187,7 @@ function passesThrough(
     return false;
   }
   pointOnPlane(portal, startX, startY, endX, endY, crossing.t, onPlane);
-  if (!hasLineOfSight(map, startX, startY, onPlane.x, onPlane.y)) {
-    return false;
-  }
+  chain.sees = chain.sees && hasLineOfSight(map, startX, startY, onPlane.x, onPlane.y);
   applyPoint(portal.toDest, onPlane.x, onPlane.y, hop);
   applyPoint(portal.toDest, endX, endY, aim);
   return true;
