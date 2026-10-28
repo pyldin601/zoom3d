@@ -1,0 +1,205 @@
+// Apparent position (portal spec 2.6): where a target appears to a listener, straight or through up to two portals.
+// Pure; the scratch is module-level, so a call allocates nothing.
+
+import { hasLineOfSight } from '../geometry/los';
+import type { GameMap } from '../map/map';
+import { NEAR_TILES } from '../protocol/protocol';
+import { crossedPortal, fractionAcrossPlane } from './crossing';
+import { applyPoint } from './transform';
+import type { Portal, Portals } from './wiring';
+
+/** As hasLineOfSight, but false when the straight segment crosses a plane front→back. */
+export function hasPortalLineOfSight(
+  map: GameMap,
+  p: Portals | null,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number
+): boolean {
+  return hasLineOfSight(map, ax, ay, bx, by) && (p === null || crossedPortal(p, ax, ay, bx, by, crossing) < 0);
+}
+
+export interface Apparent {
+  x: number;
+  y: number;
+  sees: boolean;
+  /** How many portals the target is seen through. */
+  through: 0 | 1 | 2;
+}
+
+type Point = { x: number; y: number };
+
+const NEAR_TILES_SQUARED = NEAR_TILES * NEAR_TILES;
+
+const crossing = { t: 0 };
+const best = { x: 0, y: 0, sees: false, through: 0 as Apparent['through'], distanceSquared: 0 };
+const virtualEye: Point = { x: 0, y: 0 };
+const deeperImage: Point = { x: 0, y: 0 };
+const image: Point = { x: 0, y: 0 };
+const onPlane: Point = { x: 0, y: 0 };
+const hop: Point = { x: 0, y: 0 };
+const aim: Point = { x: 0, y: 0 };
+
+/** Writes into `out` (which may be `to`); the nearest image in sight wins, else the real position. */
+export function apparentPosition(
+  map: GameMap,
+  p: Portals | null,
+  from: Point,
+  to: Point,
+  out: Apparent,
+  maxDepth: 1 | 2 = 2
+): Apparent {
+  const fromX = from.x;
+  const fromY = from.y;
+  const toX = to.x;
+  const toY = to.y;
+  best.x = toX;
+  best.y = toY;
+  best.sees = hasPortalLineOfSight(map, p, fromX, fromY, toX, toY);
+  best.through = 0;
+  best.distanceSquared = distanceSquared(fromX, fromY, toX, toY);
+  if (p !== null) {
+    considerImages(map, p, fromX, fromY, toX, toY, maxDepth);
+  }
+  out.x = best.x;
+  out.y = best.y;
+  out.sees = best.sees;
+  out.through = best.through;
+  return out;
+}
+
+function considerImages(
+  map: GameMap,
+  p: Portals,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  maxDepth: 1 | 2
+): void {
+  for (let first = 0; first < p.list.length; first++) {
+    const firstPortal = p.list.at(first);
+    if (firstPortal === undefined || !isWorthTrying(firstPortal, fromX, fromY)) {
+      continue;
+    }
+    applyPoint(firstPortal.fromDest, toX, toY, image);
+    considerImage(map, p, fromX, fromY, toX, toY, first, -1);
+    if (maxDepth === 1) {
+      continue;
+    }
+    // The second doorway is tried as the first one is, from the eye carried through the first portal.
+    applyPoint(firstPortal.toDest, fromX, fromY, virtualEye);
+    for (let second = 0; second < p.list.length; second++) {
+      const secondPortal = p.list.at(second);
+      if (secondPortal === undefined || !isWorthTrying(secondPortal, virtualEye.x, virtualEye.y)) {
+        continue;
+      }
+      applyPoint(secondPortal.fromDest, toX, toY, deeperImage);
+      applyPoint(firstPortal.fromDest, deeperImage.x, deeperImage.y, image);
+      considerImage(map, p, fromX, fromY, toX, toY, first, second);
+    }
+  }
+}
+
+/** Only doorways whose front faces the eye and whose centre is in the near range (spec 2.6, for the tick's cost). */
+function isWorthTrying(portal: Portal, eyeX: number, eyeY: number): boolean {
+  const facesEye = (eyeX - portal.cx) * portal.nx + (eyeY - portal.cy) * portal.ny < 0;
+  return facesEye && distanceSquared(eyeX, eyeY, portal.cx, portal.cy) <= NEAR_TILES_SQUARED;
+}
+
+/** Takes `image` as the best when it beats the best so far and the chain to it is in sight. */
+function considerImage(
+  map: GameMap,
+  p: Portals,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  first: number,
+  second: number
+): void {
+  const imageDistanceSquared = distanceSquared(fromX, fromY, image.x, image.y);
+  const beatsBest = !best.sees || imageDistanceSquared < best.distanceSquared;
+  if (!beatsBest || !isChainInSight(map, p, fromX, fromY, toX, toY, first, second)) {
+    return;
+  }
+  best.x = image.x;
+  best.y = image.y;
+  best.sees = true;
+  best.through = second < 0 ? 1 : 2;
+  best.distanceSquared = imageDistanceSquared;
+}
+
+/** The segment eye→image goes through `first` then `second` (−1: none) in order, every leg a line of sight. */
+function isChainInSight(
+  map: GameMap,
+  p: Portals,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  first: number,
+  second: number
+): boolean {
+  if (!passesThrough(map, p, first, fromX, fromY, image.x, image.y)) {
+    return false;
+  }
+  if (second >= 0 && !passesThrough(map, p, second, hop.x, hop.y, aim.x, aim.y)) {
+    return false;
+  }
+  return hasPortalLineOfSight(map, p, hop.x, hop.y, toX, toY);
+}
+
+/**
+ * Whether start→end crosses `index` first, inside its opening, with a line of sight up to the plane. If so, `hop` is
+ * the crossing carried to the destination's plane and `aim` is `end` carried likewise.
+ */
+function passesThrough(
+  map: GameMap,
+  p: Portals,
+  index: number,
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number
+): boolean {
+  const portal = p.list.at(index);
+  if (portal === undefined || fractionAcrossPlane(portal, startX, startY, endX, endY) < 0) {
+    return false;
+  }
+  if (crossedPortal(p, startX, startY, endX, endY, crossing) !== index) {
+    return false;
+  }
+  pointOnPlane(portal, startX, startY, endX, endY, crossing.t, onPlane);
+  if (!hasLineOfSight(map, startX, startY, onPlane.x, onPlane.y)) {
+    return false;
+  }
+  applyPoint(portal.toDest, onPlane.x, onPlane.y, hop);
+  applyPoint(portal.toDest, endX, endY, aim);
+  return true;
+}
+
+function pointOnPlane(
+  portal: Portal,
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+  t: number,
+  out: Point
+): Point {
+  out.x = startX + t * (endX - startX);
+  out.y = startY + t * (endY - startY);
+  // Exactly on the plane, so the carried point lies exactly on the destination's plane and never counts as crossing it.
+  if (portal.door.axis === 'ns') {
+    out.y = portal.cy;
+  } else {
+    out.x = portal.cx;
+  }
+  return out;
+}
+
+function distanceSquared(ax: number, ay: number, bx: number, by: number): number {
+  return (bx - ax) * (bx - ax) + (by - ay) * (by - ay);
+}

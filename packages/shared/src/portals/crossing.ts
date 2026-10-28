@@ -4,7 +4,7 @@ import { applyAngle, applyDir, applyPoint } from './transform';
 import type { Portal, Portals } from './wiring';
 
 /** Where along a→b the plane is crossed front to back, or −1 when the segment does not cross it. */
-function fractionAcrossPlane(portal: Portal, ax: number, ay: number, bx: number, by: number): number {
+export function fractionAcrossPlane(portal: Portal, ax: number, ay: number, bx: number, by: number): number {
   const sideOfStart = (ax - portal.cx) * portal.nx + (ay - portal.cy) * portal.ny;
   const sideOfEnd = (bx - portal.cx) * portal.nx + (by - portal.cy) * portal.ny;
   if (sideOfStart >= 0 || sideOfEnd < 0) {
