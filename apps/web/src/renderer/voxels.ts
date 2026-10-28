@@ -1,7 +1,7 @@
 // Voxel objects (robot vacuum spec §6): small models built in code from cubes, preprocessed once into their exposed
 // faces, then drawn as flat-shaded quads far to near, depth-tested per column against the walls. Allocation-free per
 // frame.
-import { EYE_HEIGHT, MIN_DEPTH, type View } from './camera';
+import { EYE_HEIGHT, MIN_DEPTH, type Pass, type View, WHOLE_FRAME } from './camera';
 import { luma } from './colour';
 import { type Framebuffer, scaleRgb } from './framebuffer';
 import { ambientAt, directLight, type Lighting } from './lighting';
@@ -173,11 +173,17 @@ const directionLight = new Float64Array(FACES.length * 3);
 const ambient = new Float64Array(3);
 
 /**
- * Draws one instance seen through `view`, depth-tested per pixel column against fb.zbuffer. With lighting, each face
- * takes the ambient share of its usual shade plus the lamps that reach its direction (sampled once, at the model's mid
- * height).
+ * Draws one instance seen through `view`, depth-tested per pixel column against fb.zbuffer, on the pass's columns.
+ * With lighting, each face takes the ambient share of its usual shade plus the lamps that reach its direction (sampled
+ * once, at the model's mid height).
  */
-export function renderVoxel(fb: Framebuffer, view: View, v: VoxelInstance, lighting: Lighting | null = null): void {
+export function renderVoxel(
+  fb: Framebuffer,
+  view: View,
+  v: VoxelInstance,
+  lighting: Lighting | null = null,
+  pass = WHOLE_FRAME
+): void {
   const { model } = v;
   if (faceDepths.length < model.faceCount) {
     screenCorners = new Float64Array(model.faceCount * 8);
@@ -188,7 +194,7 @@ export function renderVoxel(fb: Framebuffer, view: View, v: VoxelInstance, light
   }
   projectFaces(view, v, 'upright');
   for (const f of faceOrder) {
-    fillFace(fb, f, lighting ? litColor(model, f, directionLight) : (model.colors[f] as number));
+    fillFace(fb, f, lighting ? litColor(model, f, directionLight) : (model.colors[f] as number), pass);
   }
 }
 
@@ -301,10 +307,11 @@ function litColor({ base, dirs, shine: shines }: VoxelModel, f: number, light: F
 }
 
 /** Fills face `f` with `colour`, row by row, where it's nearer than the column's wall. */
-function fillFace(fb: Framebuffer, f: number, colour: number): void {
+function fillFace(fb: Framebuffer, f: number, colour: number, pass: Pass): void {
   const { width: w, height: h, pixels, zbuffer } = fb;
   const s = f * 8;
   const depth = faceDepths[f] as number;
+  const near = pass.nearDepth;
   let minY = Number.POSITIVE_INFINITY;
   let maxY = Number.NEGATIVE_INFINITY;
   for (let k = 1; k < 8; k += 2) {
@@ -330,11 +337,20 @@ function fillFace(fb: Framebuffer, f: number, colour: number): void {
         right = Math.max(right, x);
       }
     }
-    const firstCol = Math.max(0, Math.ceil(left - 0.5));
-    const lastCol = Math.min(w - 1, Math.ceil(right - 0.5) - 1);
-    for (let col = firstCol; col <= lastCol; col++) {
-      if (depth < (zbuffer[col] as number)) {
-        pixels[row * w + col] = colour;
+    const firstCol = Math.max(pass.fromCol, Math.ceil(left - 0.5));
+    const lastCol = Math.min(w - 1, pass.toCol - 1, Math.ceil(right - 0.5) - 1);
+    // Two loops: the near limit tested in one measured 12% slower without it (bench:sprites).
+    if (near === null) {
+      for (let col = firstCol; col <= lastCol; col++) {
+        if (depth < (zbuffer[col] as number)) {
+          pixels[row * w + col] = colour;
+        }
+      }
+    } else {
+      for (let col = firstCol; col <= lastCol; col++) {
+        if (depth < (zbuffer[col] as number) && depth > (near[col] as number)) {
+          pixels[row * w + col] = colour;
+        }
       }
     }
   }
@@ -350,7 +366,8 @@ export function renderVoxelMirror(
   view: View,
   v: VoxelInstance,
   lighting: Lighting,
-  mirror: FloorMirror
+  mirror: FloorMirror,
+  pass = WHOLE_FRAME
 ): void {
   if (voxelDepth(view, v) < 0) {
     return;
@@ -363,15 +380,16 @@ export function renderVoxelMirror(
   lightDirections(lighting, v);
   projectFaces(view, v, 'mirrored');
   for (const f of faceOrder) {
-    plotFace(fb, mirror, f, litColor(model, f, directionLight));
+    plotFace(fb, mirror, f, litColor(model, f, directionLight), pass);
   }
 }
 
 /** Covers face `f` in `mirror` with `colour`, row by row, where it's nearer than the column's wall: fillFace's rule. */
-function plotFace(fb: Framebuffer, mirror: FloorMirror, f: number, colour: number): void {
+function plotFace(fb: Framebuffer, mirror: FloorMirror, f: number, colour: number, pass: Pass): void {
   const { width: w, height: h, zbuffer } = fb;
   const s = f * 8;
   const depth = faceDepths[f] as number;
+  const near = pass.nearDepth;
   let minY = Number.POSITIVE_INFINITY;
   let maxY = Number.NEGATIVE_INFINITY;
   for (let k = 1; k < 8; k += 2) {
@@ -395,10 +413,10 @@ function plotFace(fb: Framebuffer, mirror: FloorMirror, f: number, colour: numbe
         right = Math.max(right, x);
       }
     }
-    const firstCol = Math.max(0, Math.ceil(left - 0.5));
-    const lastCol = Math.min(w - 1, Math.ceil(right - 0.5) - 1);
+    const firstCol = Math.max(pass.fromCol, Math.ceil(left - 0.5));
+    const lastCol = Math.min(w - 1, pass.toCol - 1, Math.ceil(right - 0.5) - 1);
     for (let col = firstCol; col <= lastCol; col++) {
-      if (depth < (zbuffer[col] as number)) {
+      if (depth < (zbuffer[col] as number) && (near === null || depth > (near[col] as number))) {
         mirror.plot(col, row, colour, 'hides');
       }
     }

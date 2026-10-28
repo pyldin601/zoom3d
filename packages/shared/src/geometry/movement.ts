@@ -1,5 +1,7 @@
 // Player movement with axis-separated wall collision (slides along walls).
 import { type GameMap, isWallAt } from '../map/map';
+import { carryThroughPortal } from '../portals/crossing';
+import type { Portals } from '../portals/wiring';
 
 export const MOVE_SPEED = 3; // tiles/s
 export const TURN_SPEED = 2.5; // rad/s
@@ -44,7 +46,14 @@ export function moveWithCollision(
   return { x: nx, y: ny };
 }
 
-export function stepPlayer(map: GameMap, s: PlayerState, input: MoveInput, dt: number, out: PlayerState): PlayerState {
+export function stepPlayer(
+  map: GameMap,
+  s: PlayerState,
+  input: MoveInput,
+  dt: number,
+  out: PlayerState,
+  portals: Portals | null = null
+): PlayerState {
   const t = Math.min(Math.max(dt, 0), MAX_DT);
   let angle = (s.angle + input.turn * TURN_SPEED * t) % TWO_PI;
   if (angle < 0) {
@@ -65,9 +74,12 @@ export function stepPlayer(map: GameMap, s: PlayerState, input: MoveInput, dt: n
   const dx = (forward * cos - strafe * sin) * step;
   const dy = (forward * sin + strafe * cos) * step;
 
-  const moved = moveWithCollision(map, s.x, s.y, dx, dy);
+  const startX = s.x;
+  const startY = s.y;
+  const moved = moveWithCollision(map, startX, startY, dx, dy);
   out.x = moved.x;
   out.y = moved.y;
   out.angle = angle;
+  carryThroughPortal(portals, startX, startY, out);
   return out;
 }

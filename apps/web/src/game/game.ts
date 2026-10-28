@@ -16,6 +16,7 @@ import { createBacktickConsole } from '../ui/backtick-console';
 import { loadBoomboxVolume, saveBoomboxVolume } from '../ui/boombox-store';
 import { loadHeld, saveHeld } from '../ui/held-store';
 import { saveName } from '../ui/name-store';
+import { showPortalNotice } from '../ui/portal-notice';
 import { loadRenderSettings, type RenderMode, saveRenderSettings } from '../ui/render-settings';
 import { showRoomScreen } from '../ui/room-screen';
 import { createStatusLine } from '../ui/room-status';
@@ -122,6 +123,10 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
       get audio() {
         return room?.audio ?? null;
       },
+      /** Whether the room's portals are on, as this client sees it. */
+      get portalsOn() {
+        return room?.portals() !== null && room !== null;
+      },
     },
   };
 
@@ -180,6 +185,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
         controls.refresh();
         backtickConsole.refreshBoombox();
       },
+      onPortalsChanged: (on) => showPortalNotice(page.ui, on),
     });
     showRoomScreen(page.ui, { call: room.call, local, name, avatar });
     if (flags.touch) {

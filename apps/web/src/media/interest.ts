@@ -20,6 +20,13 @@ export interface PeerFacts {
   projectedSize: number;
 }
 
+export interface InterestPeer {
+  id: string;
+  x: number;
+  y: number;
+  sees?: boolean;
+}
+
 export interface InterestInput {
   now: number;
   hidden: boolean;
@@ -29,7 +36,8 @@ export interface InterestInput {
   map: GameMap;
   /** The audio settings' `max`: voices are silent beyond it. */
   maxDistance: number;
-  peers: readonly { id: string; x: number; y: number }[];
+  /** Where each appears to the player; `sees`, when given, is the line of sight (through portals). */
+  peers: readonly InterestPeer[];
   facts: (id: string) => PeerFacts | undefined;
 }
 
@@ -86,7 +94,7 @@ function sizeFor(projected: number, current: VideoWant): VideoWant {
 export function createInterest(): { update(input: InterestInput): ReadonlyMap<string, Want> } {
   const states = new Map<string, State>();
 
-  function target(input: InterestInput, peer: { id: string; x: number; y: number }, distance: number, s: State) {
+  function target(input: InterestInput, peer: InterestPeer, distance: number, s: State) {
     if (input.hidden) {
       return 'off';
     }
@@ -108,7 +116,8 @@ export function createInterest(): { update(input: InterestInput): ReadonlyMap<st
     if (facts && facts.projectedSize > 0 && off <= input.fov / 2) {
       return 'off';
     }
-    return hasLineOfSight(input.map, player.x, player.y, peer.x, peer.y) ? 64 : 'off';
+    const sees = peer.sees ?? hasLineOfSight(input.map, player.x, player.y, peer.x, peer.y);
+    return sees ? 64 : 'off';
   }
 
   /** Everyone listed, with what they'd get with no caps, nearest first; forgets anyone no longer listed. */

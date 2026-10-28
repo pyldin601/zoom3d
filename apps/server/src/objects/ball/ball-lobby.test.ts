@@ -8,6 +8,7 @@ import {
   parseMap,
   type ServerMessage,
   seeded,
+  wirePortals,
 } from '@zoom3d/shared';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { Lobby, type LobbySnapshot, type Outbox } from '../../lobby';
@@ -273,5 +274,89 @@ describe('restart survival', () => {
       join('A', { resumeToken: token });
       expect(welcome('A').objects.filter((o) => o.kind === 'ball')).toHaveLength(1);
     }
+  });
+});
+
+describe('through portals', () => {
+  const portals = wirePortals(map, ROOM);
+  const portal = defined(
+    portals.list.find((p) => p.toDest.cos !== 1) ?? portals.list.at(0),
+    'doorway that turns what goes through it'
+  );
+  const other = defined(portals.list.at(portal.to), 'destination doorway');
+  const alongFront = (p: typeof portal, d: number) => ({ x: p.cx + p.nx * d, y: p.cy + p.ny * d });
+
+  /** A room with portals on, the person at `person` (resumed as A) and the ball at `ball`. */
+  function setUp(person: { x: number; y: number }, ball: { x: number; y: number }) {
+    lobby = makeLobby({ ball: true });
+    join('S');
+    const snap = JSON.parse(JSON.stringify(lobby.snapshot())) as LobbySnapshot;
+    const room = defined(snap.rooms.at(0), 'room');
+    const peer = defined(room.peers.at(0), 'peer');
+    Object.assign(peer, person);
+    room.ball = { ...defined(room.ball, 'saved ball'), ...ball };
+    room.portals = true;
+    lobby = makeLobby({ ball: true });
+    lobby.restore(snap);
+    join('A', { resumeToken: peer.resumeToken });
+    return peer.id;
+  }
+
+  test('a person 0.15 tiles past B pushes a ball 0.15 tiles before A, away through the doorway', () => {
+    const ball = alongFront(portal, -0.15);
+    const standing = alongFront(other, 0.15);
+    expect(Math.hypot(standing.x - ball.x, standing.y - ball.y)).toBeGreaterThan(5);
+    setUp(standing, ball);
+    step();
+    const moved = defined(ballStates('A').at(-1), 'ball state');
+    const pushedAwayFromDoorway = (moved.x - ball.x) * -portal.nx + (moved.y - ball.y) * -portal.ny;
+    expect(pushedAwayFromDoorway).toBeGreaterThan(0.1);
+  });
+
+  test('with portals off the same person does not touch the ball', () => {
+    const ball = alongFront(portal, -0.15);
+    setUp(alongFront(other, 0.15), ball);
+    lobby.portals('A');
+    step();
+    expect(ballStates('A')).toEqual([]);
+  });
+
+  test('a kick from past B reaches a ball before A and sends it the way the kicker faces, turned with the portal', () => {
+    setUp(alongFront(other, 0.3), alongFront(portal, -1));
+    time += 1000;
+    lobby.kick('A', { type: 'kick', angle: 0, k: 1 });
+    step();
+    const kicked = defined(
+      ballStates('A').find((s) => s.event === 'kick'),
+      'kick state'
+    );
+    const turn = portal.fromDest;
+    expect(Math.cos(Math.atan2(kicked.vy ?? 0, kicked.vx ?? 0) - Math.atan2(turn.sin, turn.cos))).toBeCloseTo(1);
+  });
+
+  test('a walker heading for the ball through the doorway pushes it, whichever way the portal turns', () => {
+    const standing = (d: number) => alongFront(other, d);
+    setUp(standing(0.55), alongFront(portal, -0.1));
+    time += 1000;
+    lobby.state('A', { type: 'state', ...standing(0.4), angle: 0, seq: 1 });
+    time += 50;
+    lobby.state('A', { type: 'state', ...standing(0.25), angle: 0, seq: 2 });
+    step();
+    const pushed = defined(ballStates('A').at(-1), 'ball state');
+    expect((pushed.vx ?? 0) * -portal.nx + (pushed.vy ?? 0) * -portal.ny).toBeGreaterThan(2);
+  });
+
+  test('stepping through the doorway is a jump, not a speed: it knocks nothing at the exit', () => {
+    const start = alongFront(portal, -0.1);
+    const arrival = alongFront(other, 0.1);
+    setUp(start, alongFront(other, 0.3));
+    time += 1000;
+    lobby.state('A', { type: 'state', ...start, angle: 0, seq: 1 });
+    time += 50;
+    lobby.state('A', { type: 'state', ...arrival, angle: 0, seq: 2 });
+    step();
+    const knocked = ballStates('A').at(-1);
+    expect(knocked?.vx ?? 0).toBe(0);
+    expect(knocked?.vy ?? 0).toBe(0);
   });
 });

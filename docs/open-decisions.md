@@ -527,5 +527,54 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Sound:** a thump on a kick, a tap on a bounce, under voices (`BALL_GAIN`). Bounces play from the local ball only.
   - No goals, scores or other game rules, and no `PROTOCOL_VERSION` bump (older tabs ignore the new kind).
 
+### D27 — Portal doorways on Y
+
+- *Resolved 2026-10-28* ([spec](superpowers/specs/2026-10-28-portal-doorways-design.md)): anyone in a room presses Y and
+  every doorway becomes a one-way portal for everyone, until someone presses Y again. The wiring (each doorway's
+  destination) is fixed per room by the room id, so people can learn the maze and tell each other the way. It is a
+  shared toy, not a game rule. Rationale: the map is fixed and small, and bending it is the cheapest way to make the
+  same room new again; making the wiring a pure function of the room id keeps the wire to one boolean.
+  - **Server owns the flag,** like the vacuum and the ball: one flip per room per 1000 ms, saved in the state file
+    (`LobbySnapshot` stays version 1, the field is optional), sent in the welcome. `PROTOCOL_VERSION` 3 → 4.
+  - **Wiring is local.** Server and clients compute it from the room id (`wirePortals`); nothing about it is sent.
+    `portals === null` everywhere means today's behaviour, pixel for pixel (`pnpm bench:walls`/`bench:sprites` hashes
+    are unchanged with portals off).
+  - **Drawing re-runs the passes** from the eye carried through each portal, for the window's columns only, two levels
+    deep (the third is black). Every pass takes a `Pass` (columns and a near limit), so a new pass must honour it.
+  - **Hearing and subscribing** use the apparent position: up to two portals whose front faces the listener and whose
+    centre is within `NEAR_TILES`.
+  - **Near or far is one rule** (`isNear` in `packages/shared/src/portals/apparent.ts`), used by the server's fan-out
+    and by the client's interpolation tiers alike: near when within `NEAR_TILES` in a straight line *or* where the
+    person appears. The straight check comes first, so most pairs never search the portals; the client judges a tile
+    inside the line, as before.
+  - Amendments to the spec and known gaps, all deliberate:
+    - **The vacuum ignores portals** (ordinary doors for it). Portal-unaware navigation stalled cleaning, and the spec
+      left it to the builder with "keep cleaning and find the dock". A vacuum crossing a front-facing doorway vanishes
+      into the window instead of coming out of the destination.
+    - **Occluded chains still count:** a person behind a wall but seen along a portal chain is heard near and muffled
+      (spec §2.6 over the brief's "both legs are lines of sight"), so hearing matches what is drawn.
+    - **The main-pass floor mirror shows nothing of a window** (its columns are skipped); the window's own pass
+      mirrors what it shows. Floor shadows take no near limit and are never copied back from a window pass.
+    - **With portals off, a local teleport over 2 tiles** zeroes the ball body's velocity and peers snap instead of
+      gliding: a tiny change to today's behaviour that falls out of the shared jump handling.
+    - **Fan-out costs more with portals on** (the apparent-position search per pair): measured below.
+  - **Measured** (2026-10-28, against base 0572557, origin/main when the branch was cut; LEVEL1 at 640×360, lit, reflections `both`; the machine was loaded, read the ratios):
+    - `bench:walls`, existing modes with portals off: unchanged hashes, `both` 1.51 ms on the base vs 1.56 ms here.
+      From 1.5 tiles in front of 8 doorways: `renderWalls` 1.58 ms off, 0.92 ms on (the window passes are cheaper than
+      the corridor they replace, which the main pass draws in full when off). With 100 glows spread over the map, from
+      the lamp poses (most show no window): 2.49 ms off, 2.73 ms on. The floor tables skip what is out of view unless
+      the frame's first pass shows a window (then a window may look anywhere); before that, every frame with portals on
+      lit the whole map's floor, 4.04 ms. Pixel hashes with the crowd (lamp and doorway poses) are the same either way.
+    - `bench:sprites`, hashes unchanged, `renderSprites` 392 / 396 µs on the base vs 395 / 397 µs here (unlit / lit).
+      Whole frames (`renderView`) from the same doorways with people and a vacuum ahead: 2.29 ms off, 2.65 ms on.
+    - Server tick (`pnpm bench:tick`, `apps/server/bench/tick.ts`: `Lobby.stepWorld` + `fanOut`, Node, one room with 100 bots, no sockets or JSON, so the
+      serialisation is not counted; 600 ticks, bots and people walking): 4 connected people, `fanOut` 0.01 ms off vs
+      0.21 ms on; 100 connected people, 0.29 ms off vs 6.05 ms on (p99 6.98 ms), `stepWorld` under 0.1 ms both ways.
+      Before the straight-line check came first (`isNear`), the same run gave 13.7 ms on (p99 15.0 ms) for 100 people:
+      the apparent-position search ran for pairs that were near anyway.
+    - Not done: the browser run with `?bots=100` (walking through doorways, comparing the view to where it leads, the
+      server's `/metrics` tick time under real load). The e2e spec `apps/web/e2e/portals.spec.ts` covers the flip.
+  - Not done: an interactive element that uses portals; a map editor's doorway choices; the vacuum going through.
+
 ## Resolved
 _(none yet)_

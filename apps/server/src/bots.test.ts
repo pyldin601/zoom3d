@@ -1,4 +1,5 @@
 import {
+  applyAngle,
   FANOUT_TICK_MS,
   isWallAt,
   type JoinMessage,
@@ -8,9 +9,10 @@ import {
   PROTOCOL_VERSION,
   parseMap,
   type ServerMessage,
+  wirePortals,
 } from '@zoom3d/shared';
 import { beforeEach, describe, expect, test } from 'vitest';
-import { BOT_COLORS, MAX_BOT_ROOMS } from './bots';
+import { BOT_COLORS, MAX_BOT_ROOMS, stepBot } from './bots';
 import { Lobby, type LobbyEvent, type Outbox } from './lobby';
 
 // Wandering bots for testing large rooms (opt-in with the room link's ?bots=N).
@@ -203,5 +205,36 @@ describe('room lifecycle', () => {
     join('A', { bots: 5 });
     const snap = lobby.snapshot();
     expect(snap.rooms[0]?.peers.map((p) => p.name)).toEqual(['A']);
+  });
+});
+
+describe('stepBot through portals', () => {
+  const level1 = parseMap(LEVEL1);
+  const portals = wirePortals(level1, ROOM);
+  const portal = portals.list.find((p) => p.door.axis === 'ns') ?? portals.list[0];
+  const destination = portals.list.at(portal?.to ?? -1);
+
+  test('a bot walking into a doorway comes out of the destination, turned with it', () => {
+    if (!portal || !destination) {
+      throw new Error('level1 has no doorway');
+    }
+    const facing = Math.atan2(portal.ny, portal.nx);
+    const bot = { x: portal.cx - portal.nx * 0.05, y: portal.cy - portal.ny * 0.05, angle: facing };
+    stepBot(level1, bot, FANOUT_TICK_MS / 1000, () => 0.99, portals);
+    expect(Math.hypot(bot.x - destination.cx, bot.y - destination.cy)).toBeLessThan(0.5);
+    expect(Math.cos(bot.angle - applyAngle(portal.toDest, facing))).toBeCloseTo(1);
+  });
+
+  test('without portals the same step stays on this side', () => {
+    if (!portal) {
+      throw new Error('level1 has no doorway');
+    }
+    const bot = {
+      x: portal.cx - portal.nx * 0.05,
+      y: portal.cy - portal.ny * 0.05,
+      angle: Math.atan2(portal.ny, portal.nx),
+    };
+    stepBot(level1, bot, FANOUT_TICK_MS / 1000, () => 0.99);
+    expect(Math.hypot(bot.x - portal.cx, bot.y - portal.cy)).toBeLessThan(0.5);
   });
 });

@@ -1,7 +1,7 @@
 // Wandering bots (`?bots=N`): server-driven peers for testing large rooms. They have no connection or media, walk
 // straight on below walking pace, and turn when they hit a wall or now and then on their own. Pure: the lobby owns
 // them as peers and calls stepBot on every world step.
-import { type GameMap, isWallAt, pick, stepPlayer } from '@zoom3d/shared';
+import { type GameMap, isWallAt, type Portals, pick, stepPlayer } from '@zoom3d/shared';
 
 /** Rooms that may have bots at once on one server, so a public link can't load casa with thousands. */
 export const MAX_BOT_ROOMS = 3;
@@ -57,11 +57,14 @@ export function placeBot(
   };
 }
 
-/** Walks the bot dt seconds straight on; a wall turns it to a random heading, and now and then it turns on its own. */
-export function stepBot(map: GameMap, bot: Pose, dt: number, rng: () => number): void {
+/**
+ * Walks the bot dt seconds straight on, through `portals` if it reaches one; a wall turns it to a random heading, and
+ * now and then it turns on its own.
+ */
+export function stepBot(map: GameMap, bot: Pose, dt: number, rng: () => number, portals: Portals | null = null): void {
   // stepPlayer walks at MOVE_SPEED for the time it is given: less time is a slower walk.
   const walkTime = dt * BOT_PACE;
-  const to = stepPlayer(map, bot, FORWARD, walkTime, scratch);
+  const to = stepPlayer(map, bot, FORWARD, walkTime, scratch, portals);
   const travelled = Math.hypot(to.x - bot.x, to.y - bot.y);
   if (travelled < walkTime * BLOCKED_SPEED) {
     bot.angle = rng() * TWO_PI;
@@ -69,6 +72,9 @@ export function stepBot(map: GameMap, bot: Pose, dt: number, rng: () => number):
   }
   bot.x = to.x;
   bot.y = to.y;
+  if (portals !== null) {
+    bot.angle = to.angle;
+  }
   if (rng() < dt / BOT_TURN_EVERY_S) {
     bot.angle += (rng() - 0.5) * Math.PI;
   }

@@ -15,8 +15,9 @@ const OUTLINE_COLOUR = 'rgba(0, 0, 0, 0.85)';
 const TEXT_COLOUR = '#fff';
 
 export interface NameLabel {
-  x: number;
-  y: number;
+  /** Where the name appears to the local player: the person's place, or the doorway they are seen through. */
+  shownX: number;
+  shownY: number;
   name: string;
   mic: boolean;
 }
@@ -46,7 +47,11 @@ export function drawLabels(
   ctx.lineJoin = 'round';
   ctx.lineWidth = Math.max(MIN_OUTLINE_PX, sizingHeight * OUTLINE_WIDTH);
   for (const o of others) {
-    if (!inLabelRange(p, o.x, o.y) || !projectSprite(view, o.x, o.y, projection) || centreHidden(fb, projection)) {
+    if (
+      !inLabelRange(p, o.shownX, o.shownY) ||
+      !projectSprite(view, o.shownX, o.shownY, projection) ||
+      centreHidden(fb, projection)
+    ) {
       continue;
     }
     const x = projection.screenX * hudPerPixel;

@@ -1,5 +1,6 @@
 import { parseMap } from '@zoom3d/shared';
 import { expect, test } from 'vitest';
+import { twoDoorways } from '../../../../packages/shared/src/portals/test-doorways';
 import { hexToRgb } from '../renderer/sprites';
 import { createLocalPlayer } from './local-player';
 
@@ -49,4 +50,27 @@ test('first person shows the drink and boombox in hand, mid-gesture', () => {
     step: localPlayer.step,
     gesture: { sip: 1 },
   });
+});
+
+test('walking south through doorway A comes out of B facing north, with portals', () => {
+  const { map, portals } = twoDoorways();
+  const localPlayer = createLocalPlayer(map, () => 0.5);
+  Object.assign(localPlayer.pose, { x: 2.5, y: 3.4, angle: Math.PI / 2 });
+  for (let i = 0; i < 10; i++) {
+    localPlayer.walk(map, { forward: 1, strafe: 0, turn: 0 }, 0, 0.05, portals);
+  }
+  expect(localPlayer.pose.x).toBeCloseTo(4.5);
+  expect(localPlayer.pose.y).toBeLessThan(3.5);
+  expect(Math.sin(localPlayer.pose.angle)).toBeLessThan(-0.99);
+});
+
+test('the same walk without portals stays south of A', () => {
+  const { map } = twoDoorways();
+  const localPlayer = createLocalPlayer(map, () => 0.5);
+  Object.assign(localPlayer.pose, { x: 2.5, y: 3.4, angle: Math.PI / 2 });
+  for (let i = 0; i < 10; i++) {
+    localPlayer.walk(map, { forward: 1, strafe: 0, turn: 0 }, 0, 0.05);
+  }
+  expect(localPlayer.pose.x).toBeCloseTo(2.5);
+  expect(localPlayer.pose.y).toBeGreaterThan(3.5);
 });

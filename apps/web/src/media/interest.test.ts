@@ -27,7 +27,7 @@ const MAP = parseMap(
 const PLAYER = { x: 2.5, y: 4.5, angle: 0 };
 const MAX = 24;
 
-type Peer = { id: string; x: number; y: number };
+type Peer = { id: string; x: number; y: number; sees?: boolean };
 
 function input(peers: Peer[], facts: Record<string, PeerFacts> = {}, over: Partial<InterestInput> = {}): InterestInput {
   return {
@@ -267,4 +267,42 @@ test('a peer no longer listed is forgotten', () => {
   // Back again later: no stale hold from before.
   const behind = { id: 'a', x: 1.5, y: 4.5 };
   expect(rule.update(input([behind], {}, { now: 20 })).get('a')?.video).toBe('off');
+});
+
+describe('apparent positions', () => {
+  const FAR_AWAY: Peer = { id: 'far', x: 30.5, y: 4.5 };
+
+  test('a peer who says it is seen is looked for even where the map says a pillar is in the way', () => {
+    const behindPillar = { id: 'p', x: 12.5, y: 4.5 };
+    const interest = createInterest();
+    expect(interest.update(input([behindPillar])).get('p')?.video).toBe('off');
+    expect(
+      createInterest()
+        .update(input([{ ...behindPillar, sees: true }]))
+        .get('p')?.video
+    ).toBe(64);
+  });
+
+  test('a peer who says it is unseen gets no face, however open the map is', () => {
+    expect(
+      createInterest()
+        .update(input([{ ...NEAR, sees: false }]))
+        .get('a')?.video
+    ).toBe('off');
+  });
+
+  test('without sees the map decides, as before', () => {
+    expect(
+      createInterest()
+        .update(input([NEAR]))
+        .get('a')?.video
+    ).toBe(64);
+  });
+
+  test('a peer whose apparent position is near hears and shows from there', () => {
+    const want = createInterest()
+      .update(input([{ ...FAR_AWAY, x: 5.5, sees: true }]))
+      .get('far');
+    expect(want).toEqual({ video: 64, audio: true });
+  });
 });

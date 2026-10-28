@@ -234,6 +234,8 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         lobby.boombox(conn, msg);
       } else if (msg.type === 'kick') {
         lobby.kick(conn, msg);
+      } else if (msg.type === 'portals') {
+        lobby.portals(conn);
       }
     });
     // The close reason is client-chosen text, so only the code is logged.

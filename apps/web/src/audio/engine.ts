@@ -27,13 +27,20 @@ const OCCLUSION_SETTLE_MS = TAU_OCCLUSION * 3000;
 /** About ln(1000): an exponential decay is down 60 dB after this many time constants. */
 const DECAY_60_DB = 6.91;
 
+/** Where a voice plays from. `sees`, when given, is the line of sight (through portals) and replaces the engine's own. */
+export interface Source {
+  x: number;
+  y: number;
+  sees?: boolean;
+}
+
 export interface AudioEngine {
   /** `owner` is whose position the voice plays from (default: `key`), e.g. a peer's boombox. */
   attach(key: string, stream: MediaStream, owner?: string): void;
   /** A synthesised source played from `owner`'s position through the voice path; no analyser, never "speaking". */
   attachNode(key: string, node: AudioNode, owner?: string): void;
   detach(peerId: string): void;
-  update(now: number, listener: PlayerState, sources: ReadonlyMap<string, { x: number; y: number }>): void;
+  update(now: number, listener: PlayerState, sources: ReadonlyMap<string, Source>): void;
   /** 0..1 speaking indicator. */
   speaking(peerId: string): number;
   /** Latest RMS of the voice before any gain. */
@@ -260,12 +267,12 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
   };
 
   /** Muffles the voice behind a wall, checked every OCCLUSION_INTERVAL_MS. */
-  const occlude = (v: Voice, now: number, t: number, listener: PlayerState, pos: { x: number; y: number }) => {
+  const occlude = (v: Voice, now: number, t: number, listener: PlayerState, pos: Source) => {
     if (now - v.lastOcclusionAt < OCCLUSION_INTERVAL_MS) {
       return;
     }
     v.lastOcclusionAt = now;
-    const occluded = !hasLineOfSight(map, listener.x, listener.y, pos.x, pos.y);
+    const occluded = !(pos.sees ?? hasLineOfSight(map, listener.x, listener.y, pos.x, pos.y));
     if (occluded !== v.occluded) {
       v.occluded = occluded;
       v.occlusionChangedAt = now;
@@ -274,7 +281,7 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
   };
 
   /** The voice's gains from its distance and occlusion, and its pan from where it is. */
-  const place = (v: Voice, now: number, t: number, listener: PlayerState, pos: { x: number; y: number }) => {
+  const place = (v: Voice, now: number, t: number, listener: PlayerState, pos: Source) => {
     // Each setTargetAtTime replaces the running curve, so keep the slow constant until it settles.
     const tau = now - v.occlusionChangedAt < OCCLUSION_SETTLE_MS ? TAU_OCCLUSION : TAU_POSITION;
     const g = voiceGains(Math.hypot(pos.x - listener.x, pos.y - listener.y), v.occluded, settings);

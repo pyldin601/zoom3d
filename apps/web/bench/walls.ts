@@ -4,7 +4,7 @@
 // once more with a crowd of 100 glowing avatars spread over the whole map (most of them out of view, as with ?bots).
 // It also prints a hash of the baked lighting and of every pixel drawn in every mode: a refactor that changes no
 // behaviour must leave both hashes alone (docs/code-style.md, Refactoring).
-import { LEVEL1, parseMap, tileAt } from '@zoom3d/shared';
+import { LEVEL1, parseMap, tileAt, wirePortals } from '@zoom3d/shared';
 import { createFramebuffer } from '../src/renderer/framebuffer';
 import type { Glow } from '../src/renderer/glow';
 import { bakeLighting, corridorLights, type Lighting } from '../src/renderer/lighting';
@@ -60,6 +60,78 @@ console.log(`LEVEL1, ${lights.length} lamps, ${poses.length} poses, 640×360`);
 console.log(`bake ${bakeMs.toFixed(0)} ms (cold); lighting hash ${lightingHash(lighting)}; pixel hash ${pixelHash}`);
 for (const mode of MODES) {
   console.log(`${mode.padEnd(12)} ${median(times.get(mode) ?? []).toFixed(3)} ms/frame`);
+}
+
+// Portals on (portal doorways spec): the same lit frame from 1.5 tiles in front of each of up to 8 doorways, looking in,
+// timed with the room's portals off and on, with the hash of the on frames beside the off hashes above.
+const portals = wirePortals(map, 'bench-room');
+const doorwayPoses: Pose[] = portals.list.slice(0, 8).map((p) => ({
+  x: p.cx - p.nx * 1.5,
+  y: p.cy - p.ny * 1.5,
+  angle: Math.atan2(p.ny, p.nx),
+  glows: [],
+}));
+room.reflections = 'both';
+room.lighting = lighting;
+const portalHashes = { off: 0, on: 0 };
+for (const state of ['off', 'on'] as const) {
+  room.portals = state === 'on' ? portals : null;
+  for (const pose of doorwayPoses) {
+    room.eye = pose;
+    renderWalls(fb, room);
+    for (const c of fb.pixels) {
+      portalHashes[state] = (Math.imul(portalHashes[state], 31) + c) | 0;
+    }
+  }
+}
+const portalTimes = { off: [] as number[], on: [] as number[] };
+for (let round = 0; round < ROUNDS; round++) {
+  for (const state of ['off', 'on'] as const) {
+    room.portals = state === 'on' ? portals : null;
+    const start = performance.now();
+    const frames = doorwayPoses.length * 20;
+    for (let f = 0; f < frames; f++) {
+      room.eye = doorwayPoses.at(f % doorwayPoses.length) ?? room.eye;
+      renderWalls(fb, room);
+    }
+    portalTimes[state].push((performance.now() - start) / frames);
+  }
+}
+console.log(`portals: ${doorwayPoses.length} doorway poses, pixel hash off ${portalHashes.off}, on ${portalHashes.on}`);
+for (const state of ['off', 'on'] as const) {
+  console.log(`both, portals ${state.padEnd(3)} ${median(portalTimes[state]).toFixed(3)} ms/frame`);
+}
+
+// The crowd with portals on: from the lamp poses (most show no window, so the floor tables need only what is in view)
+// and from the doorway poses (whose windows look anywhere), with portals off and on.
+const crowdPoses = [...poses, ...doorwayPoses];
+const crowdHashes = { off: 0, on: 0 };
+for (const state of ['off', 'on'] as const) {
+  room.portals = state === 'on' ? portals : null;
+  for (const pose of crowdPoses) {
+    room.eye = pose;
+    renderWalls(fb, room, crowd);
+    for (const c of fb.pixels) {
+      crowdHashes[state] = (Math.imul(crowdHashes[state], 31) + c) | 0;
+    }
+  }
+}
+const crowdTimes = { off: [] as number[], on: [] as number[] };
+for (let round = 0; round < ROUNDS; round++) {
+  for (const state of ['off', 'on'] as const) {
+    room.portals = state === 'on' ? portals : null;
+    const start = performance.now();
+    const frames = poses.length * FRAMES_PER_POSE;
+    for (let f = 0; f < frames; f++) {
+      room.eye = poses.at(f % poses.length) ?? room.eye;
+      renderWalls(fb, room, crowd);
+    }
+    crowdTimes[state].push((performance.now() - start) / frames);
+  }
+}
+console.log(`crowd: ${crowdPoses.length} poses, pixel hash off ${crowdHashes.off}, on ${crowdHashes.on}`);
+for (const state of ['off', 'on'] as const) {
+  console.log(`both + crowd, portals ${state.padEnd(3)} ${median(crowdTimes[state]).toFixed(3)} ms/frame (lamp poses)`);
 }
 
 function draw(mode: Mode, p: Pose): void {

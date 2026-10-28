@@ -1,7 +1,7 @@
 // The other people and the world objects as the room frame shows them: their interpolated positions, for the audio
 // and the interest rule, and the discs, name labels and voxel models the renderer draws. Each peer keeps one record
 // from frame to frame, so a full room allocates nothing per frame (AGENTS.md: never block the render loop).
-import { type Ball, INTERP_DELAY_MS, type PlayerState, type Point } from '@zoom3d/shared';
+import { type Apparent, type Ball, INTERP_DELAY_MS, type PlayerState, type Point, type Portals } from '@zoom3d/shared';
 import { nearTier } from '../net/peer-delay';
 import { objectKey, type RemotePeer, type Session } from '../net/session';
 import { type Bob, createBob } from '../renderer/bob';
@@ -13,8 +13,12 @@ import type { VoxelInstance } from '../renderer/voxels';
 
 /** A peer's name label and automap dot. */
 export interface PeerLabel {
+  /** Where they are: the automap's dot. */
   x: number;
   y: number;
+  /** Where they appear to the local player (through a portal, at its doorway): the name's place in the view. */
+  shownX: number;
+  shownY: number;
   /** The ring colour as the server sent it, #rrggbb. */
   color: string;
   name: string;
@@ -41,10 +45,14 @@ export interface RemoteWorld {
   /**
    * Samples every peer's and object's position at `now`: every frame, and from the hidden-tab ticker. The ball is the
    * one object not drawn from its buffer: it is where the client's prediction has it, in the present (ball spec §3.3).
+   * `portals` (the room's wiring while they are on) decides, as on the server, which peers are near.
    */
-  sample(session: Session, player: Point, now: number, ball?: Ball | null): void;
-  /** Builds this frame's sprites, labels and voxels from the last sample; `dt` (seconds) walks the bobs. */
-  collect(session: Session, media: PeerMedia, now: number, dt: number): void;
+  sample(session: Session, player: Point, now: number, ball?: Ball | null, portals?: Portals | null): void;
+  /**
+   * Builds this frame's sprites, labels and voxels from the last sample; `dt` (seconds) walks the bobs. `apparent`
+   * places the labels; a person it doesn't list is labelled where they are.
+   */
+  collect(session: Session, media: PeerMedia, now: number, dt: number, apparent?: ReadonlyMap<string, Apparent>): void;
 }
 
 /** One peer's pieces, kept while they have a position. */
@@ -114,9 +122,9 @@ export function createRemoteWorld(): RemoteWorld {
     }
   };
 
-  const samplePeers = (s: Session, player: Point, now: number) => {
+  const samplePeers = (s: Session, player: Point, now: number, portals: Portals | null) => {
     for (const peer of s.peers.values()) {
-      const delay = peer.delay.update(now, nearTier(player.x, player.y, peer.info.x, peer.info.y));
+      const delay = peer.delay.update(now, nearTier(portals, player, peer.info.x, peer.info.y));
       if (!peer.buffer.sample(now - delay, at)) {
         continue;
       }
@@ -133,13 +141,23 @@ export function createRemoteWorld(): RemoteWorld {
   const recordOf = (id: string): PeerRecord => {
     let record = records.get(id);
     if (!record) {
-      record = { bob: createBob(), sprite: blankSprite(id), label: { x: 0, y: 0, color: '', name: '', mic: false } };
+      record = {
+        bob: createBob(),
+        sprite: blankSprite(id),
+        label: { x: 0, y: 0, shownX: 0, shownY: 0, color: '', name: '', mic: false },
+      };
       records.set(id, record);
     }
     return record;
   };
 
-  const collectPeers = (s: Session, media: PeerMedia, now: number, dt: number) => {
+  const collectPeers = (
+    s: Session,
+    media: PeerMedia,
+    now: number,
+    dt: number,
+    apparent: ReadonlyMap<string, Apparent> | undefined
+  ) => {
     for (const id of records.keys()) {
       if (!positions.has(id)) {
         records.delete(id);
@@ -155,7 +173,7 @@ export function createRemoteWorld(): RemoteWorld {
       const { bob, sprite, label } = recordOf(id);
       bob.update(pos.x, pos.y, dt);
       fillSprite(sprite, peer, pos, bob, media, now);
-      fillLabel(label, peer, pos);
+      fillLabel(label, peer, pos, apparent?.get(id) ?? pos);
       sprites[n] = sprite;
       labels[n] = label;
       n++;
@@ -189,13 +207,13 @@ export function createRemoteWorld(): RemoteWorld {
     sprites,
     labels,
     voxels,
-    sample(s, player, now, ball = null) {
+    sample(s, player, now, ball = null, portals = null) {
       forgetGone(s);
       sampleObjects(s, now, ball);
-      samplePeers(s, player, now);
+      samplePeers(s, player, now, portals);
     },
-    collect(s, media, now, dt) {
-      collectPeers(s, media, now, dt);
+    collect(s, media, now, dt, apparent) {
+      collectPeers(s, media, now, dt, apparent);
       collectVoxels(s);
     },
   };
@@ -236,9 +254,11 @@ function fillSprite(sprite: Sprite, peer: RemotePeer, pos: Point, bob: Bob, medi
   sprite.boombox = boombox;
 }
 
-function fillLabel(label: PeerLabel, peer: RemotePeer, pos: Point): void {
+function fillLabel(label: PeerLabel, peer: RemotePeer, pos: Point, shown: Point): void {
   label.x = pos.x;
   label.y = pos.y;
+  label.shownX = shown.x;
+  label.shownY = shown.y;
   label.color = peer.info.color;
   label.name = peer.info.name;
   label.mic = peer.info.mic;

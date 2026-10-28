@@ -1,5 +1,6 @@
 import { castRay, createRayHit, LEVEL1, parseMap } from '@zoom3d/shared';
 import { describe, expect, test, vi } from 'vitest';
+import { twoDoorways } from '../../../../packages/shared/src/portals/test-doorways';
 import { createView, setView } from './camera';
 import { createFramebuffer, DEFAULT_FOV, rgb, scaleRgb } from './framebuffer';
 import { GLOW_RADIUS, GLOW_STRENGTH, type Glow } from './glow';
@@ -1104,5 +1105,80 @@ describe('renderWalls floor mirror of walls', () => {
   test('standing against a wall leaves nothing to mirror', () => {
     const close = { x: 5.7, y: 2.5, angle: 0 };
     expect(firstDifference(render('both', close).pixels, render('walls', close).pixels)).toBe(-1);
+  });
+});
+
+describe('renderWalls through portals', () => {
+  // Looking south at doorway A from its front, its plane 2 tiles ahead.
+  const { map, portals } = twoDoorways();
+  const eye = { x: 2.5, y: 1.5, angle: Math.PI / 2 };
+  const UNDRAWN = 0x12345678;
+  const lit = bakeLighting(map, [{ x: 3.5, y: 5.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 }], 0.3, FLOOR, CEILING);
+  const centre = 320;
+  const eyeRow = 180;
+  const undrawnFrame = () => {
+    const fb = createFramebuffer();
+    fb.pixels.fill(UNDRAWN);
+    return fb;
+  };
+
+  test.each([
+    ['unlit', null],
+    ['lit', lit],
+  ] as const)(
+    'a doorway seen from its front is a window: its plane in the z-buffer, its rows left (%s)',
+    (_, lighting) => {
+      const fb = undrawnFrame();
+      renderWalls(fb, { map, eye, textures, lighting, portals });
+      expect(fb.portalAt[centre]).toBe(0);
+      expect(fb.zbuffer[centre]).toBeCloseTo(2);
+      expect(fb.pixels[eyeRow * fb.width + centre]).toBe(UNDRAWN);
+      expect(fb.pixels[(fb.height - 1) * fb.width + centre]).not.toBe(UNDRAWN);
+      // Beside the doorway the wall row is drawn.
+      expect(fb.portalAt[0]).toBe(-1);
+      expect(fb.pixels[eyeRow * fb.width]).not.toBe(UNDRAWN);
+    }
+  );
+
+  test('without portals the doorway is an opening', () => {
+    const fb = undrawnFrame();
+    renderWalls(fb, { map, eye, textures, lighting: null, portals: null });
+    expect(fb.portalAt[centre]).toBe(-1);
+    expect(fb.zbuffer[centre]).toBeCloseTo(4.5);
+  });
+
+  test.each([
+    ['unlit', null],
+    ['lit', lit],
+  ] as const)('at the last level a window is black (%s)', (_, lighting) => {
+    const fb = undrawnFrame();
+    const pass = { fromCol: 0, toCol: fb.width, nearDepth: new Float64Array(fb.width), lastLevel: true };
+    renderWalls(fb, { map, eye, textures, lighting, portals, pass });
+    expect(fb.portalAt[centre]).toBe(-1);
+    expect(fb.pixels[eyeRow * fb.width + centre]).toBe(BLACK);
+  });
+
+  test.each([
+    ['unlit', null],
+    ['lit', lit],
+  ] as const)('a pass draws its columns only, from its near limit on (%s)', (_, lighting) => {
+    const fb = undrawnFrame();
+    // Past A's plane: the doorway tile is passed, and the hall's south wall is hit.
+    const nearDepth = new Float64Array(fb.width).fill(2.2);
+    renderWalls(fb, {
+      map,
+      eye,
+      textures,
+      lighting,
+      portals,
+      pass: { fromCol: 300, toCol: 340, nearDepth, lastLevel: false },
+    });
+    expect(fb.zbuffer[centre]).toBeCloseTo(4.5);
+    for (const row of [0, eyeRow, fb.height - 1]) {
+      expect(fb.pixels[row * fb.width + 299]).toBe(UNDRAWN);
+      expect(fb.pixels[row * fb.width + 300]).not.toBe(UNDRAWN);
+      expect(fb.pixels[row * fb.width + 339]).not.toBe(UNDRAWN);
+      expect(fb.pixels[row * fb.width + 340]).toBe(UNDRAWN);
+    }
   });
 });

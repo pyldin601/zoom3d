@@ -120,3 +120,14 @@ test('a valid ball is kept and an invalid one dropped, keeping the room', () => 
     expect(room && 'ball' in room).toBe(false);
   }
 });
+
+test('the portals flag is kept only when true', () => {
+  const withPortals = (portals: unknown) =>
+    JSON.stringify({ version: 1, rooms: [{ id: ROOM, peers: [peer('a')], portals }] });
+  expect(parseSnapshot(withPortals(true))?.rooms[0]?.portals).toBe(true);
+  for (const other of [false, 'yes', 1, null]) {
+    const room = parseSnapshot(withPortals(other))?.rooms[0];
+    expect(room?.peers).toHaveLength(1);
+    expect(room && 'portals' in room).toBe(false);
+  }
+});

@@ -1,6 +1,15 @@
-import { createBall, type ObjectInfo, type PeerInfo, SnapshotBuffer } from '@zoom3d/shared';
+import {
+  createBall,
+  INTERP_DELAY_MS,
+  LEVEL1,
+  type ObjectInfo,
+  type PeerInfo,
+  parseMap,
+  SnapshotBuffer,
+  wirePortals,
+} from '@zoom3d/shared';
 import { beforeEach, describe, expect, test } from 'vitest';
-import { PeerDelay } from '../net/peer-delay';
+import { FAR_DELAY_MS, PeerDelay } from '../net/peer-delay';
 import { objectKey, type RemoteObject, type RemotePeer, type Session } from '../net/session';
 import { BALL_MODEL } from '../renderer/models/ball';
 import { VACUUM_MODEL } from '../renderer/models/vacuum';
@@ -88,6 +97,26 @@ describe('sample', () => {
     expect(world.positions.get('ada')).toBe(first);
     expect(first).toEqual({ x: 6, y: 3 });
   });
+  test('draws a peer far on the map but near through a portal with the near delay, as the server sends it', () => {
+    const portals = wirePortals(parseMap(LEVEL1), 'AAAAAAAAAAAAAAAAAAAAAA');
+    const pair = portals.list
+      .map((portal) => ({ portal, other: portals.list.at(portal.to) }))
+      .find(({ portal, other }) => other && Math.hypot(portal.cx - other.cx, portal.cy - other.cy) > 20);
+    if (!pair?.other) {
+      throw new Error('level1 has no pair of doorways far apart');
+    }
+    const { portal, other } = pair;
+    const eye = { x: portal.cx - portal.nx, y: portal.cy - portal.ny };
+    room.addPeer('ada', other.cx + other.nx, other.cy + other.ny);
+    const delay = room.peers.get('ada')?.delay;
+
+    createRemoteWorld().sample(room.session, eye, NOW, null, portals);
+    expect(delay?.value).toBe(INTERP_DELAY_MS);
+
+    room.addPeer('ada', other.cx + other.nx, other.cy + other.ny);
+    createRemoteWorld().sample(room.session, eye, NOW);
+    expect(room.peers.get('ada')?.delay.value).toBe(FAR_DELAY_MS);
+  });
 });
 
 describe('collect', () => {
@@ -104,9 +133,19 @@ describe('collect', () => {
     expect(world.sprites.at(0)).toMatchObject({ face: FACE, speaking: 0.5, color: hexToRgb('#ff0000'), held: 'beer' });
     expect(world.sprites.at(1)).toMatchObject({ face: null, speaking: 0 });
     expect(world.labels).toEqual([
-      { x: 2, y: 3, color: '#ff0000', name: 'ada', mic: true },
-      { x: 7, y: 1, color: '#ff0000', name: 'bob', mic: false },
+      { x: 2, y: 3, shownX: 2, shownY: 3, color: '#ff0000', name: 'ada', mic: true },
+      { x: 7, y: 1, shownX: 7, shownY: 1, color: '#ff0000', name: 'bob', mic: false },
     ]);
+  });
+
+  test('a label is shown at the apparent position and keeps the real one for the automap', () => {
+    const world = createRemoteWorld();
+    room.addPeer('ada', 2, 3);
+    world.sample(room.session, player, NOW);
+    const apparent = new Map([['ada', { x: 9, y: 8, sees: true, through: 1 as const, cos: 1, sin: 0 }]]);
+    world.collect(room.session, media, NOW, 0, apparent);
+    expect(world.labels.at(0)).toMatchObject({ x: 2, y: 3, shownX: 9, shownY: 8 });
+    expect(world.sprites.at(0)).toMatchObject({ x: 2, y: 3 });
   });
 
   test("a peer's sip or cheers shows on their disc", () => {

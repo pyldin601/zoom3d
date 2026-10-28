@@ -56,6 +56,7 @@ pnpm e2e          # playwright; starts its own LiveKit :7890-7892 + server :8788
 pnpm bench        # renderer frame-time benchmark (vitest, unlit walls and sprites)
 pnpm bench:walls  # lit walls, reflections and glow in an esbuild bundle, with pixel hashes for refactors
 pnpm bench:sprites # avatars, held items, boomboxes and the vacuum, unlit and lit, likewise with a pixel hash
+pnpm bench:tick   # server tick (stepWorld + fanOut) with 100 bots and 4 or 100 people, portals off and on
 # Large rooms: open /?bots=100 and start a party: the room gets 100 server-driven bots (any server, prod included)
 docker compose up --build              # both images locally: http://localhost:8080
 scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this before pushing)
@@ -175,6 +176,11 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   interpolation delay, or dribbling lags. The server steps it in `Lobby.stepWorld` and has the last word; bots never
   touch it, the vacuum kicks it. Its bounce sounds play from the local ball only, and its pattern rolls by recolouring
   (`renderer/models/ball.ts`), so the instance angle stays 0.
+- Portals (D27, spec `docs/superpowers/specs/2026-10-28-portal-doorways-design.md`): `portals: null` is today's
+  behaviour, pixel for pixel and result for result; keep it so. The wiring is never sent: server and client compute it
+  from the room id (`wirePortals`), and only the room's on/off flag travels. A window is drawn by re-running the passes
+  from the eye carried through the portal, so every pass takes a `Pass` (its columns and near limit) and a new pass
+  must honour it. The vacuum ignores portals (ordinary doors).
 - Telemetry privacy: logs, metrics labels, Sentry and Amplitude never get names, resume tokens or IPs, nor raw room
   ids: a room link is the room's only key. Server logs use `roomRef()` (a short hash), and the browser Sentry
   `beforeSend` scrubs `/r/<id>`.

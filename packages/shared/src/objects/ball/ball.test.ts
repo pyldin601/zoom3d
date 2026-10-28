@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { isWallAt, parseMap } from '../../map/map';
+import { twoDoorways } from '../../portals/test-doorways';
 import { defined } from '../vacuum/test-helpers';
 import {
   BALL_KICK_REACH,
@@ -234,5 +235,37 @@ describe('implausible bodies (review: bunched poses)', () => {
     const ball = createBall('b', 3, 4.5);
     stepBall(ROOM, ball, DT, [person(2.6, 4.5, 50, 0)]);
     expect(ball.vx).toBeLessThanOrEqual(BALL_PUSH_MAX_SPEED);
+  });
+});
+
+describe('through portals', () => {
+  const { map, portals } = twoDoorways();
+
+  test('a ball rolling south through A comes out of B rolling north', () => {
+    const ball = { ...createBall('b', 2.5, 3.2), vy: 3, heading: Math.PI / 2 };
+    for (let i = 0; i < 20; i++) {
+      stepBall(map, ball, DT, [], portals);
+    }
+    expect(ball.x).toBeCloseTo(4.5);
+    expect(ball.y).toBeLessThan(3.5);
+    expect(ball.vy).toBeLessThan(0);
+    expect(ball.vx).toBeCloseTo(0);
+    expect(ball.heading).toBeCloseTo(-Math.PI / 2);
+  });
+
+  test('a ball shoved across A by a body comes out of B', () => {
+    const ball = createBall('b', 2.5, 3.45);
+    stepBall(map, ball, DT, [person(2.5, 3.2, 0, 2)], portals);
+    expect(ball.x).toBeCloseTo(4.5);
+    expect(ball.y).toBeLessThan(3.5);
+  });
+
+  test('the same roll without portals stays on the south side', () => {
+    const ball = { ...createBall('b', 2.5, 3.2), vy: 3, heading: Math.PI / 2 };
+    for (let i = 0; i < 20; i++) {
+      stepBall(map, ball, DT, [], null);
+    }
+    expect(ball.x).toBeCloseTo(2.5);
+    expect(ball.y).toBeGreaterThan(3.5);
   });
 });

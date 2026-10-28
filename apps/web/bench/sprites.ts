@@ -4,9 +4,10 @@
 // walls under it are redrawn untimed before every frame.
 // It also prints a hash of every pixel drawn and every sprite's facts: a refactor that changes no behaviour must leave
 // it alone (docs/code-style.md, Refactoring).
-import { HELD_ITEMS, type HeldItem, LEVEL1, parseMap, tileAt } from '@zoom3d/shared';
+import { HELD_ITEMS, type HeldItem, LEVEL1, parseMap, tileAt, wirePortals } from '@zoom3d/shared';
 import { FACE_SIZE } from '../src/media/faces';
 import type { PeerFacts } from '../src/media/interest';
+import { renderView } from '../src/renderer/frame';
 import { createFramebuffer, rgb } from '../src/renderer/framebuffer';
 import type { Glow } from '../src/renderer/glow';
 import { bakeLighting, corridorLights } from '../src/renderer/lighting';
@@ -102,6 +103,66 @@ for (const mode of MODES) {
 }
 for (const objects of ['without', 'with'] as const) {
   console.log(`lit renderWalls ${objects} objects ${(median(wallTimes[objects]) * 1000).toFixed(1)} µs/frame`);
+}
+
+// Portals on (portal doorways spec): whole frames (walls, windows, people, objects) from 1.5 tiles in front of each of
+// up to 8 doorways, looking in, with the scene's people spread ahead of the eye. Timed with the room's portals off and on.
+const portals = wirePortals(map, 'bench-room');
+const doorwayScenes: Scene[] = portals.list.slice(0, 8).map((p, i) => {
+  const x = p.cx - p.nx * 1.5;
+  const y = p.cy - p.ny * 1.5;
+  const sprites = (scenes.at(i)?.sprites ?? []).map((s, j) => ({
+    ...s,
+    x: x + p.nx * (2 + j * 0.8) + p.ny * (j % 2 === 0 ? 0.4 : -0.4),
+    y: y + p.ny * (2 + j * 0.8) - p.nx * (j % 2 === 0 ? 0.4 : -0.4),
+  }));
+  const voxels = [{ model: VACUUM_MODEL, x: x + p.nx * 3, y: y + p.ny * 3, angle: 0 }];
+  return { x, y, angle: Math.atan2(p.ny, p.nx), sprites, voxels, glows: [] };
+});
+const doorwayHashes = { off: 0, on: 0 };
+const doorwayTimes = { off: [] as number[], on: [] as number[] };
+for (const state of ['off', 'on'] as const) {
+  for (const scene of doorwayScenes) {
+    drawWholeFrame(state, scene);
+    for (const c of fb.pixels) {
+      doorwayHashes[state] = (Math.imul(doorwayHashes[state], 31) + c) | 0;
+    }
+  }
+}
+for (let round = 0; round < ROUNDS; round++) {
+  for (const state of ['off', 'on'] as const) {
+    const frames = doorwayScenes.length * 10;
+    const start = performance.now();
+    for (let f = 0; f < frames; f++) {
+      const scene = doorwayScenes.at(f % doorwayScenes.length);
+      if (scene) {
+        drawWholeFrame(state, scene);
+      }
+    }
+    doorwayTimes[state].push((performance.now() - start) / frames);
+  }
+}
+console.log(
+  `portals: ${doorwayScenes.length} doorway scenes, pixel hash off ${doorwayHashes.off}, on ${doorwayHashes.on}`
+);
+for (const state of ['off', 'on'] as const) {
+  console.log(`lit renderView, portals ${state.padEnd(3)} ${(median(doorwayTimes[state]) * 1000).toFixed(1)} µs/frame`);
+}
+
+/** The whole lit frame, as the game draws it, with the room's portals on or off. */
+function drawWholeFrame(state: 'off' | 'on', s: Scene): void {
+  renderView(fb, {
+    ...room,
+    eye: s,
+    lighting,
+    reflections: 'both',
+    portals: state === 'on' ? portals : null,
+    people: s.sprites,
+    objects: s.voxels,
+    labels: [],
+    ownGlow: null,
+    firstPerson: null,
+  });
 }
 
 function drawWalls(mode: Mode, s: Scene): void {

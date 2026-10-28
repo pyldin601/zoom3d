@@ -1,5 +1,5 @@
 // Which peers' poses go to one recipient this tick (6d spec §2.1). Pure: the lobby owns the clock and the sockets.
-import { FAR_INTERVAL_MS, NEAR_TILES, type PeerEntry, peerEntry } from '@zoom3d/shared';
+import { FAR_INTERVAL_MS, isNear, type PeerEntry, type Portals, peerEntry } from '@zoom3d/shared';
 
 /** A peer whose pose may be sent: `poseVersion` changes whenever its pose does, `poseAt` is when it last did. */
 export interface Subject {
@@ -16,14 +16,15 @@ export interface Subject {
 export type SentLog = Map<string, { version: number; at: number }>;
 
 /**
- * The changed poses `self` should get now: near peers (within NEAR_TILES, walls ignored) every tick, the rest at most
- * every FAR_INTERVAL_MS. Records what it picks in `sent`.
+ * The changed poses `self` should get now: near peers (`isNear`, through `portals` when the room has them on) every
+ * tick, the rest at most every FAR_INTERVAL_MS. Records what it picks in `sent`.
  */
 export function selectBatch(
   self: { id: string; x: number; y: number },
   subjects: Iterable<Subject>,
   sent: SentLog,
-  now: number
+  now: number,
+  portals: Portals | null = null
 ): PeerEntry[] {
   const out: PeerEntry[] = [];
   for (const s of subjects) {
@@ -34,7 +35,7 @@ export function selectBatch(
     if (last && last.version === s.poseVersion) {
       continue;
     }
-    const near = Math.hypot(s.x - self.x, s.y - self.y) <= NEAR_TILES;
+    const near = isNear(portals, self, s);
     if (last && !near && now - last.at < FAR_INTERVAL_MS) {
       continue;
     }

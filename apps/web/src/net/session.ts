@@ -4,14 +4,19 @@ import {
   CHEERS_MS,
   type ClientMessage,
   type ErrorCode,
+  type GameMap,
   type HeldItem,
   IDLE_INTERVAL_MS,
+  isPlausibleMove,
+  JUMP_TILES,
   type LiveKitAccess,
   type ObjectEvent,
   type ObjectInfo,
   type ObjectStateMessage,
   type PeerInfo,
   type PlayerState,
+  type Point,
+  type Portals,
   PROTOCOL_VERSION,
   type ServerMessage,
   SIP_MS,
@@ -55,6 +60,8 @@ export interface SessionListener {
   objectState?(m: ObjectStateMessage): void;
   /** The room's objects as a welcome lists them, after the session has taken them. */
   objectsReset?(objects: readonly ObjectInfo[]): void;
+  /** The room's portals were flipped (by anyone, the local player included); not called for a welcome's flag. */
+  portalsChanged?(on: boolean): void;
   /** A new connection status. Timer and socket driven, so it keeps coming while the tab is hidden. */
   status?(status: ConnStatus): void;
 }
@@ -62,6 +69,8 @@ export interface SessionListener {
 export interface Session {
   peers: Map<string, RemotePeer>;
   objects: Map<string, RemoteObject>;
+  /** Whether the room's portals are on: from the welcome, then from each flip. */
+  portals: boolean;
   setMedia(cam: boolean, mic: boolean): void;
   setHeld(item: HeldItem | null): void;
   /** Shows or hides our boombox to the others; resent after every welcome. */
@@ -72,6 +81,8 @@ export interface Session {
   sendCheers(): void;
   /** Kicks the ball the way `angle` faces; `k` is the local kick counter the server echoes back. */
   sendKick(angle: number, k: number): void;
+  /** Asks the server to flip the room's portals; it answers everyone, this client included. */
+  sendPortals(): void;
   selfId(): string | null;
   selfColor(): string | null;
   status(): ConnStatus;
@@ -89,6 +100,10 @@ export interface SessionOptions {
   bots?: number | null;
   /** Mutated in place by spawn and corrections; read by the state sender. */
   player: PlayerState;
+  /** The map, to tell a walk from a portal jump in what arrives; without it nothing is marked a jump. */
+  map?: GameMap;
+  /** The room's portal wiring while they are on, to tell near peers from far ones as the server does. */
+  portals?: () => Portals | null;
   now: () => number;
   WebSocketImpl?: typeof WebSocket;
   listener?: SessionListener;
@@ -114,6 +129,7 @@ export function createSession(opts: SessionOptions): Session {
   let held: HeldItem | null | undefined;
   /** undefined until setBoombox: false must reach a resumed slot that may still say true. */
   let boombox: boolean | undefined;
+  let portals = false;
   let lastSent: SentPose | null = null;
   const listener = opts.listener ?? {};
 
@@ -184,6 +200,10 @@ export function createSession(opts: SessionOptions): Session {
       case 'object_state':
         applyObjectState(m);
         break;
+      case 'portals':
+        portals = m.on;
+        listener.portalsChanged?.(m.on);
+        break;
       case 'correction':
         Object.assign(player, { x: m.x, y: m.y, angle: m.angle });
         break;
@@ -202,6 +222,7 @@ export function createSession(opts: SessionOptions): Session {
     selfId = m.selfId;
     color = m.color;
     resumeToken = m.resumeToken;
+    portals = m.portals;
     peers.clear();
     bySlot.clear();
     for (const p of m.peers) {
@@ -281,13 +302,18 @@ export function createSession(opts: SessionOptions): Session {
       // put it earlier than the previous pose: then it goes just after).
       const latest = peer.buffer.latest();
       const t = latest ? Math.max(arrival - age, latest.t + 1) : arrival - age;
-      holdBefore(peer.buffer, t, tierInterval(nearTier(player.x, player.y, x, y)));
+      const jump = latest !== null && peerJumped(latest, x, y, t - latest.t);
+      holdBefore(peer.buffer, t, tierInterval(nearTier(opts.portals?.() ?? null, player, x, y)));
       peer.info.x = x;
       peer.info.y = y;
       peer.info.angle = angle;
-      peer.buffer.push({ t, x, y, angle });
+      peer.buffer.push(jump ? { t, x, y, angle, jump } : { t, x, y, angle });
     }
   };
+
+  /** A pose no walk explains: the peer went through a portal. Judged against the last real pose, not a hold. */
+  const peerJumped = (from: Point, x: number, y: number, elapsedMs: number) =>
+    opts.map !== undefined && !isPlausibleMove(opts.map, from, { x, y }, elapsedMs);
 
   const applyObjectState = (m: Extract<ServerMessage, { type: 'object_state' }>) => {
     const obj = objects.get(m.id);
@@ -295,8 +321,11 @@ export function createSession(opts: SessionOptions): Session {
       return;
     }
     obj.lastSeq = m.seq;
+    const jump = Math.hypot(m.x - obj.info.x, m.y - obj.info.y) > JUMP_TILES;
     Object.assign(obj.info, { x: m.x, y: m.y, angle: m.angle });
-    obj.buffer.push({ t: now(), x: m.x, y: m.y, angle: m.angle });
+    obj.buffer.push(
+      jump ? { t: now(), x: m.x, y: m.y, angle: m.angle, jump } : { t: now(), x: m.x, y: m.y, angle: m.angle }
+    );
     listener.objectState?.(m);
     if (m.event) {
       listener.objectEvent?.(m.id, m.event, m.by);
@@ -365,6 +394,9 @@ export function createSession(opts: SessionOptions): Session {
   return {
     peers,
     objects,
+    get portals() {
+      return portals;
+    },
     setMedia(cam, mic) {
       media = { cam, mic };
       sendWhileOpen({ type: 'media', cam, mic });
@@ -380,6 +412,7 @@ export function createSession(opts: SessionOptions): Session {
     sendDrink: () => sendWhileOpen({ type: 'drink' }),
     sendCheers: () => sendWhileOpen({ type: 'cheers' }),
     sendKick: (angle, k) => sendWhileOpen({ type: 'kick', angle, k }),
+    sendPortals: () => sendWhileOpen({ type: 'portals' }),
     selfId: () => selfId,
     selfColor: () => color,
     status: () => status,

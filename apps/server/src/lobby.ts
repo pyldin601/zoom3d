@@ -5,6 +5,8 @@
 // A room is a map of peers by id: people (with a connection, or within their resume grace without one) and bots. A
 // room opens with its first person and closes with its last; bots and the world objects never keep it open.
 import {
+  type Apparent,
+  apparentPosition,
   BALL_KICK_GAP_MS,
   type Ball,
   type BallBody,
@@ -30,6 +32,7 @@ import {
   type PeerInfo,
   PLAYER_RADIUS,
   type Point,
+  type Portals,
   PROTOCOL_VERSION,
   RESUME_GRACE_MS,
   restoreBall,
@@ -47,6 +50,7 @@ import {
   type VacuumNav,
   type VacuumSave,
   vacuumInfo,
+  wirePortals,
 } from '@zoom3d/shared';
 import { AvatarStore } from './avatars';
 import { floorTiles, MAX_BOT_ROOMS, placeBot, stepBot } from './bots';
@@ -57,6 +61,9 @@ import { type SentLog, selectBatch } from './fanout';
 const CLOSE_ROOM_FULL = 4001;
 const CLOSE_INVALID = 4002;
 const CLOSE_REPLACED = 4003;
+
+/** At most one portals flip per room in this time, and the move check honours the old mode for as long after it. */
+const PORTALS_FLIP_GAP_MS = 1000;
 
 export interface Outbox {
   send(connId: string, msg: ServerMessage): void;
@@ -108,6 +115,8 @@ export interface LobbyOptions {
 
 /** The server sees a kicker a little late, so it allows them this much further away than the client does. */
 const KICK_SLACK = 0.5;
+const seen: Apparent = { x: 0, y: 0, sees: false, through: 0, cos: 1, sin: 0 };
+
 /** A walker whose last pose is older than this is standing still, as far as the ball can tell. */
 const MOVING_POSE_MS = 200;
 
@@ -149,7 +158,7 @@ export interface SnapshotPeer extends Omit<PeerInfo, 'slot'> {
 /** Bump `version` when SnapshotPeer changes in a way parsePeerInfo's defaults can't absorb. */
 export interface LobbySnapshot {
   version: 1;
-  rooms: { id: string; peers: SnapshotPeer[]; vacuum?: VacuumSave; ball?: BallSave }[];
+  rooms: { id: string; peers: SnapshotPeer[]; vacuum?: VacuumSave; ball?: BallSave; portals?: boolean }[];
 }
 
 const isPerson = (p: Peer) => p.bot === undefined;
@@ -228,6 +237,10 @@ export class Lobby {
   private readonly balls = new Map<string, Ball>();
   /** A person's kick since the ball's last broadcast, echoed in it so the kicker recognises its own kick. */
   private readonly kicks = new Map<string, { by: string; k: number }>();
+  /** Each room's portals flag and when it last flipped; a room with no entry has them off and never flipped. */
+  private readonly portalModes = new Map<string, { on: boolean; flippedAt: number }>();
+  /** Each room's doorway wiring, built the first time the room needs it. */
+  private readonly wirings = new Map<string, Portals>();
   /** Each room's next peer slot: a counter, so a late batch can never move the wrong peer. */
   private readonly nextSlot = new Map<string, number>();
   private readonly avatars = new AvatarStore();
@@ -301,7 +314,7 @@ export class Lobby {
     }
     const { roomId, peer } = found;
     const now = this.opts.now();
-    if (!isPlausibleMove(this.opts.map, peer, msg, now - peer.lastAcceptedAt)) {
+    if (!this.isPlausibleInRoom(roomId, peer, msg, now)) {
       this.opts.out.send(conn, { type: 'correction', x: peer.x, y: peer.y, angle: peer.angle, seq: msg.seq });
       this.emit({ type: 'move_corrected', roomId, peerId: peer.id });
       return;
@@ -310,8 +323,10 @@ export class Lobby {
     if (msg.x !== peer.x || msg.y !== peer.y || msg.angle !== peer.angle) {
       const sincePose = now - peer.poseAt;
       const moving = sincePose > 0 && sincePose <= MOVING_POSE_MS;
-      peer.vx = moving ? ((msg.x - peer.x) * 1000) / sincePose : 0;
-      peer.vy = moving ? ((msg.y - peer.y) * 1000) / sincePose : 0;
+      // A move only a portal explains is a jump, not a speed.
+      const walked = moving && isPlausibleMove(this.opts.map, peer, msg, sincePose, null);
+      peer.vx = walked ? ((msg.x - peer.x) * 1000) / sincePose : 0;
+      peer.vy = walked ? ((msg.y - peer.y) * 1000) / sincePose : 0;
       peer.x = msg.x;
       peer.y = msg.y;
       peer.angle = msg.angle;
@@ -319,6 +334,23 @@ export class Lobby {
       peer.poseAt = now;
     }
     peer.lastAcceptedAt = now;
+  }
+
+  /** Flips the room's portals for everyone, unless it flipped less than a second ago. */
+  portals(conn: string): void {
+    const found = this.peerOf(conn);
+    if (!found) {
+      return;
+    }
+    const { roomId, room } = found;
+    const now = this.opts.now();
+    const mode = this.portalMode(roomId);
+    if (now - mode.flippedAt < PORTALS_FLIP_GAP_MS) {
+      return;
+    }
+    mode.on = !mode.on;
+    mode.flippedAt = now;
+    this.broadcast(room, '', { type: 'portals', on: mode.on });
   }
 
   media(conn: string, msg: MediaMessage): void {
@@ -360,7 +392,10 @@ export class Lobby {
     if (!found || !ball || now - found.peer.lastKickAt < BALL_KICK_GAP_MS) {
       return;
     }
-    if (kickBall(ball, found.peer, msg.angle, KICK_SLACK)) {
+    const portals = this.activePortals(found.roomId);
+    const kicker = this.seenFrom(portals, ball, found.peer);
+    const angle = msg.angle + Math.atan2(kicker.sin, kicker.cos);
+    if (kickBall(ball, kicker, angle, KICK_SLACK)) {
       found.peer.lastKickAt = now;
       this.kicks.set(found.roomId, { by: found.peer.id, k: msg.k });
     }
@@ -412,12 +447,13 @@ export class Lobby {
    */
   fanOut(): void {
     const now = this.opts.now();
-    for (const room of this.rooms.values()) {
+    for (const [roomId, room] of this.rooms) {
+      const portals = this.activePortals(roomId);
       for (const p of room.values()) {
         if (p.conn === null) {
           continue;
         }
-        const s = selectBatch(p, room.values(), p.sent, now);
+        const s = selectBatch(p, room.values(), p.sent, now, portals);
         if (s.length > 0) {
           this.opts.out.send(p.conn, { type: 'peers', s });
         }
@@ -441,11 +477,13 @@ export class Lobby {
       rooms: [...this.rooms].map(([id, room]) => {
         const vacuum = this.vacuums.get(id);
         const ball = this.balls.get(id);
+        const portalsOn = this.portalModes.get(id)?.on === true;
         return {
           id,
           peers: peopleIn(room).map(savePeer),
           ...(vacuum ? { vacuum: saveVacuum(this.vacuumNav(), vacuum) } : {}),
           ...(ball ? { ball: saveBall(this.opts.map, ball) } : {}),
+          ...(portalsOn ? { portals: true } : {}),
         };
       }),
     };
@@ -454,7 +492,7 @@ export class Lobby {
   /** Loads a snapshot into an empty lobby. Every slot starts a fresh grace period, waiting for its owner to resume. */
   restore(snap: LobbySnapshot): void {
     const now = this.opts.now();
-    for (const { id, peers, vacuum, ball } of snap.rooms) {
+    for (const { id, peers, vacuum, ball, portals } of snap.rooms) {
       const room: Room = new Map();
       for (const saved of peers) {
         room.set(saved.id, {
@@ -467,6 +505,9 @@ export class Lobby {
         });
       }
       this.rooms.set(id, room);
+      if (portals) {
+        this.portalModes.set(id, { on: true, flippedAt: Number.NEGATIVE_INFINITY });
+      }
       this.emit({ type: 'room_opened', roomId: id });
       // A robot saved on another map (or none saved) starts afresh.
       const restored = this.opts.vacuum && vacuum ? restoreVacuum(this.vacuumNav(), vacuum) : null;
@@ -593,6 +634,8 @@ export class Lobby {
     this.vacuumVelocities.delete(roomId);
     this.balls.delete(roomId);
     this.kicks.delete(roomId);
+    this.portalModes.delete(roomId);
+    this.wirings.delete(roomId);
     this.nextSlot.delete(roomId);
     this.emit({ type: 'room_closed', roomId });
   }
@@ -618,6 +661,7 @@ export class Lobby {
       peers: [...room.values()].filter((p) => p.id !== self.id).map(peerInfo),
       livekit: this.opts.liveKitFor(roomId, self.id),
       objects: [...(vacuum ? [vacuumInfo(vacuum)] : []), ...(ball ? [ballInfo(ball)] : [])],
+      portals: this.portalModes.get(roomId)?.on === true,
     });
   }
 
@@ -658,13 +702,14 @@ export class Lobby {
   /** Walks every bot of every room with someone connected; fan-out sends their poses like a player's. */
   private stepBots(dt: number): void {
     const now = this.opts.now();
-    for (const room of this.rooms.values()) {
+    for (const [roomId, room] of this.rooms) {
       if (!hasConnection(room)) {
         continue;
       }
+      const portals = this.activePortals(roomId);
       for (const peer of room.values()) {
         if (peer.bot) {
-          stepBot(this.opts.map, peer, dt, this.opts.rng);
+          stepBot(this.opts.map, peer, dt, this.opts.rng, portals);
           peer.poseVersion++;
           peer.poseAt = now;
         }
@@ -745,18 +790,20 @@ export class Lobby {
       if (!room) {
         continue;
       }
+      const portals = this.activePortals(roomId);
       const conns: string[] = [];
       const bodies: BallBody[] = [];
       for (const p of room.values()) {
         if (p.conn !== null && isPerson(p)) {
           conns.push(p.conn);
           const moving = now - p.poseAt <= MOVING_POSE_MS;
+          const body = this.seenFrom(portals, ball, p);
           bodies.push({
             kind: 'person',
-            x: p.x,
-            y: p.y,
-            vx: moving ? p.vx : 0,
-            vy: moving ? p.vy : 0,
+            x: body.x,
+            y: body.y,
+            vx: moving ? body.cos * p.vx - body.sin * p.vy : 0,
+            vy: moving ? body.sin * p.vx + body.cos * p.vy : 0,
             radius: PLAYER_RADIUS,
           });
         }
@@ -767,17 +814,20 @@ export class Lobby {
       const vacuum = this.vacuums.get(roomId);
       if (vacuum) {
         const v = this.vacuumVelocities.get(roomId);
+        const body = this.seenFrom(portals, ball, vacuum);
+        const vacuumVx = v?.vx ?? 0;
+        const vacuumVy = v?.vy ?? 0;
         bodies.push({
           kind: 'vacuum',
-          x: vacuum.x,
-          y: vacuum.y,
-          vx: v?.vx ?? 0,
-          vy: v?.vy ?? 0,
+          x: body.x,
+          y: body.y,
+          vx: body.cos * vacuumVx - body.sin * vacuumVy,
+          vy: body.sin * vacuumVx + body.cos * vacuumVy,
           radius: VACUUM_RADIUS,
         });
       }
       const { x, y, vx, vy } = ball;
-      const event = stepBall(this.opts.map, ball, dt, bodies);
+      const event = stepBall(this.opts.map, ball, dt, bodies, portals);
       const kick = this.kicks.get(roomId);
       this.kicks.delete(roomId);
       const changed = ball.x !== x || ball.y !== y || ball.vx !== vx || ball.vy !== vy;
@@ -805,6 +855,67 @@ export class Lobby {
   private vacuumNav(): VacuumNav {
     this.nav ??= createVacuumNav(this.opts.map);
     return this.nav;
+  }
+
+  // Portals.
+
+  /**
+   * Where `target` appears to be from `viewer`, one portal deep (contacts reach through at most one): the target
+   * itself without portals, with the turn that takes its directions into the viewer's frame. The result is shared
+   * scratch, valid until the next call.
+   */
+  private seenFrom(portals: Portals | null, viewer: Point, target: Point): Apparent {
+    if (portals !== null) {
+      return apparentPosition(portals.map, portals, viewer, target, seen, 1);
+    }
+    seen.x = target.x;
+    seen.y = target.y;
+    seen.through = 0;
+    seen.cos = 1;
+    seen.sin = 0;
+    return seen;
+  }
+
+  private portalMode(roomId: string): { on: boolean; flippedAt: number } {
+    let mode = this.portalModes.get(roomId);
+    if (!mode) {
+      mode = { on: false, flippedAt: Number.NEGATIVE_INFINITY };
+      this.portalModes.set(roomId, mode);
+    }
+    return mode;
+  }
+
+  /** The room's doorway wiring while its portals are on, else null. */
+  private activePortals(roomId: string): Portals | null {
+    return this.portalModes.get(roomId)?.on === true ? this.wiring(roomId) : null;
+  }
+
+  /**
+   * Under the room's current mode, or, for a second after a flip, the other one: a state sent just before the flip
+   * reached its sender was made under the old mode.
+   */
+  private isPlausibleInRoom(roomId: string, peer: Peer, msg: StateMessage, now: number): boolean {
+    const elapsedMs = now - peer.lastAcceptedAt;
+    const current = this.activePortals(roomId);
+    if (isPlausibleMove(this.opts.map, peer, msg, elapsedMs, current)) {
+      return true;
+    }
+    const justFlipped =
+      now - (this.portalModes.get(roomId)?.flippedAt ?? Number.NEGATIVE_INFINITY) < PORTALS_FLIP_GAP_MS;
+    if (!justFlipped) {
+      return false;
+    }
+    const other = current === null ? this.wiring(roomId) : null;
+    return isPlausibleMove(this.opts.map, peer, msg, elapsedMs, other);
+  }
+
+  private wiring(roomId: string): Portals {
+    let wiring = this.wirings.get(roomId);
+    if (!wiring) {
+      wiring = wirePortals(this.opts.map, roomId);
+      this.wirings.set(roomId, wiring);
+    }
+    return wiring;
   }
 
   // Plumbing.

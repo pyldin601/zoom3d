@@ -1,19 +1,33 @@
 // How far in the past each peer is drawn (6d spec §2.3). The server sends near peers every tick and far ones twice
 // a second, so a far peer drawn at the near delay would stand still and jump. Each peer gets the delay of its tier instead,
 // changed gradually so crossing the line never jumps.
-import { FANOUT_TICK_MS, FAR_INTERVAL_MS, INTERP_DELAY_MS, NEAR_TILES, type SnapshotBuffer } from '@zoom3d/shared';
+import {
+  FANOUT_TICK_MS,
+  FAR_INTERVAL_MS,
+  INTERP_DELAY_MS,
+  isNear,
+  NEAR_TILES,
+  type Point,
+  type Portals,
+  type SnapshotBuffer,
+} from '@zoom3d/shared';
 
 /** Far updates come every FAR_INTERVAL_MS plus up to a tick, plus network jitter. */
 export const FAR_DELAY_MS = 750;
 /** The delay changes at most this many ms per ms: drawn time slows to half speed or runs 1.5×, never backwards. */
 const SLEW = 0.5;
 
+const peerAt: Point = { x: 0, y: 0 };
+
 /**
- * Whether the server sends this peer every tick. Judged a tile inside the server's line: near the line the server's
- * view and ours differ, and drawing a near peer late is smooth, while drawing a far peer early is choppy.
+ * Whether the server sends this peer every tick: its rule (`isNear`), through the room's `portals` when they are on.
+ * Judged a tile inside the server's line: near the line the server's view and ours differ, and drawing a near peer
+ * late is smooth, while drawing a far peer early is choppy.
  */
-export function nearTier(px: number, py: number, x: number, y: number): boolean {
-  return Math.hypot(x - px, y - py) <= NEAR_TILES - 1;
+export function nearTier(portals: Portals | null, player: Point, x: number, y: number): boolean {
+  peerAt.x = x;
+  peerAt.y = y;
+  return isNear(portals, player, peerAt, NEAR_TILES - 1);
 }
 
 /** How often the server sends a moving peer of this tier: far ones go out on the first tick FAR_INTERVAL_MS after. */

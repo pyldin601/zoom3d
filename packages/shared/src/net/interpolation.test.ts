@@ -55,6 +55,29 @@ describe('SnapshotBuffer', () => {
     expect(o.angle).toBeLessThan(2 * Math.PI);
   });
 
+  test('never blends into a jump: before it, the earlier pose holds', () => {
+    const b = new SnapshotBuffer();
+    b.push(snap(0, 0));
+    b.push({ ...snap(100, 20), jump: true });
+    const o = out();
+    b.sample(50, o);
+    expect(o.x).toBe(0);
+    b.sample(99, o);
+    expect(o.x).toBe(0);
+    b.sample(100, o);
+    expect(o.x).toBe(20);
+  });
+
+  test('blends again after a jump', () => {
+    const b = new SnapshotBuffer();
+    b.push(snap(0, 0));
+    b.push({ ...snap(100, 20), jump: true });
+    b.push(snap(200, 22));
+    const o = out();
+    b.sample(150, o);
+    expect(o.x).toBe(21);
+  });
+
   test('drops the oldest when full', () => {
     const b = new SnapshotBuffer(2);
     b.push(snap(0, 0));

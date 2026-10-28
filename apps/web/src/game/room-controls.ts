@@ -4,6 +4,7 @@ import type { HeldItem } from '@zoom3d/shared';
 import type { DrinkKey } from '../input/drink-key';
 import { type RoomKey, roomKey } from '../input/room-keys';
 import type { TouchSource } from '../input/touch';
+import { track } from '../telemetry/analytics';
 import { heldKeyAction } from '../ui/held-store';
 import { nextRenderMode, type RenderMode } from '../ui/render-settings';
 import { showTouchControls, type TouchControls } from '../ui/touch-controls';
@@ -53,6 +54,15 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
     refresh();
   };
 
+  /** Tracked once, by the presser: the server's answer reaches everyone. */
+  const togglePortals = () => {
+    const room = o.room();
+    if (room && inRoom()) {
+      track({ name: 'portals_toggled', on: !room.session.portals });
+      room.session.sendPortals();
+    }
+  };
+
   /** B opens the boombox's file picker, or stops the music (boombox spec §3); stopping works while reconnecting. */
   const toggleBoombox = () => o.room()?.boombox.toggle(inRoom());
 
@@ -84,6 +94,10 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
       case 'kick':
         e.preventDefault();
         o.room()?.kick();
+        break;
+      case 'portals':
+        e.preventDefault();
+        togglePortals();
         break;
       case 'media':
         // The same as pressing the mic button or the self-view circle (feedback, a camera that can't start, a missing

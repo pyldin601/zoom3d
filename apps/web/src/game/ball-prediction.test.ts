@@ -1,5 +1,6 @@
 import { type BallBody, type ObjectInfo, type ObjectStateMessage, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
+import { twoDoorways } from '../../../../packages/shared/src/portals/test-doorways';
 import { createBallPrediction } from './ball-prediction';
 
 // Ball spec §3.3: the local player's touches act at once; the server's ball is eased onto otherwise.
@@ -153,5 +154,52 @@ describe('welcomes', () => {
     p.reset(null);
     expect(p.ball).toBeNull();
     expect(p.step(DT, 0, null)).toBeNull();
+  });
+});
+
+// Portal doorways spec §2.4: the prediction steps like the server, which sees bodies where they appear from the ball.
+describe('through portals', () => {
+  const { map, portals } = twoDoorways();
+  const through = (p: ReturnType<typeof createBallPrediction>) => {
+    p.reset(info('b', 2.5, 3.2));
+    ballOf(p).vy = 3;
+    for (let i = 0; i < 20; i++) {
+      p.step(DT, i * 16, null);
+    }
+    return ballOf(p);
+  };
+
+  test('a ball rolling south through A comes out of B rolling north', () => {
+    const ball = through(createBallPrediction(map, () => portals));
+    expect(ball.x).toBeCloseTo(4.5);
+    expect(ball.vy).toBeLessThan(0);
+  });
+
+  test('without portals it stays on the south side', () => {
+    const ball = through(createBallPrediction(map));
+    expect(ball.x).toBeCloseTo(2.5);
+    expect(ball.y).toBeGreaterThan(3.5);
+  });
+
+  test("a player at B pushes the ball at A, in A's frame", () => {
+    const p = createBallPrediction(map, () => portals);
+    p.reset(info('b', 2.5, 3.3));
+    p.step(DT, 0, { kind: 'person', x: 4.5, y: 3.3, vx: 0, vy: 3, radius: 0.25 });
+    expect(ballOf(p).vy).toBeLessThan(0);
+  });
+
+  test('a player at B does not touch the ball at A without portals', () => {
+    const p = createBallPrediction(map);
+    p.reset(info('b', 2.5, 3.3));
+    p.step(DT, 0, { kind: 'person', x: 4.5, y: 3.3, vx: 0, vy: 3, radius: 0.25 });
+    expect(ballOf(p).vy).toBe(0);
+  });
+
+  test('a kick from B aims through the doorway, as the server turns it', () => {
+    const p = createBallPrediction(map, () => portals);
+    p.reset(info('b', 2.5, 3.3));
+    expect(p.kick({ x: 4.5, y: 3.3 }, Math.PI / 2, 0)).toBe(1);
+    expect(ballOf(p).vy).toBeLessThan(0);
+    expect(ballOf(p).vx).toBeCloseTo(0);
   });
 });

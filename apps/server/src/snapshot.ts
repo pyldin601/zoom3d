@@ -64,7 +64,13 @@ export function parseSnapshot(raw: string): LobbySnapshot | null {
     if (peers.length > 0 && peers.length <= MAX_PEERS) {
       const vacuum = snapshotVacuum(r.vacuum);
       const ball = snapshotBall(r.ball);
-      rooms.push({ id: r.id, peers, ...(vacuum ? { vacuum } : {}), ...(ball ? { ball } : {}) });
+      rooms.push({
+        id: r.id,
+        peers,
+        ...(vacuum ? { vacuum } : {}),
+        ...(ball ? { ball } : {}),
+        ...(r.portals === true ? { portals: true } : {}),
+      });
     }
   }
   return { version: 1, rooms };

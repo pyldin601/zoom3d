@@ -3,7 +3,7 @@
 /** People per room (bots don't count). To revisit after the 100-person load test (D21). */
 export const MAX_PEERS = 128;
 /** Sent in every join; a join without it, or with an older one, comes from a tab opened before an update. */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 /** Bots a room may be created with (opt-in via the room link's `?bots=N`), outside MAX_PEERS. */
 export const MAX_BOTS = 100;
 export const NAME_MAX = 24;
@@ -102,6 +102,8 @@ export type CheersMessage = { type: 'cheers' };
 export type BoomboxMessage = { type: 'boombox'; on: boolean };
 /** Kicks the ball the way `angle` faces; `k` counts the sender's kicks, so it recognises its own in `object_state`. */
 export type KickMessage = { type: 'kick'; angle: number; k: number };
+/** Asks to flip the room's portal mode. */
+export type PortalsMessage = { type: 'portals' };
 export type ClientMessage =
   | JoinMessage
   | StateMessage
@@ -110,7 +112,8 @@ export type ClientMessage =
   | DrinkMessage
   | CheersMessage
   | BoomboxMessage
-  | KickMessage;
+  | KickMessage
+  | PortalsMessage;
 
 export type ErrorCode = 'room_full' | 'invalid_room' | 'invalid_name' | 'not_joined' | 'outdated';
 const ERROR_CODES: readonly ErrorCode[] = ['room_full', 'invalid_room', 'invalid_name', 'not_joined', 'outdated'];
@@ -131,6 +134,7 @@ export type ServerMessage =
       peers: PeerInfo[];
       livekit: LiveKitAccess;
       objects: ObjectInfo[];
+      portals: boolean;
     }
   | { type: 'peer_joined'; peer: PeerInfo }
   | { type: 'peer_media'; id: string; cam: boolean; mic: boolean }
@@ -140,6 +144,7 @@ export type ServerMessage =
   | { type: 'peer_boombox'; id: string; on: boolean }
   | { type: 'peer_left'; id: string }
   | { type: 'peers'; s: PeerEntry[] }
+  | { type: 'portals'; on: boolean }
   | {
       type: 'object_state';
       id: string;
@@ -327,6 +332,9 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   if (m.type === 'boombox') {
     return isBool(m.on) ? { type: 'boombox', on: m.on } : null;
   }
+  if (m.type === 'portals') {
+    return { type: 'portals' };
+  }
   if (m.type === 'kick') {
     return isNum(m.angle) && isSeq(m.k) ? { type: 'kick', angle: m.angle, k: m.k } : null;
   }
@@ -398,6 +406,8 @@ export function parseServerMessage(raw: string): ServerMessage | null {
         objects: Array.isArray(m.objects)
           ? m.objects.map(parseObjectInfo).filter((o): o is ObjectInfo => o !== null)
           : [],
+        // Missing from an older server: the portals are off.
+        portals: m.portals === true,
       };
     }
     case 'peer_joined': {
@@ -421,6 +431,8 @@ export function parseServerMessage(raw: string): ServerMessage | null {
     case 'peers':
       // A bad entry costs only that peer one update: keep the rest.
       return Array.isArray(m.s) ? { type: 'peers', s: m.s.filter(isPeerEntry) } : null;
+    case 'portals':
+      return isBool(m.on) ? { type: 'portals', on: m.on } : null;
     case 'object_state': {
       const p = pose(m);
       if (!p || !isStr(m.id) || !isSeq(m.seq)) {
