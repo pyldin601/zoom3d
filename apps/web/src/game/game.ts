@@ -123,6 +123,10 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
       get audio() {
         return room?.audio ?? null;
       },
+      /** Whether the room's portals are on, as this client sees it. */
+      get portalsOn() {
+        return room?.portals() !== null && room !== null;
+      },
     },
   };
 
