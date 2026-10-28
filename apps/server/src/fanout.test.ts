@@ -1,4 +1,4 @@
-import { FAR_INTERVAL_MS, NEAR_TILES } from '@zoom3d/shared';
+import { FAR_INTERVAL_MS, LEVEL1, NEAR_TILES, parseMap, wirePortals } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { type SentLog, type Subject, selectBatch } from './fanout';
 
@@ -79,5 +79,40 @@ describe('selectBatch', () => {
   test('each entry carries how long ago the server accepted that pose', () => {
     // A move accepted 50 ms before the tick: the receiver places it on its real timeline, not the tick's.
     expect(selectBatch(self, [near({ poseAt: 1000 })], new Map(), 1050)).toEqual([[1, 12, 10, 0, 50]]);
+  });
+});
+
+describe('selectBatch through portals', () => {
+  const portals = wirePortals(parseMap(LEVEL1), 'AAAAAAAAAAAAAAAAAAAAAA');
+  const distantPair = portals.list
+    .map((portal) => ({ portal, other: portals.list.at(portal.to) }))
+    .find(({ portal, other }) => other && Math.hypot(portal.cx - other.cx, portal.cy - other.cy) > NEAR_TILES + 4);
+
+  test('a peer far away on the map but one tile past the other doorway is near', () => {
+    if (!distantPair?.other) {
+      throw new Error('level1 has no pair of doorways far apart');
+    }
+    const { portal, other } = distantPair;
+    const viewer = { id: 'me', x: portal.cx - portal.nx, y: portal.cy - portal.ny };
+    const peer = near({ x: other.cx + other.nx, y: other.cy + other.ny });
+    expect(Math.hypot(peer.x - viewer.x, peer.y - viewer.y)).toBeGreaterThan(NEAR_TILES);
+
+    const sent: SentLog = new Map();
+    selectBatch(viewer, [peer], sent, 0, portals);
+    peer.poseVersion++;
+    expect(selectBatch(viewer, [peer], sent, 66, portals)).toHaveLength(1);
+
+    const sentWithout: SentLog = new Map();
+    selectBatch(viewer, [peer], sentWithout, 0);
+    peer.poseVersion++;
+    expect(selectBatch(viewer, [peer], sentWithout, 66)).toEqual([]);
+  });
+
+  test('with portals null a far peer is far, exactly as before', () => {
+    const sent: SentLog = new Map();
+    const f = far();
+    selectBatch(self, [f], sent, 0, null);
+    f.poseVersion++;
+    expect(selectBatch(self, [f], sent, 66, null)).toEqual([]);
   });
 });

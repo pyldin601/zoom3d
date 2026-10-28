@@ -1,5 +1,13 @@
 // Which peers' poses go to one recipient this tick (6d spec §2.1). Pure: the lobby owns the clock and the sockets.
-import { FAR_INTERVAL_MS, NEAR_TILES, type PeerEntry, peerEntry } from '@zoom3d/shared';
+import {
+  type Apparent,
+  apparentPosition,
+  FAR_INTERVAL_MS,
+  NEAR_TILES,
+  type PeerEntry,
+  type Portals,
+  peerEntry,
+} from '@zoom3d/shared';
 
 /** A peer whose pose may be sent: `poseVersion` changes whenever its pose does, `poseAt` is when it last did. */
 export interface Subject {
@@ -15,15 +23,27 @@ export interface Subject {
 /** Per recipient: for each other peer, the pose version last sent to it and when. */
 export type SentLog = Map<string, { version: number; at: number }>;
 
+const apparent: Apparent = { x: 0, y: 0, sees: false, through: 0 };
+
+/** Whether `subject` is within NEAR_TILES of `self`, walls ignored; with portals, where it appears to be seen from. */
+function isNear(self: { x: number; y: number }, subject: Subject, portals: Portals | null): boolean {
+  if (portals === null) {
+    return Math.hypot(subject.x - self.x, subject.y - self.y) <= NEAR_TILES;
+  }
+  apparentPosition(portals.map, portals, self, subject, apparent);
+  return Math.hypot(apparent.x - self.x, apparent.y - self.y) <= NEAR_TILES;
+}
+
 /**
- * The changed poses `self` should get now: near peers (within NEAR_TILES, walls ignored) every tick, the rest at most
- * every FAR_INTERVAL_MS. Records what it picks in `sent`.
+ * The changed poses `self` should get now: near peers (within NEAR_TILES, walls ignored, through `portals` when the
+ * room has them on) every tick, the rest at most every FAR_INTERVAL_MS. Records what it picks in `sent`.
  */
 export function selectBatch(
   self: { id: string; x: number; y: number },
   subjects: Iterable<Subject>,
   sent: SentLog,
-  now: number
+  now: number,
+  portals: Portals | null = null
 ): PeerEntry[] {
   const out: PeerEntry[] = [];
   for (const s of subjects) {
@@ -34,7 +54,7 @@ export function selectBatch(
     if (last && last.version === s.poseVersion) {
       continue;
     }
-    const near = Math.hypot(s.x - self.x, s.y - self.y) <= NEAR_TILES;
+    const near = isNear(self, s, portals);
     if (last && !near && now - last.at < FAR_INTERVAL_MS) {
       continue;
     }

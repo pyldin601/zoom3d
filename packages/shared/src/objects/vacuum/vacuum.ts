@@ -6,6 +6,8 @@
 // - `activity` is what it does this step: `move` along its waypoints, `scan` the slow search circle, or `pause`.
 import { moveWithCollision, PLAYER_RADIUS } from '../../geometry/movement';
 import { isWallAt } from '../../map/map';
+import { carryThroughPortal } from '../../portals/crossing';
+import type { Portals } from '../../portals/wiring';
 import type { ObjectEvent, ObjectInfo } from '../../protocol/protocol';
 import { pick } from '../../random';
 import { mapFingerprint, type Point, VACUUM_RADIUS, type VacuumNav } from './nav';
@@ -175,13 +177,17 @@ export function vacuumInfo(v: Vacuum): ObjectInfo {
   return { id: v.id, kind: 'vacuum', x: v.x, y: v.y, angle: v.angle };
 }
 
-/** Advances by dt seconds. `people` are connected persons' positions. Returns the event of this step, if any. */
+/**
+ * Advances by dt seconds. `people` are connected persons' positions, already apparent ones as seen from the robot
+ * when it drives through `portals`. Returns the event of this step, if any.
+ */
 export function stepVacuum(
   nav: VacuumNav,
   v: Vacuum,
   dt: number,
   rng: () => number,
-  people: readonly Point[]
+  people: readonly Point[],
+  portals: Portals | null = null
 ): ObjectEvent | null {
   v.time += dt;
   const activity = v.activity;
@@ -191,7 +197,7 @@ export function stepVacuum(
     case 'scan':
       return stepScan(v, activity, dt);
     case 'move':
-      return stepMove(nav, v, dt, rng, people);
+      return stepMove(nav, v, dt, rng, people, portals);
   }
 }
 
@@ -221,7 +227,8 @@ function stepMove(
   v: Vacuum,
   dt: number,
   rng: () => number,
-  people: readonly Point[]
+  people: readonly Point[],
+  portals: Portals | null
 ): ObjectEvent | null {
   // Reaching a waypoint costs no time of its own: carry on toward the next in the same step.
   let waypoint = v.waypoints.at(0);
@@ -254,8 +261,15 @@ function stepMove(
   }
   const step = Math.min(VACUUM_SPEED * dt, Math.hypot(waypoint.x - v.x, waypoint.y - v.y));
   const to = moveWithCollision(nav.map, v.x, v.y, Math.cos(v.angle) * step, Math.sin(v.angle) * step, VACUUM_RADIUS);
+  const fromX = v.x;
+  const fromY = v.y;
   v.x = to.x;
   v.y = to.y;
+  if (carryThroughPortal(portals, fromX, fromY, v)) {
+    v.angle = normalizeAngle(v.angle);
+    // The waypoints are on the far side of the doorway now; the next step plans from here.
+    v.waypoints = [];
+  }
   return null;
 }
 

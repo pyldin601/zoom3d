@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { LEVEL1 } from '../../map/level1';
 import { isWallAt, parseMap } from '../../map/map';
+import { twoDoorways } from '../../portals/test-doorways';
 import { createVacuumNav, VACUUM_RADIUS } from './nav';
 import { defined, seeded } from './test-helpers';
 import {
@@ -327,5 +328,36 @@ describe('blocked with no room to go round', () => {
     }
     expect(bumps).toBeGreaterThanOrEqual(1);
     expect(bumps).toBeLessThanOrEqual(3);
+  });
+});
+
+describe('through portals', () => {
+  const { map, portals } = twoDoorways();
+  const nav = createVacuumNav(map);
+
+  test('driving through A comes out of B, drops its waypoints and plans a fresh leg on the next step', () => {
+    const v = parkVacuum('v', 2.5, 3.45, Math.PI / 2);
+    v.waypoints = [{ x: 2.5, y: 4.8 }];
+    v.deadline = 1000;
+    const rng = seeded();
+    stepVacuum(nav, v, DT, rng, [], portals);
+    expect(v.x).toBeCloseTo(4.5);
+    expect(v.y).toBeLessThan(3.5);
+    expect(v.angle).toBeCloseTo((Math.PI * 3) / 2);
+    expect(v.waypoints).toEqual([]);
+    stepVacuum(nav, v, DT, rng, [], portals);
+    expect(v.waypoints.length).toBeGreaterThan(0);
+  });
+
+  test('it keeps cleaning after a jump', () => {
+    const v = parkVacuum('v', 2.5, 3.45, Math.PI / 2);
+    v.waypoints = [{ x: 2.5, y: 4.8 }];
+    v.deadline = 1000;
+    const rng = seeded();
+    for (let i = 0; i < 3000; i++) {
+      stepVacuum(nav, v, DT, rng, [], portals);
+    }
+    expect(v.clean.size).toBeGreaterThan(0);
+    expect(isWallAt(map, v.x, v.y)).toBe(false);
   });
 });

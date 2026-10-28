@@ -2,6 +2,8 @@
 // vacuum. Pure, so the server and every client run the same physics. No allocations per step.
 import { MOVE_SPEED, PLAYER_RADIUS } from '../../geometry/movement';
 import { type GameMap, isWallAt } from '../../map/map';
+import { carryThroughPortal } from '../../portals/crossing';
+import type { Portals } from '../../portals/wiring';
 import type { ObjectInfo } from '../../protocol/protocol';
 import { mapFingerprint } from '../vacuum/nav';
 
@@ -35,6 +37,9 @@ const BOUNCE_EVENT_SPEED = 1;
 const SUBSTEP_S = BALL_RADIUS / 2 / BALL_MAX_SPEED;
 /** A longer step (a stalled tab) is cut to this, which still rolls it far. */
 const MAX_STEP_S = 1;
+
+/** Where a roll that crossed a portal is carried, so stepping allocates nothing. */
+const carried = { x: 0, y: 0, angle: 0 };
 
 export type BallEvent = 'kick' | 'bounce';
 
@@ -90,8 +95,17 @@ export function kickBall(ball: Ball, from: { x: number; y: number }, angle: numb
   return true;
 }
 
-/** Advances by dt seconds against the map's walls and the bodies; returns this step's event, a kick over a bounce. */
-export function stepBall(map: GameMap, ball: Ball, dt: number, bodies: readonly BallBody[]): BallEvent | null {
+/**
+ * Advances by dt seconds against the map's walls and the bodies; returns this step's event, a kick over a bounce.
+ * With `portals`, it rolls through them; the bodies must already be at their apparent positions from the ball.
+ */
+export function stepBall(
+  map: GameMap,
+  ball: Ball,
+  dt: number,
+  bodies: readonly BallBody[],
+  portals: Portals | null = null
+): BallEvent | null {
   const t = Math.min(Math.max(dt, 0), MAX_STEP_S);
   const steps = Math.max(1, Math.ceil(t / SUBSTEP_S));
   const h = t / steps;
@@ -105,7 +119,11 @@ export function stepBall(map: GameMap, ball: Ball, dt: number, bodies: readonly 
     for (const body of bodies) {
       collide(map, ball, body, note);
     }
+    const { x, y } = ball;
     roll(map, ball, h, note);
+    if (portals !== null) {
+      carryBall(portals, ball, x, y);
+    }
     slow(ball, h);
   }
   if (ballMoving(ball)) {
@@ -172,6 +190,16 @@ function roll(map: GameMap, ball: Ball, h: number, note: (e: BallEvent) => void)
     ball.vy = -ball.vy * WALL_RESTITUTION;
   } else {
     ball.y += ball.vy * h;
+  }
+}
+
+/** Carries the ball through the portal it rolled into from (fromX, fromY), turning its velocity with it. */
+function carryBall(portals: Portals, ball: Ball, fromX: number, fromY: number): void {
+  carried.x = ball.x;
+  carried.y = ball.y;
+  if (carryThroughPortal(portals, fromX, fromY, carried, ball)) {
+    ball.x = carried.x;
+    ball.y = carried.y;
   }
 }
 

@@ -5,6 +5,8 @@
 // A room is a map of peers by id: people (with a connection, or within their resume grace without one) and bots. A
 // room opens with its first person and closes with its last; bots and the world objects never keep it open.
 import {
+  type Apparent,
+  apparentPosition,
   BALL_KICK_GAP_MS,
   type Ball,
   type BallBody,
@@ -44,6 +46,7 @@ import {
   stepBall,
   stepVacuum,
   VACUUM_RADIUS,
+  VACUUM_SPEED,
   type Vacuum,
   type VacuumNav,
   type VacuumSave,
@@ -113,6 +116,8 @@ export interface LobbyOptions {
 
 /** The server sees a kicker a little late, so it allows them this much further away than the client does. */
 const KICK_SLACK = 0.5;
+const seen: Apparent = { x: 0, y: 0, sees: false, through: 0 };
+
 /** A walker whose last pose is older than this is standing still, as far as the ball can tell. */
 const MOVING_POSE_MS = 200;
 
@@ -386,7 +391,8 @@ export class Lobby {
     if (!found || !ball || now - found.peer.lastKickAt < BALL_KICK_GAP_MS) {
       return;
     }
-    if (kickBall(ball, found.peer, msg.angle, KICK_SLACK)) {
+    const portals = this.activePortals(found.roomId);
+    if (kickBall(ball, this.seenFrom(portals, ball, found.peer), msg.angle, KICK_SLACK)) {
       found.peer.lastKickAt = now;
       this.kicks.set(found.roomId, { by: found.peer.id, k: msg.k });
     }
@@ -438,12 +444,13 @@ export class Lobby {
    */
   fanOut(): void {
     const now = this.opts.now();
-    for (const room of this.rooms.values()) {
+    for (const [roomId, room] of this.rooms) {
+      const portals = this.activePortals(roomId);
       for (const p of room.values()) {
         if (p.conn === null) {
           continue;
         }
-        const s = selectBatch(p, room.values(), p.sent, now);
+        const s = selectBatch(p, room.values(), p.sent, now, portals);
         if (s.length > 0) {
           this.opts.out.send(p.conn, { type: 'peers', s });
         }
@@ -692,13 +699,14 @@ export class Lobby {
   /** Walks every bot of every room with someone connected; fan-out sends their poses like a player's. */
   private stepBots(dt: number): void {
     const now = this.opts.now();
-    for (const room of this.rooms.values()) {
+    for (const [roomId, room] of this.rooms) {
       if (!hasConnection(room)) {
         continue;
       }
+      const portals = this.activePortals(roomId);
       for (const peer of room.values()) {
         if (peer.bot) {
-          stepBot(this.opts.map, peer, dt, this.opts.rng);
+          stepBot(this.opts.map, peer, dt, this.opts.rng, portals);
           peer.poseVersion++;
           peer.poseAt = now;
         }
@@ -733,20 +741,26 @@ export class Lobby {
       if (!room) {
         continue;
       }
+      const portals = this.activePortals(roomId);
       const conns: string[] = [];
       const people: Point[] = [];
       for (const p of room.values()) {
         if (p.conn !== null && isPerson(p)) {
           conns.push(p.conn);
-          people.push(p);
+          people.push(portals === null ? p : { ...this.seenFrom(portals, vacuum, p) });
         }
       }
       if (conns.length === 0) {
         continue;
       }
       const { x, y } = vacuum;
-      const event = stepVacuum(nav, vacuum, dt, this.opts.rng, people);
-      this.vacuumVelocities.set(roomId, { vx: (vacuum.x - x) / dt, vy: (vacuum.y - y) / dt });
+      const event = stepVacuum(nav, vacuum, dt, this.opts.rng, people, portals);
+      // A jump through a portal is not a speed: the robot knocks nothing for that step.
+      const jumped = Math.hypot(vacuum.x - x, vacuum.y - y) > VACUUM_SPEED * dt * 2;
+      this.vacuumVelocities.set(
+        roomId,
+        jumped ? { vx: 0, vy: 0 } : { vx: (vacuum.x - x) / dt, vy: (vacuum.y - y) / dt }
+      );
       vacuum.seq++;
       this.opts.out.broadcast(conns, {
         type: 'object_state',
@@ -779,16 +793,18 @@ export class Lobby {
       if (!room) {
         continue;
       }
+      const portals = this.activePortals(roomId);
       const conns: string[] = [];
       const bodies: BallBody[] = [];
       for (const p of room.values()) {
         if (p.conn !== null && isPerson(p)) {
           conns.push(p.conn);
           const moving = now - p.poseAt <= MOVING_POSE_MS;
+          const { x: bodyX, y: bodyY } = this.seenFrom(portals, ball, p);
           bodies.push({
             kind: 'person',
-            x: p.x,
-            y: p.y,
+            x: bodyX,
+            y: bodyY,
             vx: moving ? p.vx : 0,
             vy: moving ? p.vy : 0,
             radius: PLAYER_RADIUS,
@@ -801,17 +817,18 @@ export class Lobby {
       const vacuum = this.vacuums.get(roomId);
       if (vacuum) {
         const v = this.vacuumVelocities.get(roomId);
+        const { x: bodyX, y: bodyY } = this.seenFrom(portals, ball, vacuum);
         bodies.push({
           kind: 'vacuum',
-          x: vacuum.x,
-          y: vacuum.y,
+          x: bodyX,
+          y: bodyY,
           vx: v?.vx ?? 0,
           vy: v?.vy ?? 0,
           radius: VACUUM_RADIUS,
         });
       }
       const { x, y, vx, vy } = ball;
-      const event = stepBall(this.opts.map, ball, dt, bodies);
+      const event = stepBall(this.opts.map, ball, dt, bodies, portals);
       const kick = this.kicks.get(roomId);
       this.kicks.delete(roomId);
       const changed = ball.x !== x || ball.y !== y || ball.vx !== vx || ball.vy !== vy;
@@ -842,6 +859,14 @@ export class Lobby {
   }
 
   // Portals.
+
+  /**
+   * Where `target` appears to be from `viewer`, one portal deep (contacts reach through at most one): the target
+   * itself without portals. The result is shared scratch, valid until the next call.
+   */
+  private seenFrom(portals: Portals | null, viewer: Point, target: Point): Point {
+    return portals === null ? target : apparentPosition(portals.map, portals, viewer, target, seen, 1);
+  }
 
   private portalMode(roomId: string): { on: boolean; flippedAt: number } {
     let mode = this.portalModes.get(roomId);

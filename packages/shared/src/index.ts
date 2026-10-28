@@ -9,6 +9,7 @@ export * from './objects/ball/ball';
 export * from './objects/vacuum/nav';
 export * from './objects/vacuum/vacuum';
 export * from './portals/apparent';
+export * from './portals/crossing';
 export * from './portals/doorways';
 export * from './portals/transform';
 export * from './portals/wiring';
