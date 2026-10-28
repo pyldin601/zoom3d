@@ -116,10 +116,11 @@ export function stepBall(
     }
   };
   for (let i = 0; i < steps; i++) {
+    // Before the bodies: a shove moves the ball too, and may take it across a plane.
+    const { x, y } = ball;
     for (const body of bodies) {
       collide(map, ball, body, note);
     }
-    const { x, y } = ball;
     roll(map, ball, h, note);
     if (portals !== null) {
       carryBall(portals, ball, x, y);

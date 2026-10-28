@@ -253,6 +253,13 @@ describe('through portals', () => {
     expect(ball.heading).toBeCloseTo(-Math.PI / 2);
   });
 
+  test('a ball shoved across A by a body comes out of B', () => {
+    const ball = createBall('b', 2.5, 3.45);
+    stepBall(map, ball, DT, [person(2.5, 3.2, 0, 2)], portals);
+    expect(ball.x).toBeCloseTo(4.5);
+    expect(ball.y).toBeLessThan(3.5);
+  });
+
   test('the same roll without portals stays on the south side', () => {
     const ball = { ...createBall('b', 2.5, 3.2), vy: 3, heading: Math.PI / 2 };
     for (let i = 0; i < 20; i++) {
