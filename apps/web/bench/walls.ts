@@ -102,6 +102,38 @@ for (const state of ['off', 'on'] as const) {
   console.log(`both, portals ${state.padEnd(3)} ${median(portalTimes[state]).toFixed(3)} ms/frame`);
 }
 
+// The crowd with portals on: from the lamp poses (most show no window, so the floor tables need only what is in view)
+// and from the doorway poses (whose windows look anywhere), with portals off and on.
+const crowdPoses = [...poses, ...doorwayPoses];
+const crowdHashes = { off: 0, on: 0 };
+for (const state of ['off', 'on'] as const) {
+  room.portals = state === 'on' ? portals : null;
+  for (const pose of crowdPoses) {
+    room.eye = pose;
+    renderWalls(fb, room, crowd);
+    for (const c of fb.pixels) {
+      crowdHashes[state] = (Math.imul(crowdHashes[state], 31) + c) | 0;
+    }
+  }
+}
+const crowdTimes = { off: [] as number[], on: [] as number[] };
+for (let round = 0; round < ROUNDS; round++) {
+  for (const state of ['off', 'on'] as const) {
+    room.portals = state === 'on' ? portals : null;
+    const start = performance.now();
+    const frames = poses.length * FRAMES_PER_POSE;
+    for (let f = 0; f < frames; f++) {
+      room.eye = poses.at(f % poses.length) ?? room.eye;
+      renderWalls(fb, room, crowd);
+    }
+    crowdTimes[state].push((performance.now() - start) / frames);
+  }
+}
+console.log(`crowd: ${crowdPoses.length} poses, pixel hash off ${crowdHashes.off}, on ${crowdHashes.on}`);
+for (const state of ['off', 'on'] as const) {
+  console.log(`both + crowd, portals ${state.padEnd(3)} ${median(crowdTimes[state]).toFixed(3)} ms/frame (lamp poses)`);
+}
+
 function draw(mode: Mode, p: Pose): void {
   room.eye = p;
   room.lighting = mode === 'unlit' ? null : lighting;

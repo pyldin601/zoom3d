@@ -132,6 +132,8 @@ let endCol = 0;
 let portals: Portals | null = null;
 /** The floor tables the frame's first pass built: its windows' passes reuse them. */
 let passFloorTables: FloorTables | null = null;
+/** Whether the pass's wall columns left any window, set before its floor tables are built: a window looks anywhere. */
+let passShowsWindows = false;
 
 /** Rebuilt by fitScratchToFrame when the frame's size or FOV changes. */
 let scratchSize = { width: 0, height: 0, fov: 0 };
@@ -423,8 +425,12 @@ function meanShinyTexel(tex: Uint32Array, gloss: Uint8Array | undefined): readon
 
 function drawWallColumns(fb: Framebuffer, room: LitRoom): void {
   const glowsLightWalls = lampsLightTheRoom(room.reflections) && room.glows.length > 0;
+  passShowsWindows = false;
   for (let col = firstCol; col < endCol; col++) {
     castColumnRay(fb, room, col);
+    if (column.surface === 'window') {
+      passShowsWindows = true;
+    }
     if (column.surface === 'black') {
       fillColumn(fb, col, column.start, column.end, BLACK);
     }
@@ -696,8 +702,8 @@ function floorAndCeilingColours(room: LitRoom): FloorTables {
   return t;
 }
 
-/** Whether anything within `reach` tiles of (x, y) may show this frame: through portals, its windows look anywhere. */
-const mayShow = (x: number, y: number, reach: number) => portals !== null || !outOfView(x, y, reach);
+/** Whether anything within `reach` tiles of (x, y) may show this frame: through a window, anything may. */
+const mayShow = (x: number, y: number, reach: number) => passShowsWindows || !outOfView(x, y, reach);
 
 function blackFloorAndCeiling(lm: Lighting): FloorTables {
   if (blackTables?.floorLampSeen !== lm.floorLampSeen) {

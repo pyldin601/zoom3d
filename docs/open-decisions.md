@@ -561,7 +561,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Measured** (2026-10-28, against base 0572557, origin/main when the branch was cut; LEVEL1 at 640×360, lit, reflections `both`; the machine was loaded, read the ratios):
     - `bench:walls`, existing modes with portals off: unchanged hashes, `both` 1.51 ms on the base vs 1.56 ms here.
       From 1.5 tiles in front of 8 doorways: `renderWalls` 1.58 ms off, 0.92 ms on (the window passes are cheaper than
-      the corridor they replace, which the main pass draws in full when off).
+      the corridor they replace, which the main pass draws in full when off). With 100 glows spread over the map, from
+      the lamp poses (most show no window): 2.49 ms off, 2.73 ms on. The floor tables skip what is out of view unless
+      the frame's first pass shows a window (then a window may look anywhere); before that, every frame with portals on
+      lit the whole map's floor, 4.04 ms. Pixel hashes with the crowd (lamp and doorway poses) are the same either way.
     - `bench:sprites`, hashes unchanged, `renderSprites` 392 / 396 µs on the base vs 395 / 397 µs here (unlit / lit).
       Whole frames (`renderView`) from the same doorways with people and a vacuum ahead: 2.29 ms off, 2.65 ms on.
     - Server tick (`pnpm bench:tick`, `apps/server/bench/tick.ts`: `Lobby.stepWorld` + `fanOut`, Node, one room with 100 bots, no sockets or JSON, so the
