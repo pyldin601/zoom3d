@@ -56,6 +56,7 @@ pnpm e2e          # playwright; starts its own LiveKit :7890-7892 + server :8788
 pnpm bench        # renderer frame-time benchmark (vitest, unlit walls and sprites)
 pnpm bench:walls  # lit walls, reflections and glow in an esbuild bundle, with pixel hashes for refactors
 pnpm bench:sprites # avatars, held items, boomboxes and the vacuum, unlit and lit, likewise with a pixel hash
+pnpm bench:tick   # server tick (stepWorld + fanOut) with 100 bots and 4 or 100 people, portals off and on
 # Large rooms: open /?bots=100 and start a party: the room gets 100 server-driven bots (any server, prod included)
 docker compose up --build              # both images locally: http://localhost:8080
 scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this before pushing)
