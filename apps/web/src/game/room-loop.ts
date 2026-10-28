@@ -93,12 +93,14 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       rolling = { id: ball.id, x: ball.x, y: ball.y };
       recolourBall(BALL_MODEL, roll);
     }
-    if (ball.x !== rolling.x || ball.y !== rolling.y) {
+    const movedTiles = Math.hypot(ball.x - rolling.x, ball.y - rolling.y);
+    // A move longer than a jump went through a portal: the ball came out elsewhere, it didn't roll there.
+    if (movedTiles > 0 && movedTiles <= JUMP_TILES) {
       rollBy(roll, ball.x - rolling.x, ball.y - rolling.y);
-      rolling.x = ball.x;
-      rolling.y = ball.y;
       recolourBall(BALL_MODEL, roll);
     }
+    rolling.x = ball.x;
+    rolling.y = ball.y;
     if (event) {
       room.objectSounds.localEvent(ball.id, event);
     }
