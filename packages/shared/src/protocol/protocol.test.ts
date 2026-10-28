@@ -212,6 +212,7 @@ describe('parseServerMessage', () => {
       peers: [peer],
       livekit: { url: 'wss://lk.example', token: 'jwt' },
       objects: [{ id: 'v', kind: 'vacuum', x: 3, y: 4, angle: 1 }],
+      portals: false,
     },
     { type: 'object_state', id: 'v', x: 1, y: 2, angle: 3, seq: 4, event: 'lost' },
     { type: 'peer_media', id: 'p1', cam: false, mic: true },
@@ -426,6 +427,7 @@ describe('world objects', () => {
     spawn: { x: 1, y: 2, angle: 0 },
     peers: [],
     livekit: { url: 'wss://lk.example', token: 'jwt' },
+    portals: false,
   };
   const vacuum = { id: 'v', kind: 'vacuum', x: 1, y: 2, angle: 0 };
 
@@ -496,6 +498,7 @@ describe('the ball (ball spec §4)', () => {
       spawn: { x: 1, y: 2, angle: 0 },
       peers: [],
       livekit: { url: 'wss://lk.example', token: 'jwt' },
+      portals: false,
     };
     const moving = { id: 'b', kind: 'ball', x: 1, y: 2, angle: 0, vx: 3, vy: 0 };
     const resting = { id: 'c', kind: 'ball', x: 1, y: 2, angle: 0 };
@@ -512,7 +515,7 @@ describe('server fan-out (6d)', () => {
     expect(NEAR_TILES).toBe(16);
     expect(FAR_INTERVAL_MS).toBe(500);
     expect(MAX_PEERS).toBe(128);
-    expect(PROTOCOL_VERSION).toBe(3);
+    expect(PROTOCOL_VERSION).toBe(4);
     expect(INTERP_DELAY_MS).toBe(150);
   });
 
@@ -576,5 +579,31 @@ describe('server fan-out (6d)', () => {
     for (const bad of [0, -2, 1.5, '2', null]) {
       expect(join(bad)).toEqual({ type: 'join', roomId: ROOM, name: 'Ada' });
     }
+  });
+});
+
+describe('portal mode on the wire', () => {
+  test('a client portals toggle parses', () => {
+    expect(parseClientMessage('{"type":"portals"}')).toEqual({ type: 'portals' });
+  });
+
+  test('a server portals message needs a boolean on', () => {
+    expect(parseServerMessage('{"type":"portals","on":true}')).toEqual({ type: 'portals', on: true });
+    expect(parseServerMessage('{"type":"portals"}')).toBeNull();
+    expect(parseServerMessage('{"type":"portals","on":"yes"}')).toBeNull();
+  });
+
+  test('a welcome carries the mode, and one from an older server reads as off', () => {
+    const welcome = {
+      type: 'welcome',
+      selfId: 'a',
+      resumeToken: 't',
+      color: '#fff',
+      spawn: { x: 1.5, y: 1.5, angle: 0 },
+      peers: [],
+      livekit: { url: 'ws://x', token: 'tok' },
+    };
+    expect(parseServerMessage(JSON.stringify({ ...welcome, portals: true }))).toMatchObject({ portals: true });
+    expect(parseServerMessage(JSON.stringify(welcome))).toMatchObject({ portals: false });
   });
 });

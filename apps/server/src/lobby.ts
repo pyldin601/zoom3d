@@ -618,6 +618,7 @@ export class Lobby {
       peers: [...room.values()].filter((p) => p.id !== self.id).map(peerInfo),
       livekit: this.opts.liveKitFor(roomId, self.id),
       objects: [...(vacuum ? [vacuumInfo(vacuum)] : []), ...(ball ? [ballInfo(ball)] : [])],
+      portals: false,
     });
   }
 
