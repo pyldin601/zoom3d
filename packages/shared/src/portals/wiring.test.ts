@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LEVEL1 } from '../map/level1';
 import { parseMap } from '../map/map';
-import { applyDir, applyPoint, type RigidTransform } from './transform';
+import { applyDir, applyPoint } from './transform';
 import { wirePortals } from './wiring';
 
 const map = parseMap(LEVEL1);
@@ -31,7 +31,10 @@ describe('wirePortals', () => {
   it('maps centre to destination centre and normal to destination normal with exact quarter turns', () => {
     const { list } = wirePortals(map, 'abc');
     for (const portal of list) {
-      const dest = list[portal.to] as (typeof list)[number];
+      const dest = list.at(portal.to);
+      if (dest === undefined) {
+        throw new Error('portal has no destination');
+      }
       const { toDest } = portal;
       expect(Math.abs(toDest.cos) + Math.abs(toDest.sin)).toBe(1);
       expect(applyPoint(toDest, portal.cx, portal.cy, point)).toEqual({ x: dest.cx, y: dest.cy });
@@ -42,10 +45,17 @@ describe('wirePortals', () => {
   it('keeps fromDest the inverse of toDest', () => {
     for (const portal of wirePortals(map, 'abc').list) {
       const there = applyPoint(portal.toDest, 12.3, 4.5, { x: 0, y: 0 });
-      const back = applyPoint(portal.fromDest as RigidTransform, there.x, there.y, { x: 0, y: 0 });
+      const back = applyPoint(portal.fromDest, there.x, there.y, { x: 0, y: 0 });
       expect(back.x).toBeCloseTo(12.3);
       expect(back.y).toBeCloseTo(4.5);
     }
+  });
+
+  it('wires nothing when the map has fewer than two doorways', () => {
+    const oneGap = parseMap(['11111', '1...1', '11.11', '1.S.1', '11111'].join('\n'));
+    const { list, byTile } = wirePortals(oneGap, 'abc');
+    expect(list).toEqual([]);
+    expect(byTile.every((i) => i === -1)).toBe(true);
   });
 
   it('indexes portals by tile', () => {

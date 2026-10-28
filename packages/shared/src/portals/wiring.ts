@@ -44,9 +44,18 @@ function sattoloCycle(count: number, rng: () => number): number[] {
   const order = Array.from({ length: count }, (_, i) => i);
   for (let i = count - 1; i > 0; i--) {
     const j = Math.floor(rng() * i);
-    [order[i], order[j]] = [order[j] as number, order[i] as number];
+    swap(order, i, j);
   }
   return order;
+}
+
+function swap(items: number[], i: number, j: number): void {
+  const first = items.at(i);
+  const second = items.at(j);
+  if (first !== undefined && second !== undefined) {
+    items[i] = second;
+    items[j] = first;
+  }
 }
 
 function normalOf(door: Doorway, rng: () => number): { nx: number; ny: number } {
@@ -66,28 +75,36 @@ function transformBetween(from: Portal, to: Portal): RigidTransform {
   };
 }
 
+const IDENTITY: RigidTransform = { cos: 1, sin: 0, tx: 0, ty: 0 };
+const MIN_DOORWAYS_TO_WIRE = 2;
+
 export function wirePortals(map: GameMap, roomId: string): Portals {
+  const byTile = new Int32Array(map.width * map.height).fill(-1);
+  const doors = findDoorways(map);
+  if (doors.length < MIN_DOORWAYS_TO_WIRE) {
+    return { map, list: [], byTile };
+  }
   const rng = seeded(roomSeed(roomId));
-  const list: Portal[] = findDoorways(map).map((door) => ({
+  const normals = doors.map((door) => normalOf(door, rng));
+  const destinations = sattoloCycle(doors.length, rng);
+  const list: Portal[] = doors.map((door, i) => ({
     door,
     cx: door.x + 0.5,
     cy: door.y + 0.5,
-    ...normalOf(door, rng),
-    to: -1,
-    toDest: { cos: 1, sin: 0, tx: 0, ty: 0 },
-    fromDest: { cos: 1, sin: 0, tx: 0, ty: 0 },
+    ...(normals.at(i) ?? { nx: 0, ny: 1 }),
+    to: destinations.at(i) ?? i,
+    toDest: IDENTITY,
+    fromDest: IDENTITY,
   }));
-  const destinations = sattoloCycle(list.length, rng);
-  list.forEach((portal, i) => {
-    portal.to = destinations[i] as number;
-  });
   for (const portal of list) {
-    portal.toDest = transformBetween(portal, list[portal.to] as Portal);
-    portal.fromDest = invert(portal.toDest);
+    const destination = list.at(portal.to);
+    if (destination !== undefined) {
+      portal.toDest = transformBetween(portal, destination);
+      portal.fromDest = invert(portal.toDest);
+    }
   }
-  const byTile = new Int32Array(map.width * map.height).fill(-1);
-  list.forEach((portal, i) => {
+  for (const [i, portal] of list.entries()) {
     byTile[portal.door.y * map.width + portal.door.x] = i;
-  });
+  }
   return { map, list, byTile };
 }
