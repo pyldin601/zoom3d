@@ -117,10 +117,7 @@ function connectSession(
     now: () => performance.now(),
     listener: {
       ...withRoomTracker(withDoorbell(call.listener, createDoorbell(opts.audioCtx)), tracker, () => session),
-      portalsChanged(on) {
-        track({ name: 'portals_toggled', on });
-        opts.onPortalsChanged(on);
-      },
+      portalsChanged: (on) => opts.onPortalsChanged(on),
       objectEvent: (id, e, by) => sounds.event(id, e, by),
       objectState: (m) => ball.server(m, session.selfId(), performance.now()),
       objectsReset: (objects) => ball.reset(objects.find((o) => o.kind === 'ball') ?? null),
