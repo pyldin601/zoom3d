@@ -1,6 +1,15 @@
-import { createBall, type ObjectInfo, type PeerInfo, SnapshotBuffer } from '@zoom3d/shared';
+import {
+  createBall,
+  INTERP_DELAY_MS,
+  LEVEL1,
+  type ObjectInfo,
+  type PeerInfo,
+  parseMap,
+  SnapshotBuffer,
+  wirePortals,
+} from '@zoom3d/shared';
 import { beforeEach, describe, expect, test } from 'vitest';
-import { PeerDelay } from '../net/peer-delay';
+import { FAR_DELAY_MS, PeerDelay } from '../net/peer-delay';
 import { objectKey, type RemoteObject, type RemotePeer, type Session } from '../net/session';
 import { BALL_MODEL } from '../renderer/models/ball';
 import { VACUUM_MODEL } from '../renderer/models/vacuum';
@@ -87,6 +96,26 @@ describe('sample', () => {
     world.sample(room.session, player, NOW + 1000);
     expect(world.positions.get('ada')).toBe(first);
     expect(first).toEqual({ x: 6, y: 3 });
+  });
+  test('draws a peer far on the map but near through a portal with the near delay, as the server sends it', () => {
+    const portals = wirePortals(parseMap(LEVEL1), 'AAAAAAAAAAAAAAAAAAAAAA');
+    const pair = portals.list
+      .map((portal) => ({ portal, other: portals.list.at(portal.to) }))
+      .find(({ portal, other }) => other && Math.hypot(portal.cx - other.cx, portal.cy - other.cy) > 20);
+    if (!pair?.other) {
+      throw new Error('level1 has no pair of doorways far apart');
+    }
+    const { portal, other } = pair;
+    const eye = { x: portal.cx - portal.nx, y: portal.cy - portal.ny };
+    room.addPeer('ada', other.cx + other.nx, other.cy + other.ny);
+    const delay = room.peers.get('ada')?.delay;
+
+    createRemoteWorld().sample(room.session, eye, NOW, null, portals);
+    expect(delay?.value).toBe(INTERP_DELAY_MS);
+
+    room.addPeer('ada', other.cx + other.nx, other.cy + other.ny);
+    createRemoteWorld().sample(room.session, eye, NOW);
+    expect(room.peers.get('ada')?.delay.value).toBe(FAR_DELAY_MS);
   });
 });
 

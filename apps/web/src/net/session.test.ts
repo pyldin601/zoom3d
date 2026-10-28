@@ -1,5 +1,5 @@
-import type { GameMap, PeerInfo, PlayerState } from '@zoom3d/shared';
-import { PROTOCOL_VERSION, parseMap } from '@zoom3d/shared';
+import type { GameMap, PeerInfo, PlayerState, Portals } from '@zoom3d/shared';
+import { LEVEL1, PROTOCOL_VERSION, parseMap, wirePortals } from '@zoom3d/shared';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { asWebSocket, FakeWebSocket } from './fake-websocket';
 import { tierInterval } from './peer-delay';
@@ -44,7 +44,8 @@ function joinedSession(
   peers: PeerInfo[] = [],
   listener: SessionListener = {},
   avatar: string | null = null,
-  map?: GameMap
+  map?: GameMap,
+  portals?: () => Portals | null
 ) {
   const session: Session = createSession({
     avatar,
@@ -53,6 +54,7 @@ function joinedSession(
     name: 'Ada',
     player,
     map,
+    portals,
     now: Date.now,
     WebSocketImpl: asWebSocket,
     listener,
@@ -155,6 +157,29 @@ test('a far peer moving after standing still starts from where it stood, not mid
   const out = { x: 0, y: 0, angle: 0 };
   session.peers.get('far')?.buffer.sample(t - tierInterval(false), out);
   expect(out.x).toBe(40);
+});
+
+test('a peer far on the map but near through a portal is held one tick back, as the server sends it every tick', () => {
+  const map = parseMap(LEVEL1);
+  const portals = wirePortals(map, ROOM);
+  const pair = portals.list
+    .map((portal) => ({ portal, other: portals.list.at(portal.to) }))
+    .find(({ portal, other }) => other && Math.hypot(portal.cx - other.cx, portal.cy - other.cy) > 20);
+  if (!pair?.other) {
+    throw new Error('level1 has no pair of doorways far apart');
+  }
+  const { portal, other } = pair;
+  const stood = { x: other.cx + other.nx, y: other.cy + other.ny };
+  const { session, ws } = joinedSession([{ ...peer('seen', stood.x, 3), y: stood.y }], {}, null, map, () => portals);
+  // The welcome put the player at spawn: in front of the doorway instead.
+  player.x = portal.cx - portal.nx;
+  player.y = portal.cy - portal.ny;
+  vi.advanceTimersByTime(5000);
+  const t = Date.now();
+  ws.receive({ type: 'peers', s: [[3, stood.x + 0.05, stood.y, 0, 0]] });
+  const out = { x: 0, y: 0, angle: 0 };
+  session.peers.get('seen')?.buffer.sample(t - tierInterval(true), out);
+  expect(out.x).toBe(stood.x);
 });
 
 test('an entry is placed when the server accepted it (arrival minus its age), not when the batch came', () => {

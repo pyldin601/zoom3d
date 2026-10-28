@@ -543,6 +543,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     deep (the third is black). Every pass takes a `Pass` (columns and a near limit), so a new pass must honour it.
   - **Hearing and subscribing** use the apparent position: up to two portals whose front faces the listener and whose
     centre is within `NEAR_TILES`.
+  - **Near or far is one rule** (`isNear` in `packages/shared/src/portals/apparent.ts`), used by the server's fan-out
+    and by the client's interpolation tiers alike: near when within `NEAR_TILES` in a straight line *or* where the
+    person appears. The straight check comes first, so most pairs never search the portals; the client judges a tile
+    inside the line, as before.
   - Amendments to the spec and known gaps, all deliberate:
     - **The vacuum ignores portals** (ordinary doors for it). Portal-unaware navigation stalled cleaning, and the spec
       left it to the builder with "keep cleaning and find the dock". A vacuum crossing a front-facing doorway vanishes
@@ -562,9 +566,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
       Whole frames (`renderView`) from the same doorways with people and a vacuum ahead: 2.29 ms off, 2.65 ms on.
     - Server tick (`pnpm bench:tick`, `apps/server/bench/tick.ts`: `Lobby.stepWorld` + `fanOut`, Node, one room with 100 bots, no sockets or JSON, so the
       serialisation is not counted; 600 ticks, bots and people walking): 4 connected people, `fanOut` 0.01 ms off vs
-      0.19 ms on; 100 connected people, 0.53 ms off vs 11.3 ms on (p99 12.3 ms), `stepWorld` under 0.1 ms both ways.
-      Inside the 66 ms budget, but the near tier's apparent-position work is wasted on pairs that are near anyway
-      (a possible later saving).
+      0.21 ms on; 100 connected people, 0.29 ms off vs 6.05 ms on (p99 6.98 ms), `stepWorld` under 0.1 ms both ways.
+      Before the straight-line check came first (`isNear`), the same run gave 13.7 ms on (p99 15.0 ms) for 100 people:
+      the apparent-position search ran for pairs that were near anyway.
     - Not done: the browser run with `?bots=100` (walking through doorways, comparing the view to where it leads, the
       server's `/metrics` tick time under real load). The e2e spec `apps/web/e2e/portals.spec.ts` covers the flip.
   - Not done: an interactive element that uses portals; a map editor's doorway choices; the vacuum going through.

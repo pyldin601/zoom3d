@@ -57,7 +57,7 @@ export function joinRoom(opts: JoinOptions): Room {
   const call = createRoomCall(opts, audio);
   const tracker = createRoomTracker(track, () => performance.now());
   const ball = createBallPrediction(opts.map, () => portals());
-  const joined = connectSession(opts, call, tracker, objectSounds, ball);
+  const joined = connectSession(opts, call, tracker, objectSounds, ball, () => portals());
   session = joined;
   call.attach(joined);
   const boombox = createOwnBoombox(opts, call, joined);
@@ -102,7 +102,8 @@ function connectSession(
   call: Call,
   tracker: RoomTracker,
   sounds: ObjectSounds,
-  ball: BallPrediction
+  ball: BallPrediction,
+  portals: () => Portals | null
 ): Session {
   const session: Session = createSession({
     url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
@@ -112,6 +113,7 @@ function connectSession(
     bots: botsParam(location.search),
     player: opts.player,
     map: opts.map,
+    portals,
     now: () => performance.now(),
     listener: {
       ...withRoomTracker(withDoorbell(call.listener, createDoorbell(opts.audioCtx)), tracker, () => session),

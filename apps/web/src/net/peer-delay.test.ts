@@ -1,13 +1,38 @@
-import { FANOUT_TICK_MS, INTERP_DELAY_MS, NEAR_TILES, SnapshotBuffer } from '@zoom3d/shared';
+import {
+  FANOUT_TICK_MS,
+  INTERP_DELAY_MS,
+  LEVEL1,
+  NEAR_TILES,
+  parseMap,
+  SnapshotBuffer,
+  wirePortals,
+} from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { FAR_DELAY_MS, holdBefore, nearTier, PeerDelay, tierInterval } from './peer-delay';
 
 describe('nearTier', () => {
   test('a tile inside the server line counts as near, anything beyond as far', () => {
-    expect(nearTier(0, 0, NEAR_TILES - 1, 0)).toBe(true);
-    expect(nearTier(0, 0, 0, NEAR_TILES - 1.01)).toBe(true);
-    expect(nearTier(0, 0, NEAR_TILES - 0.99, 0)).toBe(false);
-    expect(nearTier(0, 0, NEAR_TILES + 5, 0)).toBe(false);
+    const origin = { x: 0, y: 0 };
+    expect(nearTier(null, origin, NEAR_TILES - 1, 0)).toBe(true);
+    expect(nearTier(null, origin, 0, NEAR_TILES - 1.01)).toBe(true);
+    expect(nearTier(null, origin, NEAR_TILES - 0.99, 0)).toBe(false);
+    expect(nearTier(null, origin, NEAR_TILES + 5, 0)).toBe(false);
+  });
+
+  test('through portals, a peer far on the map but just past the other doorway is near, as the server sends it', () => {
+    const portals = wirePortals(parseMap(LEVEL1), 'AAAAAAAAAAAAAAAAAAAAAA');
+    const pair = portals.list
+      .map((portal) => ({ portal, other: portals.list.at(portal.to) }))
+      .find(({ portal, other }) => other && Math.hypot(portal.cx - other.cx, portal.cy - other.cy) > NEAR_TILES + 4);
+    if (!pair?.other) {
+      throw new Error('level1 has no pair of doorways far apart');
+    }
+    const { portal, other } = pair;
+    const eye = { x: portal.cx - portal.nx, y: portal.cy - portal.ny };
+    const peer = { x: other.cx + other.nx, y: other.cy + other.ny };
+
+    expect(nearTier(portals, eye, peer.x, peer.y)).toBe(true);
+    expect(nearTier(null, eye, peer.x, peer.y)).toBe(false);
   });
 });
 

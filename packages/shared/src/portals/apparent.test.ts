@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import { hasLineOfSight } from '../geometry/los';
+import { LEVEL1 } from '../map/level1';
 import { type GameMap, parseMap } from '../map/map';
-import { type Apparent, apparentPosition, hasPortalLineOfSight } from './apparent';
+import { NEAR_TILES } from '../protocol/protocol';
+import { type Apparent, apparentPosition, hasPortalLineOfSight, isNear } from './apparent';
 import { invert, type RigidTransform } from './transform';
-import type { Portal, Portals } from './wiring';
+import { type Portal, type Portals, wirePortals } from './wiring';
 
 interface PortalSpec {
   x: number;
@@ -215,5 +217,40 @@ describe('apparentPosition beyond the near range', () => {
   test('a portal 17 tiles away is never tried', () => {
     const out = apparentPosition(LONG, LONG_PORTALS, at(1.5, 1.5), behindB, blank());
     expect(out).toEqual({ ...behindB, sees: false, through: 0, cos: 1, sin: 0 });
+  });
+});
+
+describe('isNear', () => {
+  const map = parseMap(LEVEL1);
+  const portals = wirePortals(map, 'AAAAAAAAAAAAAAAAAAAAAA');
+  const distance = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(b.x - a.x, b.y - a.y);
+
+  test('within range in a straight line is near, even when the image seen is farther', () => {
+    const eye = at(39.5, 4.5);
+    const target = at(34.5, 14.5);
+    const seen = apparentPosition(map, portals, eye, target, blank());
+    expect(distance(eye, seen)).toBeGreaterThan(NEAR_TILES);
+
+    expect(isNear(portals, eye, target)).toBe(true);
+  });
+
+  test('far on the map but just past the other doorway is near with portals, far without', () => {
+    const pair = portals.list
+      .map((portal) => ({ portal, other: portals.list.at(portal.to) }))
+      .find(({ portal, other }) => other && Math.hypot(portal.cx - other.cx, portal.cy - other.cy) > NEAR_TILES + 4);
+    if (!pair?.other) {
+      throw new Error('level1 has no pair of doorways far apart');
+    }
+    const { portal, other } = pair;
+    const eye = at(portal.cx - portal.nx, portal.cy - portal.ny);
+    const target = at(other.cx + other.nx, other.cy + other.ny);
+
+    expect(isNear(portals, eye, target)).toBe(true);
+    expect(isNear(null, eye, target)).toBe(false);
+  });
+
+  test('the range can be narrowed', () => {
+    expect(isNear(null, at(0, 0), at(NEAR_TILES - 1, 0), NEAR_TILES - 1)).toBe(true);
+    expect(isNear(null, at(0, 0), at(NEAR_TILES - 0.99, 0), NEAR_TILES - 1)).toBe(false);
   });
 });

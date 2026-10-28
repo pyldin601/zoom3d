@@ -128,7 +128,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
 
   const placeEveryoneElse = (room: Room, now: number, dt: number) => {
     const { session } = room;
-    world.sample(session, localPlayer.pose, now, room.ball.ball);
+    world.sample(session, localPlayer.pose, now, room.ball.ball, room.portals());
     placeApparently(room);
     world.collect(session, peerMedia, now, dt, apparent);
     room.objectSounds.sync(session.objects, world.objectPoses, dt);
@@ -192,7 +192,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       }
       const now = performance.now();
       stepBall(room, now, HIDDEN_TICK_MS / 1000);
-      world.sample(room.session, localPlayer.pose, now, room.ball.ball);
+      world.sample(room.session, localPlayer.pose, now, room.ball.ball, room.portals());
       placeApparently(room);
       room.objectSounds.sync(room.session.objects, world.objectPoses, HIDDEN_TICK_MS / 1000);
       room.audio.update(now, localPlayer.pose, apparent);

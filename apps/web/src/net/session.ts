@@ -16,6 +16,7 @@ import {
   type PeerInfo,
   type PlayerState,
   type Point,
+  type Portals,
   PROTOCOL_VERSION,
   type ServerMessage,
   SIP_MS,
@@ -101,6 +102,8 @@ export interface SessionOptions {
   player: PlayerState;
   /** The map, to tell a walk from a portal jump in what arrives; without it nothing is marked a jump. */
   map?: GameMap;
+  /** The room's portal wiring while they are on, to tell near peers from far ones as the server does. */
+  portals?: () => Portals | null;
   now: () => number;
   WebSocketImpl?: typeof WebSocket;
   listener?: SessionListener;
@@ -300,7 +303,7 @@ export function createSession(opts: SessionOptions): Session {
       const latest = peer.buffer.latest();
       const t = latest ? Math.max(arrival - age, latest.t + 1) : arrival - age;
       const jump = latest !== null && peerJumped(latest, x, y, t - latest.t);
-      holdBefore(peer.buffer, t, tierInterval(nearTier(player.x, player.y, x, y)));
+      holdBefore(peer.buffer, t, tierInterval(nearTier(opts.portals?.() ?? null, player, x, y)));
       peer.info.x = x;
       peer.info.y = y;
       peer.info.angle = angle;

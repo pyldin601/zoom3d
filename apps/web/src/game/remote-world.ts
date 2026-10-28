@@ -1,7 +1,7 @@
 // The other people and the world objects as the room frame shows them: their interpolated positions, for the audio
 // and the interest rule, and the discs, name labels and voxel models the renderer draws. Each peer keeps one record
 // from frame to frame, so a full room allocates nothing per frame (AGENTS.md: never block the render loop).
-import { type Apparent, type Ball, INTERP_DELAY_MS, type PlayerState, type Point } from '@zoom3d/shared';
+import { type Apparent, type Ball, INTERP_DELAY_MS, type PlayerState, type Point, type Portals } from '@zoom3d/shared';
 import { nearTier } from '../net/peer-delay';
 import { objectKey, type RemotePeer, type Session } from '../net/session';
 import { type Bob, createBob } from '../renderer/bob';
@@ -45,8 +45,9 @@ export interface RemoteWorld {
   /**
    * Samples every peer's and object's position at `now`: every frame, and from the hidden-tab ticker. The ball is the
    * one object not drawn from its buffer: it is where the client's prediction has it, in the present (ball spec §3.3).
+   * `portals` (the room's wiring while they are on) decides, as on the server, which peers are near.
    */
-  sample(session: Session, player: Point, now: number, ball?: Ball | null): void;
+  sample(session: Session, player: Point, now: number, ball?: Ball | null, portals?: Portals | null): void;
   /**
    * Builds this frame's sprites, labels and voxels from the last sample; `dt` (seconds) walks the bobs. `apparent`
    * places the labels; a person it doesn't list is labelled where they are.
@@ -121,9 +122,9 @@ export function createRemoteWorld(): RemoteWorld {
     }
   };
 
-  const samplePeers = (s: Session, player: Point, now: number) => {
+  const samplePeers = (s: Session, player: Point, now: number, portals: Portals | null) => {
     for (const peer of s.peers.values()) {
-      const delay = peer.delay.update(now, nearTier(player.x, player.y, peer.info.x, peer.info.y));
+      const delay = peer.delay.update(now, nearTier(portals, player, peer.info.x, peer.info.y));
       if (!peer.buffer.sample(now - delay, at)) {
         continue;
       }
@@ -206,10 +207,10 @@ export function createRemoteWorld(): RemoteWorld {
     sprites,
     labels,
     voxels,
-    sample(s, player, now, ball = null) {
+    sample(s, player, now, ball = null, portals = null) {
       forgetGone(s);
       sampleObjects(s, now, ball);
-      samplePeers(s, player, now);
+      samplePeers(s, player, now, portals);
     },
     collect(s, media, now, dt, apparent) {
       collectPeers(s, media, now, dt, apparent);

@@ -80,6 +80,25 @@ export function apparentPosition(
   return out;
 }
 
+const seenForRange: Apparent = { x: 0, y: 0, sees: false, through: 0, cos: 1, sin: 0 };
+
+/**
+ * Whether `to` is within `rangeTiles` of `from`, walls ignored: in a straight line or, with portals, where it appears.
+ * The one rule for near and far (spec 2.6): the server sends near peers every tick, and the client draws them with
+ * the near delay. The straight check comes first, so most pairs never look through a portal.
+ */
+export function isNear(p: Portals | null, from: Point, to: Point, rangeTiles: number = NEAR_TILES): boolean {
+  const rangeSquared = rangeTiles * rangeTiles;
+  if (distanceSquared(from.x, from.y, to.x, to.y) <= rangeSquared) {
+    return true;
+  }
+  if (p === null) {
+    return false;
+  }
+  apparentPosition(p.map, p, from, to, seenForRange);
+  return distanceSquared(from.x, from.y, seenForRange.x, seenForRange.y) <= rangeSquared;
+}
+
 function considerImages(
   map: GameMap,
   p: Portals,

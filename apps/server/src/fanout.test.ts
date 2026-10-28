@@ -108,6 +108,15 @@ describe('selectBatch through portals', () => {
     expect(selectBatch(viewer, [peer], sentWithout, 66)).toEqual([]);
   });
 
+  test('a peer near in a straight line is near, though its image through a window is farther', () => {
+    const viewer = { id: 'me', x: 39.5, y: 4.5 };
+    const peer = near({ x: 34.5, y: 14.5 });
+    const sent: SentLog = new Map();
+    selectBatch(viewer, [peer], sent, 0, portals);
+    peer.poseVersion++;
+    expect(selectBatch(viewer, [peer], sent, 66, portals)).toHaveLength(1);
+  });
+
   test('with portals null a far peer is far, exactly as before', () => {
     const sent: SentLog = new Map();
     const f = far();
