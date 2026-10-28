@@ -5,7 +5,12 @@ export interface Snapshot {
   x: number;
   y: number;
   angle: number;
+  /** Set when this pose is not reached by walking from the one before (through a portal): never blended into. */
+  jump?: true;
 }
+
+/** An object that moved further than this between two states went through a portal. */
+export const JUMP_TILES = 2;
 
 const TWO_PI = Math.PI * 2;
 
@@ -58,7 +63,7 @@ export class SnapshotBuffer {
         a = b;
       }
     }
-    const k = b.t === a.t ? 0 : (t - a.t) / (b.t - a.t);
+    const k = b.t === a.t || (b.jump && t < b.t) ? 0 : (t - a.t) / (b.t - a.t);
     let turn = (b.angle - a.angle) % TWO_PI;
     if (turn > Math.PI) {
       turn -= TWO_PI;

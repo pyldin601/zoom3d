@@ -4,14 +4,18 @@ import {
   CHEERS_MS,
   type ClientMessage,
   type ErrorCode,
+  type GameMap,
   type HeldItem,
   IDLE_INTERVAL_MS,
+  isPlausibleMove,
+  JUMP_TILES,
   type LiveKitAccess,
   type ObjectEvent,
   type ObjectInfo,
   type ObjectStateMessage,
   type PeerInfo,
   type PlayerState,
+  type Point,
   PROTOCOL_VERSION,
   type ServerMessage,
   SIP_MS,
@@ -95,6 +99,8 @@ export interface SessionOptions {
   bots?: number | null;
   /** Mutated in place by spawn and corrections; read by the state sender. */
   player: PlayerState;
+  /** The map, to tell a walk from a portal jump in what arrives; without it nothing is marked a jump. */
+  map?: GameMap;
   now: () => number;
   WebSocketImpl?: typeof WebSocket;
   listener?: SessionListener;
@@ -293,13 +299,18 @@ export function createSession(opts: SessionOptions): Session {
       // put it earlier than the previous pose: then it goes just after).
       const latest = peer.buffer.latest();
       const t = latest ? Math.max(arrival - age, latest.t + 1) : arrival - age;
+      const jump = latest !== null && peerJumped(latest, x, y, t - latest.t);
       holdBefore(peer.buffer, t, tierInterval(nearTier(player.x, player.y, x, y)));
       peer.info.x = x;
       peer.info.y = y;
       peer.info.angle = angle;
-      peer.buffer.push({ t, x, y, angle });
+      peer.buffer.push(jump ? { t, x, y, angle, jump } : { t, x, y, angle });
     }
   };
+
+  /** A pose no walk explains: the peer went through a portal. Judged against the last real pose, not a hold. */
+  const peerJumped = (from: Point, x: number, y: number, elapsedMs: number) =>
+    opts.map !== undefined && !isPlausibleMove(opts.map, from, { x, y }, elapsedMs);
 
   const applyObjectState = (m: Extract<ServerMessage, { type: 'object_state' }>) => {
     const obj = objects.get(m.id);
@@ -307,8 +318,11 @@ export function createSession(opts: SessionOptions): Session {
       return;
     }
     obj.lastSeq = m.seq;
+    const jump = Math.hypot(m.x - obj.info.x, m.y - obj.info.y) > JUMP_TILES;
     Object.assign(obj.info, { x: m.x, y: m.y, angle: m.angle });
-    obj.buffer.push({ t: now(), x: m.x, y: m.y, angle: m.angle });
+    obj.buffer.push(
+      jump ? { t: now(), x: m.x, y: m.y, angle: m.angle, jump } : { t: now(), x: m.x, y: m.y, angle: m.angle }
+    );
     listener.objectState?.(m);
     if (m.event) {
       listener.objectEvent?.(m.id, m.event, m.by);

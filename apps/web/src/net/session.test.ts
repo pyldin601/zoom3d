@@ -1,5 +1,5 @@
-import type { PeerInfo, PlayerState } from '@zoom3d/shared';
-import { PROTOCOL_VERSION } from '@zoom3d/shared';
+import type { GameMap, PeerInfo, PlayerState } from '@zoom3d/shared';
+import { PROTOCOL_VERSION, parseMap } from '@zoom3d/shared';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { asWebSocket, FakeWebSocket } from './fake-websocket';
 import { tierInterval } from './peer-delay';
@@ -40,13 +40,19 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-function joinedSession(peers: PeerInfo[] = [], listener: SessionListener = {}, avatar: string | null = null) {
+function joinedSession(
+  peers: PeerInfo[] = [],
+  listener: SessionListener = {},
+  avatar: string | null = null,
+  map?: GameMap
+) {
   const session: Session = createSession({
     avatar,
     url: 'ws://t/ws',
     roomId: ROOM,
     name: 'Ada',
     player,
+    map,
     now: Date.now,
     WebSocketImpl: asWebSocket,
     listener,
@@ -643,4 +649,45 @@ test('sendPortals asks the server to flip them', () => {
   const { session, ws } = joinedSession();
   session.sendPortals();
   expect(ws.sent.at(-1)).toEqual({ type: 'portals' });
+});
+
+// Interpolation never glides across a jump (portal doorways spec §2.4).
+const HALL = parseMap(
+  [
+    '1'.repeat(40),
+    `1S${'.'.repeat(37)}1`,
+    ...Array.from({ length: 5 }, () => `1${'.'.repeat(38)}1`),
+    '1'.repeat(40),
+  ].join('\n')
+);
+
+test('a peer pose no walk explains is marked a jump; an ordinary step is not', () => {
+  const { session, ws } = joinedSession([peer('a', 2, 4)], {}, null, HALL);
+  vi.advanceTimersByTime(66);
+  ws.receive({ type: 'peers', s: [[4, 2.2, 2, 0, 0]] });
+  expect(session.peers.get('a')?.buffer.latest()?.jump).toBeUndefined();
+  vi.advanceTimersByTime(66);
+  ws.receive({ type: 'peers', s: [[4, 22.2, 2, 0, 0]] });
+  expect(session.peers.get('a')?.buffer.latest()?.jump).toBe(true);
+});
+
+test('a jump after a pause is not blended into from the held pose', () => {
+  const { session, ws } = joinedSession([peer('far', 3, 3)], {}, null, HALL);
+  vi.advanceTimersByTime(5000);
+  const t = Date.now();
+  ws.receive({ type: 'peers', s: [[3, 36, 2, 0, 0]] });
+  const out = { x: 0, y: 0, angle: 0 };
+  session.peers.get('far')?.buffer.sample(t - 1, out);
+  expect(out.x).toBe(3);
+});
+
+test('an object that moved more than JUMP_TILES in one state is marked a jump', () => {
+  const { session, ws } = joinedSession([], {}, null, HALL);
+  ws.receive({ ...welcome(), objects: [vacuum] });
+  vi.advanceTimersByTime(66);
+  ws.receive(objectState(1, 4.5));
+  expect(session.objects.get('v')?.buffer.latest()?.jump).toBeUndefined();
+  vi.advanceTimersByTime(66);
+  ws.receive(objectState(2, 24.5));
+  expect(session.objects.get('v')?.buffer.latest()?.jump).toBe(true);
 });

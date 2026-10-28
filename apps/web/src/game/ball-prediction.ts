@@ -2,6 +2,8 @@
 // only body, so the local player's pushes and kicks act at once. Everyone else's touches and the vacuum's arrive in
 // the server's states, which the local ball eases onto whenever the local player hasn't touched it lately.
 import {
+  type Apparent,
+  apparentPosition,
   BALL_KICK_GAP_MS,
   BALL_RADIUS,
   type Ball,
@@ -13,6 +15,7 @@ import {
   kickBall,
   type ObjectInfo,
   type ObjectStateMessage,
+  type Portals,
   stepBall,
 } from '@zoom3d/shared';
 
@@ -42,16 +45,48 @@ export interface BallPrediction {
   kick(from: { x: number; y: number }, angle: number, now: number): number | null;
 }
 
-export function createBallPrediction(map: GameMap): BallPrediction {
+/**
+ * `portals` is asked every step: the room's wiring while its portals are on, else null. Like the server, the
+ * prediction sees the local player where they appear from the ball and turns their kick into the ball's frame.
+ */
+export function createBallPrediction(map: GameMap, portals: () => Portals | null = () => null): BallPrediction {
   let ball: Ball | null = null;
   /** The server's ball, advanced to now. */
   let server: Ball | null = null;
   const bodies: BallBody[] = [];
+  const seen: Apparent = { x: 0, y: 0, sees: false, through: 0, cos: 1, sin: 0 };
+  /** The local player as the ball sees them through a portal. */
+  const seenBody: BallBody = { kind: 'person', x: 0, y: 0, vx: 0, vy: 0, radius: 0 };
   let holdUntil = Number.NEGATIVE_INFINITY;
   let kicks = 0;
   let lastKickAt = Number.NEGATIVE_INFINITY;
   /** The local kick whose echo hasn't come back yet. */
   let unechoed: number | null = null;
+
+  /** Where `from` appears from the ball, turned into the ball's frame (the identity without portals). */
+  const seenFromBall = (wiring: Portals | null, from: { x: number; y: number }): Apparent => {
+    if (wiring === null || ball === null) {
+      seen.x = from.x;
+      seen.y = from.y;
+      seen.cos = 1;
+      seen.sin = 0;
+      return seen;
+    }
+    return apparentPosition(map, wiring, ball, from, seen, 1);
+  };
+
+  const bodySeenFromBall = (wiring: Portals | null, self: BallBody): BallBody => {
+    if (wiring === null) {
+      return self;
+    }
+    const apparent = seenFromBall(wiring, self);
+    seenBody.x = apparent.x;
+    seenBody.y = apparent.y;
+    seenBody.vx = apparent.cos * self.vx - apparent.sin * self.vy;
+    seenBody.vy = apparent.sin * self.vx + apparent.cos * self.vy;
+    seenBody.radius = self.radius;
+    return seenBody;
+  };
 
   /**
    * Only a moving touch is one the server can't have yet: a still player against the ball is a body the server sees
@@ -100,7 +135,7 @@ export function createBallPrediction(map: GameMap): BallPrediction {
       }
       server ??= createBall(m.id, m.x, m.y);
       Object.assign(server, { x: m.x, y: m.y, vx: m.vx ?? 0, vy: m.vy ?? 0, heading: m.angle });
-      stepBall(map, server, LATENCY_S, NO_BODIES);
+      stepBall(map, server, LATENCY_S, NO_BODIES, portals());
       if (m.event === 'kick' && m.by === selfId && unechoed !== null && (m.k ?? -1) >= unechoed) {
         unechoed = null;
         holdUntil = now;
@@ -111,24 +146,30 @@ export function createBallPrediction(map: GameMap): BallPrediction {
       if (!ball) {
         return null;
       }
-      if (self && pushing(self)) {
+      const wiring = portals();
+      const body = self && bodySeenFromBall(wiring, self);
+      if (body && pushing(body)) {
         holdUntil = now + HOLD_MS;
       }
       if (server) {
-        stepBall(map, server, dt, NO_BODIES);
+        stepBall(map, server, dt, NO_BODIES, wiring);
         if (now >= holdUntil) {
           easeOntoServer(ball, server, dt);
         }
       }
       bodies.length = 0;
-      if (self) {
-        bodies.push(self);
+      if (body) {
+        bodies.push(body);
       }
-      return stepBall(map, ball, dt, bodies);
+      return stepBall(map, ball, dt, bodies, wiring);
     },
 
     kick(from, angle, now) {
-      if (!ball || now - lastKickAt < BALL_KICK_GAP_MS || !kickBall(ball, from, angle)) {
+      if (!ball || now - lastKickAt < BALL_KICK_GAP_MS) {
+        return null;
+      }
+      const kicker = seenFromBall(portals(), from);
+      if (!kickBall(ball, kicker, angle + Math.atan2(kicker.sin, kicker.cos))) {
         return null;
       }
       lastKickAt = now;

@@ -1,7 +1,7 @@
 // The room's frame: the local player steps, then the ball the client predicts, everyone else and the world objects are
 // placed and heard, the view and the HUD are drawn, then the subscription picks whose media to receive. While the tab is hidden rAF stops, so a timer
 // keeps the sound and the subscription going instead.
-import { BALL_KICK_REACH, type BallBody, type GameMap, PLAYER_RADIUS } from '@zoom3d/shared';
+import { BALL_KICK_REACH, type BallBody, type GameMap, JUMP_TILES, PLAYER_RADIUS } from '@zoom3d/shared';
 import { HIDDEN_TICK_MS } from '../audio/ticker';
 import type { Input } from '../input/keyboard';
 import { createSubscription } from '../media/subscription';
@@ -69,8 +69,9 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   /** Steps the predicted ball, rolls its pattern by how far it went, and plays what it hit. */
   const stepBall = (room: Room, now: number, dt: number) => {
     const { pose } = localPlayer;
-    self.vx = selfSeen && dt > 0 ? (pose.x - self.x) / dt : 0;
-    self.vy = selfSeen && dt > 0 ? (pose.y - self.y) / dt : 0;
+    const walked = selfSeen && dt > 0 && Math.hypot(pose.x - self.x, pose.y - self.y) <= JUMP_TILES;
+    self.vx = walked ? (pose.x - self.x) / dt : 0;
+    self.vy = walked ? (pose.y - self.y) / dt : 0;
     self.x = pose.x;
     self.y = pose.y;
     selfSeen = true;
@@ -101,7 +102,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     // Consumed outside the room too, so a turn made before it doesn't land on the first frame in it.
     const turn = o.input.consumeMouseTurn();
     if (isConnected(o.room())) {
-      localPlayer.walk(o.map, o.input.state(), turn, dt);
+      localPlayer.walk(o.map, o.input.state(), turn, dt, o.room()?.portals());
     }
   };
 

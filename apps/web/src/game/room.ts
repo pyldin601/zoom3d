@@ -56,7 +56,7 @@ export function joinRoom(opts: JoinOptions): Room {
   const objectSounds = createObjectSounds(opts.audioCtx, audio, () => session?.selfId() ?? null);
   const call = createRoomCall(opts, audio);
   const tracker = createRoomTracker(track, () => performance.now());
-  const ball = createBallPrediction(opts.map);
+  const ball = createBallPrediction(opts.map, () => portals());
   const joined = connectSession(opts, call, tracker, objectSounds, ball);
   session = joined;
   call.attach(joined);
@@ -71,13 +71,13 @@ export function joinRoom(opts: JoinOptions): Room {
     }
   };
   let wiring: Portals | null = null;
-  const portals = () => {
+  function portals() {
     if (!joined.portals) {
       return null;
     }
     wiring ??= wirePortals(opts.map, opts.roomId);
     return wiring;
-  };
+  }
   return { session: joined, call, audio, objectSounds, boombox, tracker, ball, portals, kick };
 }
 
@@ -111,6 +111,7 @@ function connectSession(
     avatar: opts.avatar,
     bots: botsParam(location.search),
     player: opts.player,
+    map: opts.map,
     now: () => performance.now(),
     listener: {
       ...withRoomTracker(withDoorbell(call.listener, createDoorbell(opts.audioCtx)), tracker, () => session),
