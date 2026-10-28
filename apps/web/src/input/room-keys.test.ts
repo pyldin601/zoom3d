@@ -22,7 +22,15 @@ describe('in the room', () => {
     expect(roomKey(press('Numpad0'), IN_ROOM)).toEqual({ kind: 'drink', item: null, code: 'Numpad0' });
     expect(roomKey(press('KeyM'), IN_ROOM)).toEqual({ kind: 'media', control: 'mic' });
     expect(roomKey(press('KeyC'), IN_ROOM)).toEqual({ kind: 'media', control: 'cam' });
+    expect(roomKey(press('KeyY'), IN_ROOM)).toEqual({ kind: 'portals' });
     expect(roomKey(press('KeyW'), IN_ROOM)).toBeNull();
+  });
+
+  test('Y flips the portals once per press, never as a browser shortcut or while reconnecting', () => {
+    expect(roomKey(press('KeyY', { repeat: true }), IN_ROOM)).toBeNull();
+    expect(roomKey(press('KeyY', { ctrlKey: true }), IN_ROOM)).toBeNull();
+    expect(roomKey(press('KeyY', { metaKey: true }), IN_ROOM)).toBeNull();
+    expect(roomKey(press('KeyY'), RECONNECTING)).toBeNull();
   });
 
   test('a held key acts once; a held Tab is still the map, so it never moves the focus', () => {

@@ -21,6 +21,7 @@ export type AnalyticsEvent =
   | { name: 'sip' }
   | { name: 'cheers' }
   | { name: 'boombox_started' }
+  | { name: 'portals_toggled'; on: boolean }
   // Connection health
   | { name: 'connection_lost' }
   | { name: 'connection_restored'; downS: number }

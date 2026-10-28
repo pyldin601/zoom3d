@@ -29,6 +29,7 @@ const welcome = (peers: PeerInfo[] = [], spawn = { x: 5.5, y: 6.5, angle: 1 }) =
   spawn,
   peers,
   livekit: { url: 'ws://lk', token: 'tok' },
+  portals: false,
 });
 
 let player: PlayerState;
@@ -611,4 +612,35 @@ test('objectsReset hears the objects of every welcome', () => {
   const heard: unknown[] = [];
   withVacuum({ objectsReset: (objects) => heard.push(objects) });
   expect(heard).toEqual([[vacuum]]);
+});
+
+test('the portals flag comes from the welcome without telling the listener', () => {
+  const changes: boolean[] = [];
+  const { session, ws } = joinedSession([], { portalsChanged: (on) => changes.push(on) });
+  expect(session.portals).toBe(false);
+  ws.receive({ ...welcome(), portals: true });
+  expect(session.portals).toBe(true);
+  expect(changes).toEqual([]);
+});
+
+test('a portals message sets the flag and reaches the listener after the session took it', () => {
+  const seen: [boolean, boolean][] = [];
+  const holder: { session?: Session } = {};
+  const { session, ws } = joinedSession([], {
+    portalsChanged: (on) => seen.push([on, holder.session?.portals ?? false]),
+  });
+  holder.session = session;
+  ws.receive({ type: 'portals', on: true });
+  ws.receive({ type: 'portals', on: false });
+  expect(seen).toEqual([
+    [true, true],
+    [false, false],
+  ]);
+  expect(session.portals).toBe(false);
+});
+
+test('sendPortals asks the server to flip them', () => {
+  const { session, ws } = joinedSession();
+  session.sendPortals();
+  expect(ws.sent.at(-1)).toEqual({ type: 'portals' });
 });

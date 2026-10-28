@@ -1,7 +1,7 @@
 // The room from Join on: the game session, the call carrying everyone's media, the spatial audio, the world objects'
 // sounds, the ball as this client predicts it, the player's boombox and the analytics tracker, made together on Join
 // and kept together.
-import type { GameMap, HeldItem, PlayerState } from '@zoom3d/shared';
+import { type GameMap, type HeldItem, type PlayerState, type Portals, wirePortals } from '@zoom3d/shared';
 import { createDoorbell, withDoorbell } from '../audio/doorbell';
 import { type AudioEngine, createAudioEngine } from '../audio/engine';
 import { createObjectSounds, type ObjectSounds } from '../audio/object-sounds';
@@ -25,6 +25,8 @@ export interface Room {
   readonly boombox: Boombox;
   readonly tracker: RoomTracker;
   readonly ball: BallPrediction;
+  /** The map's portal wiring while the room's portals are on, else null: today's doors. */
+  portals(): Portals | null;
   /** Kicks the ball the way the local player faces, if it is in reach: at once here, and on to the server. */
   kick(): void;
 }
@@ -44,6 +46,8 @@ export interface JoinOptions {
   drink: HeldItem | null;
   boomboxVolume: number;
   onBoomboxChange(on: boolean): void;
+  /** Someone flipped the room's portals (not called for the welcome's flag). */
+  onPortalsChanged(on: boolean): void;
 }
 
 export function joinRoom(opts: JoinOptions): Room {
@@ -66,7 +70,15 @@ export function joinRoom(opts: JoinOptions): Room {
       objectSounds.localEvent(kicked.id, 'kick');
     }
   };
-  return { session: joined, call, audio, objectSounds, boombox, tracker, ball, kick };
+  let wiring: Portals | null = null;
+  const portals = () => {
+    if (!joined.portals) {
+      return null;
+    }
+    wiring ??= wirePortals(opts.map, opts.roomId);
+    return wiring;
+  };
+  return { session: joined, call, audio, objectSounds, boombox, tracker, ball, portals, kick };
 }
 
 /** In the room and connected: not joining, reconnecting or failed. */
@@ -102,6 +114,10 @@ function connectSession(
     now: () => performance.now(),
     listener: {
       ...withRoomTracker(withDoorbell(call.listener, createDoorbell(opts.audioCtx)), tracker, () => session),
+      portalsChanged(on) {
+        track({ name: 'portals_toggled', on });
+        opts.onPortalsChanged(on);
+      },
       objectEvent: (id, e, by) => sounds.event(id, e, by),
       objectState: (m) => ball.server(m, session.selfId(), performance.now()),
       objectsReset: (objects) => ball.reset(objects.find((o) => o.kind === 'ball') ?? null),

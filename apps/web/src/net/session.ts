@@ -55,6 +55,8 @@ export interface SessionListener {
   objectState?(m: ObjectStateMessage): void;
   /** The room's objects as a welcome lists them, after the session has taken them. */
   objectsReset?(objects: readonly ObjectInfo[]): void;
+  /** The room's portals were flipped (by anyone, the local player included); not called for a welcome's flag. */
+  portalsChanged?(on: boolean): void;
   /** A new connection status. Timer and socket driven, so it keeps coming while the tab is hidden. */
   status?(status: ConnStatus): void;
 }
@@ -62,6 +64,8 @@ export interface SessionListener {
 export interface Session {
   peers: Map<string, RemotePeer>;
   objects: Map<string, RemoteObject>;
+  /** Whether the room's portals are on: from the welcome, then from each flip. */
+  portals: boolean;
   setMedia(cam: boolean, mic: boolean): void;
   setHeld(item: HeldItem | null): void;
   /** Shows or hides our boombox to the others; resent after every welcome. */
@@ -72,6 +76,8 @@ export interface Session {
   sendCheers(): void;
   /** Kicks the ball the way `angle` faces; `k` is the local kick counter the server echoes back. */
   sendKick(angle: number, k: number): void;
+  /** Asks the server to flip the room's portals; it answers everyone, this client included. */
+  sendPortals(): void;
   selfId(): string | null;
   selfColor(): string | null;
   status(): ConnStatus;
@@ -114,6 +120,7 @@ export function createSession(opts: SessionOptions): Session {
   let held: HeldItem | null | undefined;
   /** undefined until setBoombox: false must reach a resumed slot that may still say true. */
   let boombox: boolean | undefined;
+  let portals = false;
   let lastSent: SentPose | null = null;
   const listener = opts.listener ?? {};
 
@@ -184,6 +191,10 @@ export function createSession(opts: SessionOptions): Session {
       case 'object_state':
         applyObjectState(m);
         break;
+      case 'portals':
+        portals = m.on;
+        listener.portalsChanged?.(m.on);
+        break;
       case 'correction':
         Object.assign(player, { x: m.x, y: m.y, angle: m.angle });
         break;
@@ -202,6 +213,7 @@ export function createSession(opts: SessionOptions): Session {
     selfId = m.selfId;
     color = m.color;
     resumeToken = m.resumeToken;
+    portals = m.portals;
     peers.clear();
     bySlot.clear();
     for (const p of m.peers) {
@@ -365,6 +377,9 @@ export function createSession(opts: SessionOptions): Session {
   return {
     peers,
     objects,
+    get portals() {
+      return portals;
+    },
     setMedia(cam, mic) {
       media = { cam, mic };
       sendWhileOpen({ type: 'media', cam, mic });
@@ -380,6 +395,7 @@ export function createSession(opts: SessionOptions): Session {
     sendDrink: () => sendWhileOpen({ type: 'drink' }),
     sendCheers: () => sendWhileOpen({ type: 'cheers' }),
     sendKick: (angle, k) => sendWhileOpen({ type: 'kick', angle, k }),
+    sendPortals: () => sendWhileOpen({ type: 'portals' }),
     selfId: () => selfId,
     selfColor: () => color,
     status: () => status,

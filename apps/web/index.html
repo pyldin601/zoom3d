@@ -42,6 +42,7 @@
       #ui .error { color: #f88; min-height: 1.2em; margin: 0.5em 0 0; }
       #ui .status { position: absolute; top: 40%; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.75); padding: 0.4em 1em; }
       /* The room's people count, top right: the one thing always on over the view (decided 2026-10-16). */
+      #ui .portal-notice { position: absolute; top: 0.6em; left: 50%; transform: translateX(-50%); padding: 0.3em 0.8em; background: rgba(0, 0, 0, 0.75); border-radius: 0.25em; font-size: 0.85em; pointer-events: none; }
       #ui .people { position: absolute; top: 0.6em; right: 0.6em; display: flex; align-items: center; gap: 0.3em; padding: 0.15em 0.5em; background: rgba(0, 0, 0, 0.55); border-radius: 0.25em; font-size: 0.75em; font-variant-numeric: tabular-nums; }
       #ui .people svg { width: 1.2em; height: 1.2em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
       #ui .banner { position: absolute; bottom: 0.6em; left: 50%; transform: translateX(-50%); background: rgba(80, 40, 0, 0.85); padding: 0.4em 1em; font-size: 0.75em; }
@@ -154,6 +155,7 @@
       html.touch #ui .mic-toggle { right: calc(5.6em + env(safe-area-inset-right)); bottom: calc(0.6em + env(safe-area-inset-bottom)); width: max(44px, 2.2em); height: max(44px, 2.2em); }
       html.touch #ui .banner { bottom: calc(0.6em + env(safe-area-inset-bottom)); }
       html.touch #ui .people { top: calc(0.6em + env(safe-area-inset-top)); right: calc(0.6em + env(safe-area-inset-right)); }
+      html.touch #ui .portal-notice { top: calc(0.6em + env(safe-area-inset-top)); max-width: calc(100% - 120px); box-sizing: border-box; text-align: center; }
       html.touch #ui .status, html.touch #ui .banner { max-width: calc(100% - 32px); box-sizing: border-box; text-align: center; }
       /* Touch landing and lobby (mobile spec §3): the panel spans the bottom under the centred title, tap targets are
          at least 44 px, and the picture menu opens below the disc instead of off the right edge. */

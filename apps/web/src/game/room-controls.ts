@@ -85,6 +85,10 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
         e.preventDefault();
         o.room()?.kick();
         break;
+      case 'portals':
+        e.preventDefault();
+        o.room()?.session.sendPortals();
+        break;
       case 'media':
         // The same as pressing the mic button or the self-view circle (feedback, a camera that can't start, a missing
         // device and all).
