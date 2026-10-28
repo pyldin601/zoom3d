@@ -30,6 +30,7 @@ import {
   type PeerInfo,
   PLAYER_RADIUS,
   type Point,
+  type Portals,
   PROTOCOL_VERSION,
   RESUME_GRACE_MS,
   restoreBall,
@@ -47,6 +48,7 @@ import {
   type VacuumNav,
   type VacuumSave,
   vacuumInfo,
+  wirePortals,
 } from '@zoom3d/shared';
 import { AvatarStore } from './avatars';
 import { floorTiles, MAX_BOT_ROOMS, placeBot, stepBot } from './bots';
@@ -57,6 +59,9 @@ import { type SentLog, selectBatch } from './fanout';
 const CLOSE_ROOM_FULL = 4001;
 const CLOSE_INVALID = 4002;
 const CLOSE_REPLACED = 4003;
+
+/** At most one portals flip per room in this time, and the move check honours the old mode for as long after it. */
+const PORTALS_FLIP_GAP_MS = 1000;
 
 export interface Outbox {
   send(connId: string, msg: ServerMessage): void;
@@ -149,7 +154,7 @@ export interface SnapshotPeer extends Omit<PeerInfo, 'slot'> {
 /** Bump `version` when SnapshotPeer changes in a way parsePeerInfo's defaults can't absorb. */
 export interface LobbySnapshot {
   version: 1;
-  rooms: { id: string; peers: SnapshotPeer[]; vacuum?: VacuumSave; ball?: BallSave }[];
+  rooms: { id: string; peers: SnapshotPeer[]; vacuum?: VacuumSave; ball?: BallSave; portals?: boolean }[];
 }
 
 const isPerson = (p: Peer) => p.bot === undefined;
@@ -228,6 +233,10 @@ export class Lobby {
   private readonly balls = new Map<string, Ball>();
   /** A person's kick since the ball's last broadcast, echoed in it so the kicker recognises its own kick. */
   private readonly kicks = new Map<string, { by: string; k: number }>();
+  /** Each room's portals flag and when it last flipped; a room with no entry has them off and never flipped. */
+  private readonly portalModes = new Map<string, { on: boolean; flippedAt: number }>();
+  /** Each room's doorway wiring, built the first time the room needs it. */
+  private readonly wirings = new Map<string, Portals>();
   /** Each room's next peer slot: a counter, so a late batch can never move the wrong peer. */
   private readonly nextSlot = new Map<string, number>();
   private readonly avatars = new AvatarStore();
@@ -301,7 +310,7 @@ export class Lobby {
     }
     const { roomId, peer } = found;
     const now = this.opts.now();
-    if (!isPlausibleMove(this.opts.map, peer, msg, now - peer.lastAcceptedAt)) {
+    if (!this.isPlausibleInRoom(roomId, peer, msg, now)) {
       this.opts.out.send(conn, { type: 'correction', x: peer.x, y: peer.y, angle: peer.angle, seq: msg.seq });
       this.emit({ type: 'move_corrected', roomId, peerId: peer.id });
       return;
@@ -319,6 +328,23 @@ export class Lobby {
       peer.poseAt = now;
     }
     peer.lastAcceptedAt = now;
+  }
+
+  /** Flips the room's portals for everyone, unless it flipped less than a second ago. */
+  portals(conn: string): void {
+    const found = this.peerOf(conn);
+    if (!found) {
+      return;
+    }
+    const { roomId, room } = found;
+    const now = this.opts.now();
+    const mode = this.portalMode(roomId);
+    if (now - mode.flippedAt < PORTALS_FLIP_GAP_MS) {
+      return;
+    }
+    mode.on = !mode.on;
+    mode.flippedAt = now;
+    this.broadcast(room, '', { type: 'portals', on: mode.on });
   }
 
   media(conn: string, msg: MediaMessage): void {
@@ -441,11 +467,13 @@ export class Lobby {
       rooms: [...this.rooms].map(([id, room]) => {
         const vacuum = this.vacuums.get(id);
         const ball = this.balls.get(id);
+        const portalsOn = this.portalModes.get(id)?.on === true;
         return {
           id,
           peers: peopleIn(room).map(savePeer),
           ...(vacuum ? { vacuum: saveVacuum(this.vacuumNav(), vacuum) } : {}),
           ...(ball ? { ball: saveBall(this.opts.map, ball) } : {}),
+          ...(portalsOn ? { portals: true } : {}),
         };
       }),
     };
@@ -454,7 +482,7 @@ export class Lobby {
   /** Loads a snapshot into an empty lobby. Every slot starts a fresh grace period, waiting for its owner to resume. */
   restore(snap: LobbySnapshot): void {
     const now = this.opts.now();
-    for (const { id, peers, vacuum, ball } of snap.rooms) {
+    for (const { id, peers, vacuum, ball, portals } of snap.rooms) {
       const room: Room = new Map();
       for (const saved of peers) {
         room.set(saved.id, {
@@ -467,6 +495,9 @@ export class Lobby {
         });
       }
       this.rooms.set(id, room);
+      if (portals) {
+        this.portalModes.set(id, { on: true, flippedAt: Number.NEGATIVE_INFINITY });
+      }
       this.emit({ type: 'room_opened', roomId: id });
       // A robot saved on another map (or none saved) starts afresh.
       const restored = this.opts.vacuum && vacuum ? restoreVacuum(this.vacuumNav(), vacuum) : null;
@@ -593,6 +624,8 @@ export class Lobby {
     this.vacuumVelocities.delete(roomId);
     this.balls.delete(roomId);
     this.kicks.delete(roomId);
+    this.portalModes.delete(roomId);
+    this.wirings.delete(roomId);
     this.nextSlot.delete(roomId);
     this.emit({ type: 'room_closed', roomId });
   }
@@ -618,7 +651,7 @@ export class Lobby {
       peers: [...room.values()].filter((p) => p.id !== self.id).map(peerInfo),
       livekit: this.opts.liveKitFor(roomId, self.id),
       objects: [...(vacuum ? [vacuumInfo(vacuum)] : []), ...(ball ? [ballInfo(ball)] : [])],
-      portals: false,
+      portals: this.portalModes.get(roomId)?.on === true,
     });
   }
 
@@ -806,6 +839,50 @@ export class Lobby {
   private vacuumNav(): VacuumNav {
     this.nav ??= createVacuumNav(this.opts.map);
     return this.nav;
+  }
+
+  // Portals.
+
+  private portalMode(roomId: string): { on: boolean; flippedAt: number } {
+    let mode = this.portalModes.get(roomId);
+    if (!mode) {
+      mode = { on: false, flippedAt: Number.NEGATIVE_INFINITY };
+      this.portalModes.set(roomId, mode);
+    }
+    return mode;
+  }
+
+  /** The room's doorway wiring while its portals are on, else null. */
+  private activePortals(roomId: string): Portals | null {
+    return this.portalModes.get(roomId)?.on === true ? this.wiring(roomId) : null;
+  }
+
+  /**
+   * Under the room's current mode, or, for a second after a flip, the other one: a state sent just before the flip
+   * reached its sender was made under the old mode.
+   */
+  private isPlausibleInRoom(roomId: string, peer: Peer, msg: StateMessage, now: number): boolean {
+    const elapsedMs = now - peer.lastAcceptedAt;
+    const current = this.activePortals(roomId);
+    if (isPlausibleMove(this.opts.map, peer, msg, elapsedMs, current)) {
+      return true;
+    }
+    const justFlipped =
+      now - (this.portalModes.get(roomId)?.flippedAt ?? Number.NEGATIVE_INFINITY) < PORTALS_FLIP_GAP_MS;
+    if (!justFlipped) {
+      return false;
+    }
+    const other = current === null ? this.wiring(roomId) : null;
+    return isPlausibleMove(this.opts.map, peer, msg, elapsedMs, other);
+  }
+
+  private wiring(roomId: string): Portals {
+    let wiring = this.wirings.get(roomId);
+    if (!wiring) {
+      wiring = wirePortals(this.opts.map, roomId);
+      this.wirings.set(roomId, wiring);
+    }
+    return wiring;
   }
 
   // Plumbing.

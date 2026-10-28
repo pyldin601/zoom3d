@@ -1,4 +1,5 @@
 import {
+  applyPoint,
   DRINK_GAP_MS,
   FAR_INTERVAL_MS,
   isWallAt,
@@ -11,6 +12,7 @@ import {
   parseMap,
   RESUME_GRACE_MS,
   type ServerMessage,
+  wirePortals,
 } from '@zoom3d/shared';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { avatarId } from './avatars';
@@ -833,5 +835,159 @@ describe('events and stats', () => {
     lobby.join('C', { type: 'join', v: PROTOCOL_VERSION, roomId: 'BBBBBBBBBBBBBBBBBBBBBB', name: 'C' });
     lobby.disconnect('B');
     expect(lobby.stats()).toEqual({ rooms: 2, connected: 2, waiting: 1, bots: 0 });
+  });
+});
+
+describe('portals', () => {
+  const portalsOf = (conn: string) => to(conn).filter((m) => m.type === 'portals');
+  const flip = (conn: string) => lobby.portals(conn);
+
+  test('a flip tells everyone, the asker included', () => {
+    join('A');
+    join('B');
+    flip('A');
+    expect(portalsOf('A')).toEqual([{ type: 'portals', on: true }]);
+    expect(portalsOf('B')).toEqual([{ type: 'portals', on: true }]);
+  });
+
+  test('a second flip within a second is ignored, and one after it flips back', () => {
+    join('A');
+    join('B');
+    flip('A');
+    time += 999;
+    flip('B');
+    expect(portalsOf('B')).toHaveLength(1);
+    time += 1;
+    flip('B');
+    expect(portalsOf('A')).toEqual([
+      { type: 'portals', on: true },
+      { type: 'portals', on: false },
+    ]);
+  });
+
+  test('a flip in one room leaves another room alone', () => {
+    join('A');
+    lobby.join('C', { type: 'join', v: PROTOCOL_VERSION, roomId: 'BBBBBBBBBBBBBBBBBBBBBB', name: 'C' });
+    flip('A');
+    expect(portalsOf('C')).toEqual([]);
+  });
+
+  test('a joiner learns the current value in the welcome, and a new room starts off', () => {
+    join('A');
+    expect(welcome('A').portals).toBe(false);
+    flip('A');
+    join('B');
+    expect(welcome('B').portals).toBe(true);
+  });
+
+  test('a connection that has not joined cannot flip the room', () => {
+    join('A');
+    flip('stranger');
+    expect(portalsOf('A')).toEqual([]);
+    time += 1000;
+    flip('A');
+    expect(portalsOf('A')).toEqual([{ type: 'portals', on: true }]);
+  });
+
+  test('a closed room starts off again when it reopens', () => {
+    join('A');
+    flip('A');
+    lobby.disconnect('A');
+    time += RESUME_GRACE_MS + 1;
+    lobby.tick();
+    join('B');
+    expect(welcome('B').portals).toBe(false);
+  });
+
+  test('the flag survives a snapshot, and a snapshot without it restores off', () => {
+    join('A');
+    flip('A');
+    const snap = JSON.parse(JSON.stringify(lobby.snapshot()));
+    expect(snap.rooms[0].portals).toBe(true);
+    const restoreInto = (data: unknown) => {
+      const next = new Lobby({
+        map,
+        out: outbox,
+        now: () => time,
+        rng: () => 0,
+        newToken: () => 'r',
+        liveKitFor: () => ({ url: 'ws://lk', token: 't' }),
+      });
+      next.restore(data as ReturnType<Lobby['snapshot']>);
+      return next;
+    };
+    const resumeIn = (next: Lobby) => {
+      next.join('A2', { type: 'join', v: PROTOCOL_VERSION, roomId: ROOM, name: 'A', resumeToken: 't1' });
+      return welcome('A2');
+    };
+    expect(resumeIn(restoreInto(snap)).portals).toBe(true);
+    sent = [];
+    delete snap.rooms[0].portals;
+    expect(resumeIn(restoreInto(snap)).portals).toBe(false);
+  });
+
+  describe('the move check', () => {
+    const wiring = wirePortals(map, ROOM);
+    const portal = wiring.list.find((p) => p.door.axis === 'ns') ?? wiring.list[0];
+    if (!portal) {
+      throw new Error('level1 has no doorway');
+    }
+    const BEFORE_DOORWAY = 0.3;
+    const standing = { x: portal.cx - portal.nx * BEFORE_DOORWAY, y: portal.cy - portal.ny * BEFORE_DOORWAY };
+    const walkedOn = (() => {
+      const t = { x: 0, y: 0 };
+      return applyPoint(portal.toDest, portal.cx + portal.nx * 0.1, portal.cy + portal.ny * 0.1, t);
+    })();
+    const crossedOrdinarily = { x: portal.cx + portal.nx * BEFORE_DOORWAY, y: portal.cy + portal.ny * BEFORE_DOORWAY };
+
+    /** Puts A at `standing` and returns whether its next state, `sinceMs` later, was accepted. */
+    function acceptedAfter(target: { x: number; y: number }, sinceMs: number): boolean {
+      time += 60_000;
+      lobby.state('A', { type: 'state', ...standing, angle: 0, seq: 1 });
+      sent = [];
+      time += sinceMs;
+      lobby.state('A', { type: 'state', ...target, angle: 0, seq: 2 });
+      return !to('A').some((m) => m.type === 'correction');
+    }
+
+    beforeEach(() => {
+      join('A');
+    });
+
+    test('a portal jump is corrected while portals are off and accepted while on', () => {
+      expect(acceptedAfter(walkedOn, 100)).toBe(false);
+      time += 1000;
+      flip('A');
+      time += 1000;
+      expect(acceptedAfter(walkedOn, 100)).toBe(true);
+    });
+
+    /** A at the doorway with portals off since `sinceOffFlipMs` ago; whether its jump was then accepted. */
+    function jumpAcceptedAfterOffFlip(sinceOffFlipMs: number): boolean {
+      time += 60_000;
+      lobby.state('A', { type: 'state', ...standing, angle: 0, seq: 1 });
+      flip('A');
+      time += 1000;
+      flip('A');
+      sent = [];
+      time += sinceOffFlipMs;
+      lobby.state('A', { type: 'state', ...walkedOn, angle: 0, seq: 2 });
+      return !to('A').some((m) => m.type === 'correction');
+    }
+
+    test('a jump sent 500 ms after an off-flip is accepted, and one sent 1500 ms after is corrected', () => {
+      expect(jumpAcceptedAfterOffFlip(500)).toBe(true);
+      expect(jumpAcceptedAfterOffFlip(1500)).toBe(false);
+    });
+
+    test('a plain doorway crossing 500 ms after an on-flip is accepted', () => {
+      time += 60_000;
+      lobby.state('A', { type: 'state', ...standing, angle: 0, seq: 1 });
+      flip('A');
+      sent = [];
+      time += 500;
+      lobby.state('A', { type: 'state', ...crossedOrdinarily, angle: 0, seq: 2 });
+      expect(to('A').some((m) => m.type === 'correction')).toBe(false);
+    });
   });
 });
