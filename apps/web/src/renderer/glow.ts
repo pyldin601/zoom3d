@@ -1,14 +1,28 @@
 // Avatars as lights: each disc glows like a small screen, its face's average colour, lighting the floor and walls
 // around it as it moves. Drawn per frame, no shadows: its reach is short.
+import type { Portals } from '@zoom3d/shared';
+import { PORTAL_PINK } from '../game/portal-pulse';
 import { EYE_HEIGHT } from './camera';
 
-/** A glowing disc at (x, y), centred at eye height: light r, g, b (1 = a full lamp's brightness). */
+/**
+ * A glowing disc at (x, y), centred at eye height: light r, g, b (1 = a full lamp's brightness). With a `cut`, it
+ * lights only the side of that plane it stands on.
+ */
 export interface Glow {
   x: number;
   y: number;
   r: number;
   g: number;
   b: number;
+  cut: GlowCut | null;
+}
+
+/** A vertical plane through (cx, cy) with normal (nx, ny): points on it or on its +n side get none of the glow. */
+export interface GlowCut {
+  cx: number;
+  cy: number;
+  nx: number;
+  ny: number;
 }
 
 /** A disc that glows: where it stands, and its face or, without one, its ring colour. */
@@ -23,6 +37,10 @@ export interface GlowSource {
 export const GLOW_RADIUS = 2.5;
 /** A white face glows this much of a full lamp's light at the disc. */
 export const GLOW_STRENGTH = 0.6;
+/** A portal's glow at the top of its pulse, as a share of a full lamp's light. */
+export const PORTAL_GLOW_STRENGTH = 0.9;
+/** How far in front of its doorway's plane a portal's glow stands: just past the door frame, so the frame faces it. */
+const PORTAL_GLOW_OFFSET = 0.6;
 /** Faces are averaged on this many texels per side, not all 256² of them. */
 const GLOW_SAMPLES = 16;
 
@@ -73,6 +91,9 @@ function unpackColour(colour: number): typeof channels {
  * GLOW_RADIUS, times how squarely the surface faces the disc. 0..1, before the glow's colour.
  */
 export function glowLight(g: Glow, x: number, y: number, z: number, nx: number, ny: number, nz: number): number {
+  if (g.cut && behindCut(g.cut, x, y)) {
+    return 0;
+  }
   const dx = g.x - x;
   const dy = g.y - y;
   const dz = EYE_HEIGHT - z;
@@ -89,6 +110,10 @@ export function glowLight(g: Glow, x: number, y: number, z: number, nx: number, 
   return k * k * (facing / Math.sqrt(d2));
 }
 
+function behindCut(cut: GlowCut, x: number, y: number): boolean {
+  return (x - cut.cx) * cut.nx + (y - cut.cy) * cut.ny >= 0;
+}
+
 /** A frame's avatar glows, in objects reused from frame to frame. */
 export interface AvatarGlows {
   /** Recomputes the list: one glow per disc in order, then `self`'s when it isn't null. */
@@ -103,7 +128,7 @@ export function createAvatarGlows(): AvatarGlows {
   const add = (source: GlowSource) => {
     let g = pool.at(count);
     if (!g) {
-      g = { x: 0, y: 0, r: 0, g: 0, b: 0 };
+      g = { x: 0, y: 0, r: 0, g: 0, b: 0, cut: null };
       pool.push(g);
     }
     glowOf(source, g);
@@ -118,6 +143,48 @@ export function createAvatarGlows(): AvatarGlows {
       }
       if (self) {
         add(self);
+      }
+      glows.length = count;
+      return glows;
+    },
+  };
+}
+
+/** A frame's portal glows, in objects reused from frame to frame. */
+export interface PortalGlows {
+  /**
+   * One pink glow per portal, in front of its doorway and lighting only that side of it, brighter as `pulse` (0..1)
+   * swells. Empty without portals.
+   */
+  update(portals: Portals | null, pulse: number): readonly Glow[];
+}
+
+const NO_PORTALS: Portals['list'] = [];
+
+export function createPortalGlows(): PortalGlows {
+  const pool: (Glow & { cut: GlowCut })[] = [];
+  const glows: Glow[] = [];
+  return {
+    update(portals, pulse) {
+      const strength = PORTAL_GLOW_STRENGTH * (0.25 + 0.75 * pulse);
+      let count = 0;
+      for (const portal of portals?.list ?? NO_PORTALS) {
+        let g = pool.at(count);
+        if (!g) {
+          g = { x: 0, y: 0, r: 0, g: 0, b: 0, cut: { cx: 0, cy: 0, nx: 0, ny: 0 } };
+          pool.push(g);
+        }
+        g.cut.cx = portal.cx;
+        g.cut.cy = portal.cy;
+        g.cut.nx = portal.nx;
+        g.cut.ny = portal.ny;
+        g.x = portal.cx - PORTAL_GLOW_OFFSET * portal.nx;
+        g.y = portal.cy - PORTAL_GLOW_OFFSET * portal.ny;
+        g.r = PORTAL_PINK.r * strength;
+        g.g = PORTAL_PINK.g * strength;
+        g.b = PORTAL_PINK.b * strength;
+        // Written by index and trimmed after, as in createAvatarGlows.
+        glows[count++] = g;
       }
       glows.length = count;
       return glows;

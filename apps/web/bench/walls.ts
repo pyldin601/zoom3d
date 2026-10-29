@@ -203,10 +203,10 @@ function posesNearLamps(): Pose[] {
         const gx = x + (rand() - 0.5) * 4;
         const gy = y + (rand() - 0.5) * 4;
         if (open(gx, gy)) {
-          glows.push({ x: gx, y: gy, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6 });
+          glows.push({ x: gx, y: gy, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6, cut: null });
         }
       }
-      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2 });
+      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null });
       out.push({ x, y, angle: rand() * Math.PI * 2, glows });
     }
   }
@@ -225,7 +225,7 @@ function crowdGlows(): Glow[] {
     const x = rand() * map.width;
     const y = rand() * map.height;
     if (tileAt(map, Math.floor(x), Math.floor(y)) === 0) {
-      out.push({ x, y, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6 });
+      out.push({ x, y, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6, cut: null });
     }
   }
   return out;

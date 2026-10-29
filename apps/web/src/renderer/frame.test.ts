@@ -68,6 +68,7 @@ describe('renderView without portals', () => {
     objects: [{ model: VACUUM_MODEL, x: sx + 1.1, y: sy - 0.6, angle: 0.7 }],
     labels: [],
     ownGlow: { x: sx, y: sy, face: null, color: rgb(250, 220, 120) },
+    portalPulse: 1,
     firstPerson: null,
   });
 
@@ -113,6 +114,7 @@ function portalScene(
     objects: [],
     labels: [],
     ownGlow: null,
+    portalPulse: 1,
     firstPerson: null,
     portals,
   };

@@ -13,6 +13,7 @@ import { type StatusLine, statusText } from '../ui/room-status';
 import { createApparentWorld } from './apparent-world';
 import type { FrameRateMeter } from './frame-rate';
 import type { LocalPlayer } from './local-player';
+import { portalPulse } from './portal-pulse';
 import { createRemoteWorld, type PeerMedia } from './remote-world';
 import { isConnected, type Room } from './room';
 import type { Screen } from './screen';
@@ -61,6 +62,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     objects: world.voxels,
     labels: world.labels,
     ownGlow: null,
+    portalPulse: 1,
     firstPerson: null,
     portals: null,
   };
@@ -147,6 +149,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     const room = o.room();
     scene.lighting = reflections === null ? null : (room?.lighting() ?? o.roomLighting());
     scene.portals = room?.portals() ?? null;
+    scene.portalPulse = portalPulse(performance.now() / 1000);
     scene.ownGlow = localPlayer.glow(now, room?.session.selfColor() ?? null);
     scene.firstPerson = isConnected(room) ? localPlayer.firstPerson(now) : null;
     return scene;
