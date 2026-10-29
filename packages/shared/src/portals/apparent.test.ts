@@ -3,7 +3,14 @@ import { hasLineOfSight } from '../geometry/los';
 import { LEVEL1 } from '../map/level1';
 import { type GameMap, parseMap } from '../map/map';
 import { NEAR_TILES } from '../protocol/protocol';
-import { type Apparent, apparentPosition, hasLineOfSightThrough, hasPortalLineOfSight, isNear } from './apparent';
+import {
+  type Apparent,
+  apparentPosition,
+  hasLineOfSightThrough,
+  hasPortalLineOfSight,
+  imagePosition,
+  isNear,
+} from './apparent';
 import { twoDoorways } from './test-doorways';
 import { invert, type RigidTransform } from './transform';
 import { type Portal, type Portals, wirePortals } from './wiring';
@@ -197,6 +204,36 @@ describe('apparentPosition through two portals', () => {
   test('with maxDepth 1 it is the real position', () => {
     const out = apparentPosition(CORRIDORS, CHAIN, listener, behindD, blank(), 1);
     expect(out).toEqual({ ...behindD, sees: false, through: 0, cos: 1, sin: 0 });
+  });
+});
+
+describe('imagePosition', () => {
+  test('never the straight position: a target in plain sight is the nearer image through A, unseen', () => {
+    const target = at(5.5, 1.5);
+    expect(apparentPosition(OPEN, OPEN_PORTALS, at(1.5, 1.5), target, blank()).through).toBe(0);
+    const out = imagePosition(OPEN, OPEN_PORTALS, at(1.5, 1.5), target, blank());
+    expect(out.through).toBe(1);
+    expect(out.sees).toBe(false);
+    expect(out.x).toBeCloseTo(1.5);
+    expect(out.y).toBeCloseTo(4.5);
+  });
+
+  test('with no chain through a doorway, through is 0, unseen, at the target', () => {
+    // The half turn between the doorways is about the wall between them, so a line to the own image never opens.
+    const { map, portals } = twoDoorways();
+    const eye = at(2.5, 2.5);
+    expect(imagePosition(map, portals, eye, eye, blank())).toEqual({ ...eye, sees: false, through: 0, cos: 1, sin: 0 });
+  });
+
+  test('an image two portals deep is found, and with maxDepth 1 only an unseen one through a single portal', () => {
+    const behindD = at(5.5, 4.5);
+    const out = imagePosition(CORRIDORS, CHAIN, at(1.5, 1.5), behindD, blank());
+    expect(out.through).toBe(2);
+    expect(out.sees).toBe(true);
+    expect(out.x).toBeCloseTo(1.5);
+    expect(out.y).toBeCloseTo(5.5);
+    const shallow = imagePosition(CORRIDORS, CHAIN, at(1.5, 1.5), behindD, blank(), 1);
+    expect(shallow).toMatchObject({ through: 1, sees: false });
   });
 });
 
