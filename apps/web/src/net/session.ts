@@ -63,8 +63,6 @@ export interface SessionListener {
   objectsReset?(objects: readonly ObjectInfo[]): void;
   /** The room's portals were flipped (by anyone, the local player included); not called for a welcome's flag. */
   portalsChanged?(on: boolean): void;
-  /** Someone started a portal switch; not called for a sequence a welcome joins midway. */
-  sequenceStarted?(kind: SequenceKind): void;
   /** A new connection status. Timer and socket driven, so it keeps coming while the tab is hidden. */
   status?(status: ConnStatus): void;
 }
@@ -212,7 +210,6 @@ export function createSession(opts: SessionOptions): Session {
         break;
       case 'portals_sequence':
         sequence = { kind: m.kind, startedAt: now() - m.age };
-        listener.sequenceStarted?.(m.kind);
         break;
       case 'correction':
         Object.assign(player, { x: m.x, y: m.y, angle: m.angle });

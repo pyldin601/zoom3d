@@ -717,25 +717,21 @@ test('an object that moved more than JUMP_TILES in one state is marked a jump', 
   expect(session.objects.get('v')?.buffer.latest()?.jump).toBe(true);
 });
 
-test('a portal sequence is stamped by its arrival less its age, and reaches the listener', () => {
-  const started: string[] = [];
-  const { session, ws } = joinedSession([], { sequenceStarted: (kind) => started.push(kind) });
+test('a portal sequence is stamped by its arrival less its age', () => {
+  const { session, ws } = joinedSession([]);
   expect(session.sequence).toBeNull();
   vi.advanceTimersByTime(5000);
   const arrival = Date.now();
   ws.receive({ type: 'portals_sequence', kind: 'first_on', age: 40 });
   expect(session.sequence).toEqual({ kind: 'first_on', startedAt: arrival - 40 });
-  expect(started).toEqual(['first_on']);
 });
 
-test('a welcome mid-sequence stamps it without telling the listener; one without clears it', () => {
-  const started: string[] = [];
-  const { session, ws } = joinedSession([], { sequenceStarted: (kind) => started.push(kind) });
+test('a welcome mid-sequence stamps it; one without clears it', () => {
+  const { session, ws } = joinedSession([]);
   vi.advanceTimersByTime(5000);
   const arrival = Date.now();
   ws.receive({ ...welcome(), sequence: { kind: 'off', age: 300 } });
   expect(session.sequence).toEqual({ kind: 'off', startedAt: arrival - 300 });
-  expect(started).toEqual([]);
   ws.receive(welcome());
   expect(session.sequence).toBeNull();
 });
