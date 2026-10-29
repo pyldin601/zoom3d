@@ -84,7 +84,7 @@ console.log(
 );
 room.reflections = 'both';
 /** With portals on, each doorway's pink glow (D29), at the top of its pulse, is lit like the avatars'. */
-const portalGlows = [...createPortalGlows().update(portals, 1)];
+const portalGlows = [...createPortalGlows().update(portals, 1, portalLighting.portalGlowSeen)];
 const glowsWith = (state: 'off' | 'on', avatars: readonly Glow[]) =>
   state === 'on' ? [...avatars, ...portalGlows] : avatars;
 const doorwayGlows = { off: glowsWith('off', []), on: glowsWith('on', []) };
@@ -209,10 +209,10 @@ function posesNearLamps(): Pose[] {
         const gx = x + (rand() - 0.5) * 4;
         const gy = y + (rand() - 0.5) * 4;
         if (open(gx, gy)) {
-          glows.push({ x: gx, y: gy, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6, cut: null });
+          glows.push({ x: gx, y: gy, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6, cut: null, shadow: null });
         }
       }
-      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null });
+      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null, shadow: null });
       out.push({ x, y, angle: rand() * Math.PI * 2, glows });
     }
   }
@@ -231,7 +231,7 @@ function crowdGlows(): Glow[] {
     const x = rand() * map.width;
     const y = rand() * map.height;
     if (tileAt(map, Math.floor(x), Math.floor(y)) === 0) {
-      out.push({ x, y, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6, cut: null });
+      out.push({ x, y, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6, cut: null, shadow: null });
     }
   }
   return out;

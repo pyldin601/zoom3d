@@ -14,6 +14,7 @@ import {
 } from '@zoom3d/shared';
 import { EYE_HEIGHT } from './camera';
 import { rgb } from './framebuffer';
+import { GLOW_RADIUS, type GlowShadow, hiddenByCut, newPortalGlow, placePortalGlow } from './glow';
 import { RELIEF_LEVELS, type ReflectionMaterial } from './textures';
 
 export interface Light {
@@ -146,6 +147,11 @@ export interface Lighting {
   floorLamp: Int16Array;
   /** Per floorLamp slot: how much of its lamp the cell sees, 0..255. */
   floorLampSeen: Uint8Array;
+  /**
+   * Per portal (in `portals.list` order), what the floor around its glow sees of the glow past the walls; null for the
+   * plain floor plan, which has no portal glows.
+   */
+  portalGlowSeen: readonly GlowShadow[] | null;
   /** Final floor / ceiling colours, (map.width·FLOOR_SUB) × (map.height·FLOOR_SUB). */
   floor: Uint32Array;
   ceiling: Uint32Array;
@@ -255,13 +261,14 @@ export function bakeLighting(
     bounce: bounce ? bakeBounce(map, lights, floorColour, ceilingColour, bounce) : null,
     sight: bakeLampSight(map, null, lights),
   };
-  return bakeSurfaces(input, floorColour, ceilingColour);
+  return { ...bakeSurfaces(input, floorColour, ceilingColour), portalGlowSeen: null };
 }
 
 /**
  * Bakes the lighting of `plain`'s map with its portals on: light follows sight, so a lamp lights only what can see it
  * in a straight line or through one portal (as one of its lampCopies). The bounce light stays `plain`'s, the very same
- * table: it is soft enough that the floor plan's spread will do.
+ * table: it is soft enough that the floor plan's spread will do. The portals' glows never move, so their shadows are
+ * baked here too.
  */
 export function bakePortalLighting(
   plain: Lighting,
@@ -279,7 +286,35 @@ export function bakePortalLighting(
     bounce: plain.bounce,
     sight: bakeLampSight(plain.map, portals, lights),
   };
-  return bakeSurfaces(input, floorColour, ceilingColour);
+  return { ...bakeSurfaces(input, floorColour, ceilingColour), portalGlowSeen: bakePortalGlowSeen(plain.map, portals) };
+}
+
+/**
+ * Per portal, how much of its glow's disc each floor cell within GLOW_RADIUS of it sees, as a lamp's (seenShare, soft
+ * edges across LAMP_RADIUS). Cells in walls or on the cut side of the doorway's plane see none.
+ */
+function bakePortalGlowSeen(map: GameMap, portals: Portals): GlowShadow[] {
+  const glow = newPortalGlow();
+  return portals.list.map((portal) => {
+    placePortalGlow(glow, portal);
+    const disc: Light = { x: glow.x, y: glow.y, z: EYE_HEIGHT, radius: GLOW_RADIUS, r: 0, g: 0, b: 0 };
+    const firstCol = Math.max(0, Math.floor((glow.x - GLOW_RADIUS) * FLOOR_SUB));
+    const firstRow = Math.max(0, Math.floor((glow.y - GLOW_RADIUS) * FLOOR_SUB));
+    const across = Math.min(map.width * FLOOR_SUB, Math.ceil((glow.x + GLOW_RADIUS) * FLOOR_SUB)) - firstCol;
+    const down = Math.min(map.height * FLOOR_SUB, Math.ceil((glow.y + GLOW_RADIUS) * FLOOR_SUB)) - firstRow;
+    const seen = new Uint8Array(across * down);
+    for (let row = 0; row < down; row++) {
+      for (let col = 0; col < across; col++) {
+        const x = (firstCol + col + 0.5) / FLOOR_SUB;
+        const y = (firstRow + row + 0.5) / FLOOR_SUB;
+        if (tileAt(map, Math.floor(x), Math.floor(y)) !== 0 || hiddenByCut(glow, x, y)) {
+          continue;
+        }
+        seen[row * across + col] = Math.round(seenShare(map, portals, x, y, disc) * 255);
+      }
+    }
+    return { sub: FLOOR_SUB, firstCol, firstRow, across, down, seen };
+  });
 }
 
 function checkLampCount(baker: string, lights: readonly Light[]): void {
@@ -334,7 +369,7 @@ export function seesLamp(
 /**
  * Bakes every surface's table for `input`'s lamps: the wall faces and their runs, then the walls, floor and ceiling.
  */
-function bakeSurfaces(input: BakeInput, floorColour: number, ceilingColour: number): Lighting {
+function bakeSurfaces(input: BakeInput, floorColour: number, ceilingColour: number): Omit<Lighting, 'portalGlowSeen'> {
   const { map } = input;
   const { faceOffset, faces } = indexFaces(map);
   const faceRun = faceRuns(map, faceOffset, faces);

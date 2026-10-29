@@ -5,7 +5,7 @@ import type { PeerFacts } from '../media/interest';
 import { type AutomapPeer, drawAutomap } from './automap';
 import { createView, type Pass, setView, WHOLE_FRAME, WINDOW_LEVELS } from './camera';
 import { createFramebuffer, type Framebuffer } from './framebuffer';
-import { createAvatarGlows, createPortalGlows, type Glow, type GlowSource } from './glow';
+import { createAvatarGlows, createPortalGlows, type Glow, type GlowShadow, type GlowSource } from './glow';
 import { drawLabels, type NameLabel } from './labels';
 import type { ReflectionMode } from './lighting';
 import { renderOwnBoombox } from './own-boombox';
@@ -65,7 +65,9 @@ const frameView = createView();
 /** `seen` gets, per person, how much of them this frame drew (dynamic subscription reads it). */
 export function renderView(fb: Framebuffer, scene: RoomScene, seen?: Map<string, PeerFacts>): void {
   const avatars = avatarGlows.update(scene.people, scene.ownGlow);
-  const glows = scene.portals ? withPortalGlows(avatars, scene.portals, scene.portalPulse) : avatars;
+  const glows = scene.portals
+    ? withPortalGlows(avatars, scene.portals, scene.portalPulse, scene.lighting?.portalGlowSeen ?? null)
+    : avatars;
   if (scene.portals) {
     fitWindowLevels(fb);
     seenThroughWindows.forEach(zeroFacts);
@@ -79,12 +81,17 @@ export function renderView(fb: Framebuffer, scene: RoomScene, seen?: Map<string,
   }
 }
 
-function withPortalGlows(avatars: readonly Glow[], portals: Portals, pulse: number): readonly Glow[] {
+function withPortalGlows(
+  avatars: readonly Glow[],
+  portals: Portals,
+  pulse: number,
+  shadows: readonly GlowShadow[] | null
+): readonly Glow[] {
   let count = 0;
   for (const g of avatars) {
     allGlows[count++] = g;
   }
-  for (const g of portalGlows.update(portals, pulse)) {
+  for (const g of portalGlows.update(portals, pulse, shadows)) {
     allGlows[count++] = g;
   }
   allGlows.length = count;
