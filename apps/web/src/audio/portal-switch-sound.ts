@@ -215,7 +215,15 @@ export function createPortalSwitchSounds(ctx: BaseAudioContext, engine: AudioEng
     return filter;
   }
 
-  return { lightsOff, portalsOn, lightsOn };
+  /** A suspended context would queue the sound and play it, stale, whenever it resumed. */
+  const whileRunning = (play: () => void) => () => {
+    if (ctx.state !== 'running') {
+      return;
+    }
+    play();
+  };
+
+  return { lightsOff: whileRunning(lightsOff), portalsOn: whileRunning(portalsOn), lightsOn: whileRunning(lightsOn) };
 }
 
 /**

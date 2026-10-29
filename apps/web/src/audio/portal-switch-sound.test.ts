@@ -159,3 +159,16 @@ test('the reverb impulses are built once, not on every play', () => {
   const [first, second] = ofKind<Convolver>(nodesSince(builtAt), 'convolver');
   expect(first?.buffer).toBe(second?.buffer);
 });
+
+test('a context that is not running plays nothing, so no stale sound waits for it to resume', () => {
+  const s = sounds();
+  const built = ctx.nodes.length;
+  for (const state of ['suspended', 'closed'] as const) {
+    ctx.state = state;
+    s.lightsOff();
+    s.portalsOn();
+    s.lightsOn();
+  }
+  expect(played).toEqual([]);
+  expect(ctx.nodes).toHaveLength(built);
+});
