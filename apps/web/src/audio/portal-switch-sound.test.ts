@@ -119,8 +119,8 @@ test('portals on: a sine rising 140 → 520 Hz over 0.7 s over a filtered 100 Hz
   expectReleasedAfter(nodes, 0.02 + 1.05 + 1.2);
 });
 
-test('countdown: a 440 Hz triangle pulse, 0.25 s held and gone by 0.29 s, ringing on in a 3.5 s reverb', () => {
-  const nodes = play('countdown', 0.3, 3.5, 0.7);
+test('countdown: a 440 Hz triangle pulse, 0.25 s held and gone by 0.29 s, with a 1.2 s reverb', () => {
+  const nodes = play('countdown', 0.3, 1.2, 0.3);
   const t = startsAt();
   const [pulse] = ofKind<Source>(nodes, 'oscillator');
   expect([pulse?.type, pulse?.frequency.value]).toEqual(['triangle', 440]);
@@ -132,7 +132,7 @@ test('countdown: a 440 Hz triangle pulse, 0.25 s held and gone by 0.29 s, ringin
     ['set', 0.5, t + 0.25],
     ['exponential', 0.0001, t + 0.29],
   ]);
-  expectReleasedAfter(nodes, 0.02 + 0.31 + 3.5);
+  expectReleasedAfter(nodes, 0.02 + 0.31 + 1.2);
 });
 
 test('lights on: one click and a mains hum, without flicker ticks, with a 1.5 s reverb', () => {

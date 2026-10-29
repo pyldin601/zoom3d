@@ -83,8 +83,7 @@ game's scaling; "reverb" is a dry/wet send to a decaying-noise impulse of the gi
   - a 100 Hz sawtooth hum through a 700 Hz low-pass; gain 0.0001 → 0.045 (0.3 × 0.15) at the span + 0.1, then to
     0.0001 at the span + 1.2.
 - **Countdown** (added 2026-10-29, picked by the user in the sketch): one pulse as each number shows, at 0, 1 and 2 s
-  of `first_on` (level 0.3, reverb tail 3.5 s at 0.7 wet, so it rings on through a big room; the user asked for a
-  bigger acoustic, 2026-10-29, after a 1.2 s tail at 0.3):
+  of `first_on` (level 0.3, reverb tail 1.2 s at 0.3 wet):
   - a 440 Hz triangle; gain 0.0001 → 0.5 (exponential) in 0.003, held to 0.25, then exponentially to 0.0001 at
     0.25 + 0.04; the oscillator stops at 0.31.
 
