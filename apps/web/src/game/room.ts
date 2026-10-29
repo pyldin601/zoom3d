@@ -1,6 +1,6 @@
 // The room from Join on: the game session, the call carrying everyone's media, the spatial audio, the world objects'
-// sounds, the portal doorways' hums, the ball as this client predicts it, the player's boombox and the analytics tracker, made together on Join
-// and kept together.
+// sounds, the portal doorways' hums, the ball as this client predicts it, the player's boombox and the analytics
+// tracker, made together on Join and kept together.
 import type { GameMap, HeldItem, PlayerState, Portals } from '@zoom3d/shared';
 import { createDoorbell, withDoorbell } from '../audio/doorbell';
 import { type AudioEngine, createAudioEngine } from '../audio/engine';

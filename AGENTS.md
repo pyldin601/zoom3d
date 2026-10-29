@@ -183,6 +183,8 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   must honour it. The vacuum ignores portals (ordinary doors).
   With portals on, the room's light is a second table (`bakePortalLighting`) whose lamp list holds copies seen through
   one portal (`Light.through`); any new sight test to a lamp goes through `seesLamp`.
+  Portal windows shimmer and their fronts glow and hum (D29): portal glows are avatar glows with a `cut` plane, and
+  every pass that uses glow light must honour it.
 - Telemetry privacy: logs, metrics labels, Sentry and Amplitude never get names, resume tokens or IPs, nor raw room
   ids: a room link is the room's only key. Server logs use `roomRef()` (a short hash), and the browser Sentry
   `beforeSend` scrubs `/r/<id>`.

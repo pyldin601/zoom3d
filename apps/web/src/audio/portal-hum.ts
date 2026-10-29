@@ -26,7 +26,9 @@ export function portalHumKey(index: number): string {
 }
 
 export interface PortalHums {
-  /** Starts a hum per portal when portals turn on, fades them all out when they turn off, and swells them by `pulse`. */
+  /**
+   * Starts a hum per portal when portals turn on, fades them all out when they turn off, and swells them by `pulse`.
+   */
   sync(portals: Portals | null, pulse: number): void;
   /** Each hum's source point by `portalHumKey`, reusing `out`'s points; empties `out` while portals are off. */
   sourcesOf(portals: Portals | null, out: Map<string, { x: number; y: number }>): void;

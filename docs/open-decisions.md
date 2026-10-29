@@ -540,7 +540,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     `portals === null` everywhere means today's behaviour, pixel for pixel (`pnpm bench:walls`/`bench:sprites` hashes
     are unchanged with portals off).
   - **Drawing re-runs the passes** from the eye carried through each portal, for the window's columns only, two levels
-    deep (the third is black). Every pass takes a `Pass` (columns and a near limit), so a new pass must honour it.
+    deep (the third is black; pink-tinted black since D29). Every pass takes a `Pass` (columns and a near limit), so a
+    new pass must honour it.
   - **Hearing and subscribing** use the apparent position: up to two portals whose front faces the listener and whose
     centre is within `NEAR_TILES`.
   - **Near or far is one rule** (`isNear` in `packages/shared/src/portals/apparent.ts`), used by the server's fan-out
@@ -616,6 +617,44 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     frames (`renderView`) from the doorways: 2.38 ms off, 2.78 ms on (2.65 on the base).
   - Not done: moving shadows and avatar glow through portals; bounce light through portals; lamp light through two
     portals; a browser run by eye of the light across a window.
+
+### D29 — Portal windows shimmer, glow and hum
+
+- *Resolved 2026-10-29* ([spec](superpowers/specs/2026-10-29-portal-glow-design.md)): with portals on, each doorway
+  window shimmers, its front spills a pulsing pink light, and each doorway hums. A doorway now reads as a gateway
+  before anyone looks through it, and from a distance. The owner picked the look in a throwaway sketch.
+  - **What was picked:** both window styles (the shimmer and the lit rim), one pink for all doorways, a pulse of 0.8 Hz
+    at 40% depth (`game/portal-pulse.ts`), and the hum's mix under voices (`HUM_GAIN` 0.04, under `VACUUM_GAIN`).
+  - **The spill is cut at the plane.** A portal glow is an avatar glow with a `cut` plane (`Glow.cut`): it lights
+    only the front side of its doorway, so the floor and walls behind it stay as they were. Plain glow was rejected: it
+    would also have lit the back side, the room the window replaces, which is the spill D28 removed.
+  - **The light sits 0.6 tiles in front of the plane,** so the spill reaches the floor and the frame instead of
+    dying inside the doorway's own wall thickness.
+  - **No glow on people or objects,** and the ceiling goes pink with the floor. People and objects are drawn
+    unchanged; only the walls, floor and ceiling take the spill.
+  - **One clock for glow, shimmer and hum.** The pulse is computed once per frame from the local clock and is never
+    sent, so the three never drift apart. Peers see their own phase, which is fine: it is decoration, not state.
+  - **The rim has a cutoff.** It is skipped past about 13.7 sketch px from the opening, where it adds under half a
+    level. The top and bottom rim are measured from the opening's unclamped bounds, so they don't slide when the
+    opening runs off the screen.
+  - **Amends D27:** a window past the last level is not pure black but pink-tinted black, because the levels above it
+    tint it. D27's "the third is black" no longer holds to the letter.
+  - **The hum:** one source per portal, placed through `placeApparently` and swelled each frame by the renderer's own
+    pulse. `PortalHums.dispose()` exists and is tested, but nothing calls it: no `Room` is ever disposed. A quick
+    off then on can't cut a hum's fade short, because the server allows one flip per room per 1000 ms, longer than the
+    fade.
+  - **Levels await tuning.** `PORTAL_GLOW_STRENGTH` (0.9) and `HUM_GAIN` (0.04) are the first guesses. A rendered
+    doorway frame from the bench poses shows the spill and the rim clearly, not blown out; the owner tunes both by eye
+    and ear while playing locally.
+  - **Measured** (2026-10-29, against D28's numbers; LEVEL1 at 640×360, lit, reflections `both`, medians of three runs
+    each, a loaded machine, read the ratios). With portals off nothing changed: the `bench:walls` pixel (-601092469),
+    doorway (-1246551896) and crowd (2075427884) hashes and the `bench:sprites` hashes (1236007431, doorway scenes
+    -1373330069) are the same as before.
+    - `renderWalls` from 1.5 tiles in front of 8 doorways: 1.68 ms off, 1.00 ms on (D28: 1.00 on).
+    - With the 100-glow crowd, from the lamp poses: 2.55 ms off, 2.86 ms on (D28: 2.85 on).
+    - Whole frames (`renderView`) from the doorways with people and a vacuum ahead: 2.36 ms off, 4.13 ms on (D28:
+      2.78 on). The glow, the shimmer and the rim cost about 1.35 ms more than D28's portals-on frame.
+  - Not done: glow on people and objects; a hue per doorway; the hum through two portals; a listen by ear.
 
 ## Resolved
 _(none yet)_
