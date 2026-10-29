@@ -650,9 +650,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     doesn't restart it. Past that distance the engine's gain is already 0, so the fade out is silent, and a hum
     re-entering while its old one still fades can replace it without a click. From 2000 random open spots on LEVEL1,
     a median of 10 of the 24 doorways are in range (90th percentile 14, at most 19).
-  - **Levels await tuning.** `PORTAL_GLOW_STRENGTH` (0.9) and `HUM_GAIN` (0.04) are the first guesses. A rendered
-    doorway frame from the bench poses shows the spill and the rim clearly, not blown out; the owner tunes both by eye
-    and ear while playing locally.
+  - **Levels.** `PORTAL_GLOW_STRENGTH` is 0.5, tuned down by eye from a first guess of 0.9 while playing locally
+    (2026-10-29). `HUM_GAIN` (0.04) is still the first guess, awaiting a listen.
   - **Measured** (2026-10-29, against D28's numbers; LEVEL1 at 640×360, lit, reflections `both`, medians of three runs
     each, a loaded machine, read the ratios). With portals off nothing changed: the `bench:walls` pixel (-601092469),
     doorway (-1246551896) and crowd (2075427884) hashes and the `bench:sprites` hashes (1236007431, doorway scenes
@@ -678,7 +677,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     - `bench:walls` lit no portal glow before (its portals-on passes took only avatar glows). Its portals-on doorway
       and crowd passes now take the portal glows too, so a spill regression shows there: their hashes moved from
       1272589417 to 482093256 (doorway) and from -1861553458 to -1819097756 (crowd), and the portals-off hashes are
-      unchanged. With the spill, `renderWalls` from the doorways, portals on, takes 1.60 ms (1.83 ms before the fix),
+      unchanged. At the tuned strength (0.5) they are -512190914 (doorway) and -1309088159 (crowd), and the
+      `bench:sprites` doorway scenes with portals on are 346079235. With the spill, `renderWalls` from the doorways, portals on, takes 1.60 ms (1.83 ms before the fix),
       and with the crowd from the lamp poses 2.89 ms (3.19 ms before).
   - Not done: glow on people and objects; a hue per doorway; the hum through two portals; a listen by ear.
 
