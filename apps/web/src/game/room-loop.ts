@@ -77,16 +77,13 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   const cues: SequenceCues = { lightsOff: false, portalsOn: false, lightsOn: false };
 
   /**
-   * Moves the room's portal sequence on and shows its countdown. Its sounds play only while the tab is seen: cues that
-   * came due while hidden are dropped, so returning to the tab never plays a stale one.
+   * Moves the room's portal sequence on, shows its countdown and plays its sounds, hidden tab included: the sounds are
+   * for everyone, and the hidden tick comes well within a cue's lateness, so none plays stale.
    */
-  const followSequence = (room: Room, now: number, audible: boolean) => {
+  const followSequence = (room: Room, now: number) => {
     room.sequence.update(room.session.sequence, now, room.session.portals);
     showCountdown(o.ui, room.sequence.countdown);
     room.sequence.takeCues(cues);
-    if (!audible) {
-      return;
-    }
     if (cues.lightsOff) {
       room.switchSounds.lightsOff();
     }
@@ -220,7 +217,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       const room = o.room();
       if (room) {
         room.call.update(now);
-        followSequence(room, now, true);
+        followSequence(room, now);
         stepBall(room, now, dt);
         placeEveryoneElse(room, now, dt);
       } else {
@@ -246,7 +243,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
         return;
       }
       const now = performance.now();
-      followSequence(room, now, false);
+      followSequence(room, now);
       stepBall(room, now, HIDDEN_TICK_MS / 1000);
       world.sample(room.session, localPlayer.pose, now, room.ball.ball, room.portals());
       placeApparently(room);
