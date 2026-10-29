@@ -194,12 +194,17 @@ function copyWindowRows(
   const view = setView(frameView, to, scene.eye);
   for (let col = fromCol; col < toCol; col++) {
     const depth = zbuffer[col] as number;
-    const { start, end } = rowsCovered(h, view.proj / depth);
+    const openingPx = view.proj / depth;
+    // The opening's top and bottom, unclamped: close to the plane they lie off the frame, and so does the rim.
+    const openingTop = view.half - openingPx / 2;
+    const openingBottom = view.half + openingPx / 2;
+    const { start, end } = rowsCovered(h, openingPx);
     const sideEdge = openingEdge(view, portal, col, depth, w);
     startRippleDown(start, col, w, seconds);
     for (let row = start; row < end; row++) {
       const rowCentre = row + 0.5;
-      const edge = Math.max(0, Math.min(sideEdge, toSketchPx(Math.min(rowCentre - start, end - rowCentre), w)));
+      const topOrBottomEdge = toSketchPx(Math.min(rowCentre - openingTop, openingBottom - rowCentre), w);
+      const edge = Math.max(0, Math.min(sideEdge, topOrBottomEdge));
       to.pixels[row * w + col] = shimmerAndRim(from.pixels[row * w + col] as number, pulse, nextRippleDown(), edge);
     }
   }
