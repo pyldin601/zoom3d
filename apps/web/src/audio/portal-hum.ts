@@ -29,6 +29,11 @@ const SOURCE_OFFSET_TILES = 0.3;
  */
 const HEARING_HYSTERESIS_TILES = 1;
 
+/** Whether `listener` stands on the doorway's back side, or on its plane. */
+function isBehind(portal: { cx: number; cy: number; nx: number; ny: number } | undefined, listener: Point): boolean {
+  return portal !== undefined && (listener.x - portal.cx) * portal.nx + (listener.y - portal.cy) * portal.ny >= 0;
+}
+
 export function portalHumKey(index: number): string {
   return `portal-hum:${index}`;
 }
@@ -140,10 +145,12 @@ export function createPortalHums(
       const key = keyOf(i);
       const source = heard.get(key);
       const tiles = source ? Math.hypot(source.x - listener.x, source.y - listener.y) : Number.POSITIVE_INFINITY;
+      // From behind, a doorway is ordinary (D27): the user asked that it be silent there, like its glow.
+      const behind = isBehind(portals.list.at(i), listener);
       const hum = hums.at(i) ?? null;
-      if (hum === null && tiles < silentTiles) {
+      if (hum === null && !behind && tiles < silentTiles) {
         hums[i] = startHum(key);
-      } else if (hum !== null && tiles > silentTiles + HEARING_HYSTERESIS_TILES) {
+      } else if (hum !== null && (behind || tiles > silentTiles + HEARING_HYSTERESIS_TILES)) {
         hums[i] = null;
         fadeOut(hum);
       }

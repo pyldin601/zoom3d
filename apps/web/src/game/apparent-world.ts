@@ -1,6 +1,7 @@
 // Where each remote thing appears to the local player this frame (portal spec 2.6): the audio, the face subscription
 // and the name labels all read the same answer. Each id keeps one Apparent, so a steady room allocates nothing.
-import { type Apparent, apparentPosition, type GameMap, type Portals } from '@zoom3d/shared';
+import { type Apparent, apparentPosition, type GameMap, imagePosition, type Portals } from '@zoom3d/shared';
+import type { NameLabel } from '../renderer/labels';
 
 type Point = { x: number; y: number };
 
@@ -40,4 +41,23 @@ export function createApparentWorld(): ApparentWorld {
       return apparent;
     },
   };
+}
+
+const ownImage: Apparent = { x: 0, y: 0, sees: false, through: 0, cos: 1, sin: 0 };
+
+/**
+ * Moves the local player's own label to where their own spot appears to their eye: its nearest image seen through one
+ * or two portals, never the spot itself, where the eye stands. False when no portal shows it, portals off included.
+ */
+export function placeOwnLabel(map: GameMap, portals: Portals | null, eye: Point, label: NameLabel): boolean {
+  if (portals === null) {
+    return false;
+  }
+  imagePosition(map, portals, eye, eye, ownImage);
+  if (ownImage.through === 0 || !ownImage.sees) {
+    return false;
+  }
+  label.shownX = ownImage.x;
+  label.shownY = ownImage.y;
+  return true;
 }

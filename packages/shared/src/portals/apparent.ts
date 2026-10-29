@@ -91,6 +91,33 @@ export function apparentPosition(
   if (p !== null) {
     considerImages(map, p, fromX, fromY, toX, toY, maxDepth);
   }
+  return writeBest(out);
+}
+
+/**
+ * As apparentPosition, but the images only, never the real position: where the listener's own spot appears to them
+ * (`to` is `from`), which the straight line would always win. `through` stays 0 when no image's chain counts.
+ */
+export function imagePosition(
+  map: GameMap,
+  p: Portals,
+  from: Point,
+  to: Point,
+  out: Apparent,
+  maxDepth: 1 | 2 = 2
+): Apparent {
+  best.x = to.x;
+  best.y = to.y;
+  best.sees = false;
+  best.through = 0;
+  best.cos = 1;
+  best.sin = 0;
+  best.distanceSquared = Number.POSITIVE_INFINITY;
+  considerImages(map, p, from.x, from.y, to.x, to.y, maxDepth);
+  return writeBest(out);
+}
+
+function writeBest(out: Apparent): Apparent {
   out.x = best.x;
   out.y = best.y;
   out.sees = best.sees;

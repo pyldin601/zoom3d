@@ -88,6 +88,10 @@ export interface Session {
   sendPortals(): void;
   selfId(): string | null;
   selfColor(): string | null;
+  /** The name the others are told. */
+  selfName(): string;
+  /** Whether the others are told the own mic is on. */
+  selfMic(): boolean;
   status(): ConnStatus;
   error(): ErrorCode | null;
   close(): void;
@@ -427,6 +431,8 @@ export function createSession(opts: SessionOptions): Session {
     sendPortals: () => sendWhileOpen({ type: 'portals' }),
     selfId: () => selfId,
     selfColor: () => color,
+    selfName: () => opts.name,
+    selfMic: () => media?.mic ?? false,
     status: () => status,
     error: () => error,
     close() {

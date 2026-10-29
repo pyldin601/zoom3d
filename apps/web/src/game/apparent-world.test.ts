@@ -1,6 +1,7 @@
 import { type Apparent, hasLineOfSight, invert, type Portal, type Portals, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
-import { createApparentWorld } from './apparent-world';
+import type { NameLabel } from '../renderer/labels';
+import { createApparentWorld, placeOwnLabel } from './apparent-world';
 
 // Two rooms above a hall. Doorway A at (2, 3), front north; B at (6, 3), front south.
 const ROOMS = parseMap('111111111\n1...1...1\n1S..1...1\n11.111.11\n1.......1\n1.......1\n111111111');
@@ -61,5 +62,46 @@ describe('createApparentWorld', () => {
     expect(second).toBe(first);
     const gone = world.update(ROOMS, null, eye, things.slice(0, 1));
     expect([...gone.keys()]).toEqual(['near']);
+  });
+});
+
+// One room above a hall, with doorway C at (2, 3), front north, that leads back into itself turned round: walking
+// south through it comes out of it walking north, so a window in it looks back at the room.
+const LOOP = parseMap('11111\n1...1\n1.S.1\n11.11\n1...1\n1...1\n11111');
+const TURN_ABOUT_C = { cos: -1, sin: 0, tx: 5, ty: 7 };
+
+function loopBack(): Portals {
+  const byTile = new Int32Array(LOOP.width * LOOP.height).fill(-1);
+  byTile[3 * LOOP.width + 2] = 0;
+  const c: Portal = {
+    door: { x: 2, y: 3, axis: 'ns' },
+    cx: 2.5,
+    cy: 3.5,
+    nx: 0,
+    ny: 1,
+    to: 0,
+    toDest: TURN_ABOUT_C,
+    fromDest: invert(TURN_ABOUT_C),
+  };
+  return { map: LOOP, list: [c], byTile };
+}
+
+const blankLabel = (): NameLabel => ({ shownX: 0, shownY: 0, name: '', mic: false });
+
+describe('placeOwnLabel', () => {
+  test("the own label sits at the own position's image through the portal that shows it", () => {
+    const label = blankLabel();
+    expect(placeOwnLabel(LOOP, loopBack(), { x: 2.5, y: 1.5 }, label)).toBe(true);
+    expect(label.shownX).toBeCloseTo(2.5);
+    expect(label.shownY).toBeCloseTo(5.5);
+  });
+
+  test('no own label with portals off', () => {
+    expect(placeOwnLabel(LOOP, null, { x: 2.5, y: 1.5 }, blankLabel())).toBe(false);
+  });
+
+  test('no own label when no portal shows the own position', () => {
+    // In the hall, behind the doorway's back.
+    expect(placeOwnLabel(LOOP, loopBack(), { x: 2.5, y: 4.5 }, blankLabel())).toBe(false);
   });
 });

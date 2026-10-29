@@ -89,7 +89,8 @@ part.
   - muffling behind walls;
   - the apparent position through portals (D27 §2.6).
 
-  So it is heard from behind the doorway too, the way any sound is.
+  It is silent behind the doorway, where the doorway is ordinary (amended 2026-10-29: the user asked that it not be
+  heard from behind the portal, like the glow). Standing on or behind a doorway's plane fades its hum out.
 - **Its sound, settled in the sketch:**
   - a 98 Hz sine at 20% level (the user turned the base down: "not 20% of volume" → 20%);
   - plus a triangle a fifth above (147 Hz) at 25% level;

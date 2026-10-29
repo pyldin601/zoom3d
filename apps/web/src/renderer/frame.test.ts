@@ -14,7 +14,7 @@ import { describe, expect, test } from 'vitest';
 import { twoDoorways } from '../../../../packages/shared/src/portals/test-doorways';
 import { PORTAL_PINK } from '../game/portal-pulse';
 import type { PeerFacts } from '../media/interest';
-import { type RoomScene, renderView } from './frame';
+import { ownAvatarShown, type RoomScene, renderView } from './frame';
 import { createFramebuffer, type Framebuffer, rgb } from './framebuffer';
 import { bakeLighting, corridorLights, type Lighting } from './lighting';
 import { VACUUM_MODEL } from './models/vacuum';
@@ -71,6 +71,8 @@ describe('renderView without portals', () => {
     objects: [{ model: VACUUM_MODEL, x: sx + 1.1, y: sy - 0.6, angle: 0.7 }],
     labels: [],
     ownGlow: { x: sx, y: sy, face: null, color: rgb(250, 220, 120) },
+    self: null,
+    ownLabel: null,
     portalPulse: 1,
     portalTime: 0,
     firstPerson: null,
@@ -118,6 +120,8 @@ function portalScene(
     objects: [],
     labels: [],
     ownGlow: null,
+    self: null,
+    ownLabel: null,
     portalPulse: 1,
     portalTime: 0,
     firstPerson: null,
@@ -338,5 +342,162 @@ describe('windows within windows', () => {
     const row = second.start + 1;
     expect(rowsCovered(fb.height, proj / 8).start).toBeGreaterThan(row);
     expect(pixelAt(fb, CENTRE_COL, row)).not.toBe(BLACK);
+  });
+});
+
+/**
+ * A corridor running south down x = 2, through a doorway in a wall across it at each of `doors`' rows. Every portal's
+ * front faces north and leads straight on from the doorway at its `leadsTo` row, so one leading north loops back.
+ */
+function corridorOfDoorways(
+  height: number,
+  doors: readonly { y: number; leadsTo: number }[]
+): {
+  map: GameMap;
+  portals: Portals;
+} {
+  const rows = Array.from({ length: height }, (_, y): string => {
+    if (y === 0 || y === height - 1) {
+      return '11111';
+    }
+    return doors.some((d) => d.y === y) ? '11.11' : '1...1';
+  });
+  rows[1] = '1.S.1';
+  const map = parseMap(rows.join('\n'));
+  const rowOf = new Map(doors.map((d, k) => [d.y, k]));
+  const list: Portal[] = doors.map(({ y, leadsTo }) => {
+    const toDest: RigidTransform = { cos: 1, sin: 0, tx: 0, ty: leadsTo - y };
+    return {
+      door: { x: 2, y, axis: 'ns' },
+      cx: 2.5,
+      cy: y + 0.5,
+      nx: 0,
+      ny: 1,
+      to: rowOf.get(leadsTo) ?? 0,
+      toDest,
+      fromDest: invert(toDest),
+    };
+  });
+  const byTile = new Int32Array(map.width * map.height).fill(-1);
+  list.forEach((p, k) => {
+    byTile[p.door.y * map.width + p.door.x] = k;
+  });
+  return { map, portals: { map, list, byTile } };
+}
+
+const GREEN = rgb(0, 255, 0);
+
+/** The local player's own disc, standing at `eye`. */
+const ownAvatar = (at: { x: number; y: number }): Sprite => ({ ...plainPerson('self', at.x, at.y), color: GREEN });
+
+/** Columns of the frame's own pass that show a window. */
+const windowColumns = (fb: Framebuffer) => [...fb.portalAt.keys()].filter((col) => (fb.portalAt[col] as number) >= 0);
+
+/** The pixels where `a` and `b` differ, as [col, row]. */
+function differences(a: Framebuffer, b: Framebuffer): [number, number][] {
+  const out: [number, number][] = [];
+  a.pixels.forEach((pixel, i) => {
+    if (pixel !== b.pixels[i]) {
+      out.push([i % a.width, Math.floor(i / a.width)]);
+    }
+  });
+  return out;
+}
+
+/** Green well above red and blue: the own disc's colour through a window's pink shimmer. */
+const looksGreen = (pixel: number) => {
+  const r = pixel & 0xff;
+  const g = (pixel >>> 8) & 0xff;
+  const b = (pixel >>> 16) & 0xff;
+  return g > 2 * r && g > 2 * b;
+};
+
+describe('the own avatar', () => {
+  // Doorway 11 leads back north onto doorway 7: looking south at 11 from (2.5, 9.5), its window looks from (2.5, 5.5)
+  // past 7's plane, and sees the eye's spot 4 tiles ahead.
+  const loop = corridorOfDoorways(14, [
+    { y: 7, leadsTo: 11 },
+    { y: 11, leadsTo: 7 },
+  ]);
+  const eye: PlayerState = { x: 2.5, y: 9.5, angle: SOUTH };
+
+  function withAndWithout(
+    map: GameMap,
+    portals: Portals | null,
+    from: PlayerState,
+    self: Sprite
+  ): { shown: Framebuffer; plain: Framebuffer } {
+    const shown = createFramebuffer();
+    renderView(shown, { ...portalScene(map, portals, from), self });
+    const plain = createFramebuffer();
+    renderView(plain, portalScene(map, portals, from));
+    return { shown, plain };
+  }
+
+  test('the own avatar shows through a window that looks back at the eye', () => {
+    const { shown, plain } = withAndWithout(loop.map, loop.portals, eye, ownAvatar(eye));
+    const inWindow = new Set(windowColumns(shown));
+    const changed = differences(shown, plain);
+    expect(changed.length).toBeGreaterThan(0);
+    expect(changed.every(([col]) => inWindow.has(col))).toBe(true);
+    expect(changed.some(([col, row]) => looksGreen(pixelAt(shown, col, row)))).toBe(true);
+  });
+
+  test("the own avatar shows only beyond the window's plane", () => {
+    // From (2.5, 5.5) the window starts at 7's plane, 2 tiles on: a disc 1 tile on is short of it.
+    const { shown, plain } = withAndWithout(loop.map, loop.portals, eye, ownAvatar({ x: 2.5, y: 6.5 }));
+    expect(differences(shown, plain)).toEqual([]);
+  });
+
+  test('the main pass never draws the own avatar', () => {
+    // Facing north, away from both doorways: no window on screen, and a disc 1 tile ahead.
+    const north: PlayerState = { x: 2.5, y: 9.5, angle: -SOUTH };
+    const { shown, plain } = withAndWithout(loop.map, loop.portals, north, ownAvatar({ x: 2.5, y: 8.5 }));
+    expect(windowColumns(shown)).toEqual([]);
+    expect(differences(shown, plain)).toEqual([]);
+  });
+
+  test('with portals off the frame is the same as today', () => {
+    const { shown, plain } = withAndWithout(loop.map, null, eye, ownAvatar({ x: 2.5, y: 10.5 }));
+    expect(differences(shown, plain)).toEqual([]);
+  });
+
+  test('seen never counts the local player', () => {
+    const seen = new Map<string, PeerFacts>();
+    renderView(createFramebuffer(), { ...portalScene(loop.map, loop.portals, eye), self: ownAvatar(eye) }, seen);
+    renderView(createFramebuffer(), { ...portalScene(loop.map, loop.portals, eye), self: ownAvatar(eye) }, seen);
+    expect(seen.has('self')).toBe(false);
+  });
+
+  test('the frame says whether its windows showed the own avatar', () => {
+    const seen = new Map<string, PeerFacts>();
+    renderView(createFramebuffer(), { ...portalScene(loop.map, loop.portals, eye), self: ownAvatar(eye) }, seen);
+    expect(ownAvatarShown()).toBe(true);
+    const short = ownAvatar({ x: 2.5, y: 6.5 });
+    renderView(createFramebuffer(), { ...portalScene(loop.map, loop.portals, eye), self: short }, seen);
+    expect(ownAvatarShown()).toBe(false);
+    renderView(createFramebuffer(), { ...portalScene(loop.map, null, eye), self: ownAvatar(eye) }, seen);
+    expect(ownAvatarShown()).toBe(false);
+    renderView(createFramebuffer(), { ...portalScene(loop.map, loop.portals, eye), self: ownAvatar(eye) }, seen);
+    expect(ownAvatarShown()).toBe(true);
+  });
+
+  test('the own avatar shows through a window within a window that looks back at the eye', () => {
+    // Doorway 9 leads 3 south onto 12; past it the first window sees doorway 15, which leads 9 north onto 6: the second
+    // window looks from (2.5, 1.5) past 6's plane and sees the eye's spot 6 tiles ahead. Neither the frame's own pass
+    // nor the first window can see it.
+    const nested = corridorOfDoorways(19, [
+      { y: 6, leadsTo: 15 },
+      { y: 9, leadsTo: 12 },
+      { y: 12, leadsTo: 9 },
+      { y: 15, leadsTo: 6 },
+    ]);
+    const at: PlayerState = { x: 2.5, y: 7.5, angle: SOUTH };
+    const { shown, plain } = withAndWithout(nested.map, nested.portals, at, ownAvatar(at));
+    const inWindow = new Set(windowColumns(shown));
+    const changed = differences(shown, plain);
+    expect(changed.length).toBeGreaterThan(0);
+    expect(changed.every(([col]) => inWindow.has(col))).toBe(true);
+    expect(changed.some(([col, row]) => looksGreen(pixelAt(shown, col, row)))).toBe(true);
   });
 });

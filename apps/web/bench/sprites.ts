@@ -162,6 +162,8 @@ function drawWholeFrame(state: 'off' | 'on', s: Scene): void {
     objects: s.voxels,
     labels: [],
     ownGlow: null,
+    self: null,
+    ownLabel: null,
     portalPulse: 1,
     portalTime: 0,
     firstPerson: null,

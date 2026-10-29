@@ -559,6 +559,14 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     - **With portals off, a local teleport over 2 tiles** zeroes the ball body's velocity and peers snap instead of
       gliding: a tiny change to today's behaviour that falls out of the shared jump handling.
     - **Fan-out costs more with portals on** (the apparent-position search per pair): measured below.
+    - **A player never saw themselves through a portal loop:** closed 2026-10-29
+      ([spec](superpowers/specs/2026-10-29-portal-self-design.md)). Window passes draw the own disc (`RoomScene.self`)
+      at the own spot, and the own label sits at the nearest image of that spot seen through one or two portals
+      (`imagePosition`, the apparent-position search without its straight line). The main pass draws neither, and the
+      label stays out of `labels`, which the automap reads. The own disc has no speaking glow: the room keeps no level
+      of the own mic. The own face is read back only while a window shows the own disc, at 128² doubled to 256².
+      With the camera off or giving no picture, the own disc shows the face others see then: the avatar picture, or
+      else the initials disc, built once per visit by the same `createFace` (never given a video), so no readback.
   - **Measured** (2026-10-28, against base 0572557, origin/main when the branch was cut; LEVEL1 at 640×360, lit, reflections `both`; the machine was loaded, read the ratios):
     - `bench:walls`, existing modes with portals off: unchanged hashes, `both` 1.51 ms on the base vs 1.56 ms here.
       From 1.5 tiles in front of 8 doorways: `renderWalls` 1.58 ms off, 0.92 ms on (the window passes are cheaper than
@@ -650,6 +658,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     doesn't restart it. Past that distance the engine's gain is already 0, so the fade out is silent, and a hum
     re-entering while its old one still fades can replace it without a click. From 2000 random open spots on LEVEL1,
     a median of 10 of the 24 doorways are in range (90th percentile 14, at most 19).
+  - **No hum behind a doorway** (the owner's call after playing it, 2026-10-29). A listener on or behind a doorway's
+    plane hears none of its hum, which fades out as they step behind it, like the glow's cut: from behind, a doorway
+    is ordinary.
   - **Levels, tuned by eye while playing locally (2026-10-29).** `PORTAL_GLOW_STRENGTH` stays at 0.9 (0.5 was tried
     and was too faint). The window's shimmer is half the sketch's, `k = 0.08 + 0.1·pulse + 0.05·ripple`, so the room
     seen through it is clearer. `HUM_GAIN` (0.04) is still the first guess, awaiting a listen.
@@ -707,9 +718,11 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **The first switch-on in a room (`first_on`), 7 s:** a countdown "Portals will enable in 3…, 2…, 1…" for 3 s, then
     darkness from 3 s. The space bends at 5 s, and the portals light up alone in the dark (windows, rim, spill, hum).
     The lamps return at 7 s.
-  - **Every later switch, on or off (`on`, `off`), 1 s:** a plain blackout with no countdown. The space bends at 0.5 s
-    and the lamps return at 1 s. The timeline is `packages/shared/src/portals/sequence.ts`, read by the server and every
-    client.
+  - **Every later switch, on or off (`on`, `off`), 1 s:** a plain blackout with no countdown, the lamps back at 1 s.
+    Switching off unbends the space with the press, so the portals go out with the lights; switching on bends it at
+    1 s, so they come back with them (the owner's calls after playing it, 2026-10-29; both were at 0.5 s, in the dark,
+    before). The server sends an off's bend right behind its sequence message. The timeline is
+    `packages/shared/src/portals/sequence.ts`, read by the server and every client.
   - **The debounce follows the sequence** (the owner: "align portals on/off debounce"). Y is ignored while a sequence
     runs in the room, and `PORTALS_FLIP_GAP_MS` is gone. When one ends, the next press starts the next at once.
   - **One message, no clock syncing.** The server sends `{ type: 'portals_sequence', kind, age }` once per sequence,
@@ -725,7 +738,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     past `lightsAtMs`; the lights-on sound plays when the lamps really return. The space never bends in lamp light,
     unless the bend is over 2 s late. A stalled tab can get the press and the bend in one burst, which would show the
     countdown over a bent space: a flag already at the target before `bendAtMs` can only mean that, so the client
-    jumps to the bend (no countdown, no lights-off sound, the dark from there and the lamps 2 s or 0.5 s later).
+    jumps to the bend (no countdown, no lights-off sound; the dark from there and the lamps 2 s later, or at once for a
+    later switch-on, whose bend and lights share a time).
   - **A countdown pulse, and no flicker in "lights on"** (both the owner's picks by ear in the sound sketch,
     2026-10-29): a short 440 Hz triangle pulse plays as each countdown number shows, at 0, 1 and 2 s of `first_on`
     (skipped when over 300 ms late, like every cue). The fluorescent flicker ticks of "lights on" are gone: it is the
