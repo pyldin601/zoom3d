@@ -76,11 +76,15 @@ game's scaling; "reverb" is a dry/wet send to a decaying-noise impulse of the gi
     length, then to 0.001 at the length + 0.25;
   - a 100 Hz sawtooth "buzz" through a 900 Hz low-pass; gain 0.0001 → 0.0875 (0.35 × 0.25) at 0.7 of the length,
     then to 0.0001 at the length + 0.3.
-- **Lights on** (level 0.5, reverb tail 1.5 s at 0.35 wet, flicker span 0.3):
+- **Lights on** (level 0.5, reverb tail 1.5 s at 0.35 wet, span 0.3):
   - a click: 0.05 s of noise through a 1600 Hz band-pass (Q 2), gain 1.6 falling exponentially to 0.001 in 0.04;
-  - 3 flicker ticks, the same click at gain 0.5–0.9, spread evenly across the span with up to 20 ms of jitter;
+  - no flicker ticks (the user removed the "takata" after playing it, 2026-10-29);
   - a 100 Hz sawtooth hum through a 700 Hz low-pass; gain 0.0001 → 0.045 (0.3 × 0.15) at the span + 0.1, then to
     0.0001 at the span + 1.2.
+- **Countdown** (added 2026-10-29, picked by the user in the sketch): one pulse as each number shows, at 0, 1 and 2 s
+  of `first_on` (level 0.3, reverb tail 1.2 s at 0.3 wet):
+  - a 440 Hz triangle; gain 0.0001 → 0.5 (exponential) in 0.003, held to 0.25, then exponentially to 0.0001 at
+    0.25 + 0.04; the oscillator stops at 0.31.
 
 ### 2.4 Who starts it, and the debounce
 
