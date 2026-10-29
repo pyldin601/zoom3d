@@ -33,8 +33,8 @@ export interface RoomScene extends PassScene {
   /** The local player's own face lights the room round them, as everyone's does; null until they have a colour. */
   ownGlow: GlowSource | null;
   /**
-   * The local player's own disc, at their own spot: only windows draw it, as the eye stands there. Null while there
-   * is no window to see it through.
+   * The local player's own disc, at their own spot: only windows draw it, as the eye stands there. Null with portals
+   * off or out of the room.
    */
   self: Sprite | null;
   /** What the local player holds; null while they aren't in the room (reconnecting). */
@@ -67,6 +67,7 @@ const windowLevels: WindowLevel[] = [];
 const seenThroughWindows = new Map<string, PeerFacts>();
 /** The people every window draws: the scene's, then the local player's own disc. */
 const windowPeople: Sprite[] = [];
+let ownAvatarDrawn = false;
 const frameView = createView();
 
 /** `seen` gets, per person, how much of them this frame drew (dynamic subscription reads it). */
@@ -81,13 +82,22 @@ export function renderView(fb: Framebuffer, scene: RoomScene, seen?: Map<string,
     listWindowPeople(scene.people, scene.self);
   }
   drawPass(fb, scene, glows, seen, 0);
-  if (scene.portals && seen) {
+  const windowsCounted = scene.portals !== null && seen !== undefined;
+  if (windowsCounted) {
     seenThroughWindows.forEach(addToSeen, seen);
   }
+  ownAvatarDrawn =
+    windowsCounted && scene.self !== null && (seenThroughWindows.get(scene.self.key)?.drawnColumns ?? 0) > 0;
   if (scene.firstPerson) {
     drawFirstPerson(fb, scene.firstPerson);
   }
 }
+
+/**
+ * Whether the last frame's windows drew any of the own disc: its face is worth reading back only then. Counted only
+ * for a frame drawn with a `seen` map.
+ */
+export const ownAvatarShown = () => ownAvatarDrawn;
 
 /** Copied every frame, as the scene's list can keep its length and change whose discs it holds. */
 function listWindowPeople(people: readonly Sprite[], self: Sprite | null): void {

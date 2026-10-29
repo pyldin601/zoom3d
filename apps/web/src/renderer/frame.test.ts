@@ -14,7 +14,7 @@ import { describe, expect, test } from 'vitest';
 import { twoDoorways } from '../../../../packages/shared/src/portals/test-doorways';
 import { PORTAL_PINK } from '../game/portal-pulse';
 import type { PeerFacts } from '../media/interest';
-import { type RoomScene, renderView } from './frame';
+import { ownAvatarShown, type RoomScene, renderView } from './frame';
 import { createFramebuffer, type Framebuffer, rgb } from './framebuffer';
 import { bakeLighting, corridorLights, type Lighting } from './lighting';
 import { VACUUM_MODEL } from './models/vacuum';
@@ -465,6 +465,19 @@ describe('the own avatar', () => {
     renderView(createFramebuffer(), { ...portalScene(loop.map, loop.portals, eye), self: ownAvatar(eye) }, seen);
     renderView(createFramebuffer(), { ...portalScene(loop.map, loop.portals, eye), self: ownAvatar(eye) }, seen);
     expect(seen.has('self')).toBe(false);
+  });
+
+  test('the frame says whether its windows showed the own avatar', () => {
+    const seen = new Map<string, PeerFacts>();
+    renderView(createFramebuffer(), { ...portalScene(loop.map, loop.portals, eye), self: ownAvatar(eye) }, seen);
+    expect(ownAvatarShown()).toBe(true);
+    const short = ownAvatar({ x: 2.5, y: 6.5 });
+    renderView(createFramebuffer(), { ...portalScene(loop.map, loop.portals, eye), self: short }, seen);
+    expect(ownAvatarShown()).toBe(false);
+    renderView(createFramebuffer(), { ...portalScene(loop.map, null, eye), self: ownAvatar(eye) }, seen);
+    expect(ownAvatarShown()).toBe(false);
+    renderView(createFramebuffer(), { ...portalScene(loop.map, loop.portals, eye), self: ownAvatar(eye) }, seen);
+    expect(ownAvatarShown()).toBe(true);
   });
 
   test('the own avatar shows through a window within a window that looks back at the eye', () => {

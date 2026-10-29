@@ -15,6 +15,7 @@ import type { FirstPerson } from '../renderer/frame';
 import type { GlowSource } from '../renderer/glow';
 import { createGestureClock, type GestureClock } from '../renderer/sip';
 import { ringRgb, type Sprite } from '../renderer/sprites';
+import { blankSprite } from './remote-world';
 
 /** The own disc's key: no peer has it, so it never reaches the facts dynamic subscription reads. */
 export const OWN_SPRITE_KEY = 'self';
@@ -37,8 +38,11 @@ export interface LocalPlayer {
   useCameraFace(texelsAt: (now: number) => Uint32Array | null): void;
   /** In the camera's colour, else the ring's; null until the room gives the player a ring colour. */
   glow(now: number, ringColour: string | null): GlowSource | null;
-  /** The own disc as others see it, a flat one while the camera is off; null until the room gives a ring colour. */
-  avatar(now: number, ringColour: string | null): Sprite | null;
+  /**
+   * The own disc as others see it, a flat one while the camera is off; null until the room gives a ring colour. Its
+   * face is read again only when `faceShown` (a window drew the disc last frame), else the last one is kept.
+   */
+  avatar(now: number, ringColour: string | null, faceShown: boolean): Sprite | null;
   firstPerson(now: number): FirstPerson;
 }
 
@@ -50,22 +54,8 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
   let cameraColour: (now: number) => number | null = () => null;
   let cameraFace: (now: number) => Uint32Array | null = () => null;
   const glowSource = { x: 0, y: 0, face: null, color: 0 };
-  const ownDisc: Sprite = {
-    key: OWN_SPRITE_KEY,
-    x: 0,
-    y: 0,
-    color: 0,
-    face: null,
-    // The room measures no level of the own mic, so the own ring never brightens.
-    speaking: 0,
-    bob: 0,
-    itemBob: 0,
-    sip: 0,
-    cheers: 0,
-    wobble: 0,
-    held: null,
-    boombox: false,
-  };
+  // The room measures no level of the own mic, so the own ring never brightens: `speaking` stays 0.
+  const ownDisc = blankSprite(OWN_SPRITE_KEY);
   const held: FirstPerson = { drink: null, boombox: false, step, gesture: gesture.pose(0) };
 
   const localPlayer: LocalPlayer = {
@@ -106,14 +96,16 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       glowSource.color = cameraColour(now) ?? ringRgb(ringColour);
       return glowSource;
     },
-    avatar(now, ringColour) {
+    avatar(now, ringColour, faceShown) {
       if (!ringColour) {
         return null;
       }
       ownDisc.x = pose.x;
       ownDisc.y = pose.y;
       ownDisc.color = ringRgb(ringColour);
-      ownDisc.face = cameraFace(now);
+      if (faceShown) {
+        ownDisc.face = cameraFace(now);
+      }
       ownDisc.bob = step.lift;
       ownDisc.itemBob = step.itemLift;
       const { sip, cheers, wobble } = gesture.pose(now);

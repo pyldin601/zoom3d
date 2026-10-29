@@ -219,7 +219,8 @@ export function createRemoteWorld(): RemoteWorld {
   };
 }
 
-function blankSprite(key: string): Sprite {
+/** A sprite with no one's look yet, filled frame by frame. */
+export function blankSprite(key: string): Sprite {
   return {
     key,
     x: 0,

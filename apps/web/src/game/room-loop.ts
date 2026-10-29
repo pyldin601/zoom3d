@@ -5,7 +5,7 @@ import { type Apparent, BALL_KICK_REACH, type BallBody, type GameMap, JUMP_TILES
 import { HIDDEN_TICK_MS } from '../audio/ticker';
 import type { Input } from '../input/keyboard';
 import { createSubscription } from '../media/subscription';
-import { type RoomScene, renderHud, renderView } from '../renderer/frame';
+import { ownAvatarShown, type RoomScene, renderHud, renderView } from '../renderer/frame';
 import type { Lighting } from '../renderer/lighting';
 import { BALL_MODEL, createBallRoll, recolourBall, rollBy } from '../renderer/models/ball';
 import { showCountdown } from '../ui/portal-countdown';
@@ -198,8 +198,8 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     scene.portalTime = portalSeconds;
     const ringColour = room?.session.selfColor() ?? null;
     scene.ownGlow = localPlayer.glow(now, ringColour);
-    // Only windows draw the own disc, so with portals off its face is never read back.
-    scene.self = scene.portals && isConnected(room) ? localPlayer.avatar(now, ringColour) : null;
+    // Only windows draw the own disc, and reading its face back stalls on the GPU: read it only while one shows it.
+    scene.self = scene.portals && isConnected(room) ? localPlayer.avatar(now, ringColour, ownAvatarShown()) : null;
     scene.firstPerson = isConnected(room) ? localPlayer.firstPerson(now) : null;
     return scene;
   };

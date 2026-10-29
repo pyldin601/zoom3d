@@ -41,8 +41,8 @@ test('the glow: none without a ring colour, the ring without a camera, the camer
 
 test('the own disc: none without a ring colour, else at the pose with the camera face and what is in hand', () => {
   const localPlayer = createLocalPlayer(MAP, () => 0.5);
-  expect(localPlayer.avatar(0, null)).toBeNull();
-  expect(localPlayer.avatar(0, '#ff0000')).toMatchObject({
+  expect(localPlayer.avatar(0, null, true)).toBeNull();
+  expect(localPlayer.avatar(0, '#ff0000', true)).toMatchObject({
     key: OWN_SPRITE_KEY,
     x: localPlayer.pose.x,
     y: localPlayer.pose.y,
@@ -56,10 +56,29 @@ test('the own disc: none without a ring colour, else at the pose with the camera
   localPlayer.takeDrink('beer');
   localPlayer.boombox = true;
   localPlayer.gesture.start('sip', 0);
-  const disc = localPlayer.avatar(500, '#ff0000');
+  const disc = localPlayer.avatar(500, '#ff0000', true);
   expect(disc).toMatchObject({ face, held: 'beer', boombox: true, cheers: 0 });
   expect(disc?.sip).toBeGreaterThan(0);
-  expect(localPlayer.avatar(600, '#ff0000')).toBe(disc);
+  expect(localPlayer.avatar(600, '#ff0000', true)).toBe(disc);
+});
+
+test('the own face is read only while a window shows the own disc, keeping the last one between', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  let reads = 0;
+  const face = new Uint32Array(4);
+  localPlayer.useCameraFace(() => {
+    reads++;
+    return face;
+  });
+  expect(localPlayer.avatar(0, '#ff0000', false)?.face).toBeNull();
+  expect(localPlayer.avatar(50, '#ff0000', false)?.face).toBeNull();
+  expect(reads).toBe(0);
+  expect(localPlayer.avatar(100, '#ff0000', true)?.face).toBe(face);
+  expect(reads).toBe(1);
+  expect(localPlayer.avatar(150, '#ff0000', false)?.face).toBe(face);
+  expect(reads).toBe(1);
+  localPlayer.avatar(200, '#ff0000', true);
+  expect(reads).toBe(2);
 });
 
 test('first person shows the drink and boombox in hand, mid-gesture', () => {
