@@ -186,6 +186,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
         backtickConsole.refreshBoombox();
       },
       onPortalsChanged: (on) => showPortalNotice(page.ui, on),
+      lighting: roomLighting,
     });
     showRoomScreen(page.ui, { call: room.call, local, name, avatar });
     if (flags.touch) {

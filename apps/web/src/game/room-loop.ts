@@ -143,9 +143,9 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   const describeScene = (now: number) => {
     // The console's lighting mode; flat is drawn unlit, as with `?lights=off`.
     const reflections = litReflections(o.renderMode());
-    scene.lighting = reflections === null ? null : o.roomLighting();
     scene.reflections = reflections ?? 'none';
     const room = o.room();
+    scene.lighting = reflections === null ? null : (room?.lighting() ?? o.roomLighting());
     scene.portals = room?.portals() ?? null;
     scene.ownGlow = localPlayer.glow(now, room?.session.selfColor() ?? null);
     scene.firstPerson = isConnected(room) ? localPlayer.firstPerson(now) : null;

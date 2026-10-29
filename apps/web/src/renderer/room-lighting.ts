@@ -1,7 +1,7 @@
 // The room's lamp light, baked on first use (about 100 ms) rather than at page load, so the landing page never waits
 // for it; by then the join is already connecting.
-import type { GameMap } from '@zoom3d/shared';
-import { bakeLighting, corridorLights, type Lighting } from './lighting';
+import type { GameMap, Portals } from '@zoom3d/shared';
+import { bakeLighting, bakePortalLighting, corridorLights, type Lighting } from './lighting';
 import { averageColour } from './textures';
 import { CEILING, FLOOR } from './walls';
 
@@ -24,4 +24,15 @@ export function bakeRoomLightingOnce(map: GameMap, textures: Uint32Array[], lit:
     };
     return baked.lighting;
   };
+}
+
+export interface RoomLighting {
+  /** The table for a room whose portals are on or off. Null when the room is unlit. */
+  lighting(portalsOn: boolean): Lighting | null;
+}
+
+/** The portals-on table is baked here, at once, so it is ready before the first welcome can turn portals on. */
+export function createRoomLighting(plain: Lighting | null, portals: Portals): RoomLighting {
+  const withPortals = plain && bakePortalLighting(plain, portals, FLOOR, CEILING);
+  return { lighting: (portalsOn) => (portalsOn ? withPortals : plain) };
 }

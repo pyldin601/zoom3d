@@ -12,6 +12,8 @@ import { createLiveKitTransport } from '../media/livekit';
 import type { LocalMediaController } from '../media/local-media';
 import { createRemoteMedia } from '../media/remote-media';
 import { createSession, type Session } from '../net/session';
+import type { Lighting } from '../renderer/lighting';
+import { createRoomLighting } from '../renderer/room-lighting';
 import { track } from '../telemetry/analytics';
 import { createRoomTracker, type RoomTracker, withRoomTracker } from '../telemetry/room-tracker';
 import { botsParam } from '../ui/route';
@@ -27,6 +29,8 @@ export interface Room {
   readonly ball: BallPrediction;
   /** The map's portal wiring while the room's portals are on, else null: today's doors. */
   portals(): Portals | null;
+  /** The baked lamp light for this frame: the portals-on table while `portals()` isn't null, else the page's. */
+  lighting(): Lighting | null;
   /** Kicks the ball the way the local player faces, if it is in reach: at once here, and on to the server. */
   kick(): void;
 }
@@ -48,10 +52,14 @@ export interface JoinOptions {
   onBoomboxChange(on: boolean): void;
   /** Someone flipped the room's portals (not called for the welcome's flag). */
   onPortalsChanged(on: boolean): void;
+  /** The page's plain lamp light table. */
+  lighting: () => Lighting | null;
 }
 
 export function joinRoom(opts: JoinOptions): Room {
   const audio = createAudioEngine({ ctx: opts.audioCtx, map: opts.map });
+  const wiring = wirePortals(opts.map, opts.roomId);
+  const roomLighting = createRoomLighting(opts.lighting(), wiring);
   let session: Session | null = null;
   const objectSounds = createObjectSounds(opts.audioCtx, audio, () => session?.selfId() ?? null);
   const call = createRoomCall(opts, audio);
@@ -70,15 +78,11 @@ export function joinRoom(opts: JoinOptions): Room {
       objectSounds.localEvent(kicked.id, 'kick');
     }
   };
-  let wiring: Portals | null = null;
   function portals() {
-    if (!joined.portals) {
-      return null;
-    }
-    wiring ??= wirePortals(opts.map, opts.roomId);
-    return wiring;
+    return joined.portals ? wiring : null;
   }
-  return { session: joined, call, audio, objectSounds, boombox, tracker, ball, portals, kick };
+  const lighting = () => roomLighting.lighting(portals() !== null);
+  return { session: joined, call, audio, objectSounds, boombox, tracker, ball, portals, lighting, kick };
 }
 
 /** In the room and connected: not joining, reconnecting or failed. */
