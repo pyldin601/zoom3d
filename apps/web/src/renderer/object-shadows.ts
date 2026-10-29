@@ -285,7 +285,7 @@ function shadeCell(
   albedo: number,
   tables: PatchedFloor
 ): void {
-  const pastWalls = slot >= 0 ? (lm.floorLampSeen[slot] as number) / 255 : seenShare(lm.map, x, y, l);
+  const pastWalls = slot >= 0 ? (lm.floorLampSeen[slot] as number) / 255 : seenShare(lm.map, lm.portals, x, y, l);
   if (pastWalls === 0) {
     return;
   }
