@@ -10,19 +10,16 @@ type Gain = FakeNode & { gain: FakeParam };
 
 let ctx: FakeAudioContext;
 let played: FakeNode[];
-let sends: number[];
 beforeEach(() => {
   vi.useFakeTimers();
   ctx = new FakeAudioContext();
   played = [];
-  sends = [];
 });
 afterEach(() => vi.useRealTimers());
 
 const engine = {
-  playUnplaced(node: AudioNode, send: number) {
+  playUnplaced(node: AudioNode) {
     played.push(node as unknown as FakeNode);
-    sends.push(send);
   },
 } as unknown as AudioEngine;
 
@@ -161,12 +158,4 @@ test('the reverb impulses are built once, not on every play', () => {
   s.lightsOff();
   const [first, second] = ofKind<Convolver>(nodesSince(builtAt), 'convolver');
   expect(first?.buffer).toBe(second?.buffer);
-});
-
-test('sends nothing extra into the room reverb: each sound carries its own', () => {
-  const s = sounds();
-  s.lightsOff();
-  s.portalsOn();
-  s.lightsOn();
-  expect(sends).toEqual([0, 0, 0]);
 });

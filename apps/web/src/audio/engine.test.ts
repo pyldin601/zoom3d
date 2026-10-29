@@ -312,20 +312,10 @@ describe('attachNode', () => {
 });
 
 describe('playUnplaced', () => {
-  test('sends the node straight out and into the shared reverb, with no panner or distance', () => {
+  test('sends the node straight out, with no panner, distance or shared reverb', () => {
     const node = new FakeNode('synth');
-    engine().playUnplaced(node as unknown as AudioNode, 0.2);
-    const convolver = one('convolver');
-    expect(node.connections[0]).toBe(ctx.destination);
-    const send = node.connections[1] as FakeNode & { gain: FakeParam };
-    expect(send.gain.value).toBe(0.2);
-    expect(send.connections).toEqual([convolver]);
-    expect(ctx.byKind('panner')).toHaveLength(0);
-  });
-
-  test('a send of 0 goes out dry only', () => {
-    const node = new FakeNode('synth');
-    engine().playUnplaced(node as unknown as AudioNode, 0);
+    engine().playUnplaced(node as unknown as AudioNode);
     expect(node.connections).toEqual([ctx.destination]);
+    expect(ctx.byKind('panner')).toHaveLength(0);
   });
 });

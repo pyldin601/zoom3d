@@ -6,8 +6,6 @@ import type { AudioEngine } from './engine';
 /** Master level on top of the recipe's, so the loudest switch sound stays under a voice. Tuned by ear. */
 export const SWITCH_SOUND_GAIN = 0.25;
 
-/** Each sound's tail is its own, from the recipe; the room's short reverb on top would change what was approved. */
-const ROOM_REVERB_SEND = 0;
 /** As in the sketch: scheduling a moment ahead keeps the first ramps from being cut off. */
 const START_AHEAD_S = 0.02;
 
@@ -77,7 +75,8 @@ export function createPortalSwitchSounds(ctx: BaseAudioContext, engine: AudioEng
   const clickNoise = whiteNoise(ctx, LIGHTS_ON.clickS);
 
   /**
-   * A sound's output: dry plus its own reverb, sent on to the engine. Every node goes in `nodes`, and all are
+   * A sound's output: dry plus its own reverb, sent on to the engine. Never the room's shared reverb: its short tail
+   * on top would change the approved sound. Every node goes in `nodes`, and all are
    * disconnected once the last source has stopped (`endS` after `t`) and the tail has died away.
    */
   const outputFor = (
@@ -96,7 +95,7 @@ export function createPortalSwitchSounds(ctx: BaseAudioContext, engine: AudioEng
     const mix = ctx.createGain();
     out.connect(mix);
     out.connect(reverb).connect(wet).connect(mix);
-    engine.playUnplaced(mix, ROOM_REVERB_SEND);
+    engine.playUnplaced(mix);
     nodes.push(out, reverb, wet, mix);
     const releaseInS = t + endS + sound.tailS - ctx.currentTime;
     setTimeout(() => {
