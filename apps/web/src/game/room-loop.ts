@@ -74,7 +74,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     portals: null,
   };
 
-  const cues: SequenceCues = { lightsOff: false, portalsOn: false, lightsOn: false };
+  const cues: SequenceCues = { countdown: false, lightsOff: false, portalsOn: false, lightsOn: false };
 
   /**
    * Moves the room's portal sequence on, shows its countdown and plays its sounds, hidden tab included: the sounds are
@@ -84,6 +84,9 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     room.sequence.update(room.session.sequence, now, room.session.portals);
     showCountdown(o.ui, room.sequence.countdown);
     room.sequence.takeCues(cues);
+    if (cues.countdown) {
+      room.switchSounds.countdown();
+    }
     if (cues.lightsOff) {
       room.switchSounds.lightsOff();
     }

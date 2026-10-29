@@ -726,6 +726,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     unless the bend is over 2 s late. A stalled tab can get the press and the bend in one burst, which would show the
     countdown over a bent space: a flag already at the target before `bendAtMs` can only mean that, so the client
     jumps to the bend (no countdown, no lights-off sound, the dark from there and the lamps 2 s or 0.5 s later).
+  - **A countdown pulse, and no flicker in "lights on"** (both the owner's picks by ear in the sound sketch,
+    2026-10-29): a short 440 Hz triangle pulse plays as each countdown number shows, at 0, 1 and 2 s of `first_on`
+    (skipped when over 300 ms late, like every cue). The fluorescent flicker ticks of "lights on" are gone: it is the
+    breaker click and the hum.
   - **Darkness is a table swap, never a dimming factor.** A third lighting table per room has no lamps, ambient 0 and no
     bounce, so it costs nothing per frame. Glows add their light on top as usual: faces keep their own brightness (they
     were never lamp-shaded) and the portal glows keep their shadows, because the table reuses the portals-on table's

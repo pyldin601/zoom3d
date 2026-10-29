@@ -32,7 +32,7 @@ const ofKind = <T>(nodes: FakeNode[], kind: string) => nodes.filter((n) => n.kin
 const startsAt = () => ctx.currentTime + 0.02;
 
 /** Plays one sound and returns the nodes it built, checking it reaches the engine through its own reverb. */
-function play(which: 'lightsOff' | 'portalsOn' | 'lightsOn', level: number, tailS: number, wet: number) {
+function play(which: 'countdown' | 'lightsOff' | 'portalsOn' | 'lightsOn', level: number, tailS: number, wet: number) {
   const s = sounds();
   const before = ctx.nodes.length;
   s[which]();
@@ -119,26 +119,31 @@ test('portals on: a sine rising 140 → 520 Hz over 0.7 s over a filtered 100 Hz
   expectReleasedAfter(nodes, 0.02 + 1.05 + 1.2);
 });
 
-test('lights on: a click, three flicker ticks across 0.3 s and a mains hum, with a 1.5 s reverb', () => {
+test('countdown: a 440 Hz triangle pulse, 0.25 s held and gone by 0.29 s, with a 1.2 s reverb', () => {
+  const nodes = play('countdown', 0.3, 1.2, 0.3);
+  const t = startsAt();
+  const [pulse] = ofKind<Source>(nodes, 'oscillator');
+  expect([pulse?.type, pulse?.frequency.value]).toEqual(['triangle', 440]);
+  expect(pulse?.startedAt).toBe(t);
+  expect(pulse?.stoppedAt).toBeCloseTo(t + 0.31);
+  expect(into<Gain>(pulse).gain.events).toEqual([
+    ['set', 0.0001, t],
+    ['exponential', 0.5, t + 0.003],
+    ['set', 0.5, t + 0.25],
+    ['exponential', 0.0001, t + 0.29],
+  ]);
+  expectReleasedAfter(nodes, 0.02 + 0.31 + 1.2);
+});
+
+test('lights on: one click and a mains hum, without flicker ticks, with a 1.5 s reverb', () => {
   const nodes = play('lightsOn', 0.5, 1.5, 0.35);
   const t = startsAt();
-  const ticks = ofKind<Source>(nodes, 'buffer-source');
-  expect(ticks).toHaveLength(4);
-  expect(ticks.at(0)?.startedAt).toBe(t);
-  for (const [i, tick] of ticks.entries()) {
-    const bandpass = into<Filter>(tick);
-    expect([bandpass.type, bandpass.frequency.value, bandpass.Q.value]).toEqual(['bandpass', 1600, 2]);
-    const level = into<Gain>(bandpass).gain.events.at(0)?.[1] ?? 0;
-    if (i === 0) {
-      expect(level).toBe(1.6);
-    } else {
-      expect(level).toBeGreaterThanOrEqual(0.5);
-      expect(level).toBeLessThanOrEqual(0.9);
-      const evenly = t + (0.3 * i) / 4;
-      expect(tick.startedAt).toBeGreaterThanOrEqual(evenly);
-      expect(tick.startedAt).toBeLessThanOrEqual(evenly + 0.02);
-    }
-  }
+  const clicks = ofKind<Source>(nodes, 'buffer-source');
+  expect(clicks).toHaveLength(1);
+  expect(clicks.at(0)?.startedAt).toBe(t);
+  const bandpass = into<Filter>(clicks.at(0));
+  expect([bandpass.type, bandpass.frequency.value, bandpass.Q.value]).toEqual(['bandpass', 1600, 2]);
+  expect(into<Gain>(bandpass).gain.events.at(0)?.[1]).toBe(1.6);
   const [hum] = ofKind<Source>(nodes, 'oscillator');
   expect([hum?.type, hum?.frequency.value]).toEqual(['sawtooth', 100]);
   const lowpass = into<Filter>(hum);
@@ -165,6 +170,7 @@ test('a context that is not running plays nothing, so no stale sound waits for i
   const built = ctx.nodes.length;
   for (const state of ['suspended', 'closed'] as const) {
     ctx.state = state;
+    s.countdown();
     s.lightsOff();
     s.portalsOn();
     s.lightsOn();

@@ -39,19 +39,27 @@ const LIGHTS_ON = {
   level: 0.5,
   tailS: 1.5,
   wet: 0.35,
-  flickerSpanS: 0.3,
+  humRiseS: 0.3,
   clickS: 0.05,
   clickHz: 1600,
   clickQ: 2,
   clickLevel: 1.6,
   clickFallS: 0.04,
-  flickers: 3,
-  flickerLevelMin: 0.5,
-  flickerLevelRange: 0.4,
-  flickerJitterS: 0.02,
   humHz: 100,
   humCutoffHz: 700,
   humLevel: 0.045,
+};
+
+const COUNTDOWN = {
+  level: 0.3,
+  tailS: 1.2,
+  wet: 0.3,
+  hz: 440,
+  peak: 0.5,
+  attackS: 0.003,
+  holdS: 0.25,
+  fallS: 0.29,
+  stopS: 0.31,
 };
 
 /** The quiet floor exponential ramps start from and fall to: they can't reach 0. */
@@ -59,6 +67,7 @@ const SILENT = 0.0001;
 const FADED = 0.001;
 
 export interface PortalSwitchSounds {
+  countdown(): void;
   lightsOff(): void;
   portalsOn(): void;
   lightsOn(): void;
@@ -67,6 +76,7 @@ export interface PortalSwitchSounds {
 /** Builds the reverb impulses and noise once, here, so a cue costs no more than its nodes. */
 export function createPortalSwitchSounds(ctx: BaseAudioContext, engine: AudioEngine): PortalSwitchSounds {
   const impulses = {
+    countdown: decayingNoise(ctx, COUNTDOWN.tailS),
     lightsOff: decayingNoise(ctx, LIGHTS_OFF.tailS),
     portalsOn: decayingNoise(ctx, PORTALS_ON.tailS),
     lightsOn: decayingNoise(ctx, LIGHTS_ON.tailS),
@@ -104,6 +114,26 @@ export function createPortalSwitchSounds(ctx: BaseAudioContext, engine: AudioEng
       }
     }, releaseInS * 1000);
     return out;
+  };
+
+  const countdown = () => {
+    const s = COUNTDOWN;
+    const t = ctx.currentTime + START_AHEAD_S;
+    const nodes: AudioNode[] = [];
+    const out = outputFor(nodes, t, s.stopS, s, impulses.countdown);
+
+    const pulse = ctx.createOscillator();
+    pulse.type = 'triangle';
+    pulse.frequency.value = s.hz;
+    const pulseGain = ctx.createGain();
+    pulseGain.gain.setValueAtTime(SILENT, t);
+    pulseGain.gain.exponentialRampToValueAtTime(s.peak, t + s.attackS);
+    pulseGain.gain.setValueAtTime(s.peak, t + s.holdS);
+    pulseGain.gain.exponentialRampToValueAtTime(SILENT, t + s.fallS);
+    pulse.connect(pulseGain).connect(out);
+    pulse.start(t);
+    pulse.stop(t + s.stopS);
+    nodes.push(pulse, pulseGain);
   };
 
   const lightsOff = () => {
@@ -171,28 +201,21 @@ export function createPortalSwitchSounds(ctx: BaseAudioContext, engine: AudioEng
     const s = LIGHTS_ON;
     const t = ctx.currentTime + START_AHEAD_S;
     const nodes: AudioNode[] = [];
-    const out = outputFor(nodes, t, s.flickerSpanS + 1.3, s, impulses.lightsOn);
+    const out = outputFor(nodes, t, s.humRiseS + 1.3, s, impulses.lightsOn);
 
-    const click = (at: number, level: number) => {
-      const noise = ctx.createBufferSource();
-      noise.buffer = clickNoise;
-      const band = ctx.createBiquadFilter();
-      band.type = 'bandpass';
-      band.frequency.value = s.clickHz;
-      band.Q.value = s.clickQ;
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime(level, at);
-      gain.gain.exponentialRampToValueAtTime(FADED, at + s.clickFallS);
-      noise.connect(band).connect(gain).connect(out);
-      noise.start(at);
-      noise.stop(at + s.clickS);
-      nodes.push(noise, band, gain);
-    };
-    click(t, s.clickLevel);
-    for (let i = 1; i <= s.flickers; i++) {
-      const evenlyAt = t + (s.flickerSpanS * i) / (s.flickers + 1);
-      click(evenlyAt + Math.random() * s.flickerJitterS, s.flickerLevelMin + Math.random() * s.flickerLevelRange);
-    }
+    const click = ctx.createBufferSource();
+    click.buffer = clickNoise;
+    const clickBand = ctx.createBiquadFilter();
+    clickBand.type = 'bandpass';
+    clickBand.frequency.value = s.clickHz;
+    clickBand.Q.value = s.clickQ;
+    const clickGain = ctx.createGain();
+    clickGain.gain.setValueAtTime(s.clickLevel, t);
+    clickGain.gain.exponentialRampToValueAtTime(FADED, t + s.clickFallS);
+    click.connect(clickBand).connect(clickGain).connect(out);
+    click.start(t);
+    click.stop(t + s.clickS);
+    nodes.push(click, clickBand, clickGain);
 
     const hum = ctx.createOscillator();
     hum.type = 'sawtooth';
@@ -200,11 +223,11 @@ export function createPortalSwitchSounds(ctx: BaseAudioContext, engine: AudioEng
     const humFilter = lowpass(s.humCutoffHz);
     const humGain = ctx.createGain();
     humGain.gain.setValueAtTime(SILENT, t);
-    humGain.gain.exponentialRampToValueAtTime(s.humLevel, t + s.flickerSpanS + 0.1);
-    humGain.gain.exponentialRampToValueAtTime(SILENT, t + s.flickerSpanS + 1.2);
+    humGain.gain.exponentialRampToValueAtTime(s.humLevel, t + s.humRiseS + 0.1);
+    humGain.gain.exponentialRampToValueAtTime(SILENT, t + s.humRiseS + 1.2);
     hum.connect(humFilter).connect(humGain).connect(out);
     hum.start(t);
-    hum.stop(t + s.flickerSpanS + 1.3);
+    hum.stop(t + s.humRiseS + 1.3);
     nodes.push(hum, humFilter, humGain);
   };
 
@@ -223,7 +246,12 @@ export function createPortalSwitchSounds(ctx: BaseAudioContext, engine: AudioEng
     play();
   };
 
-  return { lightsOff: whileRunning(lightsOff), portalsOn: whileRunning(portalsOn), lightsOn: whileRunning(lightsOn) };
+  return {
+    countdown: whileRunning(countdown),
+    lightsOff: whileRunning(lightsOff),
+    portalsOn: whileRunning(portalsOn),
+    lightsOn: whileRunning(lightsOn),
+  };
 }
 
 /**

@@ -10,6 +10,7 @@ export interface StampedSequence {
 
 /** Which sounds are due; filled by `takeCues`. */
 export interface SequenceCues {
+  countdown: boolean;
   lightsOff: boolean;
   portalsOn: boolean;
   lightsOn: boolean;
@@ -34,6 +35,8 @@ const CUE_LATENESS_MS = 300;
  * for it, so the space never bends in their light, but no longer than this past their time, should it never come.
  */
 const BEND_WAIT_CAP_MS = 2000;
+/** When each countdown number shows in `first_on`: "3", "2", "1". */
+const COUNTDOWN_NUMBERS_AT_MS = [0, 1000, 2000];
 /** Before any update, an age below every moment, so a cue at 0 fires. */
 const NOT_YET_MS = -1;
 /**
@@ -54,7 +57,7 @@ export function createPortalSequence(): PortalSequencePlayer {
   let lastAgeMs = NOT_YET_MS;
   /** The age of the last update before the flag was seen at the sequence's target: the bend landed after it. */
   let bendLandedAfterMs = Number.POSITIVE_INFINITY;
-  const due: SequenceCues = { lightsOff: false, portalsOn: false, lightsOn: false };
+  const due: SequenceCues = { countdown: false, lightsOff: false, portalsOn: false, lightsOn: false };
 
   const arrivedOnTime = (cueAtMs: number, ageMs: number) =>
     lastAgeMs < cueAtMs && cueAtMs <= ageMs && ageMs - cueAtMs <= CUE_LATENESS_MS;
@@ -102,6 +105,11 @@ export function createPortalSequence(): PortalSequencePlayer {
       const wasDark = dark;
       countdown = sequenceAt(seq.kind, ageMs).countdown;
       dark = ageMs >= times.darkAtMs && ageMs < lightsBackAtMs;
+      if (seq.kind === 'first_on') {
+        for (const numberAtMs of COUNTDOWN_NUMBERS_AT_MS) {
+          due.countdown ||= arrivedOnTime(numberAtMs, ageMs);
+        }
+      }
       due.lightsOff ||= arrivedOnTime(times.darkAtMs, ageMs);
       due.portalsOn ||= seq.kind !== 'off' && arrivedOnTime(times.bendAtMs, ageMs);
       // Its moment is only known once it is light again: up to an update's gap after the bend landed.
@@ -115,9 +123,11 @@ export function createPortalSequence(): PortalSequencePlayer {
       return countdown;
     },
     takeCues(out) {
+      out.countdown = due.countdown;
       out.lightsOff = due.lightsOff;
       out.portalsOn = due.portalsOn;
       out.lightsOn = due.lightsOn;
+      due.countdown = false;
       due.lightsOff = false;
       due.portalsOn = false;
       due.lightsOn = false;

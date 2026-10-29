@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { createPortalSequence, type SequenceCues } from './portal-sequence';
 
 const START = 10_000;
-const cues: SequenceCues = { lightsOff: false, portalsOn: false, lightsOn: false };
+const cues: SequenceCues = { countdown: false, lightsOff: false, portalsOn: false, lightsOn: false };
 
 /** The room's portals flag before a sequence of `kind`, and after its bend. */
 const flagBefore = (kind: SequenceKind) => kind === 'off';
@@ -22,7 +22,7 @@ function play(kind: SequenceKind, fromMs: number, toMs: number, bendLandsAtMs = 
     player.update(seq, START + age, age >= bendLandsAtMs ? flagAfter(kind) : flagBefore(kind));
     darkAt.push(player.dark);
     player.takeCues(cues);
-    for (const cue of ['lightsOff', 'portalsOn', 'lightsOn'] as const) {
+    for (const cue of ['countdown', 'lightsOff', 'portalsOn', 'lightsOn'] as const) {
       if (cues[cue]) {
         heard.push([cue, age]);
       }
@@ -39,7 +39,7 @@ test('with no sequence it is light, without a countdown or cues', () => {
   player.takeCues(cues);
   expect(player.dark).toBe(false);
   expect(player.countdown).toBeNull();
-  expect(cues).toEqual({ lightsOff: false, portalsOn: false, lightsOn: false });
+  expect(cues).toEqual({ countdown: false, lightsOff: false, portalsOn: false, lightsOn: false });
 });
 
 test('a first_on counts down 3, 2, 1 before the dark', () => {
@@ -68,7 +68,11 @@ test('a welcome mid-sequence starts dark and skips sounds whose moment has passe
 
 test('a live first_on reports lightsOff at 3000, portalsOn at 5000 and lightsOn at 7000, each once', () => {
   const { heard } = play('first_on', 0, 9000);
-  expect(heard.map(([cue]) => cue)).toEqual(['lightsOff', 'portalsOn', 'lightsOn']);
+  expect(heard.filter(([cue]) => cue !== 'countdown').map(([cue]) => cue)).toEqual([
+    'lightsOff',
+    'portalsOn',
+    'lightsOn',
+  ]);
   const at = Object.fromEntries(heard);
   expect(at.lightsOff).toBeGreaterThanOrEqual(3000);
   expect(at.lightsOff).toBeLessThan(3016);
@@ -78,7 +82,18 @@ test('a live first_on reports lightsOff at 3000, portalsOn at 5000 and lightsOn 
   expect(at.lightsOn).toBeLessThan(7016);
 });
 
-test('on reports all three cues', () => {
+test('first_on pulses once as each countdown number shows; on and off have no countdown', () => {
+  const pulses = (kind: SequenceKind) => play(kind, 0, 7000).heard.filter(([cue]) => cue === 'countdown');
+  expect(pulses('first_on').map(([, age]) => age)).toEqual([0, 1008, 2000]);
+  expect(pulses('on')).toEqual([]);
+  expect(pulses('off')).toEqual([]);
+});
+
+test('joining mid-countdown skips a number that is over 300 ms old', () => {
+  expect(play('first_on', 1500, 3000).heard.filter(([cue]) => cue === 'countdown')).toEqual([['countdown', 2012]]);
+});
+
+test('on reports lightsOff, portalsOn and lightsOn', () => {
   expect(play('on', 0, 2000).heard.map(([cue]) => cue)).toEqual(['lightsOff', 'portalsOn', 'lightsOn']);
 });
 
@@ -93,7 +108,7 @@ test('a hidden-tab jump of 2 s past a cue skips it', () => {
   player.takeCues(cues);
   player.update(seq, START + 7000 + 2000, true);
   player.takeCues(cues);
-  expect(cues).toEqual({ lightsOff: false, portalsOn: false, lightsOn: false });
+  expect(cues).toEqual({ countdown: false, lightsOff: false, portalsOn: false, lightsOn: false });
 });
 
 test('a cue up to 300 ms late still plays', () => {
@@ -111,7 +126,7 @@ test('after the end it is light, with no cues', () => {
   player.takeCues(cues);
   expect(player.dark).toBe(false);
   expect(player.countdown).toBeNull();
-  expect(cues).toEqual({ lightsOff: false, portalsOn: false, lightsOn: false });
+  expect(cues).toEqual({ countdown: false, lightsOff: false, portalsOn: false, lightsOn: false });
 });
 
 test('a start stamped in the future through clock skew reads as the press itself', () => {
@@ -159,7 +174,7 @@ describe('the dark waits for the bend', () => {
     player.takeCues(cues);
     expect(player.countdown).toBeNull();
     expect(player.dark).toBe(true);
-    expect(cues).toEqual({ lightsOff: false, portalsOn: true, lightsOn: false });
+    expect(cues).toEqual({ countdown: false, lightsOff: false, portalsOn: true, lightsOn: false });
     player.update(seq, START + 1999, true);
     expect(player.dark).toBe(true);
     player.update(seq, START + 2000, true);
@@ -201,7 +216,7 @@ describe('a sequence stamped again', () => {
     const restamped = { kind: 'on' as const, startedAt: START + 60 };
     player.update(restamped, START + 150, false);
     player.takeCues(cues);
-    expect(cues).toEqual({ lightsOff: false, portalsOn: false, lightsOn: false });
+    expect(cues).toEqual({ countdown: false, lightsOff: false, portalsOn: false, lightsOn: false });
     player.update(restamped, START + 1000, true);
     expect(player.dark).toBe(false);
   });
