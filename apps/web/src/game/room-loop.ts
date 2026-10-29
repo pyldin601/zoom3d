@@ -162,7 +162,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     const reflections = litReflections(o.renderMode());
     scene.reflections = reflections ?? 'none';
     const room = o.room();
-    scene.lighting = reflections === null ? null : (room?.lighting() ?? o.roomLighting());
+    scene.lighting = reflections === null ? null : (room?.lighting(room.sequence.dark) ?? o.roomLighting());
     scene.portals = room?.portals() ?? null;
     const portalSeconds = performance.now() / 1000;
     scene.portalPulse = portalPulse(portalSeconds);
@@ -192,6 +192,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       const room = o.room();
       if (room) {
         room.call.update(now);
+        room.sequence.update(room.session.sequence, now);
         stepBall(room, now, dt);
         placeEveryoneElse(room, now, dt);
       }

@@ -19,6 +19,7 @@ import { createFramebuffer, type Framebuffer, rgb } from './framebuffer';
 import { bakeLighting, corridorLights, type Lighting } from './lighting';
 import { VACUUM_MODEL } from './models/vacuum';
 import { shimmerAndRim, toSketchPx, windowRipple } from './portal-window';
+import { createRoomLighting } from './room-lighting';
 import type { Sprite } from './sprites';
 import { makeTextures } from './textures';
 import { CEILING, FLOOR, renderWalls, rowsCovered } from './walls';
@@ -214,6 +215,29 @@ describe('renderView through a portal', () => {
       expect(pixelAt(fb, CENTRE_COL, EYE_ROW)).not.toBe(pixelAt(plainDoor, CENTRE_COL, EYE_ROW));
     }
   );
+
+  test('in the dark both the main pass and the windows read the black table', () => {
+    const dark = createRoomLighting(lighting, portals).lighting(true, true);
+    const fb = createFramebuffer();
+    renderView(fb, portalScene(map, portals, eye, [], dark));
+    expect(pixelAt(fb, CENTRE_COL, EYE_ROW)).toBe(
+      shimmeredAtCentre(BLACK, EYE_ROW, openingRows(fb, PLANE_DEPTH), fb.width)
+    );
+    const portalsOff = createFramebuffer();
+    renderView(portalsOff, portalScene(map, null, eye, [], dark));
+    expect(portalsOff.pixels.every((pixel) => pixel === BLACK)).toBe(true);
+  });
+
+  test('a face disc keeps its brightness in the dark', () => {
+    const dark = createRoomLighting(lighting, portals).lighting(true, true);
+    const someone = [plainPerson('someone', 2.5, 2.6)];
+    const lit = createFramebuffer();
+    renderView(lit, portalScene(map, portals, eye, someone, lighting));
+    const unlit = createFramebuffer();
+    renderView(unlit, portalScene(map, portals, eye, someone, dark));
+    expect(pixelAt(lit, CENTRE_COL, EYE_ROW)).toBe(RED);
+    expect(pixelAt(unlit, CENTRE_COL, EYE_ROW)).toBe(RED);
+  });
 
   test('close to the plane the opening runs past the frame: its top row is shimmered, with no rim', () => {
     const close: PlayerState = { x: 2.5, y: 3, angle: SOUTH };
