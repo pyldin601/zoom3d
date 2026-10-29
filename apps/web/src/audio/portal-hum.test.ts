@@ -17,9 +17,16 @@ let attached: string[];
 let detached: string[];
 let outputs: Map<string, FakeNode & { gain: FakeParam }>;
 let hums: PortalHums;
-const { portals } = portalHall();
+const hall = portalHall();
+/** The hall's doorways, both turned to face north, so a listener north of the wall is in front of both. */
+const portals = {
+  ...hall.portals,
+  list: hall.portals.list.map((p) => ({ ...p, nx: 0, ny: 1 })),
+};
 const MAX_TILES = 10;
 const LISTENER = { x: 0, y: 0 };
+/** South of the wall row: behind both doorways. */
+const BEHIND = { x: 0, y: 5 };
 /** Where each doorway's hum is heard: `tiles` east of the listener, per portal. */
 const heard = new Map<string, { x: number; y: number }>();
 const hearAt = (...tiles: number[]) => {
@@ -167,9 +174,24 @@ describe('createPortalHums', () => {
     expect(oscillators().every((o) => o.stoppedAt === null)).toBe(true);
   });
 
+  test('a listener behind a doorway hears no hum from it', () => {
+    hums.sync(portals, 1, BEHIND, NEAR);
+    expect(attached).toEqual([]);
+  });
+
+  test('stepping behind a doorway fades its hum out; stepping back in front starts it again', () => {
+    hums.sync(portals, 1, LISTENER, NEAR);
+    hums.sync(portals, 1, BEHIND, NEAR);
+    expect(outputs.get(portalHumKey(0))?.gain.last?.[0]).toBe(0);
+    expect(outputs.get(portalHumKey(1))?.gain.last?.[0]).toBe(0);
+    endEveryOscillator();
+    hums.sync(portals, 1, LISTENER, NEAR);
+    expect(attached).toEqual([portalHumKey(0), portalHumKey(1), portalHumKey(0), portalHumKey(1)]);
+  });
+
   test('a hum sits 0.3 in front of its doorway', () => {
     const out = new Map<string, { x: number; y: number }>();
-    hums.sourcesOf(portals, out);
+    hums.sourcesOf(hall.portals, out);
     expect(out.get(portalHumKey(0))).toEqual({ x: 2.5, y: 3.2 });
     expect(out.get(portalHumKey(1))?.x).toBeCloseTo(4.5);
     expect(out.get(portalHumKey(1))?.y).toBeCloseTo(3.8);

@@ -658,6 +658,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     doesn't restart it. Past that distance the engine's gain is already 0, so the fade out is silent, and a hum
     re-entering while its old one still fades can replace it without a click. From 2000 random open spots on LEVEL1,
     a median of 10 of the 24 doorways are in range (90th percentile 14, at most 19).
+  - **No hum behind a doorway** (the owner's call after playing it, 2026-10-29). A listener on or behind a doorway's
+    plane hears none of its hum, which fades out as they step behind it, like the glow's cut: from behind, a doorway
+    is ordinary.
   - **Levels, tuned by eye while playing locally (2026-10-29).** `PORTAL_GLOW_STRENGTH` stays at 0.9 (0.5 was tried
     and was too faint). The window's shimmer is half the sketch's, `k = 0.08 + 0.1·pulse + 0.05·ripple`, so the room
     seen through it is clearer. `HUM_GAIN` (0.04) is still the first guess, awaiting a listen.
