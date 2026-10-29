@@ -74,6 +74,14 @@ test('the first welcome places the player at spawn and records peers', () => {
   expect(session.status()).toBe('open');
 });
 
+test('the own name and mic are what the others are told', () => {
+  const { session } = joinedSession();
+  expect(session.selfName()).toBe('Ada');
+  expect(session.selfMic()).toBe(false);
+  session.setMedia(false, true);
+  expect(session.selfMic()).toBe(true);
+});
+
 test('a welcome after reconnect keeps the player but replaces the peer list', () => {
   const { session, ws } = joinedSession([peer('a'), peer('b')]);
   player.x = 9.5;

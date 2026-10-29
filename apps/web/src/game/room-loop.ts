@@ -6,12 +6,13 @@ import { HIDDEN_TICK_MS } from '../audio/ticker';
 import type { Input } from '../input/keyboard';
 import { createSubscription } from '../media/subscription';
 import { ownAvatarShown, type RoomScene, renderHud, renderView } from '../renderer/frame';
+import type { NameLabel } from '../renderer/labels';
 import type { Lighting } from '../renderer/lighting';
 import { BALL_MODEL, createBallRoll, recolourBall, rollBy } from '../renderer/models/ball';
 import { showCountdown } from '../ui/portal-countdown';
 import { litReflections, type RenderMode } from '../ui/render-settings';
 import { type StatusLine, statusText } from '../ui/room-status';
-import { createApparentWorld } from './apparent-world';
+import { createApparentWorld, placeOwnLabel } from './apparent-world';
 import type { FrameRateMeter } from './frame-rate';
 import type { LocalPlayer } from './local-player';
 import { portalPulse } from './portal-pulse';
@@ -69,10 +70,26 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     labels: world.labels,
     ownGlow: null,
     self: null,
+    ownLabel: null,
     portalPulse: 1,
     portalTime: 0,
     firstPerson: null,
     portals: null,
+  };
+
+  const ownLabel: NameLabel = { shownX: 0, shownY: 0, name: '', mic: false };
+  /** The own label, named as the others see it, where a portal shows the own spot; else null. */
+  const labelOwnImage = (room: Room | null): NameLabel | null => {
+    if (
+      scene.self === null ||
+      room === null ||
+      !placeOwnLabel(o.map, scene.portals ?? null, localPlayer.pose, ownLabel)
+    ) {
+      return null;
+    }
+    ownLabel.name = room.session.selfName();
+    ownLabel.mic = room.session.selfMic();
+    return ownLabel;
   };
 
   const cues: SequenceCues = { countdown: false, lightsOff: false, portalsOn: false, lightsOn: false };
@@ -200,6 +217,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     scene.ownGlow = localPlayer.glow(now, ringColour);
     // Only windows draw the own disc, and reading its face back stalls on the GPU: read it only while one shows it.
     scene.self = scene.portals && isConnected(room) ? localPlayer.avatar(now, ringColour, ownAvatarShown()) : null;
+    scene.ownLabel = labelOwnImage(room);
     scene.firstPerson = isConnected(room) ? localPlayer.firstPerson(now) : null;
     return scene;
   };

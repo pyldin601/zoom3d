@@ -559,6 +559,12 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     - **With portals off, a local teleport over 2 tiles** zeroes the ball body's velocity and peers snap instead of
       gliding: a tiny change to today's behaviour that falls out of the shared jump handling.
     - **Fan-out costs more with portals on** (the apparent-position search per pair): measured below.
+    - **A player never saw themselves through a portal loop:** closed 2026-10-29
+      ([spec](superpowers/specs/2026-10-29-portal-self-design.md)). Window passes draw the own disc (`RoomScene.self`)
+      at the own spot, and the own label sits at the nearest image of that spot seen through one or two portals
+      (`imagePosition`, the apparent-position search without its straight line). The main pass draws neither, and the
+      label stays out of `labels`, which the automap reads. The own disc has no speaking glow: the room keeps no level
+      of the own mic. The own face is read back only while a window shows the own disc, at 128² doubled to 256².
   - **Measured** (2026-10-28, against base 0572557, origin/main when the branch was cut; LEVEL1 at 640×360, lit, reflections `both`; the machine was loaded, read the ratios):
     - `bench:walls`, existing modes with portals off: unchanged hashes, `both` 1.51 ms on the base vs 1.56 ms here.
       From 1.5 tiles in front of 8 doorways: `renderWalls` 1.58 ms off, 0.92 ms on (the window passes are cheaper than

@@ -37,6 +37,8 @@ export interface RoomScene extends PassScene {
    * off or out of the room.
    */
   self: Sprite | null;
+  /** The own name label where a portal shows the own spot; null when none does, and always with `self` null. */
+  ownLabel: NameLabel | null;
   /** What the local player holds; null while they aren't in the room (reconnecting). */
   firstPerson: FirstPerson | null;
 }
@@ -68,6 +70,8 @@ const seenThroughWindows = new Map<string, PeerFacts>();
 /** The people every window draws: the scene's, then the local player's own disc. */
 const windowPeople: Sprite[] = [];
 let ownAvatarDrawn = false;
+/** The own label, as the one-entry list drawLabels takes. */
+const ownLabels: NameLabel[] = [];
 const frameView = createView();
 
 /** `seen` gets, per person, how much of them this frame drew (dynamic subscription reads it). */
@@ -305,6 +309,11 @@ export function renderHud(hud: CanvasRenderingContext2D, fb: Framebuffer, scene:
   const { width, height } = hud.canvas;
   hud.clearRect(0, 0, width, height);
   drawLabels(hud, fb, scene.eye, scene.labels);
+  // Apart from `labels`, which the automap also reads: there the arrow is the local player.
+  if (scene.ownLabel) {
+    ownLabels[0] = scene.ownLabel;
+    drawLabels(hud, fb, scene.eye, ownLabels);
+  }
   if (showMap) {
     drawAutomap(hud, scene.map, scene.eye, scene.labels);
   }
