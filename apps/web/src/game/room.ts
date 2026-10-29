@@ -1,10 +1,11 @@
 // The room from Join on: the game session, the call carrying everyone's media, the spatial audio, the world objects'
-// sounds, the ball as this client predicts it, the player's boombox and the analytics tracker, made together on Join
+// sounds, the portal doorways' hums, the ball as this client predicts it, the player's boombox and the analytics tracker, made together on Join
 // and kept together.
 import type { GameMap, HeldItem, PlayerState, Portals } from '@zoom3d/shared';
 import { createDoorbell, withDoorbell } from '../audio/doorbell';
 import { type AudioEngine, createAudioEngine } from '../audio/engine';
 import { createObjectSounds, type ObjectSounds } from '../audio/object-sounds';
+import { createPortalHums, type PortalHums } from '../audio/portal-hum';
 import { type Boombox, createBoombox } from '../media/boombox';
 import { type Call, createCall } from '../media/call';
 import { createFace } from '../media/faces';
@@ -24,6 +25,8 @@ export interface Room {
   readonly call: Call;
   readonly audio: AudioEngine;
   readonly objectSounds: ObjectSounds;
+  /** A hum from each portal doorway while `portals()` isn't null. */
+  readonly hums: PortalHums;
   readonly boombox: Boombox;
   readonly tracker: RoomTracker;
   readonly ball: BallPrediction;
@@ -62,6 +65,7 @@ export function joinRoom(opts: JoinOptions): Room {
   const wiring = roomLighting.portals;
   let session: Session | null = null;
   const objectSounds = createObjectSounds(opts.audioCtx, audio, () => session?.selfId() ?? null);
+  const hums = createPortalHums(opts.audioCtx, audio);
   const call = createRoomCall(opts, audio);
   const tracker = createRoomTracker(track, () => performance.now());
   const ball = createBallPrediction(opts.map, () => portals());
@@ -82,7 +86,7 @@ export function joinRoom(opts: JoinOptions): Room {
     return joined.portals ? wiring : null;
   }
   const lighting = () => roomLighting.lighting(portals() !== null);
-  return { session: joined, call, audio, objectSounds, boombox, tracker, ball, portals, lighting, kick };
+  return { session: joined, call, audio, objectSounds, hums, boombox, tracker, ball, portals, lighting, kick };
 }
 
 /** In the room and connected: not joining, reconnecting or failed. */

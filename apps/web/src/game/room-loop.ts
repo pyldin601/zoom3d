@@ -45,9 +45,11 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   const world = createRemoteWorld();
   const subscription = createSubscription();
   const apparentWorld = createApparentWorld();
-  /** The remote things (people and world objects) with their places, reused from frame to frame. */
+  /** The remote things (people, world objects and portal hums) with their places, reused from frame to frame. */
   let apparent: ReadonlyMap<string, Apparent> = new Map();
   const things: { id: string; x: number; y: number }[] = [];
+  /** Where each portal doorway's hum plays from, reused from frame to frame. */
+  const humSources = new Map<string, { x: number; y: number }>();
   const peerMedia: PeerMedia = {
     faceOf: (id) => o.room()?.call.faceOf(id) ?? null,
     speaking: (id) => o.room()?.audio.speaking(id) ?? 0,
@@ -117,15 +119,27 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     }
   };
 
-  /** Where everyone and everything appears to the local player's eye, through the room's portals when they are on. */
+  /** Puts a thing at `things[n]`, reusing the one there. */
+  const placeThing = (n: number, id: string, pos: { x: number; y: number }) => {
+    const thing = things.at(n) ?? { id, x: 0, y: 0 };
+    thing.id = id;
+    thing.x = pos.x;
+    thing.y = pos.y;
+    things[n] = thing;
+  };
+
+  /**
+   * Where everyone and everything appears to the local player's eye, through the room's portals when they are on, the
+   * doorways' hums included.
+   */
   const placeApparently = (room: Room) => {
     let n = 0;
     for (const [id, pos] of world.positions) {
-      const thing = things.at(n) ?? { id, x: 0, y: 0 };
-      thing.id = id;
-      thing.x = pos.x;
-      thing.y = pos.y;
-      things[n++] = thing;
+      placeThing(n++, id, pos);
+    }
+    room.hums.sourcesOf(room.portals(), humSources);
+    for (const [id, pos] of humSources) {
+      placeThing(n++, id, pos);
     }
     things.length = n;
     apparent = apparentWorld.update(o.map, room.portals(), localPlayer.pose, things);
@@ -183,6 +197,8 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       }
       const drawStart = performance.now();
       const shown = describeScene(drawStart);
+      // The hum swells with the very pulse this frame's glow is drawn with.
+      room?.hums.sync(room.portals(), shown.portalPulse);
       renderView(screen.fb, shown, subscription.seen);
       screen.present();
       renderHud(o.hud, screen.fb, shown, o.showMap());
@@ -203,6 +219,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       world.sample(room.session, localPlayer.pose, now, room.ball.ball, room.portals());
       placeApparently(room);
       room.objectSounds.sync(room.session.objects, world.objectPoses, HIDDEN_TICK_MS / 1000);
+      room.hums.sync(room.portals(), portalPulse(now / 1000));
       room.audio.update(now, localPlayer.pose, apparent);
       chooseWhatToReceive(room, now, true);
     },
