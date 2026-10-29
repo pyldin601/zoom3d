@@ -22,16 +22,16 @@ room sees and hears at the same moment.
 |---|---|---|
 | 0 s | 3 s | Text on screen: "Portals will enable in 3…", then "2…", then "1…", one number a second. |
 | 3 s | 5 s | **Darkness.** A deep, dramatic lights-off sound with reverb plays, and every lamp goes out at once. |
-| 5 s | 7 s | **The portals light up alone in the dark:** windows, rim, spill and hum. The space bends at 5 s. |
-| 7 s | | **The lamps come back**, with a lighter "power on" sound. |
+| 5 s | 7 s | **The portals light up alone in the dark** (windows, rim, spill, hum) with the "portals on" sound. The space bends at 5 s. |
+| 7 s | | **The lamps come back**, with the "lights on" sound. |
 
 **Every later switch, on or off (`on`, `off`), 1 s from the press:**
 
 | From | Until | What happens |
 |---|---|---|
 | 0 s | 1 s | **Darkness:** the same lights-off sound, and every lamp out. There is no countdown. |
-| 0.5 s | | The portals appear or vanish, and the space bends or unbends. It is still dark. |
-| 1 s | | The lamps come back, with the power-on sound. |
+| 0.5 s | | The portals appear (with the "portals on" sound) or vanish, and the space bends or unbends. Still dark. |
+| 1 s | | The lamps come back, with the "lights on" sound. |
 
 ### 2.2 Darkness
 
@@ -51,12 +51,35 @@ room sees and hears at the same moment.
 
 ### 2.3 The sounds (synthesised, tuned with the user in a sketch first)
 
-- **Lights off:** deep and dramatic, with a long reverb tail, like a heavy breaker throwing and a huge room losing
-  power.
-- **Power on:** lighter, a rising hum or click.
-- **Both play for everyone, at the same level wherever each person stands.** They are not placed in the room; they
+Three sounds (amended 2026-10-29: the user moved the lighter sound to the portals' moment, and asked for a third for
+the lamps; they approved the sketch by ear).
+
+- **Lights off**, when the dark falls: deep and dramatic, a heavy breaker throwing and a huge room losing power.
+- **Portals on**, when the portals light up (only when they turn on; a switch-off has no sound at its bend).
+- **Lights on**, when the lamps come back: a breaker click, fluorescent flicker, then a faint mains hum.
+- **All play for everyone, at the same level wherever each person stands.** They are not placed in the room; they
   are the building's power. They go through the room's reverb.
-- **Their level sits under voices.** It is tuned by ear in the sketch.
+- **Their level sits under voices.** The sketch's levels are relative; the game scales them so the loudest stays
+  under a voice.
+
+**Recipe** (the sketch as approved; times in seconds from the cue, levels are each sound's output gain before the
+game's scaling; "reverb" is a dry/wet send to a decaying-noise impulse of the given tail):
+
+- **Lights off** (length 1.2, level 0.8, reverb tail 3.5 s at 0.55 wet):
+  - a sine falling exponentially from 90 Hz to 32 Hz over the length; gain 0 → 1 in 0.01, then exponentially to
+    0.001 at the length;
+  - a "thunk": 0.4 s of white noise through a 260 Hz low-pass, gain 0.9 (0.6 × 1.5) falling exponentially to 0.001
+    in 0.35.
+- **Portals on** (length 0.7, level 0.45, reverb tail 1.2 s at 0.3 wet):
+  - a sine rising exponentially from 140 Hz to 520 Hz over the length; gain 0.0001 → 0.6 (exponential) at 0.6 of the
+    length, then to 0.001 at the length + 0.25;
+  - a 100 Hz sawtooth "buzz" through a 900 Hz low-pass; gain 0.0001 → 0.0875 (0.35 × 0.25) at 0.7 of the length,
+    then to 0.0001 at the length + 0.3.
+- **Lights on** (level 0.5, reverb tail 1.5 s at 0.35 wet, flicker span 0.3):
+  - a click: 0.05 s of noise through a 1600 Hz band-pass (Q 2), gain 1.6 falling exponentially to 0.001 in 0.04;
+  - 3 flicker ticks, the same click at gain 0.5–0.9, spread evenly across the span with up to 20 ms of jitter;
+  - a 100 Hz sawtooth hum through a 700 Hz low-pass; gain 0.0001 → 0.045 (0.3 × 0.15) at the span + 0.1, then to
+    0.0001 at the span + 1.2.
 
 ### 2.4 Who starts it, and the debounce
 
