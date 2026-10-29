@@ -643,6 +643,13 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     pulse. `PortalHums.dispose()` exists and is tested, but nothing calls it: no `Room` is ever disposed. A quick
     off then on can't cut a hum's fade short, because the server allows one flip per room per 1000 ms, longer than the
     fade.
+  - **A hum plays only in hearing range** (spec §6 left it to the builder). Each hum is 2 oscillators, a filter, the
+    engine's HRTF panner and a reverb send, so all 24 of LEVEL1's ran even far beyond hearing. Now a doorway's hum
+    starts (fading in) when its apparent position, the one `placeApparently` computes, comes within the engine's
+    silent distance (`settings().max`, 24 tiles), and fades out and detaches 1 tile past it, so pacing about the edge
+    doesn't restart it. Past that distance the engine's gain is already 0, so the fade out is silent, and a hum
+    re-entering while its old one still fades can replace it without a click. From 2000 random open spots on LEVEL1,
+    a median of 10 of the 24 doorways are in range (90th percentile 14, at most 19).
   - **Levels await tuning.** `PORTAL_GLOW_STRENGTH` (0.9) and `HUM_GAIN` (0.04) are the first guesses. A rendered
     doorway frame from the bench poses shows the spill and the rim clearly, not blown out; the owner tunes both by eye
     and ear while playing locally.
@@ -654,6 +661,25 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     - With the 100-glow crowd, from the lamp poses: 2.55 ms off, 2.86 ms on (D28: 2.85 on).
     - Whole frames (`renderView`) from the doorways with people and a vacuum ahead: 2.36 ms off, 4.13 ms on (D28:
       2.78 on). The glow, the shimmer and the rim cost about 1.35 ms more than D28's portals-on frame.
+  - **Where the frame cost goes, and the fix** (final review, 2026-10-29; `pnpm bench:sprites` `renderView` from the
+    doorway poses, portals on, medians of three runs, each part measured by switching it off):
+    - **The spill was about 0.8 ms** (0.79 ms here), **about 0.63 ms of it the floor and ceiling's `addGlow`**: once
+      the frame's first pass showed a window, every glow on the map went through `addGlow`'s cell box, all 24 portal
+      glows included.
+    - **The shimmer and rim are about 0.6 ms** (0.57 ms here; the review measured 0.67), per pixel shown through a
+      window. Left as they are.
+    - **The fix:** the floor tables now skip a glow (and an object's shadow) unless some pass's eye may see it: the
+      frame's own, the eye carried through each window its first pass shows, limited to that window's columns, and
+      from those, the eyes through every window they may show (from a doorway's front with its opening in their
+      columns), down both levels (`renderer/frame-eyes.ts`). It is conservative: every pixel hash is unchanged.
+      `renderView` portals on went from 4.11 ms to 3.85 ms; the spill from 0.79 ms to 0.52 ms. About 70% of the glows
+      still pass in these poses: the eyes through windows look down long corridors, and the test is by view, not by
+      occlusion. Amends D27, whose floor tables lit everything once a window showed.
+    - `bench:walls` lit no portal glow before (its portals-on passes took only avatar glows). Its portals-on doorway
+      and crowd passes now take the portal glows too, so a spill regression shows there: their hashes moved from
+      1272589417 to 482093256 (doorway) and from -1861553458 to -1819097756 (crowd), and the portals-off hashes are
+      unchanged. With the spill, `renderWalls` from the doorways, portals on, takes 1.60 ms (1.83 ms before the fix),
+      and with the crowd from the lamp poses 2.89 ms (3.19 ms before).
   - Not done: glow on people and objects; a hue per doorway; the hum through two portals; a listen by ear.
 
 ## Resolved
