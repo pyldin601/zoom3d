@@ -20,6 +20,12 @@ export interface SequenceFrame {
 const COUNTDOWN_STEP_MS = 1000;
 const COUNTDOWN_STEPS = 3;
 
+/** When each countdown number ("3", "2", "1") shows in `first_on`, after the press. */
+export const COUNTDOWN_NUMBERS_AT_MS: readonly number[] = Array.from(
+  { length: COUNTDOWN_STEPS },
+  (_, i) => i * COUNTDOWN_STEP_MS
+);
+
 const FIRST_ON_TIMES: SequenceTimes = {
   darkAtMs: COUNTDOWN_STEPS * COUNTDOWN_STEP_MS,
   bendAtMs: 5000,

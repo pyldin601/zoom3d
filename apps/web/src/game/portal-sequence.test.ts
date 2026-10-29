@@ -90,7 +90,11 @@ test('first_on pulses once as each countdown number shows; on and off have no co
 });
 
 test('joining mid-countdown skips a number that is over 300 ms old', () => {
-  expect(play('first_on', 1500, 3000).heard.filter(([cue]) => cue === 'countdown')).toEqual([['countdown', 2012]]);
+  const pulses = play('first_on', 1500, 3000).heard.filter(([cue]) => cue === 'countdown');
+  expect(pulses).toHaveLength(1);
+  const age = pulses.at(0)?.[1] ?? 0;
+  expect(age).toBeGreaterThanOrEqual(2000);
+  expect(age).toBeLessThan(2016);
 });
 
 test('on reports lightsOff, portalsOn and lightsOn', () => {

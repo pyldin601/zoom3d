@@ -1,6 +1,6 @@
 // The client's view of the room's running portal switch (portal sequence spec §2.3): the dark, the countdown and when
 // each sound is due, all read from the shared timeline on the local clock.
-import { type SequenceKind, sequenceAt, sequenceTimes } from '@zoom3d/shared';
+import { COUNTDOWN_NUMBERS_AT_MS, type SequenceKind, sequenceAt, sequenceTimes } from '@zoom3d/shared';
 
 /** A sequence as the session stamped it: `startedAt` is on the local clock. */
 export interface StampedSequence {
@@ -35,8 +35,6 @@ const CUE_LATENESS_MS = 300;
  * for it, so the space never bends in their light, but no longer than this past their time, should it never come.
  */
 const BEND_WAIT_CAP_MS = 2000;
-/** When each countdown number shows in `first_on`: "3", "2", "1". */
-const COUNTDOWN_NUMBERS_AT_MS = [0, 1000, 2000];
 /** Before any update, an age below every moment, so a cue at 0 fires. */
 const NOT_YET_MS = -1;
 /**
