@@ -680,6 +680,21 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
       1272589417 to 482093256 (doorway) and from -1861553458 to -1819097756 (crowd), and the portals-off hashes are
       unchanged. With the halved shimmer, the `bench:sprites` doorway scenes with portals on hash to -1101303808. With the spill, `renderWalls` from the doorways, portals on, takes 1.60 ms (1.83 ms before the fix),
       and with the crowd from the lamp poses 2.89 ms (3.19 ms before).
+  - **Portal glows cast baked soft shadows** (amended 2026-10-29, the user's call). A screenshot showed a doorway in
+    a recess lighting the floor and the side face of the block beside it, through the block. Now a floor cell, ceiling
+    cell or wall sample gets a portal glow's light only as much as it sees the glow's disc, as a lamp's (`seenShare`,
+    soft edges across `LAMP_RADIUS`). A portal glow never moves, so the share is baked per portal with the portals-on
+    lighting (`Lighting.portalGlowSeen`, one byte per floor cell within GLOW_RADIUS) and `glowLight` multiplies by it;
+    a wall sample reads the cell just in front of the wall. Avatar glows carry no table (`Glow.shadow` null) and light
+    as before. Unlit rooms have no table, and no glow light at all.
+    - **Bake:** 24 portals, about 15,300 cells, 6.5 ms cold (1.5 ms warm) on top of `bakePortalLighting`'s ~255 ms,
+      still in the lobby, so Y never waits.
+    - **Frame cost:** none to speak of (medians of three runs, against the commit before): `renderWalls` from the
+      doorways, portals on, 1.61 ms (1.56 before), crowd 2.97 ms (2.83). Portals off moved too (1.73 vs 1.68, 2.70 vs
+      2.65), so the doorway change is the machine and the crowd's at most about 0.1 ms. `renderView` from the doorways, portals on, 3.84 ms (3.80).
+    - **Hashes:** every portals-off hash is unchanged. Portals on, `bench:walls` doorway moved from 482093256 to
+      -589436950 and crowd from -1819097756 to 2005369998; `bench:sprites` doorway scenes from -1101303808 to
+      -198097577.
   - Not done: glow on people and objects; a hue per doorway; the hum through two portals; a listen by ear.
 
 ## Resolved
