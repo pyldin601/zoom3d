@@ -1,7 +1,7 @@
 // The room from Join on: the game session, the call carrying everyone's media, the spatial audio, the world objects'
 // sounds, the ball as this client predicts it, the player's boombox and the analytics tracker, made together on Join
 // and kept together.
-import { type GameMap, type HeldItem, type PlayerState, type Portals, wirePortals } from '@zoom3d/shared';
+import type { GameMap, HeldItem, PlayerState, Portals } from '@zoom3d/shared';
 import { createDoorbell, withDoorbell } from '../audio/doorbell';
 import { type AudioEngine, createAudioEngine } from '../audio/engine';
 import { createObjectSounds, type ObjectSounds } from '../audio/object-sounds';
@@ -13,7 +13,7 @@ import type { LocalMediaController } from '../media/local-media';
 import { createRemoteMedia } from '../media/remote-media';
 import { createSession, type Session } from '../net/session';
 import type { Lighting } from '../renderer/lighting';
-import { createRoomLighting } from '../renderer/room-lighting';
+import type { RoomLighting } from '../renderer/room-lighting';
 import { track } from '../telemetry/analytics';
 import { createRoomTracker, type RoomTracker, withRoomTracker } from '../telemetry/room-tracker';
 import { botsParam } from '../ui/route';
@@ -52,14 +52,14 @@ export interface JoinOptions {
   onBoomboxChange(on: boolean): void;
   /** Someone flipped the room's portals (not called for the welcome's flag). */
   onPortalsChanged(on: boolean): void;
-  /** The page's plain lamp light table. */
-  lighting: () => Lighting | null;
+  /** The room's wiring and lamp light tables, baked while its lobby was open if the page was idle, else now. */
+  lighting: (roomId: string) => RoomLighting;
 }
 
 export function joinRoom(opts: JoinOptions): Room {
   const audio = createAudioEngine({ ctx: opts.audioCtx, map: opts.map });
-  const wiring = wirePortals(opts.map, opts.roomId);
-  const roomLighting = createRoomLighting(opts.lighting(), wiring);
+  const roomLighting = opts.lighting(opts.roomId);
+  const wiring = roomLighting.portals;
   let session: Session | null = null;
   const objectSounds = createObjectSounds(opts.audioCtx, audio, () => session?.selfId() ?? null);
   const call = createRoomCall(opts, audio);

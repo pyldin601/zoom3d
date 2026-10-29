@@ -64,13 +64,14 @@ the portals with no more work:
 ### 2.3 Two calculations per room
 
 - The plain light stays as it is today, calculated once per page (`bakeRoomLightingOnce`).
-- The portals-on light depends on the room's wiring, which comes from the room id. So it is calculated **per room, when
-  the room opens**, next to the plain one, while the join is still connecting. Nobody is walking yet then, so a few
-  hundred milliseconds are not noticed *(the user picked this, approach A)*.
-- **It is ready before it can be needed** *(our call)*. It is calculated synchronously when the room is created, before
-  the welcome is handled. So a room that is already in portal mode when someone joins, or a Y pressed early, always
-  finds it ready, and there is no "not ready yet" state. A worker (§6) is only allowed if it keeps that guarantee, for
-  example by holding the first room frame until the table arrives.
+- The portals-on light depends on the room's wiring, which comes from the room id. So it is calculated **per room,
+  while its lobby is open, at the latest on Join**, next to the plain one, in an idle moment (`roomLightingByRoom`).
+  Nobody is walking yet then, so a few hundred milliseconds are not noticed *(the user picked this, approach A)*. In the
+  Join click itself they would freeze the lobby and hold up the connection.
+- **It is ready before it can be needed** *(our call)*. If the idle moment hasn't come by Join, it is calculated
+  synchronously when the room is created, before the welcome is handled. So a room that is already in portal mode when
+  someone joins, or a Y pressed early, always finds it ready, and there is no "not ready yet" state. A worker (§6) is
+  only allowed if it keeps that guarantee, for example by holding the first room frame until the table arrives.
 - The room keeps both. While portals are on, every pass in the frame uses the portals-on light: the main pass and every
   window pass. While they are off, every pass uses the plain light. A window pass draws the destination with the same
   table, so a doorway's far side is lit consistently with its near side.
@@ -125,7 +126,8 @@ through it; Y swaps the light in the same frame as the space.
 
 - **A. Calculate the light a second time for portals on, for the whole map (chosen).** It is the same calculation with a
   portals switch: a portal-aware sight test plus lamp copies. The room keeps both results and Y swaps them.
-  - Costs: one more calculation when the room opens, double the light memory, and the lamp lists grow past 127.
+  - Costs: one more calculation per room, while its lobby is open, double the light memory, and the lamp lists grow
+    past 127.
   - Gains: no per-frame cost, one lighting layout, and everything that reads lamps follows for free.
 - **B. Calculate once, then patch only around doorways.** Recalculate only the cells and wall samples whose sight lines
   cross a doorway, and keep them as a small patch that Y turns on.

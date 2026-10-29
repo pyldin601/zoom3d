@@ -598,10 +598,12 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     copies and the bake time down. Copies show no ceiling fixture; the window's own pass draws the real one.
   - **Everything reading the lamp list follows:** reflections, the lighting on people, the vacuum and the ball
     (`directLight`), and the object shadows' fallback sight test, all through `seesLamp`.
-  - **A second table per room,** `bakePortalLighting`, baked in `joinRoom` (`createRoomLighting`) before the connection
-    starts, so it is ready before any welcome can turn portals on and Y swaps tables in the same frame. The plain table
-    stays baked once per page. The bounce light is the plain table's own array, reused: it is faint and spread over two
-    tiles. `describeScene` picks the table for every pass, windows included.
+  - **A second table per room,** `bakePortalLighting`, baked per room id (`roomLightingByRoom`) in an idle moment
+    while the room's lobby is open, or at the latest in `joinRoom`, before the connection starts. In the Join click the
+    two bakes (about 0.4 s) froze the lobby and held up the connection. So it is ready before any welcome can turn
+    portals on, and Y swaps tables in the same frame. The plain table stays baked once per page, now from the lobby
+    too. The bounce light is the plain table's own array, reused: it is faint and spread over two tiles.
+    `describeScene` picks the table for every pass, windows included.
   - **The lamp lists widened** from signed bytes (127 lamps) to `Int16Array` (`MAX_LAMPS` 32767): LEVEL1 has 37 lamps and
     101 copies.
   - **Measured** (2026-10-29, against base `2f50798`; LEVEL1 at 640×360, lit, reflections `both`, a loaded machine, read
