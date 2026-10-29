@@ -871,7 +871,7 @@ describe('portals', () => {
     expect(portalsOf('A')).toHaveLength(1);
   });
 
-  test('a later press starts on, and a press with portals on starts off, each bending at 500 ms', () => {
+  test('a press with portals on starts off, bending at 500 ms; a later on bends as the lights return, at 1000 ms', () => {
     join('A');
     switchFully('A');
     sent = [];
@@ -885,7 +885,9 @@ describe('portals', () => {
     sent = [];
     press('A');
     expect(sequencesOf('A')).toEqual([{ type: 'portals_sequence', kind: 'on', age: 0 }]);
-    stepAt(time + 500);
+    stepAt(time + 999);
+    expect(portalsOf('A')).toEqual([]);
+    stepAt(time + 1);
     expect(portalsOf('A')).toEqual([{ type: 'portals', on: true }]);
   });
 

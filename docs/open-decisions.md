@@ -715,9 +715,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **The first switch-on in a room (`first_on`), 7 s:** a countdown "Portals will enable in 3…, 2…, 1…" for 3 s, then
     darkness from 3 s. The space bends at 5 s, and the portals light up alone in the dark (windows, rim, spill, hum).
     The lamps return at 7 s.
-  - **Every later switch, on or off (`on`, `off`), 1 s:** a plain blackout with no countdown. The space bends at 0.5 s
-    and the lamps return at 1 s. The timeline is `packages/shared/src/portals/sequence.ts`, read by the server and every
-    client.
+  - **Every later switch, on or off (`on`, `off`), 1 s:** a plain blackout with no countdown. The lamps return at 1 s.
+    Switching off unbends the space at 0.5 s, in the dark; switching on bends it at 1 s, so the portals come back
+    together with the lights (the owner's call after playing it, 2026-10-29). The timeline is
+    `packages/shared/src/portals/sequence.ts`, read by the server and every client.
   - **The debounce follows the sequence** (the owner: "align portals on/off debounce"). Y is ignored while a sequence
     runs in the room, and `PORTALS_FLIP_GAP_MS` is gone. When one ends, the next press starts the next at once.
   - **One message, no clock syncing.** The server sends `{ type: 'portals_sequence', kind, age }` once per sequence,
