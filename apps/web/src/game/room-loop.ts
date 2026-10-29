@@ -63,6 +63,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     labels: world.labels,
     ownGlow: null,
     portalPulse: 1,
+    portalTime: 0,
     firstPerson: null,
     portals: null,
   };
@@ -149,7 +150,9 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     const room = o.room();
     scene.lighting = reflections === null ? null : (room?.lighting() ?? o.roomLighting());
     scene.portals = room?.portals() ?? null;
-    scene.portalPulse = portalPulse(performance.now() / 1000);
+    const portalSeconds = performance.now() / 1000;
+    scene.portalPulse = portalPulse(portalSeconds);
+    scene.portalTime = portalSeconds;
     scene.ownGlow = localPlayer.glow(now, room?.session.selfColor() ?? null);
     scene.firstPerson = isConnected(room) ? localPlayer.firstPerson(now) : null;
     return scene;

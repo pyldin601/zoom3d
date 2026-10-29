@@ -163,6 +163,7 @@ function drawWholeFrame(state: 'off' | 'on', s: Scene): void {
     labels: [],
     ownGlow: null,
     portalPulse: 1,
+    portalTime: 0,
     firstPerson: null,
   });
 }

@@ -12,11 +12,13 @@ import {
 } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { twoDoorways } from '../../../../packages/shared/src/portals/test-doorways';
+import { PORTAL_PINK } from '../game/portal-pulse';
 import type { PeerFacts } from '../media/interest';
 import { type RoomScene, renderView } from './frame';
 import { createFramebuffer, type Framebuffer, rgb } from './framebuffer';
 import { bakeLighting, corridorLights, type Lighting } from './lighting';
 import { VACUUM_MODEL } from './models/vacuum';
+import { shimmerAndRim, toSketchPx, windowRipple } from './portal-window';
 import type { Sprite } from './sprites';
 import { makeTextures } from './textures';
 import { CEILING, FLOOR, renderWalls, rowsCovered } from './walls';
@@ -69,6 +71,7 @@ describe('renderView without portals', () => {
     labels: [],
     ownGlow: { x: sx, y: sy, face: null, color: rgb(250, 220, 120) },
     portalPulse: 1,
+    portalTime: 0,
     firstPerson: null,
   });
 
@@ -115,9 +118,20 @@ function portalScene(
     labels: [],
     ownGlow: null,
     portalPulse: 1,
+    portalTime: 0,
     firstPerson: null,
     portals,
   };
+}
+
+/**
+ * `pixel` as one window shows it on the centre column, at pulse 1 and time 0: far from the opening's sides there, so
+ * only its top and bottom light the rim.
+ */
+function shimmeredAtCentre(pixel: number, row: number, window: { start: number; end: number }, width: number): number {
+  const rowCentre = row + 0.5;
+  const edge = toSketchPx(Math.min(rowCentre - window.start, window.end - rowCentre), width);
+  return shimmerAndRim(pixel, 1, windowRipple(row, CENTRE_COL, width, 0), edge);
 }
 
 function throughPortal(t: RigidTransform, eye: PlayerState): PlayerState {
@@ -125,7 +139,7 @@ function throughPortal(t: RigidTransform, eye: PlayerState): PlayerState {
   return { x: at.x, y: at.y, angle: applyAngle(t, eye.angle) };
 }
 
-const pixelAt = (fb: Framebuffer, col: number, row: number) => fb.pixels[row * fb.width + col];
+const pixelAt = (fb: Framebuffer, col: number, row: number) => fb.pixels.at(row * fb.width + col) ?? 0;
 
 describe('renderView through a portal', () => {
   // Looking south at A from its front, two tiles before its plane; B's far side gets wood, the hall's south wall stone.
@@ -144,32 +158,37 @@ describe('renderView through a portal', () => {
   test.each([
     ['unlit', null],
     ['lit', lighting],
-  ] as const)('the window shows the room beyond B, as seen from toDest(eye) past its plane (%s)', (_, lit) => {
-    const fb = createFramebuffer();
-    renderView(fb, portalScene(map, portals, eye, [], lit));
-    // The same columns as the window's: the floor is stepped along a row from the pass's first column.
-    const fromCol = fb.portalAt.indexOf(0);
-    const toCol = fb.portalAt.lastIndexOf(0) + 1;
-    expect(fromCol).toBeLessThan(CENTRE_COL);
-    expect(toCol).toBeGreaterThan(CENTRE_COL);
-    const beyond = createFramebuffer();
-    const nearDepth = new Float64Array(beyond.width).fill(PLANE_DEPTH);
-    renderWalls(beyond, {
-      map,
-      textures,
-      eye: throughPortal(atoB, eye),
-      lighting: lit,
-      portals,
-      pass: { fromCol, toCol, nearDepth, lastLevel: false },
-    });
-    const { start, end } = rowsCovered(fb.height, fb.width / 2 / Math.tan(fb.fov / 2) / PLANE_DEPTH);
-    for (let row = start; row < end; row++) {
-      expect(pixelAt(fb, CENTRE_COL, row)).toBe(pixelAt(beyond, CENTRE_COL, row));
+  ] as const)(
+    'the window shows the room beyond B, as seen from toDest(eye) past its plane, shimmered (%s)',
+    (_, lit) => {
+      const fb = createFramebuffer();
+      renderView(fb, portalScene(map, portals, eye, [], lit));
+      // The same columns as the window's: the floor is stepped along a row from the pass's first column.
+      const fromCol = fb.portalAt.indexOf(0);
+      const toCol = fb.portalAt.lastIndexOf(0) + 1;
+      expect(fromCol).toBeLessThan(CENTRE_COL);
+      expect(toCol).toBeGreaterThan(CENTRE_COL);
+      const beyond = createFramebuffer();
+      const nearDepth = new Float64Array(beyond.width).fill(PLANE_DEPTH);
+      renderWalls(beyond, {
+        map,
+        textures,
+        eye: throughPortal(atoB, eye),
+        lighting: lit,
+        portals,
+        pass: { fromCol, toCol, nearDepth, lastLevel: false },
+      });
+      const window = { ...rowsCovered(fb.height, fb.width / 2 / Math.tan(fb.fov / 2) / PLANE_DEPTH) };
+      for (let row = window.start; row < window.end; row++) {
+        expect(pixelAt(fb, CENTRE_COL, row)).toBe(
+          shimmeredAtCentre(pixelAt(beyond, CENTRE_COL, row), row, window, fb.width)
+        );
+      }
+      const plainDoor = createFramebuffer();
+      renderView(plainDoor, portalScene(map, null, eye, [], lit));
+      expect(pixelAt(fb, CENTRE_COL, EYE_ROW)).not.toBe(pixelAt(plainDoor, CENTRE_COL, EYE_ROW));
     }
-    const plainDoor = createFramebuffer();
-    renderView(plainDoor, portalScene(map, null, eye, [], lit));
-    expect(pixelAt(fb, CENTRE_COL, EYE_ROW)).not.toBe(pixelAt(plainDoor, CENTRE_COL, EYE_ROW));
-  });
+  );
 
   test('the z-buffer holds the depth beyond the window, for the labels', () => {
     const fb = createFramebuffer();
@@ -185,7 +204,8 @@ describe('renderView through a portal', () => {
     expect(pixelAt(between, CENTRE_COL, EYE_ROW)).not.toBe(RED);
     const past = createFramebuffer();
     renderView(past, portalScene(map, portals, eye, [plainPerson('past', 4.5, 3.4)]));
-    expect(pixelAt(past, CENTRE_COL, EYE_ROW)).toBe(RED);
+    const window = rowsCovered(past.height, past.width / 2 / Math.tan(past.fov / 2) / PLANE_DEPTH);
+    expect(pixelAt(past, CENTRE_COL, EYE_ROW)).toBe(shimmeredAtCentre(RED, EYE_ROW, window, past.width));
   });
 
   test('seen facts count a person drawn only through the window', () => {
@@ -233,14 +253,18 @@ describe('windows within windows', () => {
   // the fifth's front: a third window, past the last level.
   const { map, portals } = doorwayChain(5);
 
-  test('the third window is black, frame after frame', () => {
+  test('the third window is black, frame after frame: seen through two windows, nothing but their pink', () => {
     const fb = createFramebuffer();
     for (const eye of [
       { x: 2.5, y: 1.5, angle: SOUTH },
       { x: 2.45, y: 1.6, angle: SOUTH + 0.01 },
     ]) {
       renderView(fb, portalScene(map, portals, eye));
-      expect(pixelAt(fb, CENTRE_COL, EYE_ROW)).toBe(BLACK);
+      const shown = pixelAt(fb, CENTRE_COL, EYE_ROW);
+      const red = shown & 0xff;
+      expect(red).toBeGreaterThan(0);
+      expect(((shown >>> 8) & 0xff) / red).toBeCloseTo(PORTAL_PINK.g / PORTAL_PINK.r, 1);
+      expect(((shown >>> 16) & 0xff) / red).toBeCloseTo(PORTAL_PINK.b / PORTAL_PINK.r, 1);
     }
   });
 
