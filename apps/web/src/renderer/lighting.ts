@@ -3,9 +3,18 @@
 // sample asks how much of each lamp's disc it can see (2D lines of sight). Ambient is bounce light, what the lit
 // surfaces throw back. The bake also lists, per wall sample column and floor cell, the lamps it can reflect; the
 // reflection model itself (`reflection()`) is pure and runs per frame, sampled sparsely by walls.ts.
-import { type GameMap, hasLineOfSight, tileAt } from '@zoom3d/shared';
+import {
+  applyPoint,
+  type GameMap,
+  hasLineOfSight,
+  hasLineOfSightThrough,
+  hasPortalLineOfSight,
+  type Portals,
+  tileAt,
+} from '@zoom3d/shared';
 import { EYE_HEIGHT } from './camera';
 import { rgb } from './framebuffer';
+import { GLOW_RADIUS, type GlowShadow, hiddenByCut, newPortalGlow, placePortalGlow } from './glow';
 import { RELIEF_LEVELS, type ReflectionMaterial } from './textures';
 
 export interface Light {
@@ -19,6 +28,8 @@ export interface Light {
   r: number;
   g: number;
   b: number;
+  /** On a lamp's copy (lampCopies): the index of the portal it is seen through. Absent on a real lamp. */
+  through?: number;
 }
 
 /** Wall face samples: U across the face, V down it (one per 8 texel rows of a 64 texture). */
@@ -62,8 +73,8 @@ export const REFLECTION_NEAR = 4;
  */
 const LAMPS_PER_DIRECTION = 2;
 export const REFLECTION_LAMPS = 4 * LAMPS_PER_DIRECTION;
-/** The lamp lists hold lamp indices as signed bytes (−1 for none), so a map can have this many lamps. */
-const MAX_LAMPS = 127;
+/** The lamp lists hold lamp indices as signed 16-bit integers (−1 for none), so a map can have this many lamps. */
+const MAX_LAMPS = 32767;
 /**
  * A lamp's reflection fades over the whole path its light takes, lamp to surface to eye, to nothing at this many
  * tiles. Not its light's reach: a lamp shows mirrored in the floor however far its own light gets. Lamps are listed
@@ -105,6 +116,8 @@ const BOUNCE_ROUNDS = 40;
 
 export interface Lighting {
   map: GameMap;
+  /** The portals its light goes through (bakePortalLighting), or null for the plain floor plan. */
+  portals: Portals | null;
   lights: readonly Light[];
   /** The bare ambient, everywhere; bounce light (if baked) adds to it. */
   ambient: number;
@@ -123,7 +136,7 @@ export interface Lighting {
    * Per face sample column ([face][u][k], so (faceOffset / WALL_V + u) · REFLECTION_LAMPS + k): the nearest lamps in
    * sight in each direction (see REFLECTION_LAMPS), or −1.
    */
-  wallLamp: Int8Array;
+  wallLamp: Int16Array;
   /** Per wallLamp slot: how much of its lamp the sample sees, 0..255 (a lamp part hidden by a wall's edge). */
   wallLampSeen: Uint8Array;
   /**
@@ -131,9 +144,14 @@ export interface Lighting {
    * their light's reach use the floor light's own cells and sight lines, so a reflection's shadow edge is the floor's;
    * farther ones the coarse lamp sight (half-tile cells).
    */
-  floorLamp: Int8Array;
+  floorLamp: Int16Array;
   /** Per floorLamp slot: how much of its lamp the cell sees, 0..255. */
   floorLampSeen: Uint8Array;
+  /**
+   * Per portal (in `portals.list` order), what the floor around its glow sees of the glow past the walls; null for the
+   * plain floor plan, which has no portal glows.
+   */
+  portalGlowSeen: readonly GlowShadow[] | null;
   /** Final floor / ceiling colours, (map.width·FLOOR_SUB) × (map.height·FLOOR_SUB). */
   floor: Uint32Array;
   ceiling: Uint32Array;
@@ -234,16 +252,125 @@ export function bakeLighting(
   ceilingColour: number,
   bounce?: Bounce
 ): Lighting {
-  if (lights.length > MAX_LAMPS) {
-    throw new Error(`bakeLighting: ${lights.length} lamps, at most ${MAX_LAMPS} fit the lamp lists`);
-  }
+  checkLampCount('bakeLighting', lights);
   const input: BakeInput = {
     map,
+    portals: null,
     lights,
     ambient,
     bounce: bounce ? bakeBounce(map, lights, floorColour, ceilingColour, bounce) : null,
-    sight: bakeLampSight(map, lights),
+    sight: bakeLampSight(map, null, lights),
   };
+  return { ...bakeSurfaces(input, floorColour, ceilingColour), portalGlowSeen: null };
+}
+
+/**
+ * Bakes the lighting of `plain`'s map with its portals on: light follows sight, so a lamp lights only what can see it
+ * in a straight line or through one portal (as one of its lampCopies). The bounce light stays `plain`'s, the very same
+ * table: it is soft enough that the floor plan's spread will do. The portals' glows never move, so their shadows are
+ * baked here too.
+ */
+export function bakePortalLighting(
+  plain: Lighting,
+  portals: Portals,
+  floorColour: number,
+  ceilingColour: number
+): Lighting {
+  const lights = lampCopies(plain.lights, portals);
+  checkLampCount('bakePortalLighting', lights);
+  const input: BakeInput = {
+    map: plain.map,
+    portals,
+    lights,
+    ambient: plain.ambient,
+    bounce: plain.bounce,
+    sight: bakeLampSight(plain.map, portals, lights),
+  };
+  return { ...bakeSurfaces(input, floorColour, ceilingColour), portalGlowSeen: bakePortalGlowSeen(plain.map, portals) };
+}
+
+/**
+ * Per portal, how much of its glow's disc each floor cell within GLOW_RADIUS of it sees, as a lamp's (seenShare, soft
+ * edges across LAMP_RADIUS). Cells in walls or on the cut side of the doorway's plane see none.
+ */
+function bakePortalGlowSeen(map: GameMap, portals: Portals): GlowShadow[] {
+  const glow = newPortalGlow();
+  return portals.list.map((portal) => {
+    placePortalGlow(glow, portal);
+    const disc: Light = { x: glow.x, y: glow.y, z: EYE_HEIGHT, radius: GLOW_RADIUS, r: 0, g: 0, b: 0 };
+    const firstCol = Math.max(0, Math.floor((glow.x - GLOW_RADIUS) * FLOOR_SUB));
+    const firstRow = Math.max(0, Math.floor((glow.y - GLOW_RADIUS) * FLOOR_SUB));
+    const across = Math.min(map.width * FLOOR_SUB, Math.ceil((glow.x + GLOW_RADIUS) * FLOOR_SUB)) - firstCol;
+    const down = Math.min(map.height * FLOOR_SUB, Math.ceil((glow.y + GLOW_RADIUS) * FLOOR_SUB)) - firstRow;
+    const seen = new Uint8Array(across * down);
+    for (let row = 0; row < down; row++) {
+      for (let col = 0; col < across; col++) {
+        const x = (firstCol + col + 0.5) / FLOOR_SUB;
+        const y = (firstRow + row + 0.5) / FLOOR_SUB;
+        if (tileAt(map, Math.floor(x), Math.floor(y)) !== 0 || hiddenByCut(glow, x, y)) {
+          continue;
+        }
+        seen[row * across + col] = Math.round(seenShare(map, portals, x, y, disc) * 255);
+      }
+    }
+    return { sub: FLOOR_SUB, firstCol, firstRow, across, down, seen };
+  });
+}
+
+function checkLampCount(baker: string, lights: readonly Light[]): void {
+  if (lights.length > MAX_LAMPS) {
+    throw new Error(`${baker}: ${lights.length} lamps, at most ${MAX_LAMPS} fit the lamp lists`);
+  }
+}
+
+/**
+ * The real lamps, unchanged and in order, then a copy of each lamp per portal it can be seen through: one lying behind
+ * the portal's destination and within LAMP_SIGHT of it, placed where it appears from the portal's front.
+ */
+export function lampCopies(lights: readonly Light[], portals: Portals): Light[] {
+  const copies: Light[] = [...lights];
+  const at = { x: 0, y: 0 };
+  for (const [through, portal] of portals.list.entries()) {
+    const dest = portals.list.at(portal.to);
+    if (!dest) {
+      continue;
+    }
+    for (const l of lights) {
+      const behindDest = (l.x - dest.cx) * dest.nx + (l.y - dest.cy) * dest.ny > 0;
+      if (!behindDest || Math.hypot(l.x - dest.cx, l.y - dest.cy) >= LAMP_SIGHT) {
+        continue;
+      }
+      applyPoint(portal.fromDest, l.x, l.y, at);
+      copies.push({ ...l, x: at.x, y: at.y, through });
+    }
+  }
+  return copies;
+}
+
+/**
+ * Whether (ax, ay) sees the point (bx, by) of lamp `l`'s disc: a copy only through its portal, a real lamp in a
+ * straight line that crosses no portal front to back.
+ */
+export function seesLamp(
+  map: GameMap,
+  portals: Portals | null,
+  l: Light,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number
+): boolean {
+  if (portals !== null && l.through !== undefined) {
+    return hasLineOfSightThrough(map, portals, l.through, ax, ay, bx, by);
+  }
+  return hasPortalLineOfSight(map, portals, ax, ay, bx, by);
+}
+
+/**
+ * Bakes every surface's table for `input`'s lamps: the wall faces and their runs, then the walls, floor and ceiling.
+ */
+function bakeSurfaces(input: BakeInput, floorColour: number, ceilingColour: number): Omit<Lighting, 'portalGlowSeen'> {
+  const { map } = input;
   const { faceOffset, faces } = indexFaces(map);
   const faceRun = faceRuns(map, faceOffset, faces);
   const { wall, wallLamp, wallLampSeen } = bakeWalls(input, faceOffset, faces);
@@ -254,8 +381,9 @@ export function bakeLighting(
   );
   return {
     map,
-    lights,
-    ambient,
+    portals: input.portals,
+    lights: input.lights,
+    ambient: input.ambient,
     bounce: input.bounce,
     faceOffset,
     faceRun,
@@ -278,9 +406,13 @@ export function ambientAt(lm: Lighting, x: number, y: number, out: Float64Array)
 
 // Bake stages.
 
-/** What every stage of a bake reads: the map, its lamps, the ambient and bounce light, and the coarse lamp sight. */
+/**
+ * What every stage of a bake reads: the map and its portals, its lamps, the ambient and bounce light, and the coarse
+ * lamp sight.
+ */
 interface BakeInput {
   map: GameMap;
+  portals: Portals | null;
   lights: readonly Light[];
   ambient: number;
   bounce: Float32Array | null;
@@ -351,12 +483,12 @@ function bakeWalls(
   input: BakeInput,
   faceOffset: Int32Array,
   faces: number
-): { wall: Uint32Array; wallLamp: Int8Array; wallLampSeen: Uint8Array } {
+): { wall: Uint32Array; wallLamp: Int16Array; wallLampSeen: Uint8Array } {
   const { map, lights } = input;
   const { width, height } = map;
   const levels = RELIEF_LEVELS.length;
   const wall = new Uint32Array(faces * WALL_U * WALL_V * levels);
-  const wallLamp = new Int8Array(faces * WALL_U * REFLECTION_LAMPS).fill(-1);
+  const wallLamp = new Int16Array(faces * WALL_U * REFLECTION_LAMPS).fill(-1);
   const wallLampSeen = new Uint8Array(wallLamp.length);
   const list = createLampList();
   const around = new Float64Array(3);
@@ -400,7 +532,7 @@ function bakeWalls(
             // Exact sight lines, past its light's reach too: a far lamp seen through a doorway is shaded softly by the
             // door's edge, over tiles, and a coarse yes or no would end its reflection at a hard line.
             const lit = flat < l.radius;
-            const seen = seenShare(map, px + n.dx * 1e-3, py + n.dy * 1e-3, l);
+            const seen = seenShare(map, input.portals, px + n.dx * 1e-3, py + n.dy * 1e-3, l);
             if (seen === 0) {
               continue;
             }
@@ -443,7 +575,7 @@ function bakeFloorAndCeiling(
 ): {
   floor: Uint32Array;
   ceiling: Uint32Array;
-  floorLamp: Int8Array;
+  floorLamp: Int16Array;
   floorLampSeen: Uint8Array;
   stride: number;
   rows: number;
@@ -453,7 +585,7 @@ function bakeFloorAndCeiling(
   const rows = map.height * FLOOR_SUB;
   const floor = new Uint32Array(stride * rows).fill(tint(floorColour, ambient, ambient, ambient));
   const ceiling = new Uint32Array(stride * rows).fill(tint(ceilingColour, ambient, ambient, ambient));
-  const floorLamp = new Int8Array(stride * rows * REFLECTION_LAMPS).fill(-1);
+  const floorLamp = new Int16Array(stride * rows * REFLECTION_LAMPS).fill(-1);
   const floorLampSeen = new Uint8Array(floorLamp.length);
   const list = createLampList();
   const around = new Float64Array(3);
@@ -485,7 +617,7 @@ function bakeFloorAndCeiling(
           continue;
         }
         const lit = flat < l.radius;
-        const seen = lit ? seenShare(map, px, py, l) : seesCoarsely(input, px, py, i) ? 1 : 0;
+        const seen = lit ? seenShare(map, input.portals, px, py, l) : seesCoarsely(input, px, py, i) ? 1 : 0;
         if (seen === 0) {
           continue;
         }
@@ -493,7 +625,7 @@ function bakeFloorAndCeiling(
         if (!lit) {
           continue;
         }
-        if (flat < FIXTURE_RADIUS) {
+        if (flat < FIXTURE_RADIUS && l.through === undefined) {
           fixture = true;
         }
         const kf = floorLampLight(l, px, py) * seen;
@@ -530,14 +662,14 @@ export function floorLampLight(l: Light, px: number, py: number): number {
  * so far, nearest first, with their distances and how much of each the sample sees (0..255).
  */
 interface LampList {
-  lamps: Int8Array;
+  lamps: Int16Array;
   dist: Float64Array;
   seen: Uint8Array;
 }
 
 function createLampList(): LampList {
   return {
-    lamps: new Int8Array(REFLECTION_LAMPS),
+    lamps: new Int16Array(REFLECTION_LAMPS),
     dist: new Float64Array(REFLECTION_LAMPS),
     seen: new Uint8Array(REFLECTION_LAMPS),
   };
@@ -574,13 +706,13 @@ function offerLamp(list: LampList, i: number, dx: number, dy: number, dist: numb
  * line to it, LAMP_RADIUS either side: when sight lines to its two ends disagree, a wall's edge cuts it, found by
  * halving, and the share is the disc's area on the seen side of the cut.
  */
-export function seenShare(map: GameMap, x: number, y: number, l: Light): number {
+export function seenShare(map: GameMap, portals: Portals | null, x: number, y: number, l: Light): number {
   const dx = l.x - x;
   const dy = l.y - y;
   const len = Math.hypot(dx, dy) || 1;
   const ox = (-dy / len) * LAMP_RADIUS;
   const oy = (dx / len) * LAMP_RADIUS;
-  const sees = (t: number) => hasLineOfSight(map, x, y, l.x + ox * t, l.y + oy * t);
+  const sees = (t: number) => seesLamp(map, portals, l, x, y, l.x + ox * t, l.y + oy * t);
   const left = sees(-1);
   if (left === sees(1)) {
     return left ? 1 : 0;
@@ -611,7 +743,7 @@ function seesCoarsely(input: BakeInput, x: number, y: number, i: number): boolea
  * Per lamp-sight cell × lamp: 1 if the open floor at the cell's centre can see the lamp, within LAMP_SIGHT. It lets
  * the walls and floor list lamps past their light's reach for reflection without a sight line per fine sample.
  */
-function bakeLampSight(map: GameMap, lights: readonly Light[]): Uint8Array {
+function bakeLampSight(map: GameMap, portals: Portals | null, lights: readonly Light[]): Uint8Array {
   const across = map.width * SIGHT_SUB;
   const down = map.height * SIGHT_SUB;
   const sight = new Uint8Array(across * down * lights.length);
@@ -623,7 +755,7 @@ function bakeLampSight(map: GameMap, lights: readonly Light[]): Uint8Array {
         continue;
       }
       lights.forEach((l, i) => {
-        if (Math.hypot(l.x - px, l.y - py) < LAMP_SIGHT && hasLineOfSight(map, px, py, l.x, l.y)) {
+        if (Math.hypot(l.x - px, l.y - py) < LAMP_SIGHT && seesLamp(map, portals, l, px, py, l.x, l.y)) {
           sight[(cy * across + cx) * lights.length + i] = 1;
         }
       });
@@ -899,7 +1031,7 @@ export function directLight(lm: Lighting, x: number, y: number, z: number, angle
     const dz = l.z - z;
     const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
     const k = falloff(dist, l.radius);
-    if (k === 0 || !hasLineOfSight(lm.map, x, y, l.x, l.y)) {
+    if (k === 0 || !seesLamp(lm.map, lm.portals, l, x, y, l.x, l.y)) {
       continue;
     }
     // The lamp's direction in model space: rotate the horizontal part by −angle.

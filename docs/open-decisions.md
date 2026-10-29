@@ -540,7 +540,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     `portals === null` everywhere means today's behaviour, pixel for pixel (`pnpm bench:walls`/`bench:sprites` hashes
     are unchanged with portals off).
   - **Drawing re-runs the passes** from the eye carried through each portal, for the window's columns only, two levels
-    deep (the third is black). Every pass takes a `Pass` (columns and a near limit), so a new pass must honour it.
+    deep (the third is black; pink-tinted black since D29). Every pass takes a `Pass` (columns and a near limit), so a
+    new pass must honour it.
   - **Hearing and subscribing** use the apparent position: up to two portals whose front faces the listener and whose
     centre is within `NEAR_TILES`.
   - **Near or far is one rule** (`isNear` in `packages/shared/src/portals/apparent.ts`), used by the server's fan-out
@@ -575,6 +576,196 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     - Not done: the browser run with `?bots=100` (walking through doorways, comparing the view to where it leads, the
       server's `/metrics` tick time under real load). The e2e spec `apps/web/e2e/portals.spec.ts` covers the flip.
   - Not done: an interactive element that uses portals; a map editor's doorway choices; the vacuum going through.
+  - The baked lamp light follows the portals since D28; moving shadows and avatar glow through portals don't yet.
+
+### D28 — The baked lamp light follows the portals
+
+- *Resolved 2026-10-29* ([spec](superpowers/specs/2026-10-29-portal-lamp-light-design.md)): with portals on, the lamp
+  light around a doorway matches what is seen through it. Before, the floor and walls in front of a doorway glowed with
+  the lamps of the room physically behind it, a room that is no longer there, and the lamps of the room seen through it
+  lit nothing on this side. Press Y and the light changes along with the space.
+  - **The rule: light follows sight.** A spot is lit by the lamps it can see, the way it sees them: a sight line that
+    crosses a doorway front to back carries on from the destination, as a view ray does; one that crosses back to front
+    is ordinary. So the light has a step at a window: looking through A from its front, the light of the viewer's side
+    ends at A's plane and B's back side has only its own. The owner chose this after trying both rules in a throwaway
+    demo. Their reason: light from room Y can't reach room W, because from W the room Y isn't visible.
+  - **Rejected, rule 2:** join each doorway with its destination both ways, so the light carries on across the window.
+    B's back side would then glow from a room that can't be seen from there: the spill this removes, moved to the
+    arrival side.
+  - **Copies through one portal.** With portals on, every lamp lying behind a destination and within `LAMP_SIGHT` of it
+    also appears as a copy where it is seen from the portal's front (`lampCopies`, `Light.through`). A spot sees a copy
+    only along a line through that doorway (`seesLamp`, `hasLineOfSightThrough`); the doorway's edge softens a copy's
+    light as a wall's edge does a lamp's. A lamp seen through two doorways in a row lights nothing: one level keeps the
+    copies and the bake time down. Copies show no ceiling fixture; the window's own pass draws the real one.
+  - **Everything reading the lamp list follows:** reflections, the lighting on people, the vacuum and the ball
+    (`directLight`), and the object shadows' fallback sight test, all through `seesLamp`.
+  - **A second table per room,** `bakePortalLighting`, baked per room id (`roomLightingByRoom`) in an idle moment
+    while the room's lobby is open, or at the latest in `joinRoom`, before the connection starts. In the Join click the
+    two bakes (about 0.4 s) froze the lobby and held up the connection. So it is ready before any welcome can turn
+    portals on, and Y swaps tables in the same frame. The plain table stays baked once per page, now from the lobby
+    too. The bounce light is the plain table's own array, reused: it is faint and spread over two tiles.
+    `describeScene` picks the table for every pass, windows included.
+  - **The lamp lists widened** from signed bytes (127 lamps) to `Int16Array` (`MAX_LAMPS` 32767): LEVEL1 has 37 lamps
+    and 101 copies.
+  - **Measured** (2026-10-29, against base `2f50798`; LEVEL1 at 640×360, lit, reflections `both`, a loaded machine,
+    read the ratios): the portals-on bake takes 255 to 272 ms cold, with 101 copies of 37 lamps, against 125 ms for the
+    plain bake (121 to 128 ms before), so no pruning of copies was needed. Both are baked in an idle moment in the
+    lobby, not in the Join click. With portals off nothing changed: the `bench:walls` lighting, pixel, doorway and
+    crowd hashes and the `bench:sprites` hashes are the same as on the base. Two runs each, agreeing to 0.02 ms:
+    `renderWalls` from 1.5 tiles in front of 8 doorways, 1.68 ms off, 1.00 ms on (0.92 on the base; an earlier 1.79 ms
+    off was noise). With the 100-glow crowd, from the lamp poses: 2.55 ms off, 2.85 ms on (2.73 on the base). Whole
+    frames (`renderView`) from the doorways: 2.38 ms off, 2.78 ms on (2.65 on the base).
+  - Not done: moving shadows and avatar glow through portals; bounce light through portals; lamp light through two
+    portals; a browser run by eye of the light across a window.
+
+### D29 — Portal windows shimmer, glow and hum
+
+- *Resolved 2026-10-29* ([spec](superpowers/specs/2026-10-29-portal-glow-design.md)): with portals on, each doorway
+  window shimmers, its front spills a pulsing pink light, and each doorway hums. A doorway now reads as a gateway
+  before anyone looks through it, and from a distance. The owner picked the look in a throwaway sketch.
+  - **What was picked:** both window styles (the shimmer and the lit rim), one pink for all doorways, a pulse of 0.8 Hz
+    at 40% depth (`game/portal-pulse.ts`), and the hum's mix under voices (`HUM_GAIN` 0.04, equal to `VACUUM_GAIN`).
+  - **The spill is cut at the plane.** A portal glow is an avatar glow with a `cut` plane (`Glow.cut`): it lights
+    only the front side of its doorway, so the floor and walls behind it stay as they were. Plain glow was rejected: it
+    would also have lit the back side, the room the window replaces, which is the spill D28 removed.
+  - **The light sits 0.6 tiles in front of the plane,** so the spill reaches the floor and the frame instead of
+    dying inside the doorway's own wall thickness.
+  - **No glow on people or objects,** and the ceiling goes pink with the floor. People and objects are drawn
+    unchanged; only the walls, floor and ceiling take the spill.
+  - **One clock for glow, shimmer and hum.** The pulse is computed once per frame from the local clock and is never
+    sent, so the three never drift apart. Peers see their own phase, which is fine: it is decoration, not state.
+  - **The rim has a cutoff.** It is skipped past about 13.7 sketch px from the opening, where it adds under half a
+    level. The top and bottom rim are measured from the opening's unclamped bounds, so they don't slide when the
+    opening runs off the screen.
+  - **Amends D27:** a window past the last level is not pure black but pink-tinted black, because the levels above it
+    tint it. D27's "the third is black" no longer holds to the letter.
+  - **The hum:** one source per portal, placed through `placeApparently` and swelled each frame by the renderer's own
+    pulse. `PortalHums.dispose()` exists and is tested, but nothing calls it: no `Room` is ever disposed. A quick
+    off then on can't cut a hum's fade short, because the server allows one flip per room per 1000 ms, longer than the
+    fade.
+  - **A hum plays only in hearing range** (spec §6 left it to the builder). Each hum is 2 oscillators, a filter, the
+    engine's HRTF panner and a reverb send, so all 24 of LEVEL1's ran even far beyond hearing. Now a doorway's hum
+    starts (fading in) when its apparent position, the one `placeApparently` computes, comes within the engine's
+    silent distance (`settings().max`, 24 tiles), and fades out and detaches 1 tile past it, so pacing about the edge
+    doesn't restart it. Past that distance the engine's gain is already 0, so the fade out is silent, and a hum
+    re-entering while its old one still fades can replace it without a click. From 2000 random open spots on LEVEL1,
+    a median of 10 of the 24 doorways are in range (90th percentile 14, at most 19).
+  - **Levels, tuned by eye while playing locally (2026-10-29).** `PORTAL_GLOW_STRENGTH` stays at 0.9 (0.5 was tried
+    and was too faint). The window's shimmer is half the sketch's, `k = 0.08 + 0.1·pulse + 0.05·ripple`, so the room
+    seen through it is clearer. `HUM_GAIN` (0.04) is still the first guess, awaiting a listen.
+  - **Measured** (2026-10-29, against D28's numbers; LEVEL1 at 640×360, lit, reflections `both`, medians of three runs
+    each, a loaded machine, read the ratios). With portals off nothing changed: the `bench:walls` pixel (-601092469),
+    doorway (-1246551896) and crowd (2075427884) hashes and the `bench:sprites` hashes (1236007431, doorway scenes
+    -1373330069) are the same as before.
+    - `renderWalls` from 1.5 tiles in front of 8 doorways: 1.68 ms off, 1.00 ms on (D28: 1.00 on).
+    - With the 100-glow crowd, from the lamp poses: 2.55 ms off, 2.86 ms on (D28: 2.85 on).
+    - Whole frames (`renderView`) from the doorways with people and a vacuum ahead: 2.36 ms off, 4.13 ms on (D28:
+      2.78 on). The glow, the shimmer and the rim cost about 1.35 ms more than D28's portals-on frame.
+  - **Where the frame cost goes, and the fix** (final review, 2026-10-29; `pnpm bench:sprites` `renderView` from the
+    doorway poses, portals on, medians of three runs, each part measured by switching it off):
+    - **The spill was about 0.8 ms** (0.79 ms here), **about 0.63 ms of it the floor and ceiling's `addGlow`**: once
+      the frame's first pass showed a window, every glow on the map went through `addGlow`'s cell box, all 24 portal
+      glows included.
+    - **The shimmer and rim are about 0.6 ms** (0.57 ms here; the review measured 0.67), per pixel shown through a
+      window. Left as they are.
+    - **The fix:** the floor tables now skip a glow (and an object's shadow) unless some pass's eye may see it: the
+      frame's own, the eye carried through each window its first pass shows, limited to that window's columns, and
+      from those, the eyes through every window they may show (from a doorway's front with its opening in their
+      columns), down both levels (`renderer/frame-eyes.ts`). It is conservative: every pixel hash is unchanged.
+      `renderView` portals on went from 4.11 ms to 3.85 ms; the spill from 0.79 ms to 0.52 ms. About 70% of the glows
+      still pass in these poses: the eyes through windows look down long corridors, and the test is by view, not by
+      occlusion. Amends D27, whose floor tables lit everything once a window showed.
+    - `bench:walls` lit no portal glow before (its portals-on passes took only avatar glows). Its portals-on doorway
+      and crowd passes now take the portal glows too, so a spill regression shows there: their hashes moved from
+      1272589417 to 482093256 (doorway) and from -1861553458 to -1819097756 (crowd), and the portals-off hashes are
+      unchanged. With the halved shimmer, the `bench:sprites` doorway scenes with portals on hash to -1101303808.
+      With the spill, `renderWalls` from the doorways, portals on, takes 1.60 ms (1.83 ms before the fix), and with
+      the crowd from the lamp poses 2.89 ms (3.19 ms before).
+  - **Portal glows cast baked soft shadows** (amended 2026-10-29, the user's call). A screenshot showed a doorway in
+    a recess lighting the floor and the side face of the block beside it, through the block. Now a floor cell, ceiling
+    cell or wall sample gets a portal glow's light only as much as it sees the glow's disc, as a lamp's (`seenShare`,
+    soft edges across `LAMP_RADIUS`). A portal glow never moves, so the share is baked per portal with the portals-on
+    lighting (`Lighting.portalGlowSeen`, one byte per floor cell within GLOW_RADIUS) and `glowLight` multiplies by it;
+    a wall sample reads the cell just in front of the wall. Avatar glows carry no table (`Glow.shadow` null) and light
+    as before. Unlit rooms have no table, and no glow light at all.
+    - **Bake:** 24 portals, about 15,300 cells, 6.5 ms cold (1.5 ms warm) on top of `bakePortalLighting`'s ~255 ms,
+      still in the lobby, so Y never waits.
+    - **Frame cost:** none to speak of (medians of three runs, against the commit before): `renderWalls` from the
+      doorways, portals on, 1.61 ms (1.56 before), crowd 2.97 ms (2.83). Portals off moved too (1.73 vs 1.68, 2.70 vs
+      2.65), so the doorway change is the machine and the crowd's at most about 0.1 ms. `renderView` from the
+      doorways, portals on, 3.84 ms (3.80).
+    - **Hashes:** every portals-off hash is unchanged. Portals on, `bench:walls` doorway moved from 482093256 to
+      -589436950 and crowd from -1819097756 to 2005369998; `bench:sprites` doorway scenes from -1101303808 to
+      -198097577.
+  - Not done: glow on people and objects; a hue per doorway; the hum through two portals; a listen by ear.
+
+### D30 — Portals switch as a timed, shared sequence
+
+- *Resolved 2026-10-29* ([spec](superpowers/specs/2026-10-29-portal-sequence-design.md)): pressing Y no longer bends the
+  room at once. The server starts a timed sequence for the whole room, and everyone sees and hears the same blackout.
+  The owner chose the sequences and their timings.
+  - **The first switch-on in a room (`first_on`), 7 s:** a countdown "Portals will enable in 3…, 2…, 1…" for 3 s, then
+    darkness from 3 s. The space bends at 5 s, and the portals light up alone in the dark (windows, rim, spill, hum).
+    The lamps return at 7 s.
+  - **Every later switch, on or off (`on`, `off`), 1 s:** a plain blackout with no countdown. The space bends at 0.5 s
+    and the lamps return at 1 s. The timeline is `packages/shared/src/portals/sequence.ts`, read by the server and every
+    client.
+  - **The debounce follows the sequence** (the owner: "align portals on/off debounce"). Y is ignored while a sequence
+    runs in the room, and `PORTALS_FLIP_GAP_MS` is gone. When one ends, the next press starts the next at once.
+  - **One message, no clock syncing.** The server sends `{ type: 'portals_sequence', kind, age }` once per sequence,
+    and the welcome carries `sequence?` while one runs. The client stamps the start as `arrival - age`, like D23's
+    `peers` batches. Players are out of step by their own network delay, up to about 0.1 s on a slow connection. The
+    owner accepted that; per-step messages (six per press) and clock syncing were not chosen.
+  - **The bend is the server's.** At `bendAtMs` the server flips the room's flag and broadcasts the existing
+    `{ type: 'portals', on }`, so clients bend on that message as before. The move check keeps accepting either mode
+    for 1 s after the bend (D27).
+  - **The lamps wait for the bend.** The dark is timed from the sequence message, but the bend comes in a later
+    message: up to a tick (66 ms) after its moment, plus its own network delay. So from `darkAtMs` a client stays dark
+    while its portals flag differs from the sequence's target (on for `first_on` and `on`, off for `off`), up to 2 s
+    past `lightsAtMs`; the lights-on sound plays when the lamps really return. The space never bends in lamp light,
+    unless the bend is over 2 s late. A stalled tab can get the press and the bend in one burst, which would show the
+    countdown over a bent space: a flag already at the target before `bendAtMs` can only mean that, so the client
+    jumps to the bend (no countdown, no lights-off sound, the dark from there and the lamps 2 s or 0.5 s later).
+  - **A countdown pulse, and no flicker in "lights on"** (both the owner's picks by ear in the sound sketch,
+    2026-10-29): a short 440 Hz triangle pulse plays as each countdown number shows, at 0, 1 and 2 s of `first_on`
+    (skipped when over 300 ms late, like every cue). The fluorescent flicker ticks of "lights on" are gone: it is the
+    breaker click and the hum.
+  - **Darkness is a table swap, never a dimming factor.** A third lighting table per room has no lamps, ambient 0 and no
+    bounce, so it costs nothing per frame. Glows add their light on top as usual: faces keep their own brightness (they
+    were never lamp-shaded) and the portal glows keep their shadows, because the table reuses the portals-on table's
+    `portalGlowSeen`. It adds about 20 ms to the lobby bake (measured 2026-10-29 on an Apple M5 under Node 22: a cold
+    bake of LEVEL1's dark table, the first in a fresh process, took 19.0, 20.2 and 21.5 ms, median 20.2; after the
+    plain and portals-on tables, as `createRoomLighting` bakes it, the median was 22.0 ms). Labels, the status line
+    and the automap stay as they are. Unlit rooms (`?lights=off`) still get the countdown and sounds, and the frame
+    doesn't go dark.
+  - **Dark windows (the owner's choice).** A portal window reads the same black table, so a lit portal in the dark is a
+    glowing pink frame around a black opening, and gives away nothing about where it leads.
+  - **`portalsEverOn` is set at the bend,** not at the press, and is saved in the state file beside `portals`
+    (`LobbySnapshot` is still version 1; a missing field reads as "never"). Restoring `portals: true` implies it. A
+    sequence running at shutdown is not saved: the press is lost, and a room that hadn't reached the bend keeps its big
+    first switch-on. A room that closes and opens again starts fresh.
+  - **Three sounds, not two.** Lights off (when the dark falls), portals on (when the portals light up, which only
+    happens on a switch-on, so a switch-off has no sound at its bend) and lights on (the lamps return). The owner moved
+    the lighter "portals on" sound to the portals' moment and asked for the third. The recipe is in spec §2.3, approved
+    by ear in a sketch. They are not placed: everyone hears them at one level, each with its own reverb tail and no send
+    into the voices' shared reverb, whose short tail would change the approved sound. `SWITCH_SOUND_GAIN` (0.25) scales
+    them under voices; it has not been tuned in the game yet.
+  - **`PROTOCOL_VERSION` is 5.** Older tabs get the `outdated` error and reload.
+  - **Measured** (2026-10-29): with no sequence running, every portals-off hash is unchanged. `bench:walls`: pixel
+    -601092469, doorway off -1246551896, crowd off 2075427884. `bench:sprites`: 1236007431, doorway scenes off
+    -1373330069.
+  - **Review fixes (2026-10-29):**
+    - The lamps wait for the bend (above).
+    - Hidden tabs play cues too, from the hidden tick (100 ms, though browsers may slow a hidden tab to about 1 s,
+      when the 300 ms lateness rule skips them).
+    - A resume welcome's restamp is the same sequence when it is of the same kind and within 500 ms of the first
+      stamp. The client keeps the first stamp, so the timeline never steps back into the dark, and no cue replays.
+    - The lobby advances a room's sequence before any welcome, so a welcome never carries one past its end (a fresh
+      join heard lights-on) and a due bend goes out first.
+    - The switch sounds play nothing while the `AudioContext` isn't running, so a suspended one can't play them
+      stale later.
+    - `playUnplaced` lost its unused reverb send, and the session its unused `sequenceStarted` listener.
+  - Not done: a listen to the sounds' level in the game; fades (the lights switch instantly, by design).
 
 ## Resolved
 _(none yet)_

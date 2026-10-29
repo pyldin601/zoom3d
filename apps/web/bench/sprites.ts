@@ -10,7 +10,7 @@ import type { PeerFacts } from '../src/media/interest';
 import { renderView } from '../src/renderer/frame';
 import { createFramebuffer, rgb } from '../src/renderer/framebuffer';
 import type { Glow } from '../src/renderer/glow';
-import { bakeLighting, corridorLights } from '../src/renderer/lighting';
+import { bakeLighting, bakePortalLighting, corridorLights } from '../src/renderer/lighting';
 import { BALL_MODEL } from '../src/renderer/models/ball';
 import { VACUUM_MODEL } from '../src/renderer/models/vacuum';
 import { type PeopleAndObjects, renderSprites, type Sprite } from '../src/renderer/sprites';
@@ -108,6 +108,7 @@ for (const objects of ['without', 'with'] as const) {
 // Portals on (portal doorways spec): whole frames (walls, windows, people, objects) from 1.5 tiles in front of each of
 // up to 8 doorways, looking in, with the scene's people spread ahead of the eye. Timed with the room's portals off and on.
 const portals = wirePortals(map, 'bench-room');
+const portalLighting = bakePortalLighting(lighting, portals, FLOOR, CEILING);
 const doorwayScenes: Scene[] = portals.list.slice(0, 8).map((p, i) => {
   const x = p.cx - p.nx * 1.5;
   const y = p.cy - p.ny * 1.5;
@@ -154,13 +155,15 @@ function drawWholeFrame(state: 'off' | 'on', s: Scene): void {
   renderView(fb, {
     ...room,
     eye: s,
-    lighting,
+    lighting: state === 'on' ? portalLighting : lighting,
     reflections: 'both',
     portals: state === 'on' ? portals : null,
     people: s.sprites,
     objects: s.voxels,
     labels: [],
     ownGlow: null,
+    portalPulse: 1,
+    portalTime: 0,
     firstPerson: null,
   });
 }
@@ -281,9 +284,9 @@ function scenesNearLamps(): Scene[] {
           held,
           boombox: j % 3 === 0,
         });
-        glows.push({ x: at.x, y: at.y, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6 });
+        glows.push({ x: at.x, y: at.y, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6, cut: null, shadow: null });
       }
-      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2 });
+      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null, shadow: null });
       const spot = ahead(0.6);
       const voxels = open(spot.x, spot.y) ? [{ model: VACUUM_MODEL, x: spot.x, y: spot.y, angle: rand() * 7 }] : [];
       // Straight ahead, so the seeded poses (and the hash of everything else) stay as they were.

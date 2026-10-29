@@ -3,11 +3,13 @@
 // from poses near lamps (where reflections cost most), each with 7 glowing avatars nearby and your own glow, and
 // once more with a crowd of 100 glowing avatars spread over the whole map (most of them out of view, as with ?bots).
 // It also prints a hash of the baked lighting and of every pixel drawn in every mode: a refactor that changes no
-// behaviour must leave both hashes alone (docs/code-style.md, Refactoring).
+// behaviour must leave both hashes alone (docs/code-style.md, Refactoring). Then it does the same with portals on: the
+// bake time and hash of the portals-on table (D28), and the doorway and crowd frames timed and hashed with the room's
+// portals off (the plain table) and on (the portals-on table).
 import { LEVEL1, parseMap, tileAt, wirePortals } from '@zoom3d/shared';
 import { createFramebuffer } from '../src/renderer/framebuffer';
-import type { Glow } from '../src/renderer/glow';
-import { bakeLighting, corridorLights, type Lighting } from '../src/renderer/lighting';
+import { createPortalGlows, type Glow } from '../src/renderer/glow';
+import { bakeLighting, bakePortalLighting, corridorLights, type Lighting } from '../src/renderer/lighting';
 import { averageColour, makeTextures } from '../src/renderer/textures';
 import { CEILING, FLOOR, type Room, renderWalls } from '../src/renderer/walls';
 
@@ -63,7 +65,8 @@ for (const mode of MODES) {
 }
 
 // Portals on (portal doorways spec): the same lit frame from 1.5 tiles in front of each of up to 8 doorways, looking in,
-// timed with the room's portals off and on, with the hash of the on frames beside the off hashes above.
+// timed with the room's portals off and on, each lit by its own table and, when on, by the doorways' glows, with the
+// hash of the on frames beside the off hashes above.
 const portals = wirePortals(map, 'bench-room');
 const doorwayPoses: Pose[] = portals.list.slice(0, 8).map((p) => ({
   x: p.cx - p.nx * 1.5,
@@ -71,14 +74,28 @@ const doorwayPoses: Pose[] = portals.list.slice(0, 8).map((p) => ({
   angle: Math.atan2(p.ny, p.nx),
   glows: [],
 }));
+const portalBakeStart = performance.now();
+const portalLighting = bakePortalLighting(lighting, portals, FLOOR, CEILING);
+const portalBakeMs = performance.now() - portalBakeStart;
+console.log(
+  `portal lighting: bake ${portalBakeMs.toFixed(0)} ms (cold); ` +
+    `${portalLighting.lights.length - lights.length} copies of ${lights.length} lamps; ` +
+    `lighting hash ${lightingHash(portalLighting)}`
+);
 room.reflections = 'both';
-room.lighting = lighting;
+/** With portals on, each doorway's pink glow (D29), at the top of its pulse, is lit like the avatars'. */
+const portalGlows = [...createPortalGlows().update(portals, 1, portalLighting.portalGlowSeen)];
+const glowsWith = (state: 'off' | 'on', avatars: readonly Glow[]) =>
+  state === 'on' ? [...avatars, ...portalGlows] : avatars;
+const doorwayGlows = { off: glowsWith('off', []), on: glowsWith('on', []) };
+const crowdGlowsFor = { off: glowsWith('off', crowd), on: glowsWith('on', crowd) };
 const portalHashes = { off: 0, on: 0 };
 for (const state of ['off', 'on'] as const) {
   room.portals = state === 'on' ? portals : null;
+  room.lighting = state === 'on' ? portalLighting : lighting;
   for (const pose of doorwayPoses) {
     room.eye = pose;
-    renderWalls(fb, room);
+    renderWalls(fb, room, doorwayGlows[state]);
     for (const c of fb.pixels) {
       portalHashes[state] = (Math.imul(portalHashes[state], 31) + c) | 0;
     }
@@ -88,11 +105,12 @@ const portalTimes = { off: [] as number[], on: [] as number[] };
 for (let round = 0; round < ROUNDS; round++) {
   for (const state of ['off', 'on'] as const) {
     room.portals = state === 'on' ? portals : null;
+    room.lighting = state === 'on' ? portalLighting : lighting;
     const start = performance.now();
     const frames = doorwayPoses.length * 20;
     for (let f = 0; f < frames; f++) {
       room.eye = doorwayPoses.at(f % doorwayPoses.length) ?? room.eye;
-      renderWalls(fb, room);
+      renderWalls(fb, room, doorwayGlows[state]);
     }
     portalTimes[state].push((performance.now() - start) / frames);
   }
@@ -108,9 +126,10 @@ const crowdPoses = [...poses, ...doorwayPoses];
 const crowdHashes = { off: 0, on: 0 };
 for (const state of ['off', 'on'] as const) {
   room.portals = state === 'on' ? portals : null;
+  room.lighting = state === 'on' ? portalLighting : lighting;
   for (const pose of crowdPoses) {
     room.eye = pose;
-    renderWalls(fb, room, crowd);
+    renderWalls(fb, room, crowdGlowsFor[state]);
     for (const c of fb.pixels) {
       crowdHashes[state] = (Math.imul(crowdHashes[state], 31) + c) | 0;
     }
@@ -120,11 +139,12 @@ const crowdTimes = { off: [] as number[], on: [] as number[] };
 for (let round = 0; round < ROUNDS; round++) {
   for (const state of ['off', 'on'] as const) {
     room.portals = state === 'on' ? portals : null;
+    room.lighting = state === 'on' ? portalLighting : lighting;
     const start = performance.now();
     const frames = poses.length * FRAMES_PER_POSE;
     for (let f = 0; f < frames; f++) {
       room.eye = poses.at(f % poses.length) ?? room.eye;
-      renderWalls(fb, room, crowd);
+      renderWalls(fb, room, crowdGlowsFor[state]);
     }
     crowdTimes[state].push((performance.now() - start) / frames);
   }
@@ -189,10 +209,10 @@ function posesNearLamps(): Pose[] {
         const gx = x + (rand() - 0.5) * 4;
         const gy = y + (rand() - 0.5) * 4;
         if (open(gx, gy)) {
-          glows.push({ x: gx, y: gy, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6 });
+          glows.push({ x: gx, y: gy, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6, cut: null, shadow: null });
         }
       }
-      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2 });
+      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null, shadow: null });
       out.push({ x, y, angle: rand() * Math.PI * 2, glows });
     }
   }
@@ -211,7 +231,7 @@ function crowdGlows(): Glow[] {
     const x = rand() * map.width;
     const y = rand() * map.height;
     if (tileAt(map, Math.floor(x), Math.floor(y)) === 0) {
-      out.push({ x, y, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6 });
+      out.push({ x, y, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6, cut: null, shadow: null });
     }
   }
   return out;
@@ -224,9 +244,7 @@ function lightingHash(lm: Lighting): number {
     lm.faceOffset,
     lm.faceRun,
     lm.wall,
-    lm.wallLamp,
     lm.wallLampSeen,
-    lm.floorLamp,
     lm.floorLampSeen,
     lm.floor,
     lm.ceiling,
@@ -237,6 +255,12 @@ function lightingHash(lm: Lighting): number {
       hash = (Math.imul(hash, 31) + word) | 0;
     }
     hash = (Math.imul(hash, 31) + table.length) | 0;
+  }
+  for (const lampList of [lm.wallLamp, lm.floorLamp]) {
+    for (const lamp of lampList) {
+      hash = (Math.imul(hash, 31) + lamp) | 0;
+    }
+    hash = (Math.imul(hash, 31) + lampList.length) | 0;
   }
   return hash;
 }

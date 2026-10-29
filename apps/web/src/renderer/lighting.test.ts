@@ -4,6 +4,7 @@ import { rgb } from './framebuffer';
 import {
   ambientAt,
   bakeLighting,
+  bakePortalLighting,
   bounceHeight,
   DIR_BACK,
   DIR_FRONT,
@@ -13,12 +14,15 @@ import {
   FLOOR_NORMAL,
   FLOOR_SUB,
   type Light,
+  type Lighting,
+  lampCopies,
   REFLECTION_LAMPS,
   REFLECTION_PATH,
   reflection,
   WALL_U,
   WALL_V,
 } from './lighting';
+import { portalHall } from './test-portals';
 import { RELIEF_LEVELS } from './textures';
 
 // A 6×3 room with a pillar at (3, 1) splitting it into a west and an east half along the middle row.
@@ -30,6 +34,7 @@ const map = parseMap(`
 `);
 const GREY = rgb(100, 100, 100);
 const lamp = (x: number, y: number): Light => ({ x, y, z: 0.85, radius: 4, r: 1, g: 1, b: 1 });
+const light = (x: number, y: number, radius = 4): Light => ({ x, y, z: 0.85, radius, r: 1, g: 1, b: 1 });
 /** A wall's south face, facing +y. */
 const FACING_SOUTH = { dx: 0, dy: 1, dz: 0 };
 
@@ -74,6 +79,26 @@ describe('directLight', () => {
     const out = new Float64Array(18);
     directLight(lm, 1.5, 2.5, 0.1, 0, out);
     expect([...out]).toEqual(new Array(18).fill(0));
+  });
+
+  describe('with portals', () => {
+    const { map: hall, portals } = portalHall();
+
+    test('a lamp reached only by crossing a plane front to back leaves the object unlit', () => {
+      const plain = bakeLighting(hall, [light(2.5, 5)], 0.1, GREY, GREY);
+      const out = new Float64Array(18);
+      directLight(bakePortalLighting(plain, portals, GREY, GREY), 2.5, 2.5, 0.5, 0, out);
+      expect(out[DIR_TOP * 3]).toBe(0);
+    });
+    test('a lamp seen through a portal lights the object', () => {
+      // Out of the real lamp's reach, in reach of its copy at (2.5, 4.0).
+      const plain = bakeLighting(hall, [light(4.5, 3.0, 1.8)], 0.1, GREY, GREY);
+      const out = new Float64Array(18);
+      directLight(plain, 2.5, 2.6, 0.5, 0, out);
+      expect(out[DIR_TOP * 3]).toBe(0);
+      directLight(bakePortalLighting(plain, portals, GREY, GREY), 2.5, 2.6, 0.5, 0, out);
+      expect(out[DIR_TOP * 3]).toBeGreaterThan(0);
+    });
   });
 });
 
@@ -241,6 +266,16 @@ describe('bakeLighting floor lamps', () => {
     expect([...lm.floorLamp.subarray(at, at + REFLECTION_LAMPS)]).toEqual([0, -1, 1, -1, -1, -1, -1, -1]);
   });
 
+  test('lists a lamp whose index is past 127', () => {
+    // 200 lamps far east, but lamp 150 nearest the cell at (1.5, 2.5).
+    const lamps = Array.from({ length: 200 }, (_, i) => (i === 150 ? lamp(4.5, 2.5) : lamp(5.5, 2.5)));
+    const lm = bakeLighting(map, lamps, 0.45, GREY, GREY);
+    const cell = Math.floor(2.5 * FLOOR_SUB) * lm.stride + Math.floor(1.5 * FLOOR_SUB);
+    const listed = lm.floorLamp.slice(cell * REFLECTION_LAMPS, (cell + 1) * REFLECTION_LAMPS);
+    expect(listed).toBeInstanceOf(Int16Array);
+    expect([...listed]).toContain(150);
+  });
+
   test('lamps in a row down a corridor: the nearer one doesn’t push out the one behind it', () => {
     // From (2.5, 2.5), lamps at x = 5.5 and 10.5 both lie east; the farther one's reflection can show past the nearer.
     const hall = parseMap(`
@@ -403,8 +438,8 @@ describe('far lamps in the lists', () => {
 });
 
 test('a map with more lamps than the lamp lists can number is refused', () => {
-  const many = Array.from({ length: 128 }, () => lamp(1.5, 1.5));
-  expect(() => bakeLighting(map, many, 0.45, GREY, GREY)).toThrow(/128 lamps/);
+  const many = Array.from({ length: 32768 }, () => lamp(1.5, 1.5));
+  expect(() => bakeLighting(map, many, 0.45, GREY, GREY)).toThrow(/^bakeLighting: 32768 lamps/);
 });
 
 test('lamps past LAMP_SIGHT (16 tiles) are not listed, even in plain sight', () => {
@@ -493,5 +528,60 @@ describe('soft shadows', () => {
       }
     }
     expect([...seen].some((s) => s > 0 && s < 255)).toBe(true);
+  });
+});
+
+describe('bakePortalLighting', () => {
+  const { map: hall, portals } = portalHall();
+  const both = (lights: Light[]) => {
+    const plain = bakeLighting(hall, lights, 0.1, GREY, GREY);
+    return { plain, portal: bakePortalLighting(plain, portals, GREY, GREY) };
+  };
+  const cellAt = (lm: Lighting, x: number, y: number) =>
+    Math.floor(y * FLOOR_SUB) * lm.stride + Math.floor(x * FLOOR_SUB);
+  const floorAt = (lm: Lighting, x: number, y: number) => (lm.floor[cellAt(lm, x, y)] as number) & 0xff;
+  const ceilingAt = (lm: Lighting, x: number, y: number) => (lm.ceiling[cellAt(lm, x, y)] as number) & 0xff;
+
+  test('a portal table with more lamps and copies than the lamp lists can number is refused, by name', () => {
+    const { plain } = both([lamp(4.5, 1.5)]);
+    const many = { ...plain, lights: Array.from({ length: 20000 }, () => lamp(4.5, 1.5)) };
+    expect(() => bakePortalLighting(many, portals, GREY, GREY)).toThrow(/^bakePortalLighting: 40000 lamps/);
+  });
+
+  test('copies a lamp behind each doorway it can be seen through, and only there', () => {
+    const copies = lampCopies([light(4.5, 1.5)], portals);
+    expect(copies).toHaveLength(2);
+    expect(copies.at(1)).toMatchObject({ x: 2.5, y: 5.5, through: 0 });
+  });
+  test('a lamp physically behind A no longer lights the floor in front of A', () => {
+    const { plain, portal } = both([light(2.5, 5)]);
+    expect(floorAt(plain, 2.5, 2.5)).toBeGreaterThan(floorAt(portal, 2.5, 2.5));
+    expect(floorAt(portal, 2.5, 2.5)).toBe(floorAt(both([]).portal, 2.5, 2.5));
+  });
+  test('the floor in front of B is lit by the lamp seen through B', () => {
+    const { plain, portal } = both([light(2.5, 5)]);
+    expect(floorAt(portal, 4.5, 4.5)).toBeGreaterThan(floorAt(plain, 4.5, 4.5));
+  });
+  test('the doorway tile’s front half is lit through the portal, its back half is not', () => {
+    // Lamp at (4.5, 3.0) just north of B, radius 1.8; its copy through A is (2.5, 4.0).
+    const { portal } = both([light(4.5, 3.0, 1.8)]);
+    const dark = both([]).portal;
+    expect(floorAt(portal, 2.5, 3.3)).toBeGreaterThan(floorAt(dark, 2.5, 3.3));
+    expect(floorAt(portal, 2.5, 3.7)).toBe(floorAt(dark, 2.5, 3.7));
+  });
+  test('a copy shows no fixture on the ceiling', () => {
+    // Lamp at (4.5, 3.45), just behind B's plane; its copy through A is (2.5, 3.55), and the cell centred at
+    // (2.5, 3.4375) sees it from A's front, 0.11 from it: within the fixture's radius.
+    const { portal } = both([light(4.5, 3.45)]);
+    const ceiling = (x: number, y: number) => portal.ceiling[cellAt(portal, x, y)] as number;
+    expect(ceilingAt(portal, 2.5, 3.4375)).toBeGreaterThan(ceilingAt(both([]).portal, 2.5, 3.4375));
+    expect(ceiling(2.5, 3.4375)).not.toBe(ceiling(4.5, 3.45));
+  });
+  test('reuses the plain bounce light', () => {
+    const plain = bakeLighting(hall, [light(4.5, 1.5)], 0.1, GREY, GREY, { wallColours: [GREY, GREY], strength: 1 });
+    expect(bakePortalLighting(plain, portals, GREY, GREY).bounce).toBe(plain.bounce);
+  });
+  test('the plain bake is not portal-aware', () => {
+    expect(bakeLighting(hall, [], 0.1, GREY, GREY).portals).toBeNull();
   });
 });

@@ -68,6 +68,9 @@ export interface Pass {
   lastLevel: boolean;
 }
 
+/** Windows within windows are drawn this deep; a window seen at the last level is pink-tinted black (D29). */
+export const WINDOW_LEVELS = 2;
+
 export const WHOLE_FRAME: Pass = { fromCol: 0, toCol: Number.POSITIVE_INFINITY, nearDepth: null, lastLevel: false };
 
 export const isWindowPass = (pass: Pass) => pass.nearDepth !== null;

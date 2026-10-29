@@ -3,7 +3,8 @@ import { hasLineOfSight } from '../geometry/los';
 import { LEVEL1 } from '../map/level1';
 import { type GameMap, parseMap } from '../map/map';
 import { NEAR_TILES } from '../protocol/protocol';
-import { type Apparent, apparentPosition, hasPortalLineOfSight, isNear } from './apparent';
+import { type Apparent, apparentPosition, hasLineOfSightThrough, hasPortalLineOfSight, isNear } from './apparent';
+import { twoDoorways } from './test-doorways';
 import { invert, type RigidTransform } from './transform';
 import { type Portal, type Portals, wirePortals } from './wiring';
 
@@ -252,5 +253,26 @@ describe('isNear', () => {
   test('the range can be narrowed', () => {
     expect(isNear(null, at(0, 0), at(NEAR_TILES - 1, 0), NEAR_TILES - 1)).toBe(true);
     expect(isNear(null, at(0, 0), at(NEAR_TILES - 0.99, 0), NEAR_TILES - 1)).toBe(false);
+  });
+});
+
+describe('hasLineOfSightThrough', () => {
+  const { map, portals } = twoDoorways();
+
+  test("sees a point behind A through A, from A's front", () => {
+    // The copy of a lamp at (4.5, 1.5), north of B: (2.5, 5.5).
+    expect(hasLineOfSightThrough(map, portals, 0, 2.5, 1.5, 2.5, 5.5)).toBe(true);
+  });
+
+  test("is false from A's back side, where the segment never crosses A front to back", () => {
+    expect(hasLineOfSightThrough(map, portals, 0, 2.5, 4.5, 2.5, 5.5)).toBe(false);
+  });
+
+  test('is false for the wrong portal', () => {
+    expect(hasLineOfSightThrough(map, portals, 1, 2.5, 1.5, 2.5, 5.5)).toBe(false);
+  });
+
+  test("is false when the segment meets A's plane outside its opening", () => {
+    expect(hasLineOfSightThrough(map, portals, 0, 1.5, 1.5, 1.5, 5.5)).toBe(false);
   });
 });

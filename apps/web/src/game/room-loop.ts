@@ -8,11 +8,14 @@ import { createSubscription } from '../media/subscription';
 import { type RoomScene, renderHud, renderView } from '../renderer/frame';
 import type { Lighting } from '../renderer/lighting';
 import { BALL_MODEL, createBallRoll, recolourBall, rollBy } from '../renderer/models/ball';
+import { showCountdown } from '../ui/portal-countdown';
 import { litReflections, type RenderMode } from '../ui/render-settings';
 import { type StatusLine, statusText } from '../ui/room-status';
 import { createApparentWorld } from './apparent-world';
 import type { FrameRateMeter } from './frame-rate';
 import type { LocalPlayer } from './local-player';
+import { portalPulse } from './portal-pulse';
+import type { SequenceCues } from './portal-sequence';
 import { createRemoteWorld, type PeerMedia } from './remote-world';
 import { isConnected, type Room } from './room';
 import type { Screen } from './screen';
@@ -24,6 +27,8 @@ export interface RoomLoopOptions {
   input: Input;
   screen: Screen;
   hud: CanvasRenderingContext2D;
+  /** Where the portal sequence's countdown shows. */
+  ui: HTMLElement;
   frameRate: FrameRateMeter;
   statusLine: StatusLine;
   room(): Room | null;
@@ -44,9 +49,11 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   const world = createRemoteWorld();
   const subscription = createSubscription();
   const apparentWorld = createApparentWorld();
-  /** The remote things (people and world objects) with their places, reused from frame to frame. */
+  /** The remote things (people, world objects and portal hums) with their places, reused from frame to frame. */
   let apparent: ReadonlyMap<string, Apparent> = new Map();
   const things: { id: string; x: number; y: number }[] = [];
+  /** Where each portal doorway's hum plays from, reused from frame to frame. */
+  const humSources = new Map<string, { x: number; y: number }>();
   const peerMedia: PeerMedia = {
     faceOf: (id) => o.room()?.call.faceOf(id) ?? null,
     speaking: (id) => o.room()?.audio.speaking(id) ?? 0,
@@ -61,8 +68,34 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     objects: world.voxels,
     labels: world.labels,
     ownGlow: null,
+    portalPulse: 1,
+    portalTime: 0,
     firstPerson: null,
     portals: null,
+  };
+
+  const cues: SequenceCues = { countdown: false, lightsOff: false, portalsOn: false, lightsOn: false };
+
+  /**
+   * Moves the room's portal sequence on, shows its countdown and plays its sounds, hidden tab included: the sounds are
+   * for everyone, and the hidden tick comes well within a cue's lateness, so none plays stale.
+   */
+  const followSequence = (room: Room, now: number) => {
+    room.sequence.update(room.session.sequence, now, room.session.portals);
+    showCountdown(o.ui, room.sequence.countdown);
+    room.sequence.takeCues(cues);
+    if (cues.countdown) {
+      room.switchSounds.countdown();
+    }
+    if (cues.lightsOff) {
+      room.switchSounds.lightsOff();
+    }
+    if (cues.portalsOn) {
+      room.switchSounds.portalsOn();
+    }
+    if (cues.lightsOn) {
+      room.switchSounds.lightsOn();
+    }
   };
 
   /** The local player as the ball feels them, with their velocity from the last frame's move. */
@@ -114,15 +147,27 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     }
   };
 
-  /** Where everyone and everything appears to the local player's eye, through the room's portals when they are on. */
+  /** Puts a thing at `things[n]`, reusing the one there. */
+  const placeThing = (n: number, id: string, pos: { x: number; y: number }) => {
+    const thing = things.at(n) ?? { id, x: 0, y: 0 };
+    thing.id = id;
+    thing.x = pos.x;
+    thing.y = pos.y;
+    things[n] = thing;
+  };
+
+  /**
+   * Where everyone and everything appears to the local player's eye, through the room's portals when they are on, the
+   * doorways' hums included.
+   */
   const placeApparently = (room: Room) => {
     let n = 0;
     for (const [id, pos] of world.positions) {
-      const thing = things.at(n) ?? { id, x: 0, y: 0 };
-      thing.id = id;
-      thing.x = pos.x;
-      thing.y = pos.y;
-      things[n++] = thing;
+      placeThing(n++, id, pos);
+    }
+    room.hums.sourcesOf(room.portals(), humSources);
+    for (const [id, pos] of humSources) {
+      placeThing(n++, id, pos);
     }
     things.length = n;
     apparent = apparentWorld.update(o.map, room.portals(), localPlayer.pose, things);
@@ -143,10 +188,13 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   const describeScene = (now: number) => {
     // The console's lighting mode; flat is drawn unlit, as with `?lights=off`.
     const reflections = litReflections(o.renderMode());
-    scene.lighting = reflections === null ? null : o.roomLighting();
     scene.reflections = reflections ?? 'none';
     const room = o.room();
+    scene.lighting = reflections === null ? null : (room?.lighting(room.sequence.dark) ?? o.roomLighting());
     scene.portals = room?.portals() ?? null;
+    const portalSeconds = performance.now() / 1000;
+    scene.portalPulse = portalPulse(portalSeconds);
+    scene.portalTime = portalSeconds;
     scene.ownGlow = localPlayer.glow(now, room?.session.selfColor() ?? null);
     scene.firstPerson = isConnected(room) ? localPlayer.firstPerson(now) : null;
     return scene;
@@ -172,11 +220,16 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       const room = o.room();
       if (room) {
         room.call.update(now);
+        followSequence(room, now);
         stepBall(room, now, dt);
         placeEveryoneElse(room, now, dt);
+      } else {
+        showCountdown(o.ui, null);
       }
       const drawStart = performance.now();
       const shown = describeScene(drawStart);
+      // The hum swells with the very pulse this frame's glow is drawn with.
+      room?.hums.sync(room.portals(), shown.portalPulse, localPlayer.pose, apparent);
       renderView(screen.fb, shown, subscription.seen);
       screen.present();
       renderHud(o.hud, screen.fb, shown, o.showMap());
@@ -193,10 +246,12 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
         return;
       }
       const now = performance.now();
+      followSequence(room, now);
       stepBall(room, now, HIDDEN_TICK_MS / 1000);
       world.sample(room.session, localPlayer.pose, now, room.ball.ball, room.portals());
       placeApparently(room);
       room.objectSounds.sync(room.session.objects, world.objectPoses, HIDDEN_TICK_MS / 1000);
+      room.hums.sync(room.portals(), portalPulse(now / 1000), localPlayer.pose, apparent);
       room.audio.update(now, localPlayer.pose, apparent);
       chooseWhatToReceive(room, now, true);
     },

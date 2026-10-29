@@ -12,8 +12,9 @@ import {
 } from '@zoom3d/shared';
 import { createView, EYE_HEIGHT, isWindowPass, MIN_DEPTH, type Pass, setView, WHOLE_FRAME } from './camera';
 import { reflectedColour } from './colour';
+import { createFrameEyes } from './frame-eyes';
 import { type Framebuffer, rgb, scaleRgb } from './framebuffer';
-import { GLOW_RADIUS, type Glow, glowLight } from './glow';
+import { GLOW_RADIUS, type Glow, glowLight, hiddenByCut } from './glow';
 import {
   bounceHeight,
   distanceToWall,
@@ -123,6 +124,7 @@ const mirrorOrder: number[] = [];
 const mirrorDepths: number[] = [];
 const mirrorsFarFirst = (a: number, b: number) => Math.sign((mirrorDepths[b] as number) - (mirrorDepths[a] as number));
 const view = createView();
+const frameEyes = createFrameEyes();
 const hit = createPortalRayHit();
 let litRoom: LitRoom | null = null;
 /** The pass being drawn, its columns [firstCol, endCol) on this frame, and the portals it sees; set by renderWalls. */
@@ -132,7 +134,7 @@ let endCol = 0;
 let portals: Portals | null = null;
 /** The floor tables the frame's first pass built: its windows' passes reuse them. */
 let passFloorTables: FloorTables | null = null;
-/** Whether the pass's wall columns left any window, set before its floor tables are built: a window looks anywhere. */
+/** Whether the pass's wall columns left any window, set before its floor tables are built. */
 let passShowsWindows = false;
 
 /** Rebuilt by fitScratchToFrame when the frame's size or FOV changes. */
@@ -289,7 +291,7 @@ function drawPlainWallSlice(fb: Framebuffer, textures: Uint32Array[], shading: '
 function drawLitRoom(fb: Framebuffer, room: LitRoom): void {
   fitScratchToFrame(fb);
   drawWallColumns(fb, room);
-  const tables = floorTablesForPass(room);
+  const tables = floorTablesForPass(fb, room);
   drawFloorAndCeiling(fb, room, tables.floor, tables.ceiling);
   if (reflectsOnFloor(room.reflections)) {
     // The images first: in the floor the objects' stand in front of the lamps' reflections, hiding them.
@@ -566,14 +568,18 @@ function findColumnReflections(room: LitRoom): boolean {
   return shows;
 }
 
-/** The avatars glowing on the column (near enough and in front of it), and their light up it. Returns how many. */
+/**
+ * The glows lighting the column (near enough, in front of it and not cut off from it), and their light up it. Returns
+ * how many.
+ */
 function findColumnGlows(glows: readonly Glow[]): number {
   const { normal, hitX, hitY } = column;
   let count = 0;
   for (const g of glows) {
     const dx = g.x - hitX;
     const dy = g.y - hitY;
-    if (dx * normal.dx + dy * normal.dy > 0 && dx * dx + dy * dy < GLOW_RADIUS * GLOW_RADIUS) {
+    const facesColumn = dx * normal.dx + dy * normal.dy > 0;
+    if (facesColumn && dx * dx + dy * dy < GLOW_RADIUS * GLOW_RADIUS && !hiddenByCut(g, hitX, hitY)) {
       columnGlows[count++] = g;
     }
   }
@@ -677,8 +683,9 @@ function drawLitWallSlice(fb: Framebuffer, room: LitRoom): void {
  * The frame's floor tables: built by its first pass, reused by its windows' passes (they cost per frame, not per
  * pass).
  */
-function floorTablesForPass(room: LitRoom): FloorTables {
+function floorTablesForPass(fb: Framebuffer, room: LitRoom): FloorTables {
   if (!isWindowPass(pass) || passFloorTables === null) {
+    collectFrameEyes(fb);
     passFloorTables = floorAndCeilingColours(room);
   }
   return passFloorTables;
@@ -705,8 +712,16 @@ function floorAndCeilingColours(room: LitRoom): FloorTables {
   return t;
 }
 
-/** Whether anything within `reach` tiles of (x, y) may show this frame: through a window, anything may. */
-const mayShow = (x: number, y: number, reach: number) => passShowsWindows || !outOfView(x, y, reach);
+/** The eye of the pass building the floor tables, and those of the windows it may show: they all use the tables. */
+function collectFrameEyes(fb: Framebuffer): void {
+  frameEyes.reset(view);
+  if (passShowsWindows && portals) {
+    frameEyes.addWindowEyes(portals, fb.portalAt, firstCol, endCol);
+  }
+}
+
+/** Whether anything within `reach` tiles of (x, y) may show this frame, in any pass. */
+const mayShow = (x: number, y: number, reach: number) => frameEyes.mayShow(x, y, reach);
 
 function blackFloorAndCeiling(lm: Lighting): FloorTables {
   if (blackTables?.floorLampSeen !== lm.floorLampSeen) {
@@ -801,21 +816,6 @@ function addGlow(lm: Lighting, glows: readonly Glow[], t: NonNullable<typeof fra
     t.floor[i] = withGlow(t.floor[i] as number, FLOOR, r, g, b);
     t.ceiling[i] = withGlow(t.ceiling[i] as number, CEILING, r, g, b);
   }
-}
-
-/** Whether everything within `reach` tiles of (x, y) lies behind the eye or past the left or right edge of the frame. */
-function outOfView(x: number, y: number, reach: number): boolean {
-  const ox = x - view.x;
-  const oy = y - view.y;
-  const depth = ox * view.dirX + oy * view.dirY;
-  if (depth < -reach) {
-    return true;
-  }
-  // The frame's edges run ±planeLen across per tile of depth.
-  const planeLen = Math.sqrt(view.planeX * view.planeX + view.planeY * view.planeY);
-  const across = (ox * view.planeX + oy * view.planeY) / planeLen;
-  const pastEdge = (Math.abs(across) - planeLen * depth) / Math.sqrt(1 + planeLen * planeLen);
-  return pastEdge > reach;
 }
 
 /**

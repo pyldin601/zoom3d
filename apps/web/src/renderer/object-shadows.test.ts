@@ -1,8 +1,17 @@
 import { parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { rgb } from './framebuffer';
-import { bakeLighting, FLOOR_SUB, floorLampLight, type Light, REFLECTION_LAMPS } from './lighting';
+import {
+  bakeLighting,
+  bakePortalLighting,
+  FLOOR_SUB,
+  floorLampLight,
+  type Light,
+  type Lighting,
+  REFLECTION_LAMPS,
+} from './lighting';
 import { objectSeenShare, shadeFloor, shadowReach } from './object-shadows';
+import { portalHall } from './test-portals';
 import { buildModel, type VoxelInstance } from './voxels';
 
 // Voxel shadows spec §3.2: how much of a lamp's disc the floor sees past an object.
@@ -143,5 +152,56 @@ describe('shadeFloor', () => {
     for (let i = 1; i < along.length; i++) {
       expect(Math.abs((along.at(i) ?? 0) - (along.at(i - 1) ?? 0))).toBeLessThan(0.2);
     }
+  });
+
+  describe('through a portal', () => {
+    // In portalHall, a lamp north of B, at (4.5, 1.5), has its copy through A at (2.5, 5.5), behind A.
+    const { map: hall, portals } = portalHall();
+    const litHall = (radius: number) =>
+      bakePortalLighting(
+        bakeLighting(hall, [{ ...lamp, x: 4.5, y: 1.5, radius }], 0.3, GREY, GREY),
+        portals,
+        GREY,
+        GREY
+      );
+    /** A short lamp reaches no floor south of the wall row, so all light that floor could lose is the copy's. */
+    const short = litHall(2);
+    /** A long one's copy reaches through A, over the floor in front of it. */
+    const long = litHall(4.5);
+    const shadeHall = (lit: Lighting, x: number, y: number) => {
+      const tables = { floor: lit.floor.slice(), floorLampSeen: lit.floorLampSeen.slice(), touch: () => {} };
+      shadeFloor(lit, [{ model: BLOCK, x, y, angle: 0 }], GREY, tables, () => true);
+      return tables.floor;
+    };
+    /** How many floor cells over tiles [x0, x1) × [y0, y1) are darker than `long` baked them. */
+    const darkened = (floor: Uint32Array, x0: number, x1: number, y0: number, y1: number) => {
+      let n = 0;
+      for (let cy = y0 * FLOOR_SUB; cy < y1 * FLOOR_SUB; cy++) {
+        for (let cx = x0 * FLOOR_SUB; cx < x1 * FLOOR_SUB; cx++) {
+          n += floor[cy * long.stride + cx] === long.floor[cy * long.stride + cx] ? 0 : 1;
+        }
+      }
+      return n;
+    };
+
+    test('a copy never shades floor it cannot be seen from', () => {
+      const southOfWallRow = 4 * FLOOR_SUB * short.stride;
+      const southFloor = (floor: Uint32Array) => floor.subarray(southOfWallRow);
+      // A real lamp where the copy is does shade that floor past the same object.
+      const real = bakeLighting(hall, [{ ...lamp, x: 2.5, y: 5.5, radius: 2 }], 0.3, GREY, GREY);
+
+      expect(southFloor(shadeHall(short, 2.5, 5.0))).toEqual(southFloor(short.floor));
+      expect(southFloor(shadeHall(real, 2.5, 5.0))).not.toEqual(southFloor(real.floor));
+    });
+
+    test('an object in front of a portal shades the floor there from the copies seen through it', () => {
+      // Straight north of the object: on the real lamp's side of it, so only the copy's shadow can fall there.
+      expect(darkened(shadeHall(long, 2.5, 3.0), 2.375, 2.625, 2, 2.75)).toBeGreaterThan(0);
+    });
+
+    test('an object behind a portal casts no shadow from its copies onto the floor in front of it', () => {
+      // Half a tile past A's plane: from the floor in front of A, the window shows B's room, not this object.
+      expect(darkened(shadeHall(long, 2.5, 4.0), 2, 3, 2, 3.5)).toBe(0);
+    });
   });
 });

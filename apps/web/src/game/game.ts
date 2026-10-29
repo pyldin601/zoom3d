@@ -1,6 +1,6 @@
 // The game: the landing picture, then the lobby, then the room. createGame makes its parts once per page and wires
 // them together; each part is its own module.
-import { type HeldItem, LEVEL1, newRoomId, parseMap } from '@zoom3d/shared';
+import { type HeldItem, LEVEL1, newRoomId, parseMap, wirePortals } from '@zoom3d/shared';
 import { startHiddenTicker } from '../audio/ticker';
 import { createDrinkKey } from '../input/drink-key';
 import { createInput } from '../input/keyboard';
@@ -8,7 +8,7 @@ import { lockPointer } from '../input/pointer-lock';
 import { createTouchInput } from '../input/touch';
 import { saveAvatar } from '../media/avatar';
 import { NO_FACES_SENT } from '../media/transport';
-import { bakeRoomLightingOnce } from '../renderer/room-lighting';
+import { bakeRoomLightingOnce, roomLightingByRoom } from '../renderer/room-lighting';
 import type { Gesture } from '../renderer/sip';
 import { makeTextures } from '../renderer/textures';
 import { flushOnHide, track } from '../telemetry/analytics';
@@ -42,6 +42,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
   const map = parseMap(LEVEL1);
   const textures = makeTextures(1);
   const roomLighting = bakeRoomLightingOnce(map, textures, flags.lights);
+  const roomLightingFor = roomLightingByRoom(roomLighting, (roomId) => wirePortals(map, roomId));
   const screen = createScreen(page, flags);
   const frameRateMeter = createFrameRateMeter();
   /** The lighting mode, chosen in the backtick console or the touch tray and kept per browser. */
@@ -92,6 +93,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     input,
     screen,
     hud: page.hudCtx,
+    ui: page.ui,
     frameRate: frameRateMeter,
     statusLine: createStatusLine(page.ui),
     room: () => room,
@@ -123,6 +125,8 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
       get audio() {
         return room?.audio ?? null;
       },
+      /** Whether the room's portal sequence has its lamps out now. */
+      sequenceDark: () => room?.sequence.dark ?? false,
       /** Whether the room's portals are on, as this client sees it. */
       get portalsOn() {
         return room?.portals() !== null && room !== null;
@@ -160,6 +164,9 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
   function showLobbyFor(roomId: string, entry: 'host' | 'invite'): void {
     screen.showLobbyPicture();
     openLobby({ page, localPlayer, entry, onJoin: (join) => enterRoom(roomId, join) });
+    // Baked in an idle moment now: in the Join click, the two tables (about 0.4 s) would freeze the lobby and hold up
+    // the connection.
+    whenIdle(() => roomLightingFor(roomId));
   }
 
   function enterRoom(roomId: string, { name, avatar, local, audioCtx }: LobbyJoin): void {
@@ -186,6 +193,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
         backtickConsole.refreshBoombox();
       },
       onPortalsChanged: (on) => showPortalNotice(page.ui, on),
+      lighting: roomLightingFor,
     });
     showRoomScreen(page.ui, { call: room.call, local, name, avatar });
     if (flags.touch) {
@@ -193,6 +201,15 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     }
     if (new URLSearchParams(location.search).has('debug')) {
       backtickConsole.toggle();
+    }
+  }
+
+  /** Safari has no requestIdleCallback. */
+  function whenIdle(work: () => void): void {
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(work);
+    } else {
+      setTimeout(work);
     }
   }
 
