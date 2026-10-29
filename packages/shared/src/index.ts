@@ -12,6 +12,7 @@ export * from './portals/apparent';
 export * from './portals/crossing';
 export * from './portals/doorways';
 export * from './portals/ray';
+export * from './portals/sequence';
 export * from './portals/transform';
 export * from './portals/wiring';
 export * from './protocol/movecheck';

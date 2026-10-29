@@ -8,12 +8,14 @@ import { createSubscription } from '../media/subscription';
 import { type RoomScene, renderHud, renderView } from '../renderer/frame';
 import type { Lighting } from '../renderer/lighting';
 import { BALL_MODEL, createBallRoll, recolourBall, rollBy } from '../renderer/models/ball';
+import { showCountdown } from '../ui/portal-countdown';
 import { litReflections, type RenderMode } from '../ui/render-settings';
 import { type StatusLine, statusText } from '../ui/room-status';
 import { createApparentWorld } from './apparent-world';
 import type { FrameRateMeter } from './frame-rate';
 import type { LocalPlayer } from './local-player';
 import { portalPulse } from './portal-pulse';
+import type { SequenceCues } from './portal-sequence';
 import { createRemoteWorld, type PeerMedia } from './remote-world';
 import { isConnected, type Room } from './room';
 import type { Screen } from './screen';
@@ -25,6 +27,8 @@ export interface RoomLoopOptions {
   input: Input;
   screen: Screen;
   hud: CanvasRenderingContext2D;
+  /** Where the portal sequence's countdown shows. */
+  ui: HTMLElement;
   frameRate: FrameRateMeter;
   statusLine: StatusLine;
   room(): Room | null;
@@ -68,6 +72,30 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     portalTime: 0,
     firstPerson: null,
     portals: null,
+  };
+
+  const cues: SequenceCues = { countdown: false, lightsOff: false, portalsOn: false, lightsOn: false };
+
+  /**
+   * Moves the room's portal sequence on, shows its countdown and plays its sounds, hidden tab included: the sounds are
+   * for everyone, and the hidden tick comes well within a cue's lateness, so none plays stale.
+   */
+  const followSequence = (room: Room, now: number) => {
+    room.sequence.update(room.session.sequence, now, room.session.portals);
+    showCountdown(o.ui, room.sequence.countdown);
+    room.sequence.takeCues(cues);
+    if (cues.countdown) {
+      room.switchSounds.countdown();
+    }
+    if (cues.lightsOff) {
+      room.switchSounds.lightsOff();
+    }
+    if (cues.portalsOn) {
+      room.switchSounds.portalsOn();
+    }
+    if (cues.lightsOn) {
+      room.switchSounds.lightsOn();
+    }
   };
 
   /** The local player as the ball feels them, with their velocity from the last frame's move. */
@@ -162,7 +190,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     const reflections = litReflections(o.renderMode());
     scene.reflections = reflections ?? 'none';
     const room = o.room();
-    scene.lighting = reflections === null ? null : (room?.lighting() ?? o.roomLighting());
+    scene.lighting = reflections === null ? null : (room?.lighting(room.sequence.dark) ?? o.roomLighting());
     scene.portals = room?.portals() ?? null;
     const portalSeconds = performance.now() / 1000;
     scene.portalPulse = portalPulse(portalSeconds);
@@ -192,8 +220,11 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       const room = o.room();
       if (room) {
         room.call.update(now);
+        followSequence(room, now);
         stepBall(room, now, dt);
         placeEveryoneElse(room, now, dt);
+      } else {
+        showCountdown(o.ui, null);
       }
       const drawStart = performance.now();
       const shown = describeScene(drawStart);
@@ -215,6 +246,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
         return;
       }
       const now = performance.now();
+      followSequence(room, now);
       stepBall(room, now, HIDDEN_TICK_MS / 1000);
       world.sample(room.session, localPlayer.pose, now, room.ball.ball, room.portals());
       placeApparently(room);

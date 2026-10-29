@@ -18,6 +18,7 @@ import {
   type Point,
   type Portals,
   PROTOCOL_VERSION,
+  type SequenceKind,
   type ServerMessage,
   SIP_MS,
   SnapshotBuffer,
@@ -71,6 +72,8 @@ export interface Session {
   objects: Map<string, RemoteObject>;
   /** Whether the room's portals are on: from the welcome, then from each flip. */
   portals: boolean;
+  /** The room's running portal switch, its start on the local clock; null when none runs (or since the last welcome). */
+  sequence: { kind: SequenceKind; startedAt: number } | null;
   setMedia(cam: boolean, mic: boolean): void;
   setHeld(item: HeldItem | null): void;
   /** Shows or hides our boombox to the others; resent after every welcome. */
@@ -130,6 +133,7 @@ export function createSession(opts: SessionOptions): Session {
   /** undefined until setBoombox: false must reach a resumed slot that may still say true. */
   let boombox: boolean | undefined;
   let portals = false;
+  let sequence: Session['sequence'] = null;
   let lastSent: SentPose | null = null;
   const listener = opts.listener ?? {};
 
@@ -204,6 +208,9 @@ export function createSession(opts: SessionOptions): Session {
         portals = m.on;
         listener.portalsChanged?.(m.on);
         break;
+      case 'portals_sequence':
+        sequence = { kind: m.kind, startedAt: now() - m.age };
+        break;
       case 'correction':
         Object.assign(player, { x: m.x, y: m.y, angle: m.angle });
         break;
@@ -223,6 +230,8 @@ export function createSession(opts: SessionOptions): Session {
     color = m.color;
     resumeToken = m.resumeToken;
     portals = m.portals;
+    // No clock syncing: the start is the arrival less the server's age, so the link's one-way delay shifts it late.
+    sequence = m.sequence ? { kind: m.sequence.kind, startedAt: now() - m.sequence.age } : null;
     peers.clear();
     bySlot.clear();
     for (const p of m.peers) {
@@ -396,6 +405,9 @@ export function createSession(opts: SessionOptions): Session {
     objects,
     get portals() {
       return portals;
+    },
+    get sequence() {
+      return sequence;
     },
     setMedia(cam, mic) {
       media = { cam, mic };

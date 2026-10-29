@@ -16,17 +16,41 @@ describe('createRoomLighting', () => {
   test('lighting(true) is the portals-on table, lighting(false) the plain one', () => {
     const room = createRoomLighting(plain, portals);
 
-    expect(room.lighting(false)).toBe(plain);
-    expect(room.lighting(true)).not.toBe(plain);
-    expect(room.lighting(true)?.portals).toBe(portals);
-    expect(room.lighting(true)).toBe(room.lighting(true));
+    expect(room.lighting(false, false)).toBe(plain);
+    expect(room.lighting(true, false)).not.toBe(plain);
+    expect(room.lighting(true, false)?.portals).toBe(portals);
+    expect(room.lighting(true, false)).toBe(room.lighting(true, false));
   });
 
-  test('an unlit room has no lighting with portals on or off', () => {
+  test('the dark table has no lamps, and its floor, ceiling and walls are all black', () => {
+    const dark = createRoomLighting(plain, portals).lighting(false, true);
+
+    expect(dark).not.toBeNull();
+    expect(dark?.lights).toEqual([]);
+    const black = (cell: number) => (cell & 0xffffff) === 0;
+    expect(dark?.floor.every(black)).toBe(true);
+    expect(dark?.ceiling.every(black)).toBe(true);
+    expect(dark?.wall.every(black)).toBe(true);
+  });
+
+  test('in the dark, with portals on or off, the table is the same one, keeping the portal glows’ shadows', () => {
+    const room = createRoomLighting(plain, portals);
+    const dark = room.lighting(true, true);
+
+    expect(dark).not.toBe(room.lighting(true, false));
+    expect(room.lighting(false, true)).toBe(dark);
+    expect(dark?.portals).toBe(portals);
+    expect(dark?.portalGlowSeen).toBe(room.lighting(true, false)?.portalGlowSeen);
+  });
+
+  test('an unlit room has no lighting, with portals on or off, dark or not', () => {
     const room = createRoomLighting(null, portals);
 
-    expect(room.lighting(true)).toBeNull();
-    expect(room.lighting(false)).toBeNull();
+    for (const portalsOn of [false, true]) {
+      for (const dark of [false, true]) {
+        expect(room.lighting(portalsOn, dark)).toBeNull();
+      }
+    }
   });
 });
 
@@ -58,14 +82,14 @@ describe('roomLightingByRoom', () => {
 
     expect(b).not.toBe(a);
     expect(b.portals).toBe(wire('room-b'));
-    expect(b.lighting(true)?.portals).toBe(wire('room-b'));
+    expect(b.lighting(true, false)?.portals).toBe(wire('room-b'));
   });
 
   test('nothing is baked for an unlit page', () => {
     vi.mocked(bakePortalLighting).mockClear();
     const lightingFor = roomLightingByRoom(() => null, wireByRoom());
 
-    expect(lightingFor('room-a').lighting(true)).toBeNull();
+    expect(lightingFor('room-a').lighting(true, false)).toBeNull();
     expect(bakePortalLighting).not.toHaveBeenCalled();
   });
 });

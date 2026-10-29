@@ -699,5 +699,73 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
       -198097577.
   - Not done: glow on people and objects; a hue per doorway; the hum through two portals; a listen by ear.
 
+### D30 — Portals switch as a timed, shared sequence
+
+- *Resolved 2026-10-29* ([spec](superpowers/specs/2026-10-29-portal-sequence-design.md)): pressing Y no longer bends the
+  room at once. The server starts a timed sequence for the whole room, and everyone sees and hears the same blackout.
+  The owner chose the sequences and their timings.
+  - **The first switch-on in a room (`first_on`), 7 s:** a countdown "Portals will enable in 3…, 2…, 1…" for 3 s, then
+    darkness from 3 s. The space bends at 5 s, and the portals light up alone in the dark (windows, rim, spill, hum).
+    The lamps return at 7 s.
+  - **Every later switch, on or off (`on`, `off`), 1 s:** a plain blackout with no countdown. The space bends at 0.5 s
+    and the lamps return at 1 s. The timeline is `packages/shared/src/portals/sequence.ts`, read by the server and every
+    client.
+  - **The debounce follows the sequence** (the owner: "align portals on/off debounce"). Y is ignored while a sequence
+    runs in the room, and `PORTALS_FLIP_GAP_MS` is gone. When one ends, the next press starts the next at once.
+  - **One message, no clock syncing.** The server sends `{ type: 'portals_sequence', kind, age }` once per sequence,
+    and the welcome carries `sequence?` while one runs. The client stamps the start as `arrival - age`, like D23's
+    `peers` batches. Players are out of step by their own network delay, up to about 0.1 s on a slow connection. The
+    owner accepted that; per-step messages (six per press) and clock syncing were not chosen.
+  - **The bend is the server's.** At `bendAtMs` the server flips the room's flag and broadcasts the existing
+    `{ type: 'portals', on }`, so clients bend on that message as before. The move check keeps accepting either mode
+    for 1 s after the bend (D27).
+  - **The lamps wait for the bend.** The dark is timed from the sequence message, but the bend comes in a later
+    message: up to a tick (66 ms) after its moment, plus its own network delay. So from `darkAtMs` a client stays dark
+    while its portals flag differs from the sequence's target (on for `first_on` and `on`, off for `off`), up to 2 s
+    past `lightsAtMs`; the lights-on sound plays when the lamps really return. The space never bends in lamp light,
+    unless the bend is over 2 s late. A stalled tab can get the press and the bend in one burst, which would show the
+    countdown over a bent space: a flag already at the target before `bendAtMs` can only mean that, so the client
+    jumps to the bend (no countdown, no lights-off sound, the dark from there and the lamps 2 s or 0.5 s later).
+  - **A countdown pulse, and no flicker in "lights on"** (both the owner's picks by ear in the sound sketch,
+    2026-10-29): a short 440 Hz triangle pulse plays as each countdown number shows, at 0, 1 and 2 s of `first_on`
+    (skipped when over 300 ms late, like every cue). The fluorescent flicker ticks of "lights on" are gone: it is the
+    breaker click and the hum.
+  - **Darkness is a table swap, never a dimming factor.** A third lighting table per room has no lamps, ambient 0 and no
+    bounce, so it costs nothing per frame. Glows add their light on top as usual: faces keep their own brightness (they
+    were never lamp-shaded) and the portal glows keep their shadows, because the table reuses the portals-on table's
+    `portalGlowSeen`. It adds about 20 ms to the lobby bake (measured 2026-10-29 on an Apple M5 under Node 22: a cold
+    bake of LEVEL1's dark table, the first in a fresh process, took 19.0, 20.2 and 21.5 ms, median 20.2; after the
+    plain and portals-on tables, as `createRoomLighting` bakes it, the median was 22.0 ms). Labels, the status line
+    and the automap stay as they are. Unlit rooms (`?lights=off`) still get the countdown and sounds, and the frame
+    doesn't go dark.
+  - **Dark windows (the owner's choice).** A portal window reads the same black table, so a lit portal in the dark is a
+    glowing pink frame around a black opening, and gives away nothing about where it leads.
+  - **`portalsEverOn` is set at the bend,** not at the press, and is saved in the state file beside `portals`
+    (`LobbySnapshot` is still version 1; a missing field reads as "never"). Restoring `portals: true` implies it. A
+    sequence running at shutdown is not saved: the press is lost, and a room that hadn't reached the bend keeps its big
+    first switch-on. A room that closes and opens again starts fresh.
+  - **Three sounds, not two.** Lights off (when the dark falls), portals on (when the portals light up, which only
+    happens on a switch-on, so a switch-off has no sound at its bend) and lights on (the lamps return). The owner moved
+    the lighter "portals on" sound to the portals' moment and asked for the third. The recipe is in spec §2.3, approved
+    by ear in a sketch. They are not placed: everyone hears them at one level, each with its own reverb tail and no send
+    into the voices' shared reverb, whose short tail would change the approved sound. `SWITCH_SOUND_GAIN` (0.25) scales
+    them under voices; it has not been tuned in the game yet.
+  - **`PROTOCOL_VERSION` is 5.** Older tabs get the `outdated` error and reload.
+  - **Measured** (2026-10-29): with no sequence running, every portals-off hash is unchanged. `bench:walls`: pixel
+    -601092469, doorway off -1246551896, crowd off 2075427884. `bench:sprites`: 1236007431, doorway scenes off
+    -1373330069.
+  - **Review fixes (2026-10-29):**
+    - The lamps wait for the bend (above).
+    - Hidden tabs play cues too, from the hidden tick (100 ms, though browsers may slow a hidden tab to about 1 s,
+      when the 300 ms lateness rule skips them).
+    - A resume welcome's restamp is the same sequence when it is of the same kind and within 500 ms of the first
+      stamp. The client keeps the first stamp, so the timeline never steps back into the dark, and no cue replays.
+    - The lobby advances a room's sequence before any welcome, so a welcome never carries one past its end (a fresh
+      join heard lights-on) and a due bend goes out first.
+    - The switch sounds play nothing while the `AudioContext` isn't running, so a suspended one can't play them
+      stale later.
+    - `playUnplaced` lost its unused reverb send, and the session its unused `sequenceStarted` listener.
+  - Not done: a listen to the sounds' level in the game; fades (the lights switch instantly, by design).
+
 ## Resolved
 _(none yet)_

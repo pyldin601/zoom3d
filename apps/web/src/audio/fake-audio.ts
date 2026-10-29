@@ -1,17 +1,26 @@
 // Test double for the slice of Web Audio the engine uses: records connections and param automation.
 export class FakeParam {
   targets: [number, number, number][] = [];
+  /** Every scheduled value change, in call order: how, to what, when. */
+  events: ['set' | 'linear' | 'exponential', number, number][] = [];
   constructor(public value = 0) {}
   setTargetAtTime(value: number, time: number, tau: number) {
     this.targets.push([value, time, tau]);
     this.value = value;
     return this;
   }
-  setValueAtTime(value: number) {
+  setValueAtTime(value: number, time = 0) {
+    this.events.push(['set', value, time]);
     this.value = value;
     return this;
   }
-  linearRampToValueAtTime(value: number) {
+  linearRampToValueAtTime(value: number, time = 0) {
+    this.events.push(['linear', value, time]);
+    this.value = value;
+    return this;
+  }
+  exponentialRampToValueAtTime(value: number, time = 0) {
+    this.events.push(['exponential', value, time]);
     this.value = value;
     return this;
   }

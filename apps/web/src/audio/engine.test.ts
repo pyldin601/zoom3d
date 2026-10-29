@@ -1,7 +1,7 @@
 import { DEFAULT_AUDIO_SETTINGS, parseMap, voiceGains } from '@zoom3d/shared';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { createAudioEngine, makeImpulse, speakingLevel } from './engine';
-import { asAudioContext, FakeAudioContext, type FakeNode, type FakeParam } from './fake-audio';
+import { asAudioContext, FakeAudioContext, FakeNode, type FakeParam } from './fake-audio';
 
 const OPEN = parseMap('1111111\n1.....1\n1.....1\n1S....1\n1111111');
 const WALLED = parseMap('1111111\n1..1..1\n1..1..1\n1S.1..1\n1111111');
@@ -308,5 +308,14 @@ describe('attachNode', () => {
     e.detach('b');
     expect(node.disconnected).toBe(true);
     expect(one('panner').disconnected).toBe(true);
+  });
+});
+
+describe('playUnplaced', () => {
+  test('sends the node straight out, with no panner, distance or shared reverb', () => {
+    const node = new FakeNode('synth');
+    engine().playUnplaced(node as unknown as AudioNode);
+    expect(node.connections).toEqual([ctx.destination]);
+    expect(ctx.byKind('panner')).toHaveLength(0);
   });
 });

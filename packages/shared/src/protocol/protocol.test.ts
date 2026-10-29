@@ -515,7 +515,7 @@ describe('server fan-out (6d)', () => {
     expect(NEAR_TILES).toBe(16);
     expect(FAR_INTERVAL_MS).toBe(500);
     expect(MAX_PEERS).toBe(128);
-    expect(PROTOCOL_VERSION).toBe(4);
+    expect(PROTOCOL_VERSION).toBe(5);
     expect(INTERP_DELAY_MS).toBe(150);
   });
 
@@ -605,5 +605,42 @@ describe('portal mode on the wire', () => {
     };
     expect(parseServerMessage(JSON.stringify({ ...welcome, portals: true }))).toMatchObject({ portals: true });
     expect(parseServerMessage(JSON.stringify(welcome))).toMatchObject({ portals: false });
+  });
+});
+
+describe('portal sequence messages', () => {
+  test('a portals_sequence parses', () => {
+    expect(parseServerMessage('{"type":"portals_sequence","kind":"first_on","age":120}')).toEqual({
+      type: 'portals_sequence',
+      kind: 'first_on',
+      age: 120,
+    });
+  });
+
+  test('an unknown kind or a bad age is rejected', () => {
+    expect(parseServerMessage('{"type":"portals_sequence","kind":"spin","age":0}')).toBeNull();
+    expect(parseServerMessage('{"type":"portals_sequence","kind":"on","age":-1}')).toBeNull();
+    expect(parseServerMessage('{"type":"portals_sequence","kind":"on","age":"0"}')).toBeNull();
+    expect(parseServerMessage('{"type":"portals_sequence","kind":"on"}')).toBeNull();
+    expect(parseServerMessage('{"type":"portals_sequence","kind":"on","age":1e999}')).toBeNull();
+  });
+
+  test('a welcome parses with and without a running sequence', () => {
+    const welcome = {
+      type: 'welcome',
+      selfId: 'a',
+      resumeToken: 't',
+      color: '#fff',
+      spawn: { x: 1, y: 2, angle: 0 },
+      peers: [],
+      livekit: { url: 'ws://x', token: 'k' },
+      objects: [],
+      portals: false,
+    };
+    expect(parseServerMessage(JSON.stringify(welcome))).not.toHaveProperty('sequence');
+    const running = { ...welcome, sequence: { kind: 'off', age: 300 } };
+    expect(parseServerMessage(JSON.stringify(running))).toMatchObject({ sequence: { kind: 'off', age: 300 } });
+    const bad = { ...welcome, sequence: { kind: 'spin', age: 300 } };
+    expect(parseServerMessage(JSON.stringify(bad))).not.toHaveProperty('sequence');
   });
 });
