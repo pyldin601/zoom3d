@@ -604,8 +604,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     portals on, and Y swaps tables in the same frame. The plain table stays baked once per page, now from the lobby
     too. The bounce light is the plain table's own array, reused: it is faint and spread over two tiles.
     `describeScene` picks the table for every pass, windows included.
-  - **The lamp lists widened** from signed bytes (127 lamps) to `Int16Array` (`MAX_LAMPS` 32767): LEVEL1 has 37 lamps and
-    101 copies.
+  - **The lamp lists widened** from signed bytes (127 lamps) to `Int16Array` (`MAX_LAMPS` 32767): LEVEL1 has 37 lamps
+    and 101 copies.
   - **Measured** (2026-10-29, against base `2f50798`; LEVEL1 at 640×360, lit, reflections `both`, a loaded machine, read
     the ratios): the portals-on bake takes 264 to 267 ms cold, with 101 copies of 37 lamps, against 127 ms for the plain
     bake (121 to 128 ms before), so no pruning of copies was needed. With portals off nothing changed: the

@@ -75,8 +75,9 @@ const portalBakeStart = performance.now();
 const portalLighting = bakePortalLighting(lighting, portals, FLOOR, CEILING);
 const portalBakeMs = performance.now() - portalBakeStart;
 console.log(
-  `portal lighting: bake ${portalBakeMs.toFixed(0)} ms (cold); ${portalLighting.lights.length - lights.length} copies ` +
-    `of ${lights.length} lamps; lighting hash ${lightingHash(portalLighting)}`
+  `portal lighting: bake ${portalBakeMs.toFixed(0)} ms (cold); ` +
+    `${portalLighting.lights.length - lights.length} copies of ${lights.length} lamps; ` +
+    `lighting hash ${lightingHash(portalLighting)}`
 );
 room.reflections = 'both';
 const portalHashes = { off: 0, on: 0 };

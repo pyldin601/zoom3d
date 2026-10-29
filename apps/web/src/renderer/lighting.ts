@@ -331,7 +331,9 @@ export function seesLamp(
   return hasPortalLineOfSight(map, portals, ax, ay, bx, by);
 }
 
-/** Bakes every surface's table for `input`'s lamps: the wall faces and their runs, then the walls, floor and ceiling. */
+/**
+ * Bakes every surface's table for `input`'s lamps: the wall faces and their runs, then the walls, floor and ceiling.
+ */
 function bakeSurfaces(input: BakeInput, floorColour: number, ceilingColour: number): Lighting {
   const { map } = input;
   const { faceOffset, faces } = indexFaces(map);
@@ -369,7 +371,10 @@ export function ambientAt(lm: Lighting, x: number, y: number, out: Float64Array)
 
 // Bake stages.
 
-/** What every stage of a bake reads: the map and its portals, its lamps, the ambient and bounce light, and the coarse lamp sight. */
+/**
+ * What every stage of a bake reads: the map and its portals, its lamps, the ambient and bounce light, and the coarse
+ * lamp sight.
+ */
 interface BakeInput {
   map: GameMap;
   portals: Portals | null;
