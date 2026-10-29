@@ -7,9 +7,9 @@ import type { View } from './camera';
 
 /** The frame width the sketch's numbers were tuned on, px. */
 const SKETCH_WIDTH_PX = 320;
-const SHIMMER_BASE = 0.16;
-const SHIMMER_PER_PULSE = 0.2;
-const SHIMMER_PER_RIPPLE = 0.1;
+const SHIMMER_BASE = 0.08;
+const SHIMMER_PER_PULSE = 0.1;
+const SHIMMER_PER_RIPPLE = 0.05;
 /** The shimmer mixes in this share of pink, so a fully shimmered pixel is a little darker than the glow. */
 const SHIMMER_PINK = 0.9;
 const RIPPLE_PER_ROW = 0.32;

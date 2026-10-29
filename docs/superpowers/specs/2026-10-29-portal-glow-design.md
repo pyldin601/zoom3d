@@ -34,7 +34,7 @@ What's seen through a window is changed, and only that. The doorway's frame and 
 part.
 
 - **Shimmer:** every pixel shown through the window is pulled toward pink by
-  `k = 0.16 + 0.2 · pulse + 0.1 · ripple`, where `ripple = 0.5 + 0.5 · sin(row · 0.32 + col · 0.06 − t · 5.5)` (a
+  `k = 0.08 + 0.1 · pulse + 0.05 · ripple` (half the sketch's, tuned by eye in the game on 2026-10-29), where `ripple = 0.5 + 0.5 · sin(row · 0.32 + col · 0.06 − t · 5.5)` (a
   slow wave rolling across the window). The pixel becomes `pixel · (1 − k) + pink · 0.9 · k`. The ripple's numbers
   are for a 320-pixel-wide frame; scale them to the real frame so the wave looks the same.
 - **Rim:** pink is added near the window's edges, falling off with the distance to the nearest edge, as

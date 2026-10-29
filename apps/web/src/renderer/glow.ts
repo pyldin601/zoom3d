@@ -37,8 +37,8 @@ export interface GlowSource {
 export const GLOW_RADIUS = 2.5;
 /** A white face glows this much of a full lamp's light at the disc. */
 export const GLOW_STRENGTH = 0.6;
-/** A portal's glow at the top of its pulse, as a share of a full lamp's light. Tuned by eye (D29). */
-export const PORTAL_GLOW_STRENGTH = 0.5;
+/** A portal's glow at the top of its pulse, as a share of a full lamp's light. */
+export const PORTAL_GLOW_STRENGTH = 0.9;
 /** How far in front of its doorway's plane a portal's glow stands: just past the door frame, so the frame faces it. */
 const PORTAL_GLOW_OFFSET = 0.6;
 /** Faces are averaged on this many texels per side, not all 256² of them. */
