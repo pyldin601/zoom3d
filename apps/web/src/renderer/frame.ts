@@ -3,7 +3,7 @@
 import { applyAngle, applyPoint, type HeldItem, type PlayerState, type Portal, type Portals } from '@zoom3d/shared';
 import type { PeerFacts } from '../media/interest';
 import { type AutomapPeer, drawAutomap } from './automap';
-import { createView, type Pass, setView, WHOLE_FRAME } from './camera';
+import { createView, type Pass, setView, WHOLE_FRAME, WINDOW_LEVELS } from './camera';
 import { createFramebuffer, type Framebuffer } from './framebuffer';
 import { createAvatarGlows, createPortalGlows, type Glow, type GlowSource } from './glow';
 import { drawLabels, type NameLabel } from './labels';
@@ -49,9 +49,6 @@ const avatarGlows = createAvatarGlows();
 const portalGlows = createPortalGlows();
 /** The avatar glows then the portal glows, when portals are on: one list reused from frame to frame. */
 const allGlows: Glow[] = [];
-
-/** Windows within windows are drawn this deep; a window seen at the last level is pink-tinted black (D29). */
-const WINDOW_LEVELS = 2;
 
 /** One level of windows: the frame they are drawn into, at the frame's size, and the scene they are drawn from. */
 interface WindowLevel {
