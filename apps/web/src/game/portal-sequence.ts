@@ -36,12 +36,17 @@ const CUE_LATENESS_MS = 300;
 const BEND_WAIT_CAP_MS = 2000;
 /** Before any update, an age below every moment, so a cue at 0 fires. */
 const NOT_YET_MS = -1;
+/**
+ * Stamps of one kind this close name one sequence: a resume welcome restamps the running one from a fresh age, off by
+ * no more than the network's wobble, while the next sequence starts at least one whole (1 s) later.
+ */
+const SAME_SEQUENCE_MS = 500;
 
 export function createPortalSequence(): PortalSequencePlayer {
   let dark = false;
   let countdown: 3 | 2 | 1 | null = null;
   let kind: SequenceKind | null = null;
-  /** The session's stamp, which names the sequence. */
+  /** The session's first stamp of the sequence, which names it. */
   let stampedAt = 0;
   /** Where this player has the start: the stamp, or later when the stamp turned out late. */
   let startedAt = 0;
@@ -54,7 +59,8 @@ export function createPortalSequence(): PortalSequencePlayer {
   const arrivedOnTime = (cueAtMs: number, ageMs: number) =>
     lastAgeMs < cueAtMs && cueAtMs <= ageMs && ageMs - cueAtMs <= CUE_LATENESS_MS;
 
-  const isNew = (seq: StampedSequence) => seq.kind !== kind || seq.startedAt !== stampedAt;
+  // A restamp keeps the first stamp: adopting the new one could step the timeline back, into the dark again.
+  const isNew = (seq: StampedSequence) => seq.kind !== kind || Math.abs(seq.startedAt - stampedAt) > SAME_SEQUENCE_MS;
 
   const begin = (seq: StampedSequence) => {
     kind = seq.kind;

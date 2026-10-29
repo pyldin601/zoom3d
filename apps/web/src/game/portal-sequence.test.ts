@@ -191,3 +191,27 @@ describe('the dark waits for the bend', () => {
     expect(cues.lightsOn).toBe(true);
   });
 });
+
+describe('a sequence stamped again', () => {
+  test('a resume welcome restamping the running sequence within 500 ms replays no cue and keeps its timing', () => {
+    const player = createPortalSequence();
+    player.update({ kind: 'on', startedAt: START }, START + 100, false);
+    player.takeCues(cues);
+    expect(cues.lightsOff).toBe(true);
+    const restamped = { kind: 'on' as const, startedAt: START + 60 };
+    player.update(restamped, START + 150, false);
+    player.takeCues(cues);
+    expect(cues).toEqual({ lightsOff: false, portalsOn: false, lightsOn: false });
+    player.update(restamped, START + 1000, true);
+    expect(player.dark).toBe(false);
+  });
+
+  test('the next switch of the same kind, a sequence later, is a new one', () => {
+    const player = createPortalSequence();
+    player.update({ kind: 'on', startedAt: START }, START + 100, false);
+    player.takeCues(cues);
+    player.update({ kind: 'on', startedAt: START + 1000 }, START + 1000, false);
+    player.takeCues(cues);
+    expect(cues.lightsOff).toBe(true);
+  });
+});
