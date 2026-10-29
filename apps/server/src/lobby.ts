@@ -374,6 +374,8 @@ export class Lobby {
     const kind: SequenceKind = mode.on ? 'off' : mode.everOn ? 'on' : 'first_on';
     this.sequences.set(roomId, { kind, startedAt: now, bent: false });
     this.broadcast(room, '', { type: 'portals_sequence', kind, age: 0 });
+    // A switch-off unbends with the press, as the lights go out, right behind its sequence message.
+    this.advanceSequence(roomId, room, now);
   }
 
   media(conn: string, msg: MediaMessage): void {

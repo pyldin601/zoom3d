@@ -29,8 +29,10 @@ room sees and hears at the same moment.
 
 | From | Until | What happens |
 |---|---|---|
-| 0 s | 1 s | **Darkness:** the same lights-off sound, and every lamp out. There is no countdown. |
-| 1 s | | The lamps come back with the "lights on" sound, and the portals appear (with the "portals on" sound) or vanish with them, as the space bends or unbends (amended 2026-10-29, the user: portals and lights switch together after the first switch-on, off as well). |
+| 0 s | 1 s | **Darkness:** the same lights-off sound, and every lamp out. There is no countdown. Switching off: the portals vanish now, with the lights, and the space unbends. |
+| 1 s | | The lamps come back with the "lights on" sound. Switching on: the portals appear with them (with the "portals on" sound), and the space bends. |
+
+Amended 2026-10-29 after playing it (the user): portals go out with the lights, and come back with them.
 
 ### 2.2 Darkness
 

@@ -197,21 +197,34 @@ describe('the dark waits for the bend', () => {
     expect(player.dark).toBe(true);
   });
 
-  test('a stalled short switch, its bend landed with the press, is never dark: bend and lights share a time', () => {
+  test('an off whose unbend lands with the press stays dark until the lights at 1000 ms', () => {
     const player = createPortalSequence();
     const seq = { kind: 'off' as const, startedAt: START };
     player.update(seq, START, false);
+    expect(player.dark).toBe(true);
+    player.update(seq, START + 999, false);
+    expect(player.dark).toBe(true);
+    player.update(seq, START + 1000, false);
+    player.takeCues(cues);
+    expect(player.dark).toBe(false);
+    expect(cues.lightsOn).toBe(true);
+  });
+
+  test('a stalled on, its bend landed with the press, is never dark: bend and lights share a time', () => {
+    const player = createPortalSequence();
+    const seq = { kind: 'on' as const, startedAt: START };
+    player.update(seq, START, true);
     expect(player.dark).toBe(false);
   });
 
-  test('a short switch is dark until its bend lands with the lights at 1000 ms', () => {
+  test('an on is dark until its bend lands with the lights at 1000 ms', () => {
     const player = createPortalSequence();
-    const seq = { kind: 'off' as const, startedAt: START };
-    player.update(seq, START, true);
+    const seq = { kind: 'on' as const, startedAt: START };
+    player.update(seq, START, false);
     expect(player.dark).toBe(true);
-    player.update(seq, START + 999, true);
+    player.update(seq, START + 999, false);
     expect(player.dark).toBe(true);
-    player.update(seq, START + 1000, false);
+    player.update(seq, START + 1000, true);
     player.takeCues(cues);
     expect(player.dark).toBe(false);
     expect(cues.lightsOn).toBe(true);

@@ -871,16 +871,14 @@ describe('portals', () => {
     expect(portalsOf('A')).toHaveLength(1);
   });
 
-  test('off and a later on each bend as the lights return, at 1000 ms', () => {
+  test('off unbends with the press, as the lights go; a later on bends as they return, at 1000 ms', () => {
     join('A');
     switchFully('A');
     sent = [];
     press('A');
     expect(sequencesOf('A')).toEqual([{ type: 'portals_sequence', kind: 'off', age: 0 }]);
-    stepAt(time + 999);
-    expect(portalsOf('A')).toEqual([]);
-    stepAt(time + 1);
     expect(portalsOf('A')).toEqual([{ type: 'portals', on: false }]);
+    stepAt(time + 1000);
     sent = [];
     press('A');
     expect(sequencesOf('A')).toEqual([{ type: 'portals_sequence', kind: 'on', age: 0 }]);
@@ -1093,7 +1091,6 @@ describe('portals', () => {
       time += 60_000;
       lobby.state('A', { type: 'state', ...standing, angle: 0, seq: 1 });
       press('A');
-      stepAt(time + 1000);
       sent = [];
       time += sinceOffBendMs;
       lobby.state('A', { type: 'state', ...walkedOn, angle: 0, seq: 2 });
