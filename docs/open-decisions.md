@@ -606,13 +606,14 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     `describeScene` picks the table for every pass, windows included.
   - **The lamp lists widened** from signed bytes (127 lamps) to `Int16Array` (`MAX_LAMPS` 32767): LEVEL1 has 37 lamps
     and 101 copies.
-  - **Measured** (2026-10-29, against base `2f50798`; LEVEL1 at 640×360, lit, reflections `both`, a loaded machine, read
-    the ratios): the portals-on bake takes 264 to 267 ms cold, with 101 copies of 37 lamps, against 127 ms for the plain
-    bake (121 to 128 ms before), so no pruning of copies was needed. With portals off nothing changed: the
-    `bench:walls` lighting, pixel, doorway and crowd hashes and the `bench:sprites` hashes are the same as on the base.
-    `renderWalls` from 1.5 tiles in front of 8 doorways: 1.79 ms off, 1.06 ms on (0.92 on the base). With the 100-glow
-    crowd, from the lamp poses: 2.67 ms off, 2.99 ms on (2.73 on the base). Whole frames (`renderView`) from the
-    doorways: 2.51 ms off, 3.03 ms on (2.65 on the base).
+  - **Measured** (2026-10-29, against base `2f50798`; LEVEL1 at 640×360, lit, reflections `both`, a loaded machine,
+    read the ratios): the portals-on bake takes 255 to 272 ms cold, with 101 copies of 37 lamps, against 125 ms for the
+    plain bake (121 to 128 ms before), so no pruning of copies was needed. Both are baked in an idle moment in the
+    lobby, not in the Join click. With portals off nothing changed: the `bench:walls` lighting, pixel, doorway and
+    crowd hashes and the `bench:sprites` hashes are the same as on the base. Two runs each, agreeing to 0.02 ms:
+    `renderWalls` from 1.5 tiles in front of 8 doorways, 1.68 ms off, 1.00 ms on (0.92 on the base; an earlier 1.79 ms
+    off was noise). With the 100-glow crowd, from the lamp poses: 2.55 ms off, 2.85 ms on (2.73 on the base). Whole
+    frames (`renderView`) from the doorways: 2.38 ms off, 2.78 ms on (2.65 on the base).
   - Not done: moving shadows and avatar glow through portals; bounce light through portals; lamp light through two
     portals; a browser run by eye of the light across a window.
 

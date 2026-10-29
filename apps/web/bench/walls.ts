@@ -3,7 +3,9 @@
 // from poses near lamps (where reflections cost most), each with 7 glowing avatars nearby and your own glow, and
 // once more with a crowd of 100 glowing avatars spread over the whole map (most of them out of view, as with ?bots).
 // It also prints a hash of the baked lighting and of every pixel drawn in every mode: a refactor that changes no
-// behaviour must leave both hashes alone (docs/code-style.md, Refactoring).
+// behaviour must leave both hashes alone (docs/code-style.md, Refactoring). Then it does the same with portals on: the
+// bake time and hash of the portals-on table (D28), and the doorway and crowd frames timed and hashed with the room's
+// portals off (the plain table) and on (the portals-on table).
 import { LEVEL1, parseMap, tileAt, wirePortals } from '@zoom3d/shared';
 import { createFramebuffer } from '../src/renderer/framebuffer';
 import type { Glow } from '../src/renderer/glow';
@@ -63,7 +65,8 @@ for (const mode of MODES) {
 }
 
 // Portals on (portal doorways spec): the same lit frame from 1.5 tiles in front of each of up to 8 doorways, looking in,
-// timed with the room's portals off and on, with the hash of the on frames beside the off hashes above.
+// timed with the room's portals off and on, each lit by its own table, with the hash of the on frames beside the off
+// hashes above.
 const portals = wirePortals(map, 'bench-room');
 const doorwayPoses: Pose[] = portals.list.slice(0, 8).map((p) => ({
   x: p.cx - p.nx * 1.5,
