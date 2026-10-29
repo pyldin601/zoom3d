@@ -311,6 +311,10 @@ export class Lobby {
       return;
     }
     const room = this.rooms.get(msg.roomId) ?? new Map<string, Peer>();
+    // The welcome carries the sequence and the flag as of now: a bend due or an end passed since the last tick must
+    // not reach the joiner as a sequence past its end, which would play its lights-on. The welcome's flag carries the
+    // bend to the joiner, who is not yet in the room (or only on the connection being replaced).
+    this.advanceSequence(msg.roomId, room, this.opts.now());
     const resumable =
       msg.resumeToken === undefined ? undefined : peopleIn(room).find((p) => p.resumeToken === msg.resumeToken);
     if (resumable) {

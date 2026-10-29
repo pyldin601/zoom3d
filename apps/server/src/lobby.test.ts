@@ -929,6 +929,37 @@ describe('portals', () => {
     expect(welcome('C').portals).toBe(true);
   });
 
+  test('a join after the sequence ended, before a tick dropped it, gets no sequence', () => {
+    join('A');
+    press('A');
+    stepAt(5000);
+    time = 7030;
+    join('B');
+    expect(welcome('B').sequence).toBeUndefined();
+    expect(welcome('B').portals).toBe(true);
+  });
+
+  test('a join with the bend due, before a tick sent it, gets the bend first', () => {
+    join('A');
+    press('A');
+    time = 5030;
+    join('B');
+    expect(portalsOf('A')).toEqual([{ type: 'portals', on: true }]);
+    expect(welcome('B').portals).toBe(true);
+    expect(welcome('B').sequence).toEqual({ kind: 'first_on', age: 5030 });
+    expect(portalsOf('B')).toEqual([]);
+  });
+
+  test('a resume after the sequence ended, before a tick dropped it, gets no sequence', () => {
+    join('A');
+    press('A');
+    time = 7030;
+    sent = [];
+    lobby.join('A2', { type: 'join', v: PROTOCOL_VERSION, roomId: ROOM, name: 'A', resumeToken: 't1' });
+    expect(welcome('A2').sequence).toBeUndefined();
+    expect(welcome('A2').portals).toBe(true);
+  });
+
   test('a connection that has not joined cannot press', () => {
     join('A');
     press('stranger');
