@@ -991,7 +991,7 @@ export function directLight(lm: Lighting, x: number, y: number, z: number, angle
     const dz = l.z - z;
     const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
     const k = falloff(dist, l.radius);
-    if (k === 0 || !hasLineOfSight(lm.map, x, y, l.x, l.y)) {
+    if (k === 0 || !seesLamp(lm.map, lm.portals, l, x, y, l.x, l.y)) {
       continue;
     }
     // The lamp's direction in model space: rotate the horizontal part by −angle.

@@ -1,8 +1,9 @@
 import { parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { rgb } from './framebuffer';
-import { bakeLighting, FLOOR_SUB, floorLampLight, type Light, REFLECTION_LAMPS } from './lighting';
+import { bakeLighting, bakePortalLighting, FLOOR_SUB, floorLampLight, type Light, REFLECTION_LAMPS } from './lighting';
 import { objectSeenShare, shadeFloor, shadowReach } from './object-shadows';
+import { portalHall } from './test-portals';
 import { buildModel, type VoxelInstance } from './voxels';
 
 // Voxel shadows spec §3.2: how much of a lamp's disc the floor sees past an object.
@@ -143,5 +144,17 @@ describe('shadeFloor', () => {
     for (let i = 1; i < along.length; i++) {
       expect(Math.abs((along.at(i) ?? 0) - (along.at(i - 1) ?? 0))).toBeLessThan(0.2);
     }
+  });
+
+  test('a copy never shades floor it cannot be seen from', () => {
+    // The lamp's copy through A lies at (2.5, 5.5), behind A, beside the object; the real lamp is too short to reach
+    // the floor south of the wall row, so all light it could lose there is the copy's.
+    const { map: hall, portals } = portalHall();
+    const plain = bakeLighting(hall, [{ ...lamp, x: 4.5, y: 1.5, radius: 2 }], 0.3, GREY, GREY);
+    const lit = bakePortalLighting(plain, portals, GREY, GREY);
+    const tables = { floor: lit.floor.slice(), floorLampSeen: lit.floorLampSeen.slice(), touch: () => {} };
+    shadeFloor(lit, [{ model: BLOCK, x: 2.5, y: 5.0, angle: 0 }], GREY, tables, () => true);
+    const southOfWallRow = 4 * FLOOR_SUB * lit.stride;
+    expect(tables.floor.subarray(southOfWallRow)).toEqual(lit.floor.subarray(southOfWallRow));
   });
 });

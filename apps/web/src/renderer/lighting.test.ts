@@ -34,6 +34,7 @@ const map = parseMap(`
 `);
 const GREY = rgb(100, 100, 100);
 const lamp = (x: number, y: number): Light => ({ x, y, z: 0.85, radius: 4, r: 1, g: 1, b: 1 });
+const light = (x: number, y: number, radius = 4): Light => ({ x, y, z: 0.85, radius, r: 1, g: 1, b: 1 });
 /** A wall's south face, facing +y. */
 const FACING_SOUTH = { dx: 0, dy: 1, dz: 0 };
 
@@ -78,6 +79,26 @@ describe('directLight', () => {
     const out = new Float64Array(18);
     directLight(lm, 1.5, 2.5, 0.1, 0, out);
     expect([...out]).toEqual(new Array(18).fill(0));
+  });
+
+  describe('with portals', () => {
+    const { map: hall, portals } = portalHall();
+
+    test('a lamp reached only by crossing a plane front to back leaves the object unlit', () => {
+      const plain = bakeLighting(hall, [light(2.5, 5)], 0.1, GREY, GREY);
+      const out = new Float64Array(18);
+      directLight(bakePortalLighting(plain, portals, GREY, GREY), 2.5, 2.5, 0.5, 0, out);
+      expect(out[DIR_TOP * 3]).toBe(0);
+    });
+    test('a lamp seen through a portal lights the object', () => {
+      // Out of the real lamp's reach, in reach of its copy at (2.5, 4.0).
+      const plain = bakeLighting(hall, [light(4.5, 3.0, 1.8)], 0.1, GREY, GREY);
+      const out = new Float64Array(18);
+      directLight(plain, 2.5, 2.6, 0.5, 0, out);
+      expect(out[DIR_TOP * 3]).toBe(0);
+      directLight(bakePortalLighting(plain, portals, GREY, GREY), 2.5, 2.6, 0.5, 0, out);
+      expect(out[DIR_TOP * 3]).toBeGreaterThan(0);
+    });
   });
 });
 
@@ -512,7 +533,6 @@ describe('soft shadows', () => {
 
 describe('bakePortalLighting', () => {
   const { map: hall, portals } = portalHall();
-  const light = (x: number, y: number, radius = 4): Light => ({ x, y, z: 0.85, radius, r: 1, g: 1, b: 1 });
   const both = (lights: Light[]) => {
     const plain = bakeLighting(hall, lights, 0.1, GREY, GREY);
     return { plain, portal: bakePortalLighting(plain, portals, GREY, GREY) };
