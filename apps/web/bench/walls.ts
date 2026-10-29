@@ -7,7 +7,7 @@
 import { LEVEL1, parseMap, tileAt, wirePortals } from '@zoom3d/shared';
 import { createFramebuffer } from '../src/renderer/framebuffer';
 import type { Glow } from '../src/renderer/glow';
-import { bakeLighting, corridorLights, type Lighting } from '../src/renderer/lighting';
+import { bakeLighting, bakePortalLighting, corridorLights, type Lighting } from '../src/renderer/lighting';
 import { averageColour, makeTextures } from '../src/renderer/textures';
 import { CEILING, FLOOR, type Room, renderWalls } from '../src/renderer/walls';
 
@@ -71,11 +71,18 @@ const doorwayPoses: Pose[] = portals.list.slice(0, 8).map((p) => ({
   angle: Math.atan2(p.ny, p.nx),
   glows: [],
 }));
+const portalBakeStart = performance.now();
+const portalLighting = bakePortalLighting(lighting, portals, FLOOR, CEILING);
+const portalBakeMs = performance.now() - portalBakeStart;
+console.log(
+  `portal lighting: bake ${portalBakeMs.toFixed(0)} ms (cold); ${portalLighting.lights.length - lights.length} copies ` +
+    `of ${lights.length} lamps; lighting hash ${lightingHash(portalLighting)}`
+);
 room.reflections = 'both';
-room.lighting = lighting;
 const portalHashes = { off: 0, on: 0 };
 for (const state of ['off', 'on'] as const) {
   room.portals = state === 'on' ? portals : null;
+  room.lighting = state === 'on' ? portalLighting : lighting;
   for (const pose of doorwayPoses) {
     room.eye = pose;
     renderWalls(fb, room);
@@ -88,6 +95,7 @@ const portalTimes = { off: [] as number[], on: [] as number[] };
 for (let round = 0; round < ROUNDS; round++) {
   for (const state of ['off', 'on'] as const) {
     room.portals = state === 'on' ? portals : null;
+    room.lighting = state === 'on' ? portalLighting : lighting;
     const start = performance.now();
     const frames = doorwayPoses.length * 20;
     for (let f = 0; f < frames; f++) {
@@ -108,6 +116,7 @@ const crowdPoses = [...poses, ...doorwayPoses];
 const crowdHashes = { off: 0, on: 0 };
 for (const state of ['off', 'on'] as const) {
   room.portals = state === 'on' ? portals : null;
+  room.lighting = state === 'on' ? portalLighting : lighting;
   for (const pose of crowdPoses) {
     room.eye = pose;
     renderWalls(fb, room, crowd);
@@ -120,6 +129,7 @@ const crowdTimes = { off: [] as number[], on: [] as number[] };
 for (let round = 0; round < ROUNDS; round++) {
   for (const state of ['off', 'on'] as const) {
     room.portals = state === 'on' ? portals : null;
+    room.lighting = state === 'on' ? portalLighting : lighting;
     const start = performance.now();
     const frames = poses.length * FRAMES_PER_POSE;
     for (let f = 0; f < frames; f++) {

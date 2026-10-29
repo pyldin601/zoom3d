@@ -1,5 +1,6 @@
-// The room's lamp light, baked on first use (about 100 ms) rather than at page load, so the landing page never waits
-// for it; by then the join is already connecting.
+// The room's lamp light. The plain table is baked on first use (about 125 ms) rather than at page load, so the landing
+// page never waits for it. The portals-on table (about 270 ms) is baked in joinRoom, before the connection starts, so
+// it is ready before any welcome can turn portals on and the swap on Y never waits.
 import type { GameMap, Portals } from '@zoom3d/shared';
 import { bakeLighting, bakePortalLighting, corridorLights, type Lighting } from './lighting';
 import { averageColour } from './textures';

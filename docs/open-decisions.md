@@ -575,6 +575,44 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     - Not done: the browser run with `?bots=100` (walking through doorways, comparing the view to where it leads, the
       server's `/metrics` tick time under real load). The e2e spec `apps/web/e2e/portals.spec.ts` covers the flip.
   - Not done: an interactive element that uses portals; a map editor's doorway choices; the vacuum going through.
+  - The baked lamp light follows the portals since D28; moving shadows and avatar glow through portals don't yet.
+
+### D28 — The baked lamp light follows the portals
+
+- *Resolved 2026-10-29* ([spec](superpowers/specs/2026-10-29-portal-lamp-light-design.md)): with portals on, the lamp
+  light around a doorway matches what is seen through it. Before, the floor and walls in front of a doorway glowed with
+  the lamps of the room physically behind it, a room that is no longer there, and the lamps of the room seen through it
+  lit nothing on this side. Press Y and the light changes along with the space.
+  - **The rule: light follows sight.** A spot is lit by the lamps it can see, the way it sees them: a sight line that
+    crosses a doorway front to back carries on from the destination, as a view ray does; one that crosses back to front
+    is ordinary. So the light has a step at a window: looking through A from its front, the light of the viewer's side
+    ends at A's plane and B's back side has only its own. The owner chose this after trying both rules in a throwaway
+    demo. Their reason: light from room Y can't reach room W, because from W the room Y isn't visible.
+  - **Rejected, rule 2:** join each doorway with its destination both ways, so the light carries on across the window.
+    B's back side would then glow from a room that can't be seen from there: the spill this removes, moved to the
+    arrival side.
+  - **Copies through one portal.** With portals on, every lamp lying behind a destination and within `LAMP_SIGHT` of it
+    also appears as a copy where it is seen from the portal's front (`lampCopies`, `Light.through`). A spot sees a copy
+    only along a line through that doorway (`seesLamp`, `hasLineOfSightThrough`); the doorway's edge softens a copy's
+    light as a wall's edge does a lamp's. A lamp seen through two doorways in a row lights nothing: one level keeps the
+    copies and the bake time down. Copies show no ceiling fixture; the window's own pass draws the real one.
+  - **Everything reading the lamp list follows:** reflections, the lighting on people, the vacuum and the ball
+    (`directLight`), and the object shadows' fallback sight test, all through `seesLamp`.
+  - **A second table per room,** `bakePortalLighting`, baked in `joinRoom` (`createRoomLighting`) before the connection
+    starts, so it is ready before any welcome can turn portals on and Y swaps tables in the same frame. The plain table
+    stays baked once per page. The bounce light is the plain table's own array, reused: it is faint and spread over two
+    tiles. `describeScene` picks the table for every pass, windows included.
+  - **The lamp lists widened** from signed bytes (127 lamps) to `Int16Array` (`MAX_LAMPS` 32767): LEVEL1 has 37 lamps and
+    101 copies.
+  - **Measured** (2026-10-29, against base `2f50798`; LEVEL1 at 640×360, lit, reflections `both`, a loaded machine, read
+    the ratios): the portals-on bake takes 264 to 267 ms cold, with 101 copies of 37 lamps, against 127 ms for the plain
+    bake (121 to 128 ms before), so no pruning of copies was needed. With portals off nothing changed: the
+    `bench:walls` lighting, pixel, doorway and crowd hashes and the `bench:sprites` hashes are the same as on the base.
+    `renderWalls` from 1.5 tiles in front of 8 doorways: 1.79 ms off, 1.06 ms on (0.92 on the base). With the 100-glow
+    crowd, from the lamp poses: 2.67 ms off, 2.99 ms on (2.73 on the base). Whole frames (`renderView`) from the
+    doorways: 2.51 ms off, 3.03 ms on (2.65 on the base).
+  - Not done: moving shadows and avatar glow through portals; bounce light through portals; lamp light through two
+    portals; a browser run by eye of the light across a window.
 
 ## Resolved
 _(none yet)_
