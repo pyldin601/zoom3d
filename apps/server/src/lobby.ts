@@ -37,11 +37,13 @@ import {
   RESUME_GRACE_MS,
   restoreBall,
   restoreVacuum,
+  type SequenceKind,
   type ServerMessage,
   type StateMessage,
   sanitizeName,
   saveBall,
   saveVacuum,
+  sequenceTimes,
   spawnPoint,
   stepBall,
   stepVacuum,
@@ -62,8 +64,8 @@ const CLOSE_ROOM_FULL = 4001;
 const CLOSE_INVALID = 4002;
 const CLOSE_REPLACED = 4003;
 
-/** At most one portals flip per room in this time, and the move check honours the old mode for as long after it. */
-const PORTALS_FLIP_GAP_MS = 1000;
+/** After a bend, the move check honours the old mode for this long: a state sent before it reached its sender. */
+const PORTALS_BEND_GRACE_MS = 1000;
 
 export interface Outbox {
   send(connId: string, msg: ServerMessage): void;
@@ -146,6 +148,12 @@ interface Peer extends PeerInfo {
 
 type Room = Map<string, Peer>;
 
+interface PortalMode {
+  on: boolean;
+  flippedAt: number;
+  everOn: boolean;
+}
+
 /**
  * A peer as written to the restart snapshot: no connection, gesture timing or slot (restore hands out new ones), and
  * `avatar` is the picture's data URL, not its id.
@@ -158,7 +166,14 @@ export interface SnapshotPeer extends Omit<PeerInfo, 'slot'> {
 /** Bump `version` when SnapshotPeer changes in a way parsePeerInfo's defaults can't absorb. */
 export interface LobbySnapshot {
   version: 1;
-  rooms: { id: string; peers: SnapshotPeer[]; vacuum?: VacuumSave; ball?: BallSave; portals?: boolean }[];
+  rooms: {
+    id: string;
+    peers: SnapshotPeer[];
+    vacuum?: VacuumSave;
+    ball?: BallSave;
+    portals?: boolean;
+    portalsEverOn?: true;
+  }[];
 }
 
 const isPerson = (p: Peer) => p.bot === undefined;
@@ -237,8 +252,10 @@ export class Lobby {
   private readonly balls = new Map<string, Ball>();
   /** A person's kick since the ball's last broadcast, echoed in it so the kicker recognises its own kick. */
   private readonly kicks = new Map<string, { by: string; k: number }>();
-  /** Each room's portals flag and when it last flipped; a room with no entry has them off and never flipped. */
-  private readonly portalModes = new Map<string, { on: boolean; flippedAt: number }>();
+  /** Each room's portals flag, when it last flipped and whether it was ever on; no entry is off and never flipped. */
+  private readonly portalModes = new Map<string, PortalMode>();
+  /** Each room's running portal switch, by room id; the bend flips its portal mode. */
+  private readonly sequences = new Map<string, { kind: SequenceKind; startedAt: number; bent: boolean }>();
   /** Each room's doorway wiring, built the first time the room needs it. */
   private readonly wirings = new Map<string, Portals>();
   /** Each room's next peer slot: a counter, so a late batch can never move the wrong peer. */
@@ -336,7 +353,7 @@ export class Lobby {
     peer.lastAcceptedAt = now;
   }
 
-  /** Flips the room's portals for everyone, unless it flipped less than a second ago. */
+  /** Starts switching the room's portals for everyone, unless a switch is already running there. */
   portals(conn: string): void {
     const found = this.peerOf(conn);
     if (!found) {
@@ -344,13 +361,15 @@ export class Lobby {
     }
     const { roomId, room } = found;
     const now = this.opts.now();
-    const mode = this.portalMode(roomId);
-    if (now - mode.flippedAt < PORTALS_FLIP_GAP_MS) {
+    // A sequence past its end that no world tick has dropped yet must not swallow this press.
+    this.advanceSequence(roomId, room, now);
+    if (this.sequences.has(roomId)) {
       return;
     }
-    mode.on = !mode.on;
-    mode.flippedAt = now;
-    this.broadcast(room, '', { type: 'portals', on: mode.on });
+    const mode = this.portalMode(roomId);
+    const kind: SequenceKind = mode.on ? 'off' : mode.everOn ? 'on' : 'first_on';
+    this.sequences.set(roomId, { kind, startedAt: now, bent: false });
+    this.broadcast(room, '', { type: 'portals_sequence', kind, age: 0 });
   }
 
   media(conn: string, msg: MediaMessage): void {
@@ -461,9 +480,13 @@ export class Lobby {
     }
   }
 
-  /** Moves every room's bots, robot vacuum and ball; rooms with nobody connected stand still. */
+  /**
+   * Bends and ends portal switches, then moves every room's bots, robot vacuum and ball; rooms with nobody connected
+   * stand still.
+   */
   stepWorld(dtMs: number): void {
     const dt = dtMs / 1000;
+    this.stepSequences();
     this.stepBots(dt);
     this.stepVacuums(dt);
     this.stepBalls(dt);
@@ -477,13 +500,14 @@ export class Lobby {
       rooms: [...this.rooms].map(([id, room]) => {
         const vacuum = this.vacuums.get(id);
         const ball = this.balls.get(id);
-        const portalsOn = this.portalModes.get(id)?.on === true;
+        const mode = this.portalModes.get(id);
         return {
           id,
           peers: peopleIn(room).map(savePeer),
           ...(vacuum ? { vacuum: saveVacuum(this.vacuumNav(), vacuum) } : {}),
           ...(ball ? { ball: saveBall(this.opts.map, ball) } : {}),
-          ...(portalsOn ? { portals: true } : {}),
+          ...(mode?.on ? { portals: true } : {}),
+          ...(mode?.everOn ? { portalsEverOn: true } : {}),
         };
       }),
     };
@@ -492,7 +516,7 @@ export class Lobby {
   /** Loads a snapshot into an empty lobby. Every slot starts a fresh grace period, waiting for its owner to resume. */
   restore(snap: LobbySnapshot): void {
     const now = this.opts.now();
-    for (const { id, peers, vacuum, ball, portals } of snap.rooms) {
+    for (const { id, peers, vacuum, ball, portals, portalsEverOn } of snap.rooms) {
       const room: Room = new Map();
       for (const saved of peers) {
         room.set(saved.id, {
@@ -505,8 +529,9 @@ export class Lobby {
         });
       }
       this.rooms.set(id, room);
-      if (portals) {
-        this.portalModes.set(id, { on: true, flippedAt: Number.NEGATIVE_INFINITY });
+      if (portals || portalsEverOn) {
+        // A file from before portalsEverOn was saved still has portals on, which means they were on once.
+        this.portalModes.set(id, { on: portals === true, flippedAt: Number.NEGATIVE_INFINITY, everOn: true });
       }
       this.emit({ type: 'room_opened', roomId: id });
       // A robot saved on another map (or none saved) starts afresh.
@@ -635,6 +660,7 @@ export class Lobby {
     this.balls.delete(roomId);
     this.kicks.delete(roomId);
     this.portalModes.delete(roomId);
+    this.sequences.delete(roomId);
     this.wirings.delete(roomId);
     this.nextSlot.delete(roomId);
     this.emit({ type: 'room_closed', roomId });
@@ -652,6 +678,7 @@ export class Lobby {
     }
     const vacuum = this.vacuums.get(roomId);
     const ball = this.balls.get(roomId);
+    const sequence = this.sequences.get(roomId);
     this.opts.out.send(conn, {
       type: 'welcome',
       selfId: self.id,
@@ -662,6 +689,7 @@ export class Lobby {
       livekit: this.opts.liveKitFor(roomId, self.id),
       objects: [...(vacuum ? [vacuumInfo(vacuum)] : []), ...(ball ? [ballInfo(ball)] : [])],
       portals: this.portalModes.get(roomId)?.on === true,
+      ...(sequence ? { sequence: { kind: sequence.kind, age: now - sequence.startedAt } } : {}),
     });
   }
 
@@ -876,10 +904,41 @@ export class Lobby {
     return seen;
   }
 
-  private portalMode(roomId: string): { on: boolean; flippedAt: number } {
+  private stepSequences(): void {
+    const now = this.opts.now();
+    for (const roomId of this.sequences.keys()) {
+      const room = this.rooms.get(roomId);
+      if (room) {
+        this.advanceSequence(roomId, room, now);
+      }
+    }
+  }
+
+  /** Bends the room's running sequence once its bend is due and drops it at its end. */
+  private advanceSequence(roomId: string, room: Room, now: number): void {
+    const sequence = this.sequences.get(roomId);
+    if (!sequence) {
+      return;
+    }
+    const times = sequenceTimes(sequence.kind);
+    const ageMs = now - sequence.startedAt;
+    if (!sequence.bent && ageMs >= times.bendAtMs) {
+      sequence.bent = true;
+      const mode = this.portalMode(roomId);
+      mode.on = sequence.kind !== 'off';
+      mode.flippedAt = now;
+      mode.everOn ||= mode.on;
+      this.broadcast(room, '', { type: 'portals', on: mode.on });
+    }
+    if (ageMs >= times.endMs) {
+      this.sequences.delete(roomId);
+    }
+  }
+
+  private portalMode(roomId: string): PortalMode {
     let mode = this.portalModes.get(roomId);
     if (!mode) {
-      mode = { on: false, flippedAt: Number.NEGATIVE_INFINITY };
+      mode = { on: false, flippedAt: Number.NEGATIVE_INFINITY, everOn: false };
       this.portalModes.set(roomId, mode);
     }
     return mode;
@@ -901,7 +960,7 @@ export class Lobby {
       return true;
     }
     const justFlipped =
-      now - (this.portalModes.get(roomId)?.flippedAt ?? Number.NEGATIVE_INFINITY) < PORTALS_FLIP_GAP_MS;
+      now - (this.portalModes.get(roomId)?.flippedAt ?? Number.NEGATIVE_INFINITY) < PORTALS_BEND_GRACE_MS;
     if (!justFlipped) {
       return false;
     }

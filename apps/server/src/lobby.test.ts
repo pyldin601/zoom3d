@@ -840,70 +840,102 @@ describe('events and stats', () => {
 
 describe('portals', () => {
   const portalsOf = (conn: string) => to(conn).filter((m) => m.type === 'portals');
-  const flip = (conn: string) => lobby.portals(conn);
+  const sequencesOf = (conn: string) => to(conn).filter((m) => m.type === 'portals_sequence');
+  const press = (conn: string) => lobby.portals(conn);
+  /** Moves the clock to `t` and runs one world tick there. */
+  const stepAt = (t: number) => {
+    time = t;
+    lobby.stepWorld(66);
+  };
+  /** Presses in A's room and ticks through the whole sequence. */
+  const switchFully = (conn: string) => {
+    const start = time;
+    press(conn);
+    stepAt(start + 5000);
+    stepAt(start + 7000);
+  };
 
-  test('a flip tells everyone, the asker included', () => {
+  test('the first press in a room starts first_on, and the bend at 5 s turns portals on for everyone', () => {
     join('A');
     join('B');
-    flip('A');
+    press('A');
+    for (const conn of ['A', 'B']) {
+      expect(sequencesOf(conn)).toEqual([{ type: 'portals_sequence', kind: 'first_on', age: 0 }]);
+    }
+    stepAt(4999);
+    expect(portalsOf('A')).toEqual([]);
+    stepAt(5000);
     expect(portalsOf('A')).toEqual([{ type: 'portals', on: true }]);
     expect(portalsOf('B')).toEqual([{ type: 'portals', on: true }]);
+    stepAt(5066);
+    expect(portalsOf('A')).toHaveLength(1);
   });
 
-  test('a second flip within a second is ignored, and one after it flips back', () => {
+  test('a later press starts on, and a press with portals on starts off, each bending at 500 ms', () => {
+    join('A');
+    switchFully('A');
+    sent = [];
+    press('A');
+    expect(sequencesOf('A')).toEqual([{ type: 'portals_sequence', kind: 'off', age: 0 }]);
+    stepAt(time + 499);
+    expect(portalsOf('A')).toEqual([]);
+    stepAt(time + 1);
+    expect(portalsOf('A')).toEqual([{ type: 'portals', on: false }]);
+    stepAt(time + 500);
+    sent = [];
+    press('A');
+    expect(sequencesOf('A')).toEqual([{ type: 'portals_sequence', kind: 'on', age: 0 }]);
+    stepAt(time + 500);
+    expect(portalsOf('A')).toEqual([{ type: 'portals', on: true }]);
+  });
+
+  test('presses during a sequence are ignored; one right after it ends starts the next', () => {
     join('A');
     join('B');
-    flip('A');
-    time += 999;
-    flip('B');
-    expect(portalsOf('B')).toHaveLength(1);
-    time += 1;
-    flip('B');
-    expect(portalsOf('A')).toEqual([
-      { type: 'portals', on: true },
-      { type: 'portals', on: false },
+    press('A');
+    stepAt(5000);
+    time = 6999;
+    press('B');
+    press('A');
+    expect(sequencesOf('A')).toHaveLength(1);
+    time = 7000;
+    press('B');
+    expect(sequencesOf('A')).toEqual([
+      { type: 'portals_sequence', kind: 'first_on', age: 0 },
+      { type: 'portals_sequence', kind: 'off', age: 0 },
     ]);
   });
 
-  test('a flip in one room leaves another room alone', () => {
+  test('a press in one room leaves another room alone', () => {
     join('A');
     lobby.join('C', { type: 'join', v: PROTOCOL_VERSION, roomId: 'BBBBBBBBBBBBBBBBBBBBBB', name: 'C' });
-    flip('A');
+    switchFully('A');
+    expect(sequencesOf('C')).toEqual([]);
     expect(portalsOf('C')).toEqual([]);
   });
 
-  test('a joiner learns the current value in the welcome, and a new room starts off', () => {
+  test('a joiner mid-sequence gets the sequence and its age in the welcome', () => {
     join('A');
-    expect(welcome('A').portals).toBe(false);
-    flip('A');
+    expect(welcome('A').sequence).toBeUndefined();
+    press('A');
+    time = 1200;
     join('B');
-    expect(welcome('B').portals).toBe(true);
-  });
-
-  test('a connection that has not joined cannot flip the room', () => {
-    join('A');
-    flip('stranger');
-    expect(portalsOf('A')).toEqual([]);
-    time += 1000;
-    flip('A');
-    expect(portalsOf('A')).toEqual([{ type: 'portals', on: true }]);
-  });
-
-  test('a closed room starts off again when it reopens', () => {
-    join('A');
-    flip('A');
-    lobby.disconnect('A');
-    time += RESUME_GRACE_MS + 1;
-    lobby.tick();
-    join('B');
+    expect(welcome('B').sequence).toEqual({ kind: 'first_on', age: 1200 });
     expect(welcome('B').portals).toBe(false);
+    stepAt(5000);
+    stepAt(7000);
+    join('C');
+    expect(welcome('C').sequence).toBeUndefined();
+    expect(welcome('C').portals).toBe(true);
   });
 
-  test('the flag survives a snapshot, and a snapshot without it restores off', () => {
+  test('a connection that has not joined cannot press', () => {
     join('A');
-    flip('A');
-    const snap = JSON.parse(JSON.stringify(lobby.snapshot()));
-    expect(snap.rooms[0].portals).toBe(true);
+    press('stranger');
+    expect(sequencesOf('A')).toEqual([]);
+  });
+
+  describe('across a restart', () => {
     const restoreInto = (data: unknown) => {
       const next = new Lobby({
         map,
@@ -914,16 +946,79 @@ describe('portals', () => {
         liveKitFor: () => ({ url: 'ws://lk', token: 't' }),
       });
       next.restore(data as ReturnType<Lobby['snapshot']>);
-      return next;
+      lobby = next;
     };
-    const resumeIn = (next: Lobby) => {
-      next.join('A2', { type: 'join', v: PROTOCOL_VERSION, roomId: ROOM, name: 'A', resumeToken: 't1' });
+    const restart = () => restoreInto(JSON.parse(JSON.stringify(lobby.snapshot())));
+    const resumeA = () => {
+      sent = [];
+      lobby.join('A2', { type: 'join', v: PROTOCOL_VERSION, roomId: ROOM, name: 'A', resumeToken: 't1' });
       return welcome('A2');
     };
-    expect(resumeIn(restoreInto(snap)).portals).toBe(true);
-    sent = [];
-    delete snap.rooms[0].portals;
-    expect(resumeIn(restoreInto(snap)).portals).toBe(false);
+
+    test('a sequence is not saved, and a room restored before its bend is still first_on', () => {
+      join('A');
+      press('A');
+      time = 2000;
+      expect(lobby.snapshot().rooms[0]).not.toHaveProperty('portalsEverOn');
+      restart();
+      const resumed = resumeA();
+      expect(resumed.sequence).toBeUndefined();
+      expect(resumed.portals).toBe(false);
+      stepAt(5000);
+      expect(portalsOf('A2')).toEqual([]);
+      press('A2');
+      expect(sequencesOf('A2')).toEqual([{ type: 'portals_sequence', kind: 'first_on', age: 0 }]);
+    });
+
+    test('the portals flag survives a snapshot, and a snapshot without it restores off', () => {
+      join('A');
+      switchFully('A');
+      const snap = JSON.parse(JSON.stringify(lobby.snapshot()));
+      expect(snap.rooms[0].portals).toBe(true);
+      restoreInto(snap);
+      expect(resumeA().portals).toBe(true);
+      delete snap.rooms[0].portals;
+      restoreInto(snap);
+      expect(resumeA().portals).toBe(false);
+    });
+
+    test('portalsEverOn survives a snapshot and restore', () => {
+      join('A');
+      switchFully('A');
+      switchFully('A');
+      const snap = lobby.snapshot();
+      expect(snap.rooms[0]).toMatchObject({ portalsEverOn: true });
+      expect(snap.rooms[0]).not.toHaveProperty('portals');
+      restart();
+      resumeA();
+      press('A2');
+      expect(sequencesOf('A2')).toEqual([{ type: 'portals_sequence', kind: 'on', age: 0 }]);
+    });
+  });
+
+  test('a room closed mid-sequence drops its sequence', () => {
+    join('A');
+    press('A');
+    lobby.disconnect('A');
+    time += RESUME_GRACE_MS + 1;
+    lobby.tick();
+    join('B');
+    expect(welcome('B').sequence).toBeUndefined();
+    expect(welcome('B').portals).toBe(false);
+    press('B');
+    expect(sequencesOf('B')).toEqual([{ type: 'portals_sequence', kind: 'first_on', age: 0 }]);
+  });
+
+  test('a closed room starts off again when it reopens, with its first switch-on still to come', () => {
+    join('A');
+    switchFully('A');
+    lobby.disconnect('A');
+    time += RESUME_GRACE_MS + 1;
+    lobby.tick();
+    join('B');
+    expect(welcome('B').portals).toBe(false);
+    press('B');
+    expect(sequencesOf('B')).toEqual([{ type: 'portals_sequence', kind: 'first_on', age: 0 }]);
   });
 
   describe('the move check', () => {
@@ -956,34 +1051,34 @@ describe('portals', () => {
 
     test('a portal jump is corrected while portals are off and accepted while on', () => {
       expect(acceptedAfter(walkedOn, 100)).toBe(false);
-      time += 1000;
-      flip('A');
-      time += 1000;
+      switchFully('A');
       expect(acceptedAfter(walkedOn, 100)).toBe(true);
     });
 
-    /** A at the doorway with portals off since `sinceOffFlipMs` ago; whether its jump was then accepted. */
-    function jumpAcceptedAfterOffFlip(sinceOffFlipMs: number): boolean {
+    /** A at the doorway with portals bent off `sinceOffBendMs` ago; whether its jump was then accepted. */
+    function jumpAcceptedAfterOffBend(sinceOffBendMs: number): boolean {
+      switchFully('A');
       time += 60_000;
       lobby.state('A', { type: 'state', ...standing, angle: 0, seq: 1 });
-      flip('A');
-      time += 1000;
-      flip('A');
+      press('A');
+      stepAt(time + 500);
       sent = [];
-      time += sinceOffFlipMs;
+      time += sinceOffBendMs;
       lobby.state('A', { type: 'state', ...walkedOn, angle: 0, seq: 2 });
       return !to('A').some((m) => m.type === 'correction');
     }
 
-    test('a jump sent 500 ms after an off-flip is accepted, and one sent 1500 ms after is corrected', () => {
-      expect(jumpAcceptedAfterOffFlip(500)).toBe(true);
-      expect(jumpAcceptedAfterOffFlip(1500)).toBe(false);
+    test('the move check accepts either mode for a second after the bend', () => {
+      expect(jumpAcceptedAfterOffBend(500)).toBe(true);
+      expect(jumpAcceptedAfterOffBend(1500)).toBe(false);
     });
 
-    test('a plain doorway crossing 500 ms after an on-flip is accepted', () => {
+    test('a plain doorway crossing 500 ms after an on-bend is accepted', () => {
       time += 60_000;
+      press('A');
+      time += 4500;
       lobby.state('A', { type: 'state', ...standing, angle: 0, seq: 1 });
-      flip('A');
+      stepAt(time + 500);
       sent = [];
       time += 500;
       lobby.state('A', { type: 'state', ...crossedOrdinarily, angle: 0, seq: 2 });
