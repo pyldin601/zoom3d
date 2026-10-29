@@ -20,6 +20,17 @@ import { blankSprite } from './remote-world';
 /** The own disc's key: no peer has it, so it never reaches the facts dynamic subscription reads. */
 export const OWN_SPRITE_KEY = 'self';
 
+export interface OwnCamera {
+  on(): boolean;
+  /** The framed camera picture's texels at `now`, or null when it can't be read. A GPU readback. */
+  texels(now: number): Uint32Array | null;
+}
+
+/** The face others see while the camera is off: the avatar picture, or else the initials disc. */
+export interface FallbackFace {
+  readonly texels: Uint32Array;
+}
+
 export interface LocalPlayer {
   /** Mutated in place by walking, the spawn and the server's corrections. */
   readonly pose: PlayerState;
@@ -34,13 +45,15 @@ export interface LocalPlayer {
   walk(map: GameMap, move: MoveInput, turnRad: number, dt: number, portals?: Portals | null): void;
   /** The camera picture's average colour at `now`, or null while the camera is off. */
   useCameraColour(colourAt: (now: number) => number | null): void;
-  /** The framed camera picture's texels at `now`, or null while the camera is off. */
-  useCameraFace(texelsAt: (now: number) => Uint32Array | null): void;
+  useCameraFace(camera: OwnCamera): void;
+  /** Built once for the ring colour the room gives the player. */
+  useFallbackFace(faceFor: (ringColour: string) => FallbackFace): void;
   /** In the camera's colour, else the ring's; null until the room gives the player a ring colour. */
   glow(now: number, ringColour: string | null): GlowSource | null;
   /**
-   * The own disc as others see it, a flat one while the camera is off; null until the room gives a ring colour. Its
-   * face is read again only when `faceShown` (a window drew the disc last frame), else the last one is kept.
+   * The own disc as others see it, with the fallback face while the camera is off; null until the room gives a ring
+   * colour. The camera's face is read again only when `faceShown` (a window drew the disc last frame), else the last
+   * one is kept.
    */
   avatar(now: number, ringColour: string | null, faceShown: boolean): Sprite | null;
   firstPerson(now: number): FirstPerson;
@@ -52,7 +65,10 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
   const gesture = createGestureClock();
   let drink: HeldItem | null = null;
   let cameraColour: (now: number) => number | null = () => null;
-  let cameraFace: (now: number) => Uint32Array | null = () => null;
+  let camera: OwnCamera = { on: () => false, texels: () => null };
+  let fallbackFor: (ringColour: string) => FallbackFace | null = () => null;
+  let fallback: FallbackFace | null = null;
+  let fallbackColour: string | null = null;
   const glowSource = { x: 0, y: 0, face: null, color: 0 };
   // The room measures no level of the own mic, so the own ring never brightens: `speaking` stays 0.
   const ownDisc = blankSprite(OWN_SPRITE_KEY);
@@ -84,8 +100,12 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
     useCameraColour(colourAt) {
       cameraColour = colourAt;
     },
-    useCameraFace(texelsAt) {
-      cameraFace = texelsAt;
+    useCameraFace(own) {
+      camera = own;
+    },
+    useFallbackFace(faceFor) {
+      fallbackFor = faceFor;
+      fallbackColour = null;
     },
     glow(now, ringColour) {
       if (!ringColour) {
@@ -103,8 +123,19 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       ownDisc.x = pose.x;
       ownDisc.y = pose.y;
       ownDisc.color = ringRgb(ringColour);
-      if (faceShown) {
-        ownDisc.face = cameraFace(now);
+      if (fallbackColour !== ringColour) {
+        fallbackColour = ringColour;
+        fallback = fallbackFor(ringColour);
+      }
+      const fallbackTexels = fallback?.texels ?? null;
+      // The camera is asked every frame, so a camera turned off while the disc was hidden never comes back live.
+      if (!camera.on()) {
+        ownDisc.face = fallbackTexels;
+      } else if (faceShown) {
+        ownDisc.face = camera.texels(now) ?? fallbackTexels;
+      } else {
+        // Before the first read: a window's first frame of the disc comes before it is reported shown.
+        ownDisc.face ??= fallbackTexels;
       }
       ownDisc.bob = step.lift;
       ownDisc.itemBob = step.itemLift;

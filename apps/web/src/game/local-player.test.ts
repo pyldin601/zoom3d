@@ -52,7 +52,7 @@ test('the own disc: none without a ring colour, else at the pose with the camera
     boombox: false,
   });
   const face = new Uint32Array(4);
-  localPlayer.useCameraFace(() => face);
+  localPlayer.useCameraFace({ on: () => true, texels: () => face });
   localPlayer.takeDrink('beer');
   localPlayer.boombox = true;
   localPlayer.gesture.start('sip', 0);
@@ -66,9 +66,12 @@ test('the own face is read only while a window shows the own disc, keeping the l
   const localPlayer = createLocalPlayer(MAP, () => 0.5);
   let reads = 0;
   const face = new Uint32Array(4);
-  localPlayer.useCameraFace(() => {
-    reads++;
-    return face;
+  localPlayer.useCameraFace({
+    on: () => true,
+    texels() {
+      reads++;
+      return face;
+    },
   });
   expect(localPlayer.avatar(0, '#ff0000', false)?.face).toBeNull();
   expect(localPlayer.avatar(50, '#ff0000', false)?.face).toBeNull();
@@ -79,6 +82,69 @@ test('the own face is read only while a window shows the own disc, keeping the l
   expect(reads).toBe(1);
   localPlayer.avatar(200, '#ff0000', true);
   expect(reads).toBe(2);
+});
+
+test('with the camera off, the own disc shows the fallback face others see, built once for the ring colour', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  const fallback = new Uint32Array(4);
+  const builtFor: string[] = [];
+  localPlayer.useFallbackFace((ringColour) => {
+    builtFor.push(ringColour);
+    return { texels: fallback };
+  });
+  let reads = 0;
+  localPlayer.useCameraFace({
+    on: () => false,
+    texels() {
+      reads++;
+      return new Uint32Array(4);
+    },
+  });
+  expect(localPlayer.avatar(0, '#ff0000', true)?.face).toBe(fallback);
+  expect(localPlayer.avatar(100, '#ff0000', false)?.face).toBe(fallback);
+  expect(builtFor).toEqual(['#ff0000']);
+  expect(reads).toBe(0);
+});
+
+test('with the camera on, the own disc shows the camera face, read only while shown', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  const fallback = new Uint32Array(4);
+  localPlayer.useFallbackFace(() => ({ texels: fallback }));
+  const face = new Uint32Array(4);
+  let reads = 0;
+  localPlayer.useCameraFace({
+    on: () => true,
+    texels() {
+      reads++;
+      return face;
+    },
+  });
+  expect(localPlayer.avatar(0, '#ff0000', false)?.face).toBe(fallback);
+  expect(reads).toBe(0);
+  expect(localPlayer.avatar(100, '#ff0000', true)?.face).toBe(face);
+  expect(reads).toBe(1);
+});
+
+test('a camera that gives no picture shows the fallback face', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  const fallback = new Uint32Array(4);
+  localPlayer.useFallbackFace(() => ({ texels: fallback }));
+  localPlayer.useCameraFace({ on: () => true, texels: () => null });
+  expect(localPlayer.avatar(0, '#ff0000', true)?.face).toBe(fallback);
+});
+
+test('turning the camera off while the own disc is hidden shows the fallback, not the old live face, on return', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  const fallback = new Uint32Array(4);
+  localPlayer.useFallbackFace(() => ({ texels: fallback }));
+  const face = new Uint32Array(4);
+  let camOn = true;
+  localPlayer.useCameraFace({ on: () => camOn, texels: () => face });
+  expect(localPlayer.avatar(0, '#ff0000', true)?.face).toBe(face);
+  localPlayer.avatar(100, '#ff0000', false);
+  camOn = false;
+  // The first frame back is drawn before the window reports the disc shown again.
+  expect(localPlayer.avatar(200, '#ff0000', false)?.face).toBe(fallback);
 });
 
 test('first person shows the drink and boombox in hand, mid-gesture', () => {

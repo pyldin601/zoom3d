@@ -7,6 +7,7 @@ import { createInput } from '../input/keyboard';
 import { lockPointer } from '../input/pointer-lock';
 import { createTouchInput } from '../input/touch';
 import { saveAvatar } from '../media/avatar';
+import { createFace } from '../media/faces';
 import { NO_FACES_SENT } from '../media/transport';
 import { bakeRoomLightingOnce, roomLightingByRoom } from '../renderer/room-lighting';
 import type { Gesture } from '../renderer/sip';
@@ -175,6 +176,8 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     saveAvatar(pageStorage(), avatar);
     clearScreen(page.ui);
     localPlayer.takeDrink(loadHeld(pageStorage()));
+    // From the builder peers use, never given a video: the own disc with the camera off is the face they see.
+    localPlayer.useFallbackFace((color) => createFace({ name, color, avatar, document }));
     room = joinRoom({
       roomId,
       name,

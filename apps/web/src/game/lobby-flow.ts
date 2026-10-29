@@ -93,5 +93,5 @@ function shareCamera(local: LocalMediaController, localPlayer: LocalPlayer): voi
     camOn = local.state().cam;
   });
   localPlayer.useCameraColour((now) => (camOn ? ownFace.colour(now) : null));
-  localPlayer.useCameraFace((now) => (camOn ? ownTexels.texels(now) : null));
+  localPlayer.useCameraFace({ on: () => camOn, texels: (now) => ownTexels.texels(now) });
 }
