@@ -752,7 +752,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     -1373330069.
   - **Review fixes (2026-10-29):**
     - The lamps wait for the bend (above).
-    - The sounds play in hidden tabs too: the hidden tick (100 ms) is within a cue's 300 ms lateness.
+    - Hidden tabs play cues too, from the hidden tick (100 ms, though browsers may slow a hidden tab to about 1 s,
+      when the 300 ms lateness rule skips them).
     - A resume welcome's restamp is the same sequence when it is of the same kind and within 500 ms of the first
       stamp. The client keeps the first stamp, so the timeline never steps back into the dark, and no cue replays.
     - The lobby advances a room's sequence before any welcome, so a welcome never carries one past its end (a fresh

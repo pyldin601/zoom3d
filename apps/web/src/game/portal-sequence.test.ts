@@ -152,7 +152,7 @@ describe('the dark waits for the bend', () => {
     expect(Object.fromEntries(heard).lightsOn).toBe(9008);
   });
 
-  test('a stalled tab gets the press and the bend in one burst: it goes straight to the bend, never counting down', () => {
+  test('a stalled tab gets the press and the bend at once: it goes straight to the bend, never counting down', () => {
     const player = createPortalSequence();
     const seq = { kind: 'first_on' as const, startedAt: START };
     player.update(seq, START, true);

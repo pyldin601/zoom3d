@@ -176,4 +176,4 @@ game's scaling; "reverb" is a dry/wet send to a decaying-noise impulse of the gi
   all.
 - **Where the black table is baked and how it is picked,** alongside `createRoomLighting` and `describeScene`.
 - **How faces keep their own brightness in the dark,** if discs are shaded by the lighting today.
-- **How the three sounds bypass placement** but still reach the reverb through the audio engine.
+- **How the three sounds bypass placement.** Each carries its own reverb (§2.3); the engine only plays them, unplaced.
