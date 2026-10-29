@@ -1,17 +1,26 @@
-import type { SequenceKind } from '@zoom3d/shared';
-import { expect, test } from 'vitest';
+import { type SequenceKind, sequenceTimes } from '@zoom3d/shared';
+import { describe, expect, test } from 'vitest';
 import { createPortalSequence, type SequenceCues } from './portal-sequence';
 
 const START = 10_000;
 const cues: SequenceCues = { lightsOff: false, portalsOn: false, lightsOn: false };
 
-/** Steps the player every 16 ms from `fromMs` to `toMs` after the press and lists the cues by when they came. */
-function play(kind: SequenceKind, fromMs: number, toMs: number) {
+/** The room's portals flag before a sequence of `kind`, and after its bend. */
+const flagBefore = (kind: SequenceKind) => kind === 'off';
+const flagAfter = (kind: SequenceKind) => kind !== 'off';
+
+/**
+ * Steps the player every 16 ms from `fromMs` to `toMs` after the press and lists the cues by when they came. The
+ * bend's `portals` message lands `bendLandsAtMs` after the press (at the bend itself by default).
+ */
+function play(kind: SequenceKind, fromMs: number, toMs: number, bendLandsAtMs = sequenceTimes(kind).bendAtMs) {
   const player = createPortalSequence();
   const seq = { kind, startedAt: START };
   const heard: [keyof SequenceCues, number][] = [];
+  const darkAt: boolean[] = [];
   for (let age = fromMs; age <= toMs; age += 16) {
-    player.update(seq, START + age);
+    player.update(seq, START + age, age >= bendLandsAtMs ? flagAfter(kind) : flagBefore(kind));
+    darkAt.push(player.dark);
     player.takeCues(cues);
     for (const cue of ['lightsOff', 'portalsOn', 'lightsOn'] as const) {
       if (cues[cue]) {
@@ -19,12 +28,14 @@ function play(kind: SequenceKind, fromMs: number, toMs: number) {
       }
     }
   }
-  return { player, heard };
+  /** The first age, on the 16 ms grid, at which it was light again after the dark. */
+  const lightAgainAt = fromMs + 16 * darkAt.findIndex((dark, i) => i > 0 && !dark && darkAt.at(i - 1) === true);
+  return { player, heard, lightAgainAt };
 }
 
 test('with no sequence it is light, without a countdown or cues', () => {
   const player = createPortalSequence();
-  player.update(null, START);
+  player.update(null, START, false);
   player.takeCues(cues);
   expect(player.dark).toBe(false);
   expect(player.countdown).toBeNull();
@@ -35,7 +46,7 @@ test('a first_on counts down 3, 2, 1 before the dark', () => {
   const player = createPortalSequence();
   const seq = { kind: 'first_on' as const, startedAt: START };
   const seen = [0, 1000, 2000, 3000].map((age) => {
-    player.update(seq, START + age);
+    player.update(seq, START + age, false);
     return [player.countdown, player.dark];
   });
   expect(seen).toEqual([
@@ -48,7 +59,7 @@ test('a first_on counts down 3, 2, 1 before the dark', () => {
 
 test('a welcome mid-sequence starts dark and skips sounds whose moment has passed', () => {
   const player = createPortalSequence();
-  player.update({ kind: 'first_on', startedAt: START }, START + 4000);
+  player.update({ kind: 'first_on', startedAt: START }, START + 4000, false);
   player.takeCues(cues);
   expect(player.dark).toBe(true);
   expect(player.countdown).toBeNull();
@@ -78,9 +89,9 @@ test('off reports lightsOff and lightsOn only', () => {
 test('a hidden-tab jump of 2 s past a cue skips it', () => {
   const player = createPortalSequence();
   const seq = { kind: 'first_on' as const, startedAt: START };
-  player.update(seq, START + 4000);
+  player.update(seq, START + 4000, false);
   player.takeCues(cues);
-  player.update(seq, START + 7000 + 2000);
+  player.update(seq, START + 7000 + 2000, true);
   player.takeCues(cues);
   expect(cues).toEqual({ lightsOff: false, portalsOn: false, lightsOn: false });
 });
@@ -88,15 +99,15 @@ test('a hidden-tab jump of 2 s past a cue skips it', () => {
 test('a cue up to 300 ms late still plays', () => {
   const player = createPortalSequence();
   const seq = { kind: 'first_on' as const, startedAt: START };
-  player.update(seq, START + 4900);
-  player.update(seq, START + 5300);
+  player.update(seq, START + 4900, false);
+  player.update(seq, START + 5300, true);
   player.takeCues(cues);
   expect(cues.portalsOn).toBe(true);
 });
 
 test('after the end it is light, with no cues', () => {
   const { player } = play('first_on', 0, 7100);
-  player.update({ kind: 'first_on', startedAt: START }, START + 8000);
+  player.update({ kind: 'first_on', startedAt: START }, START + 8000, true);
   player.takeCues(cues);
   expect(player.dark).toBe(false);
   expect(player.countdown).toBeNull();
@@ -105,15 +116,78 @@ test('after the end it is light, with no cues', () => {
 
 test('a start stamped in the future through clock skew reads as the press itself', () => {
   const player = createPortalSequence();
-  player.update({ kind: 'first_on', startedAt: START + 50 }, START);
+  player.update({ kind: 'first_on', startedAt: START + 50 }, START, false);
   expect(player.countdown).toBe(3);
 });
 
 test('a new sequence plays its cues even right after another', () => {
   const player = createPortalSequence();
-  player.update({ kind: 'off', startedAt: START }, START + 2000);
+  player.update({ kind: 'off', startedAt: START }, START + 2000, false);
   player.takeCues(cues);
-  player.update({ kind: 'on', startedAt: START + 2000 }, START + 2000);
+  player.update({ kind: 'on', startedAt: START + 2000 }, START + 2000, false);
   player.takeCues(cues);
   expect(cues.lightsOff).toBe(true);
+});
+
+describe('the dark waits for the bend', () => {
+  test('with the bend on time, the lamps return at lightsAtMs, as the timeline says', () => {
+    const { heard, lightAgainAt } = play('on', 0, 2000);
+    expect(lightAgainAt).toBe(1008);
+    expect(Object.fromEntries(heard).lightsOn).toBe(1008);
+  });
+
+  test('a late bend message holds the dark past lightsAtMs until the flag flips, and lights on comes then', () => {
+    const { heard, lightAgainAt } = play('on', 0, 3000, 1400);
+    expect(lightAgainAt).toBe(1408);
+    expect(Object.fromEntries(heard).lightsOn).toBe(1408);
+  });
+
+  test('a late switch-off holds the dark the same way', () => {
+    expect(play('off', 0, 3000, 1400).lightAgainAt).toBe(1408);
+  });
+
+  test('a bend that never comes ends the dark 2 s past lightsAtMs', () => {
+    const { heard, lightAgainAt } = play('first_on', 0, 12_000, Number.POSITIVE_INFINITY);
+    expect(lightAgainAt).toBe(9008);
+    expect(Object.fromEntries(heard).lightsOn).toBe(9008);
+  });
+
+  test('a stalled tab gets the press and the bend in one burst: it goes straight to the bend, never counting down', () => {
+    const player = createPortalSequence();
+    const seq = { kind: 'first_on' as const, startedAt: START };
+    player.update(seq, START, true);
+    player.takeCues(cues);
+    expect(player.countdown).toBeNull();
+    expect(player.dark).toBe(true);
+    expect(cues).toEqual({ lightsOff: false, portalsOn: true, lightsOn: false });
+    player.update(seq, START + 1999, true);
+    expect(player.dark).toBe(true);
+    player.update(seq, START + 2000, true);
+    player.takeCues(cues);
+    expect(player.dark).toBe(false);
+    expect(cues.lightsOn).toBe(true);
+  });
+
+  test('a bend landing mid-countdown ends the countdown at once', () => {
+    const player = createPortalSequence();
+    const seq = { kind: 'first_on' as const, startedAt: START };
+    player.update(seq, START + 1000, false);
+    expect(player.countdown).toBe(2);
+    player.update(seq, START + 1016, true);
+    expect(player.countdown).toBeNull();
+    expect(player.dark).toBe(true);
+  });
+
+  test('a short switch whose bend lands with the press stays dark for the half second after the bend', () => {
+    const player = createPortalSequence();
+    const seq = { kind: 'off' as const, startedAt: START };
+    player.update(seq, START, false);
+    expect(player.dark).toBe(true);
+    player.update(seq, START + 499, false);
+    expect(player.dark).toBe(true);
+    player.update(seq, START + 500, false);
+    player.takeCues(cues);
+    expect(player.dark).toBe(false);
+    expect(cues.lightsOn).toBe(true);
+  });
 });

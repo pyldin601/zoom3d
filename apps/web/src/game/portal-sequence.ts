@@ -16,8 +16,11 @@ export interface SequenceCues {
 }
 
 export interface PortalSequencePlayer {
-  /** Moves to `nowMs` (the clock `startedAt` is on); allocates nothing. */
-  update(seq: StampedSequence | null, nowMs: number): void;
+  /**
+   * Moves to `nowMs` (the clock `startedAt` is on); `portalsOn` is the room's portals flag as the session has it.
+   * Allocates nothing.
+   */
+  update(seq: StampedSequence | null, nowMs: number, portalsOn: boolean): void;
   readonly dark: boolean;
   readonly countdown: 3 | 2 | 1 | null;
   /** Fills `out` with the cues whose moment arrived since the last take, then forgets them. */
@@ -26,23 +29,44 @@ export interface PortalSequencePlayer {
 
 /** A sound this late (a hidden tab, a welcome mid-sequence) would play out of step with the dark: it is skipped. */
 const CUE_LATENESS_MS = 300;
+/**
+ * The bend comes in its own `portals` message, up to a tick after its moment plus the network's delay: the lamps wait
+ * for it, so the space never bends in their light, but no longer than this past their time, should it never come.
+ */
+const BEND_WAIT_CAP_MS = 2000;
+/** Before any update, an age below every moment, so a cue at 0 fires. */
+const NOT_YET_MS = -1;
 
 export function createPortalSequence(): PortalSequencePlayer {
   let dark = false;
   let countdown: 3 | 2 | 1 | null = null;
   let kind: SequenceKind | null = null;
+  /** The session's stamp, which names the sequence. */
+  let stampedAt = 0;
+  /** Where this player has the start: the stamp, or later when the stamp turned out late. */
   let startedAt = 0;
-  /** The age of the last update, so each cue is reported once; below 0 before the first, so a cue at 0 fires. */
-  let lastAgeMs = -1;
+  /** The age of the last update, so each cue is reported once. */
+  let lastAgeMs = NOT_YET_MS;
+  /** The age of the last update before the flag was seen at the sequence's target: the bend landed after it. */
+  let bendLandedAfterMs = Number.POSITIVE_INFINITY;
   const due: SequenceCues = { lightsOff: false, portalsOn: false, lightsOn: false };
 
   const arrivedOnTime = (cueAtMs: number, ageMs: number) =>
     lastAgeMs < cueAtMs && cueAtMs <= ageMs && ageMs - cueAtMs <= CUE_LATENESS_MS;
 
-  const isNew = (seq: StampedSequence) => seq.kind !== kind || seq.startedAt !== startedAt;
+  const isNew = (seq: StampedSequence) => seq.kind !== kind || seq.startedAt !== stampedAt;
+
+  const begin = (seq: StampedSequence) => {
+    kind = seq.kind;
+    stampedAt = seq.startedAt;
+    startedAt = seq.startedAt;
+    lastAgeMs = NOT_YET_MS;
+    bendLandedAfterMs = Number.POSITIVE_INFINITY;
+    dark = false;
+  };
 
   return {
-    update(seq, nowMs) {
+    update(seq, nowMs, portalsOn) {
       if (seq === null) {
         dark = false;
         countdown = null;
@@ -50,20 +74,32 @@ export function createPortalSequence(): PortalSequencePlayer {
         return;
       }
       if (isNew(seq)) {
-        kind = seq.kind;
-        startedAt = seq.startedAt;
-        lastAgeMs = -1;
+        begin(seq);
       }
-      // A start stamped ahead of the local clock (skew between arrival and the server's age) is the press itself.
-      const ageMs = Math.max(0, nowMs - seq.startedAt);
-      const frame = sequenceAt(seq.kind, ageMs);
-      dark = frame.dark;
-      countdown = frame.countdown;
       const times = sequenceTimes(seq.kind);
-      const bendsOn = seq.kind !== 'off';
+      const bent = portalsOn === (seq.kind !== 'off');
+      // A start stamped ahead of the local clock (skew between arrival and the server's age) is the press itself.
+      let ageMs = Math.max(0, nowMs - startedAt);
+      if (bent && ageMs < times.bendAtMs) {
+        // The bend is never sent before its moment, so the press reached this tab late, held up with the bend (a
+        // stalled tab): the sequence is at least at its bend, and it plays on from there.
+        startedAt = nowMs - times.bendAtMs;
+        ageMs = times.bendAtMs;
+      }
+      if (bent && bendLandedAfterMs === Number.POSITIVE_INFINITY) {
+        bendLandedAfterMs = Math.max(0, lastAgeMs);
+      }
+      const lightsBackAtMs = Math.min(
+        Math.max(times.lightsAtMs, bendLandedAfterMs),
+        times.lightsAtMs + BEND_WAIT_CAP_MS
+      );
+      const wasDark = dark;
+      countdown = sequenceAt(seq.kind, ageMs).countdown;
+      dark = ageMs >= times.darkAtMs && ageMs < lightsBackAtMs;
       due.lightsOff ||= arrivedOnTime(times.darkAtMs, ageMs);
-      due.portalsOn ||= bendsOn && arrivedOnTime(times.bendAtMs, ageMs);
-      due.lightsOn ||= arrivedOnTime(times.lightsAtMs, ageMs);
+      due.portalsOn ||= seq.kind !== 'off' && arrivedOnTime(times.bendAtMs, ageMs);
+      // Its moment is only known once it is light again: up to an update's gap after the bend landed.
+      due.lightsOn ||= wasDark && !dark && ageMs - lightsBackAtMs <= CUE_LATENESS_MS;
       lastAgeMs = ageMs;
     },
     get dark() {

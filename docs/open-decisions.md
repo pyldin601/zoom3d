@@ -717,8 +717,15 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     `peers` batches. Players are out of step by their own network delay, up to about 0.1 s on a slow connection. The
     owner accepted that; per-step messages (six per press) and clock syncing were not chosen.
   - **The bend is the server's.** At `bendAtMs` the server flips the room's flag and broadcasts the existing
-    `{ type: 'portals', on }`, so clients bend on that message as before and never while the lamps are on. The move
-    check keeps accepting either mode for 1 s after the bend (D27).
+    `{ type: 'portals', on }`, so clients bend on that message as before. The move check keeps accepting either mode
+    for 1 s after the bend (D27).
+  - **The lamps wait for the bend.** The dark is timed from the sequence message, but the bend comes in a later
+    message: up to a tick (66 ms) after its moment, plus its own network delay. So from `darkAtMs` a client stays dark
+    while its portals flag differs from the sequence's target (on for `first_on` and `on`, off for `off`), up to 2 s
+    past `lightsAtMs`; the lights-on sound plays when the lamps really return. The space never bends in lamp light,
+    unless the bend is over 2 s late. A stalled tab can get the press and the bend in one burst, which would show the
+    countdown over a bent space: a flag already at the target before `bendAtMs` can only mean that, so the client
+    jumps to the bend (no countdown, no lights-off sound, the dark from there and the lamps 2 s or 0.5 s later).
   - **Darkness is a table swap, never a dimming factor.** A third lighting table per room has no lamps, ambient 0 and no
     bounce, so it costs nothing per frame. Glows add their light on top as usual: faces keep their own brightness (they
     were never lamp-shaded) and the portal glows keep their shadows, because the table reuses the portals-on table's

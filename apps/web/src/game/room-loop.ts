@@ -81,7 +81,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
    * came due while hidden are dropped, so returning to the tab never plays a stale one.
    */
   const followSequence = (room: Room, now: number, audible: boolean) => {
-    room.sequence.update(room.session.sequence, now);
+    room.sequence.update(room.session.sequence, now, room.session.portals);
     showCountdown(o.ui, room.sequence.countdown);
     room.sequence.takeCues(cues);
     if (!audible) {
