@@ -1,8 +1,11 @@
-// The portal doorways' hum (portal glow spec §2.5): one per doorway while the room's portals are on, settled by ear in
-// the 2026-10-29 sketch. Each plays through the engine like the vacuum's hum, so it is placed, muffled and heard
-// through portals like any other sound; its swell is the glow's own pulse, so sound and light never drift apart.
+// The portal doorways' hum (portal glow spec §2.5): one per doorway in hearing range while the room's portals are on,
+// settled by ear in the 2026-10-29 sketch. Each plays through the engine like the vacuum's hum, so it is placed, muffled
+// and heard through portals like any other sound; its swell is the glow's own pulse, so sound and light never drift
+// apart.
 import type { Portals } from '@zoom3d/shared';
 import type { AudioEngine } from './engine';
+
+type Point = { readonly x: number; readonly y: number };
 
 /** Master level, as low as the vacuum's (`VACUUM_GAIN`), so a doorway never covers a voice. Tuned by ear. */
 export const HUM_GAIN = 0.04;
@@ -20,6 +23,11 @@ const FADE_TAU_S = 0.1;
 const FADE_OUT_S = 6 * FADE_TAU_S;
 /** Tiles in front of the doorway's plane: on its front side, but before the frame's faces. */
 const SOURCE_OFFSET_TILES = 0.3;
+/**
+ * A hum starts within the engine's silent distance and stops this far past it, so pacing about the edge doesn't
+ * restart it. Past that distance the engine's gain is already 0, so the fade out is silent.
+ */
+const HEARING_HYSTERESIS_TILES = 1;
 
 export function portalHumKey(index: number): string {
   return `portal-hum:${index}`;
@@ -27,9 +35,10 @@ export function portalHumKey(index: number): string {
 
 export interface PortalHums {
   /**
-   * Starts a hum per portal when portals turn on, fades them all out when they turn off, and swells them by `pulse`.
+   * Starts a doorway's hum when it comes within hearing range of `listener` (heard where `heard` places it, by
+   * `portalHumKey`), fades it out when it leaves the range or portals turn off, and swells every hum by `pulse`.
    */
-  sync(portals: Portals | null, pulse: number): void;
+  sync(portals: Portals | null, pulse: number, listener: Point, heard: ReadonlyMap<string, Point>): void;
   /** Each hum's source point by `portalHumKey`, reusing `out`'s points; empties `out` while portals are off. */
   sourcesOf(portals: Portals | null, out: Map<string, { x: number; y: number }>): void;
   dispose(): void;
@@ -45,7 +54,7 @@ interface Hum {
 
 export function createPortalHums(
   ctx: BaseAudioContext,
-  engine: Pick<AudioEngine, 'attachNode' | 'detach'>
+  engine: Pick<AudioEngine, 'attachNode' | 'detach' | 'settings'>
 ): PortalHums {
   const keys: string[] = [];
   const keyOf = (index: number) => {
@@ -57,7 +66,8 @@ export function createPortalHums(
     return key;
   };
   let humming: Portals | null = null;
-  let hums: Hum[] = [];
+  /** Per portal index, its hum while it is in hearing range. */
+  const hums: (Hum | null)[] = [];
 
   const tone = (type: OscillatorType, hz: number, level: number, into: AudioNode) => {
     const osc = ctx.createOscillator();
@@ -90,7 +100,7 @@ export function createPortalHums(
     return { key, tones, nodes: [root.gain, fifth.gain, filter, swell, output], swell, output };
   };
 
-  const isHumming = (key: string) => hums.some((h) => h.key === key);
+  const isHumming = (key: string) => hums.some((h) => h?.key === key);
 
   const fadeOut = (hum: Hum) => {
     const now = ctx.currentTime;
@@ -113,19 +123,45 @@ export function createPortalHums(
     }
   };
 
+  const stopEveryHum = () => {
+    for (let i = 0; i < hums.length; i++) {
+      const hum = hums.at(i);
+      if (hum) {
+        hums[i] = null;
+        fadeOut(hum);
+      }
+    }
+    hums.length = 0;
+  };
+
+  const startOrStopByDistance = (portals: Portals, listener: Point, heard: ReadonlyMap<string, Point>) => {
+    const silentTiles = engine.settings().max;
+    for (let i = 0; i < portals.list.length; i++) {
+      const key = keyOf(i);
+      const source = heard.get(key);
+      const tiles = source ? Math.hypot(source.x - listener.x, source.y - listener.y) : Number.POSITIVE_INFINITY;
+      const hum = hums.at(i) ?? null;
+      if (hum === null && tiles < silentTiles) {
+        hums[i] = startHum(key);
+      } else if (hum !== null && tiles > silentTiles + HEARING_HYSTERESIS_TILES) {
+        hums[i] = null;
+        fadeOut(hum);
+      }
+    }
+  };
+
   return {
-    sync(portals, pulse) {
+    sync(portals, pulse, listener, heard) {
       if (portals !== humming) {
-        const fading = hums;
-        hums = portals === null ? [] : portals.list.map((_, i) => startHum(keyOf(i)));
-        for (const hum of fading) {
-          fadeOut(hum);
-        }
+        stopEveryHum();
         humming = portals;
+      }
+      if (portals !== null) {
+        startOrStopByDistance(portals, listener, heard);
       }
       const now = ctx.currentTime;
       for (const hum of hums) {
-        hum.swell.gain.setTargetAtTime(pulse, now, SWELL_TAU_S);
+        hum?.swell.gain.setTargetAtTime(pulse, now, SWELL_TAU_S);
       }
     },
 
@@ -155,6 +191,9 @@ export function createPortalHums(
     dispose() {
       const now = ctx.currentTime;
       for (const hum of hums) {
+        if (!hum) {
+          continue;
+        }
         for (const osc of hum.tones) {
           osc.stop(now);
         }
@@ -163,7 +202,7 @@ export function createPortalHums(
         }
         engine.detach(hum.key);
       }
-      hums = [];
+      hums.length = 0;
       humming = null;
     },
   };

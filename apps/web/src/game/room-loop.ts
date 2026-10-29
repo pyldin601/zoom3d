@@ -198,7 +198,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       const drawStart = performance.now();
       const shown = describeScene(drawStart);
       // The hum swells with the very pulse this frame's glow is drawn with.
-      room?.hums.sync(room.portals(), shown.portalPulse);
+      room?.hums.sync(room.portals(), shown.portalPulse, localPlayer.pose, apparent);
       renderView(screen.fb, shown, subscription.seen);
       screen.present();
       renderHud(o.hud, screen.fb, shown, o.showMap());
@@ -219,7 +219,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       world.sample(room.session, localPlayer.pose, now, room.ball.ball, room.portals());
       placeApparently(room);
       room.objectSounds.sync(room.session.objects, world.objectPoses, HIDDEN_TICK_MS / 1000);
-      room.hums.sync(room.portals(), portalPulse(now / 1000));
+      room.hums.sync(room.portals(), portalPulse(now / 1000), localPlayer.pose, apparent);
       room.audio.update(now, localPlayer.pose, apparent);
       chooseWhatToReceive(room, now, true);
     },
