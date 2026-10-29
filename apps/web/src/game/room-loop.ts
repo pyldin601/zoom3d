@@ -68,6 +68,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     objects: world.voxels,
     labels: world.labels,
     ownGlow: null,
+    self: null,
     portalPulse: 1,
     portalTime: 0,
     firstPerson: null,
@@ -195,7 +196,10 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     const portalSeconds = performance.now() / 1000;
     scene.portalPulse = portalPulse(portalSeconds);
     scene.portalTime = portalSeconds;
-    scene.ownGlow = localPlayer.glow(now, room?.session.selfColor() ?? null);
+    const ringColour = room?.session.selfColor() ?? null;
+    scene.ownGlow = localPlayer.glow(now, ringColour);
+    // Only windows draw the own disc, so with portals off its face is never read back.
+    scene.self = scene.portals && isConnected(room) ? localPlayer.avatar(now, ringColour) : null;
     scene.firstPerson = isConnected(room) ? localPlayer.firstPerson(now) : null;
     return scene;
   };

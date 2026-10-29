@@ -12,7 +12,7 @@ import { renderOwnBoombox } from './own-boombox';
 import { type HeldStep, renderOwnHeld } from './own-held';
 import { nextRippleDown, openingEdge, shimmerAndRim, startRippleDown, toSketchPx } from './portal-window';
 import type { HeldPose } from './sip';
-import { type PeopleAndObjects, renderSprites } from './sprites';
+import { type PeopleAndObjects, renderSprites, type Sprite } from './sprites';
 import { type Room, renderWalls, rowsCovered } from './walls';
 
 /** What one pass draws: the room, its people and objects, from one eye, on the pass's columns. */
@@ -32,6 +32,11 @@ export interface RoomScene extends PassScene {
   labels: readonly PersonLabel[];
   /** The local player's own face lights the room round them, as everyone's does; null until they have a colour. */
   ownGlow: GlowSource | null;
+  /**
+   * The local player's own disc, at their own spot: only windows draw it, as the eye stands there. Null while there
+   * is no window to see it through.
+   */
+  self: Sprite | null;
   /** What the local player holds; null while they aren't in the room (reconnecting). */
   firstPerson: FirstPerson | null;
 }
@@ -60,6 +65,8 @@ interface WindowLevel {
 const windowLevels: WindowLevel[] = [];
 /** What the windows' passes drew of each person, added to `seen` after the frame's own pass zeroes and fills it. */
 const seenThroughWindows = new Map<string, PeerFacts>();
+/** The people every window draws: the scene's, then the local player's own disc. */
+const windowPeople: Sprite[] = [];
 const frameView = createView();
 
 /** `seen` gets, per person, how much of them this frame drew (dynamic subscription reads it). */
@@ -71,6 +78,7 @@ export function renderView(fb: Framebuffer, scene: RoomScene, seen?: Map<string,
   if (scene.portals) {
     fitWindowLevels(fb);
     seenThroughWindows.forEach(zeroFacts);
+    listWindowPeople(scene.people, scene.self);
   }
   drawPass(fb, scene, glows, seen, 0);
   if (scene.portals && seen) {
@@ -79,6 +87,18 @@ export function renderView(fb: Framebuffer, scene: RoomScene, seen?: Map<string,
   if (scene.firstPerson) {
     drawFirstPerson(fb, scene.firstPerson);
   }
+}
+
+/** Copied every frame, as the scene's list can keep its length and change whose discs it holds. */
+function listWindowPeople(people: readonly Sprite[], self: Sprite | null): void {
+  let count = 0;
+  for (const person of people) {
+    windowPeople[count++] = person;
+  }
+  if (self) {
+    windowPeople[count++] = self;
+  }
+  windowPeople.length = count;
 }
 
 function withPortalGlows(
@@ -172,7 +192,7 @@ function drawWindow(
   beyond.textures = scene.textures;
   beyond.lighting = scene.lighting;
   beyond.reflections = scene.reflections;
-  beyond.people = scene.people;
+  beyond.people = windowPeople;
   beyond.objects = scene.objects;
   beyond.portals = scene.portals;
   beyond.portalPulse = scene.portalPulse;

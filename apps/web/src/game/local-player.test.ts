@@ -2,7 +2,7 @@ import { parseMap } from '@zoom3d/shared';
 import { expect, test } from 'vitest';
 import { twoDoorways } from '../../../../packages/shared/src/portals/test-doorways';
 import { hexToRgb } from '../renderer/sprites';
-import { createLocalPlayer } from './local-player';
+import { createLocalPlayer, OWN_SPRITE_KEY } from './local-player';
 
 const MAP = parseMap(['11111', '1...1', '1.S.1', '1...1', '11111'].join('\n'));
 const STILL = { forward: 0, strafe: 0, turn: 0 };
@@ -37,6 +37,29 @@ test('the glow: none without a ring colour, the ring without a camera, the camer
   });
   localPlayer.useCameraColour(() => 123);
   expect(localPlayer.glow(0, '#ff0000')?.color).toBe(123);
+});
+
+test('the own disc: none without a ring colour, else at the pose with the camera face and what is in hand', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  expect(localPlayer.avatar(0, null)).toBeNull();
+  expect(localPlayer.avatar(0, '#ff0000')).toMatchObject({
+    key: OWN_SPRITE_KEY,
+    x: localPlayer.pose.x,
+    y: localPlayer.pose.y,
+    color: hexToRgb('#ff0000'),
+    face: null,
+    held: null,
+    boombox: false,
+  });
+  const face = new Uint32Array(4);
+  localPlayer.useCameraFace(() => face);
+  localPlayer.takeDrink('beer');
+  localPlayer.boombox = true;
+  localPlayer.gesture.start('sip', 0);
+  const disc = localPlayer.avatar(500, '#ff0000');
+  expect(disc).toMatchObject({ face, held: 'beer', boombox: true, cheers: 0 });
+  expect(disc?.sip).toBeGreaterThan(0);
+  expect(localPlayer.avatar(600, '#ff0000')).toBe(disc);
 });
 
 test('first person shows the drink and boombox in hand, mid-gesture', () => {

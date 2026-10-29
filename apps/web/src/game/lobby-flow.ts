@@ -6,6 +6,7 @@ import { createFramer } from '../media/framer';
 import { createFramingMemory } from '../media/framing-memory';
 import { createLocalMedia, type LocalMediaController } from '../media/local-media';
 import { loadMediaPrefs, saveMediaPrefs } from '../media/media-prefs';
+import { createOwnFaceSampler } from '../media/own-face';
 import { createOwnGlowSampler } from '../media/own-glow';
 import { track } from '../telemetry/analytics';
 import { mediaOutcome } from '../telemetry/onboarding';
@@ -33,7 +34,7 @@ export interface LobbyOptions {
 export function openLobby(o: LobbyOptions): void {
   const audioCtx = openAudio();
   const local = openLocalMedia(o.page);
-  shareCameraColour(local, o.localPlayer);
+  shareCamera(local, o.localPlayer);
   track({ name: 'lobby_viewed', entry: o.entry });
   void local.ready.then(() => track({ name: 'media_permission', ...mediaOutcome(local.state()) }));
   // Saved for the whole visit, so the room's Cam/Mic buttons are remembered too.
@@ -82,13 +83,15 @@ function openLocalMedia(page: PageElements): LocalMediaController {
   );
 }
 
-/** The local player's face glows in their camera's colour while the camera is on. */
-function shareCameraColour(local: LocalMediaController, localPlayer: LocalPlayer): void {
+/** The local player's face glows in their camera's colour, and their own disc shows it, while the camera is on. */
+function shareCamera(local: LocalMediaController, localPlayer: LocalPlayer): void {
   const ownFace = createOwnGlowSampler(local.framer.canvas, document);
+  const ownTexels = createOwnFaceSampler(local.framer.canvas, document);
   // Kept from the controller's notifications (every camera change notifies), not asked of it every frame.
   let camOn = local.state().cam;
   local.subscribe(() => {
     camOn = local.state().cam;
   });
   localPlayer.useCameraColour((now) => (camOn ? ownFace.colour(now) : null));
+  localPlayer.useCameraFace((now) => (camOn ? ownTexels.texels(now) : null));
 }
