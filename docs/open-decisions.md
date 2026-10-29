@@ -699,5 +699,52 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
       -198097577.
   - Not done: glow on people and objects; a hue per doorway; the hum through two portals; a listen by ear.
 
+### D30 — Portals switch as a timed, shared sequence
+
+- *Resolved 2026-10-29* ([spec](superpowers/specs/2026-10-29-portal-sequence-design.md)): pressing Y no longer bends the
+  room at once. The server starts a timed sequence for the whole room, and everyone sees and hears the same blackout.
+  The owner chose the sequences and their timings.
+  - **The first switch-on in a room (`first_on`), 7 s:** a countdown "Portals will enable in 3…, 2…, 1…" for 3 s, then
+    darkness from 3 s. The space bends at 5 s, and the portals light up alone in the dark (windows, rim, spill, hum).
+    The lamps return at 7 s.
+  - **Every later switch, on or off (`on`, `off`), 1 s:** a plain blackout with no countdown. The space bends at 0.5 s
+    and the lamps return at 1 s. The timeline is `packages/shared/src/portals/sequence.ts`, read by the server and every
+    client.
+  - **The debounce follows the sequence** (the owner: "align portals on/off debounce"). Y is ignored while a sequence
+    runs in the room, and `PORTALS_FLIP_GAP_MS` is gone. When one ends, the next press starts the next at once.
+  - **One message, no clock syncing.** The server sends `{ type: 'portals_sequence', kind, age }` once per sequence,
+    and the welcome carries `sequence?` while one runs. The client stamps the start as `arrival - age`, like D23's
+    `peers` batches. Players are out of step by their own network delay, up to about 0.1 s on a slow connection. The
+    owner accepted that; per-step messages (six per press) and clock syncing were not chosen.
+  - **The bend is the server's.** At `bendAtMs` the server flips the room's flag and broadcasts the existing
+    `{ type: 'portals', on }`, so clients bend on that message as before and never while the lamps are on. The move
+    check keeps accepting either mode for 1 s after the bend (D27).
+  - **Darkness is a table swap, never a dimming factor.** A third lighting table per room has no lamps, ambient 0 and no
+    bounce, so it costs nothing per frame. Glows add their light on top as usual: faces keep their own brightness (they
+    were never lamp-shaded) and the portal glows keep their shadows, because the table reuses the portals-on table's
+    `portalGlowSeen`. It adds about 20 ms to the lobby bake. Labels, the status line and the automap stay as they are.
+    Unlit rooms (`?lights=off`) still get the countdown and sounds, and the frame doesn't go dark.
+  - **Dark windows (the owner's choice).** A portal window reads the same black table, so a lit portal in the dark is a
+    glowing pink frame around a black opening, and gives away nothing about where it leads.
+  - **`portalsEverOn` is set at the bend,** not at the press, and is saved in the state file beside `portals`
+    (`LobbySnapshot` is still version 1; a missing field reads as "never"). Restoring `portals: true` implies it. A
+    sequence running at shutdown is not saved: the press is lost, and a room that hadn't reached the bend keeps its big
+    first switch-on. A room that closes and opens again starts fresh.
+  - **Three sounds, not two.** Lights off (when the dark falls), portals on (when the portals light up, which only
+    happens on a switch-on, so a switch-off has no sound at its bend) and lights on (the lamps return). The owner moved
+    the lighter "portals on" sound to the portals' moment and asked for the third. The recipe is in spec §2.3, approved
+    by ear in a sketch. They are not placed: everyone hears them at one level, each with its own reverb tail and no send
+    into the voices' shared reverb, whose short tail would change the approved sound. `SWITCH_SOUND_GAIN` (0.25) scales
+    them under voices; it has not been tuned in the game yet.
+  - **`PROTOCOL_VERSION` is 5.** Older tabs get the `outdated` error and reload.
+  - **Measured** (2026-10-29): with no sequence running, every portals-off hash is unchanged. `bench:walls`: pixel
+    -601092469, doorway off -1246551896, crowd off 2075427884. `bench:sprites`: 1236007431, doorway scenes off
+    -1373330069.
+  - Known small gaps:
+    - A resume welcome mid-sequence can replay a cue within 300 ms of its moment.
+    - The welcome doesn't advance a due bend; it fixes itself within a tick.
+    - `playUnplaced` with a send above 0 would leave a silent gain (unused).
+  - Not done: a listen to the sounds' level in the game; fades (the lights switch instantly, by design).
+
 ## Resolved
 _(none yet)_
