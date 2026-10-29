@@ -624,7 +624,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   window shimmers, its front spills a pulsing pink light, and each doorway hums. A doorway now reads as a gateway
   before anyone looks through it, and from a distance. The owner picked the look in a throwaway sketch.
   - **What was picked:** both window styles (the shimmer and the lit rim), one pink for all doorways, a pulse of 0.8 Hz
-    at 40% depth (`game/portal-pulse.ts`), and the hum's mix under voices (`HUM_GAIN` 0.04, under `VACUUM_GAIN`).
+    at 40% depth (`game/portal-pulse.ts`), and the hum's mix under voices (`HUM_GAIN` 0.04, equal to `VACUUM_GAIN`).
   - **The spill is cut at the plane.** A portal glow is an avatar glow with a `cut` plane (`Glow.cut`): it lights
     only the front side of its doorway, so the floor and walls behind it stay as they were. Plain glow was rejected: it
     would also have lit the back side, the room the window replaces, which is the spill D28 removed.

@@ -50,7 +50,7 @@ const portalGlows = createPortalGlows();
 /** The avatar glows then the portal glows, when portals are on: one list reused from frame to frame. */
 const allGlows: Glow[] = [];
 
-/** Windows within windows are drawn this deep; a window seen at the last level is black (spec §2.5). */
+/** Windows within windows are drawn this deep; a window seen at the last level is pink-tinted black (D29). */
 const WINDOW_LEVELS = 2;
 
 /** One level of windows: the frame they are drawn into, at the frame's size, and the scene they are drawn from. */
