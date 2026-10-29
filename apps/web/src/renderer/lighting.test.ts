@@ -241,6 +241,16 @@ describe('bakeLighting floor lamps', () => {
     expect([...lm.floorLamp.subarray(at, at + REFLECTION_LAMPS)]).toEqual([0, -1, 1, -1, -1, -1, -1, -1]);
   });
 
+  test('lists a lamp whose index is past 127', () => {
+    // 200 lamps far east, but lamp 150 nearest the cell at (1.5, 2.5).
+    const lamps = Array.from({ length: 200 }, (_, i) => (i === 150 ? lamp(4.5, 2.5) : lamp(5.5, 2.5)));
+    const lm = bakeLighting(map, lamps, 0.45, GREY, GREY);
+    const cell = Math.floor(2.5 * FLOOR_SUB) * lm.stride + Math.floor(1.5 * FLOOR_SUB);
+    const listed = lm.floorLamp.slice(cell * REFLECTION_LAMPS, (cell + 1) * REFLECTION_LAMPS);
+    expect(listed).toBeInstanceOf(Int16Array);
+    expect([...listed]).toContain(150);
+  });
+
   test('lamps in a row down a corridor: the nearer one doesn’t push out the one behind it', () => {
     // From (2.5, 2.5), lamps at x = 5.5 and 10.5 both lie east; the farther one's reflection can show past the nearer.
     const hall = parseMap(`
@@ -403,8 +413,8 @@ describe('far lamps in the lists', () => {
 });
 
 test('a map with more lamps than the lamp lists can number is refused', () => {
-  const many = Array.from({ length: 128 }, () => lamp(1.5, 1.5));
-  expect(() => bakeLighting(map, many, 0.45, GREY, GREY)).toThrow(/128 lamps/);
+  const many = Array.from({ length: 32768 }, () => lamp(1.5, 1.5));
+  expect(() => bakeLighting(map, many, 0.45, GREY, GREY)).toThrow(/32768 lamps/);
 });
 
 test('lamps past LAMP_SIGHT (16 tiles) are not listed, even in plain sight', () => {

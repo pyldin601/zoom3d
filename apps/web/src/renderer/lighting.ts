@@ -62,8 +62,8 @@ export const REFLECTION_NEAR = 4;
  */
 const LAMPS_PER_DIRECTION = 2;
 export const REFLECTION_LAMPS = 4 * LAMPS_PER_DIRECTION;
-/** The lamp lists hold lamp indices as signed bytes (−1 for none), so a map can have this many lamps. */
-const MAX_LAMPS = 127;
+/** The lamp lists hold lamp indices as signed 16-bit integers (−1 for none), so a map can have this many lamps. */
+const MAX_LAMPS = 32767;
 /**
  * A lamp's reflection fades over the whole path its light takes, lamp to surface to eye, to nothing at this many
  * tiles. Not its light's reach: a lamp shows mirrored in the floor however far its own light gets. Lamps are listed
@@ -123,7 +123,7 @@ export interface Lighting {
    * Per face sample column ([face][u][k], so (faceOffset / WALL_V + u) · REFLECTION_LAMPS + k): the nearest lamps in
    * sight in each direction (see REFLECTION_LAMPS), or −1.
    */
-  wallLamp: Int8Array;
+  wallLamp: Int16Array;
   /** Per wallLamp slot: how much of its lamp the sample sees, 0..255 (a lamp part hidden by a wall's edge). */
   wallLampSeen: Uint8Array;
   /**
@@ -131,7 +131,7 @@ export interface Lighting {
    * their light's reach use the floor light's own cells and sight lines, so a reflection's shadow edge is the floor's;
    * farther ones the coarse lamp sight (half-tile cells).
    */
-  floorLamp: Int8Array;
+  floorLamp: Int16Array;
   /** Per floorLamp slot: how much of its lamp the cell sees, 0..255. */
   floorLampSeen: Uint8Array;
   /** Final floor / ceiling colours, (map.width·FLOOR_SUB) × (map.height·FLOOR_SUB). */
@@ -351,12 +351,12 @@ function bakeWalls(
   input: BakeInput,
   faceOffset: Int32Array,
   faces: number
-): { wall: Uint32Array; wallLamp: Int8Array; wallLampSeen: Uint8Array } {
+): { wall: Uint32Array; wallLamp: Int16Array; wallLampSeen: Uint8Array } {
   const { map, lights } = input;
   const { width, height } = map;
   const levels = RELIEF_LEVELS.length;
   const wall = new Uint32Array(faces * WALL_U * WALL_V * levels);
-  const wallLamp = new Int8Array(faces * WALL_U * REFLECTION_LAMPS).fill(-1);
+  const wallLamp = new Int16Array(faces * WALL_U * REFLECTION_LAMPS).fill(-1);
   const wallLampSeen = new Uint8Array(wallLamp.length);
   const list = createLampList();
   const around = new Float64Array(3);
@@ -443,7 +443,7 @@ function bakeFloorAndCeiling(
 ): {
   floor: Uint32Array;
   ceiling: Uint32Array;
-  floorLamp: Int8Array;
+  floorLamp: Int16Array;
   floorLampSeen: Uint8Array;
   stride: number;
   rows: number;
@@ -453,7 +453,7 @@ function bakeFloorAndCeiling(
   const rows = map.height * FLOOR_SUB;
   const floor = new Uint32Array(stride * rows).fill(tint(floorColour, ambient, ambient, ambient));
   const ceiling = new Uint32Array(stride * rows).fill(tint(ceilingColour, ambient, ambient, ambient));
-  const floorLamp = new Int8Array(stride * rows * REFLECTION_LAMPS).fill(-1);
+  const floorLamp = new Int16Array(stride * rows * REFLECTION_LAMPS).fill(-1);
   const floorLampSeen = new Uint8Array(floorLamp.length);
   const list = createLampList();
   const around = new Float64Array(3);
@@ -530,14 +530,14 @@ export function floorLampLight(l: Light, px: number, py: number): number {
  * so far, nearest first, with their distances and how much of each the sample sees (0..255).
  */
 interface LampList {
-  lamps: Int8Array;
+  lamps: Int16Array;
   dist: Float64Array;
   seen: Uint8Array;
 }
 
 function createLampList(): LampList {
   return {
-    lamps: new Int8Array(REFLECTION_LAMPS),
+    lamps: new Int16Array(REFLECTION_LAMPS),
     dist: new Float64Array(REFLECTION_LAMPS),
     seen: new Uint8Array(REFLECTION_LAMPS),
   };

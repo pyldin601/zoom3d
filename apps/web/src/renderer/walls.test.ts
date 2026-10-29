@@ -155,7 +155,7 @@ describe('renderWalls reflections', () => {
     FLOOR,
     CEILING
   );
-  const matte = { ...lit, wallLamp: new Int8Array(lit.wallLamp.length).fill(-1) };
+  const matte = { ...lit, wallLamp: new Int16Array(lit.wallLamp.length).fill(-1) };
   const render = (x: number, lighting: typeof lit) => {
     const fb = createFramebuffer();
     renderWalls(fb, { map: corridor, eye: { x, y: 1.5, angle: 0 }, textures, lighting });
@@ -208,7 +208,7 @@ describe('renderWalls reflections', () => {
       FLOOR,
       CEILING
     );
-    const roomMatte = { ...roomLit, wallLamp: new Int8Array(roomLit.wallLamp.length).fill(-1) };
+    const roomMatte = { ...roomLit, wallLamp: new Int16Array(roomLit.wallLamp.length).fill(-1) };
     const pose = { x: 6, y: 2.5, angle: 0 };
     const shiny = createFramebuffer();
     const plain = createFramebuffer();
@@ -224,7 +224,7 @@ describe('renderWalls reflections', () => {
     // line with the eye, so their planes pass close to it, but the faces themselves are far off.
     const level = parseMap(LEVEL1);
     const levelLit = bakeLighting(level, corridorLights(level), 0.45, FLOOR, CEILING);
-    const levelMatte = { ...levelLit, wallLamp: new Int8Array(levelLit.wallLamp.length).fill(-1) };
+    const levelMatte = { ...levelLit, wallLamp: new Int16Array(levelLit.wallLamp.length).fill(-1) };
     const pose = { x: 35.26, y: 27.38, angle: 4.48 };
     const shiny = createFramebuffer();
     const plain = createFramebuffer();
@@ -246,7 +246,7 @@ describe('renderWalls reflections', () => {
       FLOOR,
       CEILING
     );
-    const hallMatte = { ...hallLit, wallLamp: new Int8Array(hallLit.wallLamp.length).fill(-1) };
+    const hallMatte = { ...hallLit, wallLamp: new Int16Array(hallLit.wallLamp.length).fill(-1) };
     // Close to the top wall at its west end, looking east along it.
     const pose = { x: 1.5, y: 1.3, angle: 0.05 };
     const shiny = createFramebuffer();
@@ -272,7 +272,7 @@ describe('renderWalls reflections', () => {
       FLOOR,
       CEILING
     );
-    const roomMatte = { ...roomLit, wallLamp: new Int8Array(roomLit.wallLamp.length).fill(-1) };
+    const roomMatte = { ...roomLit, wallLamp: new Int16Array(roomLit.wallLamp.length).fill(-1) };
     const brightest = (pose: { x: number; y: number; angle: number }) => {
       const a = createFramebuffer();
       const b = createFramebuffer();
@@ -310,7 +310,7 @@ describe('renderWalls reflections', () => {
       textures,
       lighting: {
         ...blueLit,
-        wallLamp: new Int8Array(blueLit.wallLamp.length).fill(-1),
+        wallLamp: new Int16Array(blueLit.wallLamp.length).fill(-1),
       },
     });
     let redAdded = 0;
@@ -343,8 +343,8 @@ describe('renderWalls floor reflections', () => {
   );
   const hallMatte = {
     ...hallLit,
-    wallLamp: new Int8Array(hallLit.wallLamp.length).fill(-1),
-    floorLamp: new Int8Array(hallLit.floorLamp.length).fill(-1),
+    wallLamp: new Int16Array(hallLit.wallLamp.length).fill(-1),
+    floorLamp: new Int16Array(hallLit.floorLamp.length).fill(-1),
   };
   const pose = { x: 2.5, y: 2.5, angle: 0 };
   const channels = (c: number) => [c & 0xff, (c >>> 8) & 0xff, (c >>> 16) & 0xff];
@@ -382,8 +382,8 @@ describe('renderWalls reflection modes', () => {
   );
   const hallMatte = {
     ...hallLit,
-    wallLamp: new Int8Array(hallLit.wallLamp.length).fill(-1),
-    floorLamp: new Int8Array(hallLit.floorLamp.length).fill(-1),
+    wallLamp: new Int16Array(hallLit.wallLamp.length).fill(-1),
+    floorLamp: new Int16Array(hallLit.floorLamp.length).fill(-1),
   };
   // Close to the top wall, so the wall shines too.
   const pose = { x: 2.5, y: 1.3, angle: 0 };
@@ -481,7 +481,7 @@ describe('renderWalls floor reflections in shadow', () => {
   const hall = parseMap('1111111111111\n1...........1\n1S.....1....1\n1...........1\n1111111111111');
   const hallLit = bakeLighting(hall, [{ x: 9.5, y: 2.5, z: 0.85, radius: 20, r: 1, g: 1, b: 1 }], 0.45, FLOOR, CEILING);
   // Walls as lit as in hallLit, so their images in the floor match: only the floor's reflections differ.
-  const hallMatte = { ...hallLit, floorLamp: new Int8Array(hallLit.floorLamp.length).fill(-1) };
+  const hallMatte = { ...hallLit, floorLamp: new Int16Array(hallLit.floorLamp.length).fill(-1) };
   // The floor where no lamp reaches: ambient light only.
   const shadow = hallLit.floor[0] as number;
 
@@ -763,7 +763,7 @@ describe('renderWalls voxel shadows', () => {
   const corridor = parseMap('11111111111111\n1S...........1\n1............1\n1............1\n11111111111111');
   const lamp = { x: 6.5, y: 2.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 };
   const lit = bakeLighting(corridor, [lamp], 0.3, FLOOR, CEILING);
-  const matte = { ...lit, floorLamp: new Int8Array(lit.floorLamp.length).fill(-1) };
+  const matte = { ...lit, floorLamp: new Int16Array(lit.floorLamp.length).fill(-1) };
   /** The floor where no lamp reaches: ambient light only. */
   const ambientOnly = bakeLighting(corridor, [], 0.3, FLOOR, CEILING).floor[2 * 8 * lit.stride + 16] as number;
   const ball = (x: number, y = 2.5): VoxelInstance => ({ model: BALL_MODEL, x, y, angle: 0 });
@@ -994,7 +994,7 @@ describe('renderWalls voxel mirror', () => {
       '11111111111111111111\n1S.................1\n1..................1\n1..................1\n11111111111111111111'
     );
     const lit = bakeLighting(long, [{ x: 17.5, y: 2.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 }], 0.3, FLOOR, CEILING);
-    const matte = { ...lit, floorLamp: new Int8Array(lit.floorLamp.length).fill(-1) };
+    const matte = { ...lit, floorLamp: new Int16Array(lit.floorLamp.length).fill(-1) };
     const eye5 = { x: 5.0, y: 2.5, angle: 0 };
     const o = (lighting: typeof lit) => ({ map: long, eye: eye5, lighting });
     const shiny = render([ball(9.0)], o(lit));
@@ -1063,7 +1063,7 @@ describe('renderWalls floor mirror of walls', () => {
   test('a wall’s image never hides a lamp’s streak', () => {
     const hall = parseMap('1111111111111\n1S..........1\n1...........1\n1...........1\n1111111111111');
     const lit = bakeLighting(hall, [{ x: 7.5, y: 2.5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 }], 0.45, FLOOR, CEILING);
-    const matte = { ...lit, floorLamp: new Int8Array(lit.floorLamp.length).fill(-1) };
+    const matte = { ...lit, floorLamp: new Int16Array(lit.floorLamp.length).fill(-1) };
     const draw = (lighting: typeof lit) => {
       const fb = createFramebuffer();
       renderWalls(fb, { map: hall, eye: { x: 2.5, y: 2.5, angle: 0 }, textures, lighting, reflections: 'both' });
