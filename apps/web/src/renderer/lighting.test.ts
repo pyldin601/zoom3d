@@ -544,8 +544,12 @@ describe('bakePortalLighting', () => {
     expect(floorAt(portal, 2.5, 3.7)).toBe(floorAt(dark, 2.5, 3.7));
   });
   test('a copy shows no fixture on the ceiling', () => {
-    const { portal } = both([light(4.5, 1.5)]);
-    expect(ceilingAt(portal, 2.5, 5.5)).not.toBe(ceilingAt(portal, 4.5, 1.5));
+    // Lamp at (4.5, 3.45), just behind B's plane; its copy through A is (2.5, 3.55), and the cell centred at
+    // (2.5, 3.4375) sees it from A's front, 0.11 from it: within the fixture's radius.
+    const { portal } = both([light(4.5, 3.45)]);
+    const ceiling = (x: number, y: number) => portal.ceiling[cellAt(portal, x, y)] as number;
+    expect(ceilingAt(portal, 2.5, 3.4375)).toBeGreaterThan(ceilingAt(both([]).portal, 2.5, 3.4375));
+    expect(ceiling(2.5, 3.4375)).not.toBe(ceiling(4.5, 3.45));
   });
   test('reuses the plain bounce light', () => {
     const plain = bakeLighting(hall, [light(4.5, 1.5)], 0.1, GREY, GREY, { wallColours: [GREY, GREY], strength: 1 });
