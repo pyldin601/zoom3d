@@ -439,7 +439,7 @@ describe('far lamps in the lists', () => {
 
 test('a map with more lamps than the lamp lists can number is refused', () => {
   const many = Array.from({ length: 32768 }, () => lamp(1.5, 1.5));
-  expect(() => bakeLighting(map, many, 0.45, GREY, GREY)).toThrow(/32768 lamps/);
+  expect(() => bakeLighting(map, many, 0.45, GREY, GREY)).toThrow(/^bakeLighting: 32768 lamps/);
 });
 
 test('lamps past LAMP_SIGHT (16 tiles) are not listed, even in plain sight', () => {
@@ -541,6 +541,12 @@ describe('bakePortalLighting', () => {
     Math.floor(y * FLOOR_SUB) * lm.stride + Math.floor(x * FLOOR_SUB);
   const floorAt = (lm: Lighting, x: number, y: number) => (lm.floor[cellAt(lm, x, y)] as number) & 0xff;
   const ceilingAt = (lm: Lighting, x: number, y: number) => (lm.ceiling[cellAt(lm, x, y)] as number) & 0xff;
+
+  test('a portal table with more lamps and copies than the lamp lists can number is refused, by name', () => {
+    const { plain } = both([lamp(4.5, 1.5)]);
+    const many = { ...plain, lights: Array.from({ length: 20000 }, () => lamp(4.5, 1.5)) };
+    expect(() => bakePortalLighting(many, portals, GREY, GREY)).toThrow(/^bakePortalLighting: 40000 lamps/);
+  });
 
   test('copies a lamp behind each doorway it can be seen through, and only there', () => {
     const copies = lampCopies([light(4.5, 1.5)], portals);

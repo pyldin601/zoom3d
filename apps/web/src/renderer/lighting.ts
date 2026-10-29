@@ -246,7 +246,7 @@ export function bakeLighting(
   ceilingColour: number,
   bounce?: Bounce
 ): Lighting {
-  checkLampCount(lights);
+  checkLampCount('bakeLighting', lights);
   const input: BakeInput = {
     map,
     portals: null,
@@ -270,7 +270,7 @@ export function bakePortalLighting(
   ceilingColour: number
 ): Lighting {
   const lights = lampCopies(plain.lights, portals);
-  checkLampCount(lights);
+  checkLampCount('bakePortalLighting', lights);
   const input: BakeInput = {
     map: plain.map,
     portals,
@@ -282,9 +282,9 @@ export function bakePortalLighting(
   return bakeSurfaces(input, floorColour, ceilingColour);
 }
 
-function checkLampCount(lights: readonly Light[]): void {
+function checkLampCount(baker: string, lights: readonly Light[]): void {
   if (lights.length > MAX_LAMPS) {
-    throw new Error(`bakeLighting: ${lights.length} lamps, at most ${MAX_LAMPS} fit the lamp lists`);
+    throw new Error(`${baker}: ${lights.length} lamps, at most ${MAX_LAMPS} fit the lamp lists`);
   }
 }
 
