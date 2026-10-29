@@ -20,6 +20,26 @@ export function hasPortalLineOfSight(
   return hasLineOfSight(map, ax, ay, bx, by) && (p === null || crossedPortal(p, ax, ay, bx, by, crossing) < 0);
 }
 
+/**
+ * Whether a→b goes through the opening of portal `index` as its first front→back crossing, with a line of sight up to
+ * the crossing and, carried through the portal, from the crossing on to b.
+ */
+export function hasLineOfSightThrough(
+  map: GameMap,
+  p: Portals,
+  index: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number
+): boolean {
+  chain.sees = true;
+  if (!passesThrough(map, p, index, ax, ay, bx, by)) {
+    return false;
+  }
+  return chain.sees && hasPortalLineOfSight(map, p, hop.x, hop.y, aim.x, aim.y);
+}
+
 export interface Apparent {
   x: number;
   y: number;
