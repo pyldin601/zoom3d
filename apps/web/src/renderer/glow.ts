@@ -1,6 +1,6 @@
 // Avatars as lights: each disc glows like a small screen, its face's average colour, lighting the floor and walls
-// around it as it moves. Drawn per frame, no shadows: its reach is short. A portal's glow never moves, so its shadows
-// are baked with the room's portals-on lighting (`GlowShadow`).
+// around it as it moves. Drawn per frame; an avatar's glow casts no shadows: its reach is short. A portal's glow
+// never moves, so its shadows are baked with the room's portals-on lighting (`GlowShadow`).
 import type { Portal, Portals } from '@zoom3d/shared';
 import { PORTAL_PINK } from '../game/portal-pulse';
 import { EYE_HEIGHT } from './camera';
