@@ -91,7 +91,7 @@ function unpackColour(colour: number): typeof channels {
  * GLOW_RADIUS, times how squarely the surface faces the disc. 0..1, before the glow's colour.
  */
 export function glowLight(g: Glow, x: number, y: number, z: number, nx: number, ny: number, nz: number): number {
-  if (g.cut && behindCut(g.cut, x, y)) {
+  if (hiddenByCut(g, x, y)) {
     return 0;
   }
   const dx = g.x - x;
@@ -110,8 +110,10 @@ export function glowLight(g: Glow, x: number, y: number, z: number, nx: number, 
   return k * k * (facing / Math.sqrt(d2));
 }
 
-function behindCut(cut: GlowCut, x: number, y: number): boolean {
-  return (x - cut.cx) * cut.nx + (y - cut.cy) * cut.ny >= 0;
+/** Whether `g`'s cut keeps all of its light off (x, y): false for a glow without one. */
+export function hiddenByCut(g: Glow, x: number, y: number): boolean {
+  const { cut } = g;
+  return cut !== null && (x - cut.cx) * cut.nx + (y - cut.cy) * cut.ny >= 0;
 }
 
 /** A frame's avatar glows, in objects reused from frame to frame. */

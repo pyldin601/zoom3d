@@ -10,6 +10,7 @@ import {
   type GlowCut,
   glowLight,
   glowOf,
+  hiddenByCut,
 } from './glow';
 import { portalHall } from './test-portals';
 
@@ -106,6 +107,13 @@ describe('a glow with a cut', () => {
 
   test('a point on the plane is not lit', () => {
     expect(glowLight(glow(plane), 2.5, 3.5, 0, 0, 0, 1)).toBe(0);
+  });
+
+  test('hiddenByCut: points on or behind the plane, never for a glow without a cut', () => {
+    expect(hiddenByCut(glow(plane), 2.5, 2.0)).toBe(false);
+    expect(hiddenByCut(glow(plane), 2.5, 3.5)).toBe(true);
+    expect(hiddenByCut(glow(plane), 2.5, 4.0)).toBe(true);
+    expect(hiddenByCut(glow(null), 2.5, 4.0)).toBe(false);
   });
 });
 

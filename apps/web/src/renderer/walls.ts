@@ -13,7 +13,7 @@ import {
 import { createView, EYE_HEIGHT, isWindowPass, MIN_DEPTH, type Pass, setView, WHOLE_FRAME } from './camera';
 import { reflectedColour } from './colour';
 import { type Framebuffer, rgb, scaleRgb } from './framebuffer';
-import { GLOW_RADIUS, type Glow, glowLight } from './glow';
+import { GLOW_RADIUS, type Glow, glowLight, hiddenByCut } from './glow';
 import {
   bounceHeight,
   distanceToWall,
@@ -566,14 +566,18 @@ function findColumnReflections(room: LitRoom): boolean {
   return shows;
 }
 
-/** The avatars glowing on the column (near enough and in front of it), and their light up it. Returns how many. */
+/**
+ * The glows lighting the column (near enough, in front of it and not cut off from it), and their light up it. Returns
+ * how many.
+ */
 function findColumnGlows(glows: readonly Glow[]): number {
   const { normal, hitX, hitY } = column;
   let count = 0;
   for (const g of glows) {
     const dx = g.x - hitX;
     const dy = g.y - hitY;
-    if (dx * normal.dx + dy * normal.dy > 0 && dx * dx + dy * dy < GLOW_RADIUS * GLOW_RADIUS) {
+    const facesColumn = dx * normal.dx + dy * normal.dy > 0;
+    if (facesColumn && dx * dx + dy * dy < GLOW_RADIUS * GLOW_RADIUS && !hiddenByCut(g, hitX, hitY)) {
       columnGlows[count++] = g;
     }
   }
