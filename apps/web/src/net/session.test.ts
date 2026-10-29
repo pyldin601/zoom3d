@@ -716,3 +716,22 @@ test('an object that moved more than JUMP_TILES in one state is marked a jump', 
   ws.receive(objectState(2, 24.5));
   expect(session.objects.get('v')?.buffer.latest()?.jump).toBe(true);
 });
+
+test('a portal sequence is stamped by its arrival less its age', () => {
+  const { session, ws } = joinedSession([]);
+  expect(session.sequence).toBeNull();
+  vi.advanceTimersByTime(5000);
+  const arrival = Date.now();
+  ws.receive({ type: 'portals_sequence', kind: 'first_on', age: 40 });
+  expect(session.sequence).toEqual({ kind: 'first_on', startedAt: arrival - 40 });
+});
+
+test('a welcome mid-sequence stamps it; one without clears it', () => {
+  const { session, ws } = joinedSession([]);
+  vi.advanceTimersByTime(5000);
+  const arrival = Date.now();
+  ws.receive({ ...welcome(), sequence: { kind: 'off', age: 300 } });
+  expect(session.sequence).toEqual({ kind: 'off', startedAt: arrival - 300 });
+  ws.receive(welcome());
+  expect(session.sequence).toBeNull();
+});

@@ -286,8 +286,8 @@ describe('through portals', () => {
   const other = defined(portals.list.at(portal.to), 'destination doorway');
   const alongFront = (p: typeof portal, d: number) => ({ x: p.cx + p.nx * d, y: p.cy + p.ny * d });
 
-  /** A room with portals on, the person at `person` (resumed as A) and the ball at `ball`. */
-  function setUp(person: { x: number; y: number }, ball: { x: number; y: number }) {
+  /** A room with portals on (unless `portalsOn` is false), the person at `person` (resumed as A), the ball at `ball`. */
+  function setUp(person: { x: number; y: number }, ball: { x: number; y: number }, portalsOn = true) {
     lobby = makeLobby({ ball: true });
     join('S');
     const snap = JSON.parse(JSON.stringify(lobby.snapshot())) as LobbySnapshot;
@@ -295,7 +295,7 @@ describe('through portals', () => {
     const peer = defined(room.peers.at(0), 'peer');
     Object.assign(peer, person);
     room.ball = { ...defined(room.ball, 'saved ball'), ...ball };
-    room.portals = true;
+    room.portals = portalsOn;
     lobby = makeLobby({ ball: true });
     lobby.restore(snap);
     join('A', { resumeToken: peer.resumeToken });
@@ -315,8 +315,7 @@ describe('through portals', () => {
 
   test('with portals off the same person does not touch the ball', () => {
     const ball = alongFront(portal, -0.15);
-    setUp(alongFront(other, 0.15), ball);
-    lobby.portals('A');
+    setUp(alongFront(other, 0.15), ball, false);
     step();
     expect(ballStates('A')).toEqual([]);
   });

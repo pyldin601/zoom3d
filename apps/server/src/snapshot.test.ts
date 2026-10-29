@@ -131,3 +131,14 @@ test('the portals flag is kept only when true', () => {
     expect(room && 'portals' in room).toBe(false);
   }
 });
+
+test('portalsEverOn is kept only when true', () => {
+  const withEverOn = (portalsEverOn: unknown) =>
+    JSON.stringify({ version: 1, rooms: [{ id: ROOM, peers: [peer('a')], portalsEverOn }] });
+  expect(parseSnapshot(withEverOn(true))?.rooms[0]?.portalsEverOn).toBe(true);
+  for (const other of [false, 'yes', 1, null]) {
+    const room = parseSnapshot(withEverOn(other))?.rooms[0];
+    expect(room?.peers).toHaveLength(1);
+    expect(room && 'portalsEverOn' in room).toBe(false);
+  }
+});

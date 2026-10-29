@@ -518,8 +518,8 @@ describe('renderWalls avatar glow', () => {
   const roomLit = bakeLighting(room, [], 0.08, FLOOR, CEILING);
   // Looking east along the room's middle, an avatar 3 tiles ahead glowing white.
   const pose = { x: 1.5, y: 2.5, angle: 0 };
-  const glow = { x: 4.5, y: 2.5, r: GLOW_STRENGTH, g: GLOW_STRENGTH, b: GLOW_STRENGTH };
-  const render = (glows: { x: number; y: number; r: number; g: number; b: number }[]) => {
+  const glow = { x: 4.5, y: 2.5, r: GLOW_STRENGTH, g: GLOW_STRENGTH, b: GLOW_STRENGTH, cut: null, shadow: null };
+  const render = (glows: Glow[]) => {
     const fb = createFramebuffer();
     renderWalls(fb, { map: room, eye: pose, textures, lighting: roomLit, reflections: 'both' }, glows);
     return fb;
@@ -738,7 +738,7 @@ describe('renderWalls ceiling reflections', () => {
   });
 
   test('it mirrors only the floor’s reflections, not the floor: with no lamp, not even a glowing one shows', () => {
-    const glow = { x: 5.5, y: 2.5, r: GLOW_STRENGTH, g: GLOW_STRENGTH, b: GLOW_STRENGTH };
+    const glow = { x: 5.5, y: 2.5, r: GLOW_STRENGTH, g: GLOW_STRENGTH, b: GLOW_STRENGTH, cut: null, shadow: null };
     expect(brighterCeiling(dark).brighter).toBe(0);
     expect(brighterCeiling(dark, [glow]).brighter).toBe(0);
   });
@@ -841,7 +841,7 @@ describe('renderWalls voxel shadows', () => {
   });
 
   test('the avatar glow still shows in a shadow', () => {
-    const glow = { x: 9.2, y: 2.5, r: GLOW_STRENGTH, g: GLOW_STRENGTH, b: GLOW_STRENGTH };
+    const glow = { x: 9.2, y: 2.5, r: GLOW_STRENGTH, g: GLOW_STRENGTH, b: GLOW_STRENGTH, cut: null, shadow: null };
     const bare = render([]);
     const shaded = render([ball(8.5)]);
     const glowing = render([ball(8.5)], { glows: [glow] });

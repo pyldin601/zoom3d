@@ -1,10 +1,12 @@
 // The room from Join on: the game session, the call carrying everyone's media, the spatial audio, the world objects'
-// sounds, the ball as this client predicts it, the player's boombox and the analytics tracker, made together on Join
-// and kept together.
+// sounds, the portal doorways' hums, the ball as this client predicts it, the room's portal sequence, the player's
+// boombox and the analytics tracker, made together on Join and kept together.
 import type { GameMap, HeldItem, PlayerState, Portals } from '@zoom3d/shared';
 import { createDoorbell, withDoorbell } from '../audio/doorbell';
 import { type AudioEngine, createAudioEngine } from '../audio/engine';
 import { createObjectSounds, type ObjectSounds } from '../audio/object-sounds';
+import { createPortalHums, type PortalHums } from '../audio/portal-hum';
+import { createPortalSwitchSounds, type PortalSwitchSounds } from '../audio/portal-switch-sound';
 import { type Boombox, createBoombox } from '../media/boombox';
 import { type Call, createCall } from '../media/call';
 import { createFace } from '../media/faces';
@@ -18,19 +20,29 @@ import { track } from '../telemetry/analytics';
 import { createRoomTracker, type RoomTracker, withRoomTracker } from '../telemetry/room-tracker';
 import { botsParam } from '../ui/route';
 import { type BallPrediction, createBallPrediction } from './ball-prediction';
+import { createPortalSequence, type PortalSequencePlayer } from './portal-sequence';
 
 export interface Room {
   readonly session: Session;
   readonly call: Call;
   readonly audio: AudioEngine;
   readonly objectSounds: ObjectSounds;
+  /** A hum from each portal doorway while `portals()` isn't null. */
+  readonly hums: PortalHums;
   readonly boombox: Boombox;
   readonly tracker: RoomTracker;
   readonly ball: BallPrediction;
   /** The map's portal wiring while the room's portals are on, else null: today's doors. */
   portals(): Portals | null;
-  /** The baked lamp light for this frame: the portals-on table while `portals()` isn't null, else the page's. */
-  lighting(): Lighting | null;
+  /** The room's running portal switch, moved on once per frame by the room loop. */
+  readonly sequence: PortalSequencePlayer;
+  /** The sequence's lights-off, portals-on and lights-on sounds. */
+  readonly switchSounds: PortalSwitchSounds;
+  /**
+   * The baked lamp light for this frame: the black table while `dark`, else the portals-on one while `portals()` isn't
+   * null, else the page's.
+   */
+  lighting(dark: boolean): Lighting | null;
   /** Kicks the ball the way the local player faces, if it is in reach: at once here, and on to the server. */
   kick(): void;
 }
@@ -62,6 +74,7 @@ export function joinRoom(opts: JoinOptions): Room {
   const wiring = roomLighting.portals;
   let session: Session | null = null;
   const objectSounds = createObjectSounds(opts.audioCtx, audio, () => session?.selfId() ?? null);
+  const hums = createPortalHums(opts.audioCtx, audio);
   const call = createRoomCall(opts, audio);
   const tracker = createRoomTracker(track, () => performance.now());
   const ball = createBallPrediction(opts.map, () => portals());
@@ -81,8 +94,24 @@ export function joinRoom(opts: JoinOptions): Room {
   function portals() {
     return joined.portals ? wiring : null;
   }
-  const lighting = () => roomLighting.lighting(portals() !== null);
-  return { session: joined, call, audio, objectSounds, boombox, tracker, ball, portals, lighting, kick };
+  const lighting = (dark: boolean) => roomLighting.lighting(portals() !== null, dark);
+  const sequence = createPortalSequence();
+  const switchSounds = createPortalSwitchSounds(opts.audioCtx, audio);
+  return {
+    session: joined,
+    call,
+    audio,
+    objectSounds,
+    hums,
+    boombox,
+    tracker,
+    ball,
+    portals,
+    sequence,
+    switchSounds,
+    lighting,
+    kick,
+  };
 }
 
 /** In the room and connected: not joining, reconnecting or failed. */

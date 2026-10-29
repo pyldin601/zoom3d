@@ -181,8 +181,13 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   from the room id (`wirePortals`), and only the room's on/off flag travels. A window is drawn by re-running the passes
   from the eye carried through the portal, so every pass takes a `Pass` (its columns and near limit) and a new pass
   must honour it. The vacuum ignores portals (ordinary doors).
+  Y starts a timed sequence (D30); the server bends the space at its `bendAtMs`, and anything that should go dark reads
+  the room's dark table, never a dimming factor.
   With portals on, the room's light is a second table (`bakePortalLighting`) whose lamp list holds copies seen through
   one portal (`Light.through`); any new sight test to a lamp goes through `seesLamp`.
+  Portal windows shimmer and their fronts glow and hum (D29): portal glows are avatar glows with a `cut` plane and a
+  shadow table baked with the portals-on lighting (`Glow.shadow`, `Lighting.portalGlowSeen`), and every pass that uses
+  glow light must honour both (through `glowLight`).
 - Telemetry privacy: logs, metrics labels, Sentry and Amplitude never get names, resume tokens or IPs, nor raw room
   ids: a room link is the room's only key. Server logs use `roomRef()` (a short hash), and the browser Sentry
   `beforeSend` scrubs `/r/<id>`.

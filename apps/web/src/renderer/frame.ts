@@ -1,21 +1,30 @@
 // One frame of the room, drawn back to front, then the HUD on its own canvas over it. With portals on, each window is
 // the room drawn again from the eye carried through its portal, for the window's columns (portal doorways spec §2.5).
-import { applyAngle, applyPoint, type HeldItem, type PlayerState } from '@zoom3d/shared';
+import { applyAngle, applyPoint, type HeldItem, type PlayerState, type Portal, type Portals } from '@zoom3d/shared';
 import type { PeerFacts } from '../media/interest';
 import { type AutomapPeer, drawAutomap } from './automap';
-import { createView, type Pass, setView, WHOLE_FRAME } from './camera';
+import { createView, type Pass, setView, WHOLE_FRAME, WINDOW_LEVELS } from './camera';
 import { createFramebuffer, type Framebuffer } from './framebuffer';
-import { createAvatarGlows, type Glow, type GlowSource } from './glow';
+import { createAvatarGlows, createPortalGlows, type Glow, type GlowShadow, type GlowSource } from './glow';
 import { drawLabels, type NameLabel } from './labels';
 import type { ReflectionMode } from './lighting';
 import { renderOwnBoombox } from './own-boombox';
 import { type HeldStep, renderOwnHeld } from './own-held';
+import { nextRippleDown, openingEdge, shimmerAndRim, startRippleDown, toSketchPx } from './portal-window';
 import type { HeldPose } from './sip';
 import { type PeopleAndObjects, renderSprites } from './sprites';
 import { type Room, renderWalls, rowsCovered } from './walls';
 
 /** What one pass draws: the room, its people and objects, from one eye, on the pass's columns. */
-type PassScene = Omit<Room, 'objects' | 'people'> & PeopleAndObjects & { reflections: ReflectionMode };
+type PassScene = Omit<Room, 'objects' | 'people'> & PeopleAndObjects & PortalClock & { reflections: ReflectionMode };
+
+/** One clock for the portals' glow and their windows' shimmer, so the two never drift apart. */
+interface PortalClock {
+  /** The portals' swell, 0..1 (game/portal-pulse.ts): their glow brightens with it. */
+  portalPulse: number;
+  /** The windows' shimmer rolls with this, s. */
+  portalTime: number;
+}
 
 /** Everything one frame shows. */
 export interface RoomScene extends PassScene {
@@ -37,9 +46,9 @@ export interface FirstPerson {
 }
 
 const avatarGlows = createAvatarGlows();
-
-/** Windows within windows are drawn this deep; a window seen at the last level is black (spec §2.5). */
-const WINDOW_LEVELS = 2;
+const portalGlows = createPortalGlows();
+/** The avatar glows then the portal glows, when portals are on: one list reused from frame to frame. */
+const allGlows: Glow[] = [];
 
 /** One level of windows: the frame they are drawn into, at the frame's size, and the scene they are drawn from. */
 interface WindowLevel {
@@ -55,7 +64,10 @@ const frameView = createView();
 
 /** `seen` gets, per person, how much of them this frame drew (dynamic subscription reads it). */
 export function renderView(fb: Framebuffer, scene: RoomScene, seen?: Map<string, PeerFacts>): void {
-  const glows = avatarGlows.update(scene.people, scene.ownGlow);
+  const avatars = avatarGlows.update(scene.people, scene.ownGlow);
+  const glows = scene.portals
+    ? withPortalGlows(avatars, scene.portals, scene.portalPulse, scene.lighting?.portalGlowSeen ?? null)
+    : avatars;
   if (scene.portals) {
     fitWindowLevels(fb);
     seenThroughWindows.forEach(zeroFacts);
@@ -67,6 +79,23 @@ export function renderView(fb: Framebuffer, scene: RoomScene, seen?: Map<string,
   if (scene.firstPerson) {
     drawFirstPerson(fb, scene.firstPerson);
   }
+}
+
+function withPortalGlows(
+  avatars: readonly Glow[],
+  portals: Portals,
+  pulse: number,
+  shadows: readonly GlowShadow[] | null
+): readonly Glow[] {
+  let count = 0;
+  for (const g of avatars) {
+    allGlows[count++] = g;
+  }
+  for (const g of portalGlows.update(portals, pulse, shadows)) {
+    allGlows[count++] = g;
+  }
+  allGlows.length = count;
+  return allGlows;
 }
 
 /**
@@ -126,11 +155,12 @@ function drawWindow(
   fromCol: number,
   toCol: number
 ): void {
-  const toDest = scene.portals?.list.at(portal)?.toDest;
+  const shown = scene.portals?.list.at(portal);
   const next = windowLevels.at(level);
-  if (!toDest || !next) {
+  if (!shown || !next) {
     return;
   }
+  const { toDest } = shown;
   const beyond = next.scene;
   applyPoint(toDest, scene.eye.x, scene.eye.y, beyond.eye);
   beyond.eye.angle = applyAngle(toDest, scene.eye.angle);
@@ -145,18 +175,41 @@ function drawWindow(
   beyond.people = scene.people;
   beyond.objects = scene.objects;
   beyond.portals = scene.portals;
+  beyond.portalPulse = scene.portalPulse;
+  beyond.portalTime = scene.portalTime;
   drawPass(next.fb, beyond, glows, seen, level + 1);
-  copyWindowRows(next.fb, fb, scene.eye, fromCol, toCol);
+  copyWindowRows(next.fb, fb, scene, shown, fromCol, toCol);
 }
 
-/** Copies each column's window rows, those a wall at its plane would cover, from `from` into `to`. */
-function copyWindowRows(from: Framebuffer, to: Framebuffer, eye: PlayerState, fromCol: number, toCol: number): void {
+/**
+ * Copies each column's window rows, those a wall at its plane would cover, from `from` into `to`, shimmering them
+ * and lighting the opening's rim.
+ */
+function copyWindowRows(
+  from: Framebuffer,
+  to: Framebuffer,
+  scene: PassScene,
+  portal: Portal,
+  fromCol: number,
+  toCol: number
+): void {
   const { width: w, height: h, zbuffer } = to;
-  const { proj } = setView(frameView, to, eye);
+  const { portalPulse: pulse, portalTime: seconds } = scene;
+  const view = setView(frameView, to, scene.eye);
   for (let col = fromCol; col < toCol; col++) {
-    const { start, end } = rowsCovered(h, proj / (zbuffer[col] as number));
+    const depth = zbuffer[col] as number;
+    const openingPx = view.proj / depth;
+    // The opening's top and bottom, unclamped: close to the plane they lie off the frame, and so does the rim.
+    const openingTop = view.half - openingPx / 2;
+    const openingBottom = view.half + openingPx / 2;
+    const { start, end } = rowsCovered(h, openingPx);
+    const sideEdge = openingEdge(view, portal, col, depth, w);
+    startRippleDown(start, col, w, seconds);
     for (let row = start; row < end; row++) {
-      to.pixels[row * w + col] = from.pixels[row * w + col] as number;
+      const rowCentre = row + 0.5;
+      const topOrBottomEdge = toSketchPx(Math.min(rowCentre - openingTop, openingBottom - rowCentre), w);
+      const edge = Math.max(0, Math.min(sideEdge, topOrBottomEdge));
+      to.pixels[row * w + col] = shimmerAndRim(from.pixels[row * w + col] as number, pulse, nextRippleDown(), edge);
     }
   }
 }
@@ -192,6 +245,8 @@ function fitWindowLevels(fb: Framebuffer): void {
         eye: { x: 0, y: 0, angle: 0 },
         lighting: null,
         reflections: 'none',
+        portalPulse: 1,
+        portalTime: 0,
         people: [],
         objects: [],
         portals: null,

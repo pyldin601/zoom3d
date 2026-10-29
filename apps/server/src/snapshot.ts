@@ -70,6 +70,7 @@ export function parseSnapshot(raw: string): LobbySnapshot | null {
         ...(vacuum ? { vacuum } : {}),
         ...(ball ? { ball } : {}),
         ...(r.portals === true ? { portals: true } : {}),
+        ...(r.portalsEverOn === true ? { portalsEverOn: true as const } : {}),
       });
     }
   }
