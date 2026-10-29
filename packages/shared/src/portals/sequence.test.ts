@@ -32,7 +32,7 @@ describe('sequenceAt on and off', () => {
 describe('sequenceTimes', () => {
   test('puts the bend after the countdown and the dark', () => {
     expect(sequenceTimes('first_on')).toEqual({ darkAtMs: 3000, bendAtMs: 5000, lightsAtMs: 7000, endMs: 7000 });
-    expect(sequenceTimes('off').bendAtMs).toBe(500);
+    expect(sequenceTimes('off')).toEqual({ darkAtMs: 0, bendAtMs: 1000, lightsAtMs: 1000, endMs: 1000 });
     expect(sequenceTimes('on')).toEqual({ darkAtMs: 0, bendAtMs: 1000, lightsAtMs: 1000, endMs: 1000 });
   });
 });

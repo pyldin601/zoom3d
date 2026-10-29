@@ -3,7 +3,7 @@ import { createAndJoin, joinAs } from './join';
 
 // Portal sequence spec §2.1: anyone switches the room's portals with Y, and everyone goes through the same sequence.
 // The first switch-on counts down for 3 s, goes dark, bends at 5 s and brings the lamps back at 7 s; every later
-// switch is 1 s of dark: off unbends at 0.5 s, on bends at 1 s as the lamps return.
+// switch is 1 s of dark, bending or unbending at 1 s as the lamps return.
 type GameWindow = { __game: { portalsOn: boolean; sequenceDark(): boolean } };
 
 const portalsOn = (page: Page) => page.evaluate(() => (window as unknown as GameWindow).__game.portalsOn);

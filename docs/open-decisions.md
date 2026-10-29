@@ -715,9 +715,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **The first switch-on in a room (`first_on`), 7 s:** a countdown "Portals will enable in 3…, 2…, 1…" for 3 s, then
     darkness from 3 s. The space bends at 5 s, and the portals light up alone in the dark (windows, rim, spill, hum).
     The lamps return at 7 s.
-  - **Every later switch, on or off (`on`, `off`), 1 s:** a plain blackout with no countdown. The lamps return at 1 s.
-    Switching off unbends the space at 0.5 s, in the dark; switching on bends it at 1 s, so the portals come back
-    together with the lights (the owner's call after playing it, 2026-10-29). The timeline is
+  - **Every later switch, on or off (`on`, `off`), 1 s:** a plain blackout with no countdown. At 1 s the lamps return
+    and the space bends or unbends, so the portals appear or vanish together with the lights (the owner's call after
+    playing it, 2026-10-29; it was 0.5 s, in the dark, before). The timeline is
     `packages/shared/src/portals/sequence.ts`, read by the server and every client.
   - **The debounce follows the sequence** (the owner: "align portals on/off debounce"). Y is ignored while a sequence
     runs in the room, and `PORTALS_FLIP_GAP_MS` is gone. When one ends, the next press starts the next at once.
@@ -734,7 +734,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     past `lightsAtMs`; the lights-on sound plays when the lamps really return. The space never bends in lamp light,
     unless the bend is over 2 s late. A stalled tab can get the press and the bend in one burst, which would show the
     countdown over a bent space: a flag already at the target before `bendAtMs` can only mean that, so the client
-    jumps to the bend (no countdown, no lights-off sound, the dark from there and the lamps 2 s or 0.5 s later).
+    jumps to the bend (no countdown, no lights-off sound; the dark from there and the lamps 2 s later, or at once for a
+    short switch, whose bend and lights share a time).
   - **A countdown pulse, and no flicker in "lights on"** (both the owner's picks by ear in the sound sketch,
     2026-10-29): a short 440 Hz triangle pulse plays as each countdown number shows, at 0, 1 and 2 s of `first_on`
     (skipped when over 300 ms late, like every cue). The fluorescent flicker ticks of "lights on" are gone: it is the

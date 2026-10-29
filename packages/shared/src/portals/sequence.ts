@@ -32,15 +32,11 @@ const FIRST_ON_TIMES: SequenceTimes = {
   lightsAtMs: 7000,
   endMs: 7000,
 };
-/** After the first switch-on, the portals come back with the lights, as the user asked (D30). */
-const ON_TIMES: SequenceTimes = { darkAtMs: 0, bendAtMs: 1000, lightsAtMs: 1000, endMs: 1000 };
-const OFF_TIMES: SequenceTimes = { darkAtMs: 0, bendAtMs: 500, lightsAtMs: 1000, endMs: 1000 };
+/** After the first switch-on, the portals appear or vanish together with the lights, as the user asked (D30). */
+const SHORT_TIMES: SequenceTimes = { darkAtMs: 0, bendAtMs: 1000, lightsAtMs: 1000, endMs: 1000 };
 
 export function sequenceTimes(kind: SequenceKind): SequenceTimes {
-  if (kind === 'first_on') {
-    return FIRST_ON_TIMES;
-  }
-  return kind === 'on' ? ON_TIMES : OFF_TIMES;
+  return kind === 'first_on' ? FIRST_ON_TIMES : SHORT_TIMES;
 }
 
 const frame: SequenceFrame = { countdown: null, dark: false, ended: false };
