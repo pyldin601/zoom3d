@@ -1,6 +1,6 @@
 # Seeing yourself through a portal
 
-Date: 2026-10-29. Status: draft for review. A small change; it closes a known gap in D27 ("a player never sees
+Date: 2026-10-29. Status: implemented. A small change; it closes a known gap in D27 ("a player never sees
 themselves through a portal loop").
 
 ## Intent
@@ -12,7 +12,9 @@ to be able to see themselves through a portal, exactly as others see them.
 ## What it does
 
 - **The local player's own avatar is drawn in window views only:**
-  - their face disc with their live face (or ring colour), ring and speaking glow;
+  - their face disc with their live face, or with the camera off the face others see then (their avatar picture,
+    or else their initials disc), and their ring;
+  - no speaking glow: [D27's amendment](../../open-decisions.md) drops it, as the room keeps no level of the own mic;
   - what they hold (a drink or a boombox);
   - their walking bob;
   - their name label.

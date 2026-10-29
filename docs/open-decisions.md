@@ -565,6 +565,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
       (`imagePosition`, the apparent-position search without its straight line). The main pass draws neither, and the
       label stays out of `labels`, which the automap reads. The own disc has no speaking glow: the room keeps no level
       of the own mic. The own face is read back only while a window shows the own disc, at 128² doubled to 256².
+      With the camera off or giving no picture, the own disc shows the face others see then: the avatar picture, or
+      else the initials disc, built once per visit by the same `createFace` (never given a video), so no readback.
   - **Measured** (2026-10-28, against base 0572557, origin/main when the branch was cut; LEVEL1 at 640×360, lit, reflections `both`; the machine was loaded, read the ratios):
     - `bench:walls`, existing modes with portals off: unchanged hashes, `both` 1.51 ms on the base vs 1.56 ms here.
       From 1.5 tiles in front of 8 doorways: `renderWalls` 1.58 ms off, 0.92 ms on (the window passes are cheaper than
