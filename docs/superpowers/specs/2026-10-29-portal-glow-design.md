@@ -48,7 +48,15 @@ part.
 ### 2.4 The spill: pink light in front of the doorway (the user chose option 2)
 
 - **A pulsing pink light at each portal doorway**, lighting the floor, walls and ceiling around it. It works like
-  avatar glow (`renderer/glow.ts`): per frame, short reach, no shadows.
+  avatar glow (`renderer/glow.ts`): per frame, short reach.
+  - **Walls cast its shadows** *(amended 2026-10-29, the user's call)*. A floor cell, ceiling cell or wall sample is
+    lit only as much as it sees the glow, the way lamps light things: soft edges across a disc of radius `LAMP_RADIUS`
+    (`seenShare`). Why: a screenshot of a doorway in a recess showed the pink lighting the floor and the side face of
+    the block beside it, which the walls should hide. Avatar glows still cast none: they move, and their reach is
+    short.
+  - A portal glow never moves, so its shadow is a fixed table: baked per portal with the room's portals-on lighting
+    (`bakePortalLighting`, `Lighting.portalGlowSeen`), one share per floor cell within its reach. A wall sample looks
+    it up just in front of the wall. An unlit room (`?lights=off`) has no table, and no glow light at all.
   - **People and objects are not lit by it** *(our call)*. Avatar glow doesn't light them either; the glow reaches
     only the walls (`findColumnGlows`) and the floor and ceiling tables (`addGlow`). Lighting sprites and voxels would
     be new work in their paths.
