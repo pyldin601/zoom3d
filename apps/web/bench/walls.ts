@@ -8,7 +8,7 @@
 // portals off (the plain table) and on (the portals-on table).
 import { LEVEL1, parseMap, tileAt, wirePortals } from '@zoom3d/shared';
 import { createFramebuffer } from '../src/renderer/framebuffer';
-import type { Glow } from '../src/renderer/glow';
+import { createPortalGlows, type Glow } from '../src/renderer/glow';
 import { bakeLighting, bakePortalLighting, corridorLights, type Lighting } from '../src/renderer/lighting';
 import { averageColour, makeTextures } from '../src/renderer/textures';
 import { CEILING, FLOOR, type Room, renderWalls } from '../src/renderer/walls';
@@ -65,8 +65,8 @@ for (const mode of MODES) {
 }
 
 // Portals on (portal doorways spec): the same lit frame from 1.5 tiles in front of each of up to 8 doorways, looking in,
-// timed with the room's portals off and on, each lit by its own table, with the hash of the on frames beside the off
-// hashes above.
+// timed with the room's portals off and on, each lit by its own table and, when on, by the doorways' glows, with the
+// hash of the on frames beside the off hashes above.
 const portals = wirePortals(map, 'bench-room');
 const doorwayPoses: Pose[] = portals.list.slice(0, 8).map((p) => ({
   x: p.cx - p.nx * 1.5,
@@ -83,13 +83,19 @@ console.log(
     `lighting hash ${lightingHash(portalLighting)}`
 );
 room.reflections = 'both';
+/** With portals on, each doorway's pink glow (D29), at the top of its pulse, is lit like the avatars'. */
+const portalGlows = [...createPortalGlows().update(portals, 1)];
+const glowsWith = (state: 'off' | 'on', avatars: readonly Glow[]) =>
+  state === 'on' ? [...avatars, ...portalGlows] : avatars;
+const doorwayGlows = { off: glowsWith('off', []), on: glowsWith('on', []) };
+const crowdGlowsFor = { off: glowsWith('off', crowd), on: glowsWith('on', crowd) };
 const portalHashes = { off: 0, on: 0 };
 for (const state of ['off', 'on'] as const) {
   room.portals = state === 'on' ? portals : null;
   room.lighting = state === 'on' ? portalLighting : lighting;
   for (const pose of doorwayPoses) {
     room.eye = pose;
-    renderWalls(fb, room);
+    renderWalls(fb, room, doorwayGlows[state]);
     for (const c of fb.pixels) {
       portalHashes[state] = (Math.imul(portalHashes[state], 31) + c) | 0;
     }
@@ -104,7 +110,7 @@ for (let round = 0; round < ROUNDS; round++) {
     const frames = doorwayPoses.length * 20;
     for (let f = 0; f < frames; f++) {
       room.eye = doorwayPoses.at(f % doorwayPoses.length) ?? room.eye;
-      renderWalls(fb, room);
+      renderWalls(fb, room, doorwayGlows[state]);
     }
     portalTimes[state].push((performance.now() - start) / frames);
   }
@@ -123,7 +129,7 @@ for (const state of ['off', 'on'] as const) {
   room.lighting = state === 'on' ? portalLighting : lighting;
   for (const pose of crowdPoses) {
     room.eye = pose;
-    renderWalls(fb, room, crowd);
+    renderWalls(fb, room, crowdGlowsFor[state]);
     for (const c of fb.pixels) {
       crowdHashes[state] = (Math.imul(crowdHashes[state], 31) + c) | 0;
     }
@@ -138,7 +144,7 @@ for (let round = 0; round < ROUNDS; round++) {
     const frames = poses.length * FRAMES_PER_POSE;
     for (let f = 0; f < frames; f++) {
       room.eye = poses.at(f % poses.length) ?? room.eye;
-      renderWalls(fb, room, crowd);
+      renderWalls(fb, room, crowdGlowsFor[state]);
     }
     crowdTimes[state].push((performance.now() - start) / frames);
   }
