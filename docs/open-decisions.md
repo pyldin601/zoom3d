@@ -729,8 +729,11 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Darkness is a table swap, never a dimming factor.** A third lighting table per room has no lamps, ambient 0 and no
     bounce, so it costs nothing per frame. Glows add their light on top as usual: faces keep their own brightness (they
     were never lamp-shaded) and the portal glows keep their shadows, because the table reuses the portals-on table's
-    `portalGlowSeen`. It adds about 20 ms to the lobby bake. Labels, the status line and the automap stay as they are.
-    Unlit rooms (`?lights=off`) still get the countdown and sounds, and the frame doesn't go dark.
+    `portalGlowSeen`. It adds about 20 ms to the lobby bake (measured 2026-10-29 on an Apple M5 under Node 22: a cold
+    bake of LEVEL1's dark table, the first in a fresh process, took 19.0, 20.2 and 21.5 ms, median 20.2; after the
+    plain and portals-on tables, as `createRoomLighting` bakes it, the median was 22.0 ms). Labels, the status line
+    and the automap stay as they are. Unlit rooms (`?lights=off`) still get the countdown and sounds, and the frame
+    doesn't go dark.
   - **Dark windows (the owner's choice).** A portal window reads the same black table, so a lit portal in the dark is a
     glowing pink frame around a black opening, and gives away nothing about where it leads.
   - **`portalsEverOn` is set at the bend,** not at the press, and is saved in the state file beside `portals`
@@ -747,10 +750,16 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Measured** (2026-10-29): with no sequence running, every portals-off hash is unchanged. `bench:walls`: pixel
     -601092469, doorway off -1246551896, crowd off 2075427884. `bench:sprites`: 1236007431, doorway scenes off
     -1373330069.
-  - Known small gaps:
-    - A resume welcome mid-sequence can replay a cue within 300 ms of its moment.
-    - The welcome doesn't advance a due bend; it fixes itself within a tick.
-    - `playUnplaced` with a send above 0 would leave a silent gain (unused).
+  - **Review fixes (2026-10-29):**
+    - The lamps wait for the bend (above).
+    - The sounds play in hidden tabs too: the hidden tick (100 ms) is within a cue's 300 ms lateness.
+    - A resume welcome's restamp is the same sequence when it is of the same kind and within 500 ms of the first
+      stamp. The client keeps the first stamp, so the timeline never steps back into the dark, and no cue replays.
+    - The lobby advances a room's sequence before any welcome, so a welcome never carries one past its end (a fresh
+      join heard lights-on) and a due bend goes out first.
+    - The switch sounds play nothing while the `AudioContext` isn't running, so a suspended one can't play them
+      stale later.
+    - `playUnplaced` lost its unused reverb send, and the session its unused `sequenceStarted` listener.
   - Not done: a listen to the sounds' level in the game; fades (the lights switch instantly, by design).
 
 ## Resolved

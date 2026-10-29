@@ -102,10 +102,15 @@ game's scaling; "reverb" is a dry/wet send to a decaying-noise impulse of the gi
 - **The bend is the server's.** At the bend moment, the server flips the room's flag and broadcasts the existing
   `{ type: 'portals', on }`. Clients bend their space on that message, as today.
   - The portals' glow and hum follow the flag, as they do now, so they appear when the space bends.
-  - The darkness and the sounds follow the sequence's timeline.
+  - The darkness and the three sounds follow the sequence's timeline, except that the lamps wait for the bend
+    (amended 2026-10-29, D30): from the dark, a client stays dark while its flag differs from the sequence's target,
+    up to 2 s past the lamps' moment, and the lights-on sound plays when they really return. A flag at the target
+    before the bend's moment means a stalled tab got the press and the bend together: the client jumps to the bend.
 - **Joining or resuming mid-sequence:** the welcome carries `sequence?: { kind, age }` while one is running. The
   client jumps to the right step, for example straight into the dark. A sound whose moment has passed by more than
-  about 0.3 s is not played late *(our call)*.
+  about 0.3 s is not played late *(our call)*. The welcome is built after the server advances the sequence, so it
+  never carries one past its end. A resume welcome restamps the running sequence: a stamp of the same kind within
+  500 ms of the first is the same sequence, and the client keeps its first stamp.
 - **`PROTOCOL_VERSION` 4 → 5.**
 
 ### 2.6 Remembering the first switch-on
@@ -122,14 +127,14 @@ game's scaling; "reverb" is a dry/wet send to a decaying-noise impulse of the gi
 
 **Goals:**
 - Everyone in a room sees the countdown, the darkness, the lone glowing portals and the lamps returning together,
-  within tens of milliseconds, with the two sounds.
+  within tens of milliseconds, with the three sounds.
 - The first switch-on is the big one; every later switch is a quick blackout.
 
 **Non-goals:**
 - Fades: the lights switch instantly.
 - A countdown for later switches or for switching off.
 - A setting to skip the sequence.
-- Spatial placement of the two sounds.
+- Spatial placement of the three sounds.
 
 **Anti-goals (a failure even if it works):**
 - Players out of step by more than their own network delay (no step may add its own wobble on top).
@@ -171,4 +176,4 @@ game's scaling; "reverb" is a dry/wet send to a decaying-noise impulse of the gi
   all.
 - **Where the black table is baked and how it is picked,** alongside `createRoomLighting` and `describeScene`.
 - **How faces keep their own brightness in the dark,** if discs are shaded by the lighting today.
-- **How the two sounds bypass placement** but still reach the reverb through the audio engine.
+- **How the three sounds bypass placement** but still reach the reverb through the audio engine.
