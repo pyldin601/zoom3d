@@ -224,9 +224,7 @@ function lightingHash(lm: Lighting): number {
     lm.faceOffset,
     lm.faceRun,
     lm.wall,
-    lm.wallLamp,
     lm.wallLampSeen,
-    lm.floorLamp,
     lm.floorLampSeen,
     lm.floor,
     lm.ceiling,
@@ -237,6 +235,12 @@ function lightingHash(lm: Lighting): number {
       hash = (Math.imul(hash, 31) + word) | 0;
     }
     hash = (Math.imul(hash, 31) + table.length) | 0;
+  }
+  for (const lampList of [lm.wallLamp, lm.floorLamp]) {
+    for (const lamp of lampList) {
+      hash = (Math.imul(hash, 31) + lamp) | 0;
+    }
+    hash = (Math.imul(hash, 31) + lampList.length) | 0;
   }
   return hash;
 }
