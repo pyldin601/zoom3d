@@ -739,8 +739,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     later switch-on, whose bend and lights share a time).
   - **A countdown pulse, and no flicker in "lights on"** (both the owner's picks by ear in the sound sketch,
     2026-10-29): a short 440 Hz triangle pulse plays as each countdown number shows, at 0, 1 and 2 s of `first_on`
-    (skipped when over 300 ms late, like every cue). The fluorescent flicker ticks of "lights on" are gone: it is the
-    breaker click and the hum.
+    (skipped when over 300 ms late, like every cue). It rings on through a big room, a 3.5 s reverb at 0.7 wet, as the
+    owner asked for a bigger acoustic after playing a 1.2 s one. The fluorescent flicker ticks of "lights on" are gone:
+    it is the breaker click and the hum.
   - **Darkness is a table swap, never a dimming factor.** A third lighting table per room has no lamps, ambient 0 and no
     bounce, so it costs nothing per frame. Glows add their light on top as usual: faces keep their own brightness (they
     were never lamp-shaded) and the portal glows keep their shadows, because the table reuses the portals-on table's

@@ -50,10 +50,11 @@ const LIGHTS_ON = {
   humLevel: 0.045,
 };
 
+/** Rings on through a big room (the user: "like it happens in the real room"), hence the long, wet tail. */
 const COUNTDOWN = {
   level: 0.3,
-  tailS: 1.2,
-  wet: 0.3,
+  tailS: 3.5,
+  wet: 0.7,
   hz: 440,
   peak: 0.5,
   attackS: 0.003,
