@@ -179,16 +179,28 @@ export function shadeFloor(
     const l = lm.lights[li] as Light;
     pass++;
     for (const v of objects) {
-      if (reaches(v, l)) {
+      if (casts(lm, v, l)) {
         shadeBox(lm, objects, li, l, v, albedo, tables, inView);
       }
     }
   }
 }
 
+/** Whether object `v` casts a shadow from lamp `l` that shows. */
+const casts = (lm: Lighting, v: VoxelInstance, l: Light) => reaches(v, l) && !behindPortalOf(lm, v, l);
+
 /** Whether object `v`'s shadow from lamp `l` shows: it stands within the reach of the lamp's light or its cut reflection. */
 const reaches = (v: VoxelInstance, l: Light) =>
   (v.x - l.x) ** 2 + (v.y - l.y) ** 2 < (l.radius * REFLECTION_CUT_REACH) ** 2;
+
+/**
+ * Whether `l` is a copy and object `v` stands behind the plane of the portal it is seen through. The copy sits behind
+ * that plane too, but only the floor in front sees it, and from there the window shows the destination, not `v`.
+ */
+function behindPortalOf(lm: Lighting, v: VoxelInstance, l: Light): boolean {
+  const portal = l.through === undefined ? undefined : lm.portals?.list.at(l.through);
+  return portal !== undefined && (v.x - portal.cx) * portal.nx + (v.y - portal.cy) * portal.ny >= 0;
+}
 
 /**
  * How much of a shadow's cut of lamp `l`'s reflection shows `distance` tiles from it: all of it within the lamp's
@@ -247,7 +259,7 @@ function shadeBox(
       if ((lamp * brightest < UNSEEN_LOSS && cut === 0) || tileAt(lm.map, Math.floor(x), Math.floor(y)) !== 0) {
         continue;
       }
-      const objectSeen = seenPastObjects(objects, l, x, y);
+      const objectSeen = seenPastObjects(lm, objects, l, x, y);
       if (objectSeen === 1) {
         continue;
       }
@@ -258,10 +270,10 @@ function shadeBox(
 }
 
 /** How much of lamp `l` the floor at (x, y) sees past every object it lights round: the product of their shares. */
-function seenPastObjects(objects: readonly VoxelInstance[], l: Light, x: number, y: number): number {
+function seenPastObjects(lm: Lighting, objects: readonly VoxelInstance[], l: Light, x: number, y: number): number {
   let seen = 1;
   for (const v of objects) {
-    if (reaches(v, l)) {
+    if (casts(lm, v, l)) {
       seen *= objectSeenShare(v, l, x, y);
     }
   }
