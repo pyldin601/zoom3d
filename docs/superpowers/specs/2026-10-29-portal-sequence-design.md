@@ -58,7 +58,8 @@ the lamps; they approved the sketch by ear).
 - **Portals on**, when the portals light up (only when they turn on; a switch-off has no sound at its bend).
 - **Lights on**, when the lamps come back: a breaker click, fluorescent flicker, then a faint mains hum.
 - **All play for everyone, at the same level wherever each person stands.** They are not placed in the room; they
-  are the building's power. They go through the room's reverb.
+  are the building's power. They go through the room's reverb: each sound's own tail from the recipe below, with
+  no send into the voices' shared reverb, whose short tail would change the approved sound.
 - **Their level sits under voices.** The sketch's levels are relative; the game scales them so the loudest stays
   under a voice.
 

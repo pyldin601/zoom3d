@@ -1,7 +1,7 @@
 import { DEFAULT_AUDIO_SETTINGS, parseMap, voiceGains } from '@zoom3d/shared';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { createAudioEngine, makeImpulse, speakingLevel } from './engine';
-import { asAudioContext, FakeAudioContext, type FakeNode, type FakeParam } from './fake-audio';
+import { asAudioContext, FakeAudioContext, FakeNode, type FakeParam } from './fake-audio';
 
 const OPEN = parseMap('1111111\n1.....1\n1.....1\n1S....1\n1111111');
 const WALLED = parseMap('1111111\n1..1..1\n1..1..1\n1S.1..1\n1111111');
@@ -308,5 +308,24 @@ describe('attachNode', () => {
     e.detach('b');
     expect(node.disconnected).toBe(true);
     expect(one('panner').disconnected).toBe(true);
+  });
+});
+
+describe('playUnplaced', () => {
+  test('sends the node straight out and into the shared reverb, with no panner or distance', () => {
+    const node = new FakeNode('synth');
+    engine().playUnplaced(node as unknown as AudioNode, 0.2);
+    const convolver = one('convolver');
+    expect(node.connections[0]).toBe(ctx.destination);
+    const send = node.connections[1] as FakeNode & { gain: FakeParam };
+    expect(send.gain.value).toBe(0.2);
+    expect(send.connections).toEqual([convolver]);
+    expect(ctx.byKind('panner')).toHaveLength(0);
+  });
+
+  test('a send of 0 goes out dry only', () => {
+    const node = new FakeNode('synth');
+    engine().playUnplaced(node as unknown as AudioNode, 0);
+    expect(node.connections).toEqual([ctx.destination]);
   });
 });

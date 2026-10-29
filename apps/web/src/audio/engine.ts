@@ -40,6 +40,11 @@ export interface AudioEngine {
   /** A synthesised source played from `owner`'s position through the voice path; no analyser, never "speaking". */
   attachNode(key: string, node: AudioNode, owner?: string): void;
   detach(peerId: string): void;
+  /**
+   * A synthesised sound heard at the same level wherever the listener stands: `node` goes straight out, with `send`
+   * of it into the room's reverb. The caller disconnects `node` when the sound is over.
+   */
+  playUnplaced(node: AudioNode, send: number): void;
   update(now: number, listener: PlayerState, sources: ReadonlyMap<string, Source>): void;
   /** 0..1 speaking indicator. */
   speaking(peerId: string): number;
@@ -330,6 +335,15 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
     },
 
     detach,
+
+    playUnplaced(node, send) {
+      node.connect(ctx.destination);
+      if (send > 0) {
+        const sendGain = ctx.createGain();
+        sendGain.gain.value = send;
+        node.connect(sendGain).connect(reverb);
+      }
+    },
 
     update(now, listener, sources) {
       const t = ctx.currentTime;

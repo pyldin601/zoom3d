@@ -6,6 +6,7 @@ import { createDoorbell, withDoorbell } from '../audio/doorbell';
 import { type AudioEngine, createAudioEngine } from '../audio/engine';
 import { createObjectSounds, type ObjectSounds } from '../audio/object-sounds';
 import { createPortalHums, type PortalHums } from '../audio/portal-hum';
+import { createPortalSwitchSounds, type PortalSwitchSounds } from '../audio/portal-switch-sound';
 import { type Boombox, createBoombox } from '../media/boombox';
 import { type Call, createCall } from '../media/call';
 import { createFace } from '../media/faces';
@@ -35,6 +36,8 @@ export interface Room {
   portals(): Portals | null;
   /** The room's running portal switch, moved on once per frame by the room loop. */
   readonly sequence: PortalSequencePlayer;
+  /** The sequence's lights-off, portals-on and lights-on sounds. */
+  readonly switchSounds: PortalSwitchSounds;
   /**
    * The baked lamp light for this frame: the black table while `dark`, else the portals-on one while `portals()` isn't
    * null, else the page's.
@@ -93,6 +96,7 @@ export function joinRoom(opts: JoinOptions): Room {
   }
   const lighting = (dark: boolean) => roomLighting.lighting(portals() !== null, dark);
   const sequence = createPortalSequence();
+  const switchSounds = createPortalSwitchSounds(opts.audioCtx, audio);
   return {
     session: joined,
     call,
@@ -104,6 +108,7 @@ export function joinRoom(opts: JoinOptions): Room {
     ball,
     portals,
     sequence,
+    switchSounds,
     lighting,
     kick,
   };

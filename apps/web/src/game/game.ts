@@ -93,6 +93,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     input,
     screen,
     hud: page.hudCtx,
+    ui: page.ui,
     frameRate: frameRateMeter,
     statusLine: createStatusLine(page.ui),
     room: () => room,
@@ -124,6 +125,8 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
       get audio() {
         return room?.audio ?? null;
       },
+      /** Whether the room's portal sequence has its lamps out now. */
+      sequenceDark: () => room?.sequence.dark ?? false,
       /** Whether the room's portals are on, as this client sees it. */
       get portalsOn() {
         return room?.portals() !== null && room !== null;
