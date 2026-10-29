@@ -1,9 +1,11 @@
 // Multiplayer wire protocol: message types, constants and strict validators.
 
+import type { SequenceKind } from '../portals/sequence';
+
 /** People per room (bots don't count). To revisit after the 100-person load test (D21). */
 export const MAX_PEERS = 128;
 /** Sent in every join; a join without it, or with an older one, comes from a tab opened before an update. */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 /** Bots a room may be created with (opt-in via the room link's `?bots=N`), outside MAX_PEERS. */
 export const MAX_BOTS = 100;
 export const NAME_MAX = 24;
@@ -124,6 +126,12 @@ const ERROR_CODES: readonly ErrorCode[] = ['room_full', 'invalid_room', 'invalid
  */
 export type PeerEntry = [slot: number, x: number, y: number, angle: number, age: number];
 
+/** A running portal switch: its kind and how many ms ago it was pressed. */
+export interface PortalSequence {
+  kind: SequenceKind;
+  age: number;
+}
+
 export type ServerMessage =
   | {
       type: 'welcome';
@@ -135,6 +143,8 @@ export type ServerMessage =
       livekit: LiveKitAccess;
       objects: ObjectInfo[];
       portals: boolean;
+      /** Present while a portal switch is running; `age` is ms since its press. */
+      sequence?: PortalSequence;
     }
   | { type: 'peer_joined'; peer: PeerInfo }
   | { type: 'peer_media'; id: string; cam: boolean; mic: boolean }
@@ -145,6 +155,7 @@ export type ServerMessage =
   | { type: 'peer_left'; id: string }
   | { type: 'peers'; s: PeerEntry[] }
   | { type: 'portals'; on: boolean }
+  | ({ type: 'portals_sequence' } & PortalSequence)
   | {
       type: 'object_state';
       id: string;
@@ -378,6 +389,16 @@ function velocity(m: Obj): { vx: number; vy: number } | Record<string, never> {
   return isNum(m.vx) && isNum(m.vy) ? { vx: m.vx, vy: m.vy } : {};
 }
 
+const SEQUENCE_KINDS: readonly SequenceKind[] = ['first_on', 'on', 'off'];
+
+/** Validates a kind and an age; anything else (including a newer server's kind) reads as null. */
+function portalSequence(v: unknown): PortalSequence | null {
+  if (!isObj(v) || !SEQUENCE_KINDS.includes(v.kind as SequenceKind) || !isNum(v.age) || v.age < 0) {
+    return null;
+  }
+  return { kind: v.kind as SequenceKind, age: v.age };
+}
+
 export function parseServerMessage(raw: string): ServerMessage | null {
   const m = parseJson(raw, MAX_SERVER_MESSAGE_BYTES);
   if (!m) {
@@ -391,6 +412,7 @@ export function parseServerMessage(raw: string): ServerMessage | null {
       }
       const livekit = liveKitAccess(m.livekit);
       const peers = m.peers.map(parsePeerInfo);
+      const sequence = portalSequence(m.sequence);
       if (!livekit || peers.some((p) => p === null)) {
         return null;
       }
@@ -408,6 +430,7 @@ export function parseServerMessage(raw: string): ServerMessage | null {
           : [],
         // Missing from an older server: the portals are off.
         portals: m.portals === true,
+        ...(sequence ? { sequence } : {}),
       };
     }
     case 'peer_joined': {
@@ -433,6 +456,10 @@ export function parseServerMessage(raw: string): ServerMessage | null {
       return Array.isArray(m.s) ? { type: 'peers', s: m.s.filter(isPeerEntry) } : null;
     case 'portals':
       return isBool(m.on) ? { type: 'portals', on: m.on } : null;
+    case 'portals_sequence': {
+      const sequence = portalSequence(m);
+      return sequence && { type: 'portals_sequence', ...sequence };
+    }
     case 'object_state': {
       const p = pose(m);
       if (!p || !isStr(m.id) || !isSeq(m.seq)) {
