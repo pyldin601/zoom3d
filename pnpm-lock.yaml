@@ -207,8 +207,8 @@ importers:
         specifier: 0.28.2
         version: 0.28.2
       livekit-server-sdk:
-        specifier: 2.19.1
-        version: 2.19.1
+        specifier: 2.19.2
+        version: 2.19.2
       tsx:
         specifier: 4.23.15
         version: 4.23.15
@@ -1120,8 +1120,8 @@ packages:
     peerDependencies:
       '@types/dom-mediacapture-record': ^1
 
-  livekit-server-sdk@2.19.1:
-    resolution: {integrity: sha512-tqjM5oPDDNBrkb/64YReta9UWP32l1a2m0HHXq8WOuEzwxh4zsaXjeZZtPG4Er4eVAk4kjR+EMxH7lPKzg1g6g==}
+  livekit-server-sdk@2.19.2:
+    resolution: {integrity: sha512-aNb7iZOdMYWjg3X227GO9i/jWsqR6uiUa2le3T0JOaK+FwE3bMx+bEhHVoSioMFL4LQ4xk4ztz1H8TKxIPjq1w==}
     engines: {node: '>=19'}
 
   loglevel@1.9.2:
@@ -2017,7 +2017,7 @@ snapshots:
       typed-emitter: 2.1.0
       webrtc-adapter: 9.0.6
 
-  livekit-server-sdk@2.19.1:
+  livekit-server-sdk@2.19.2:
     dependencies:
       '@bufbuild/protobuf': 1.10.1
       '@livekit/protocol': 1.51.0
