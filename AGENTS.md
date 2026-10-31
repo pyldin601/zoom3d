@@ -194,7 +194,8 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   - **Item:** key 9 holds it. It is a `HeldItem` with no gestures, so `isDrink` guards every sip and cheers.
   - **Light:** a glow with a `cone` and its own `reach`, plus a pooled shadow table refilled only per floor cell
     (`renderer/lighter.ts`). Glows with no cone and `reach: GLOW_RADIUS` must keep drawing exactly as before.
-  - **Not covered:** it makes no reflections and doesn't light anything through a portal.
+  - **Not covered:** it makes no reflections and doesn't light anything through a portal. It lights objects (and their
+    floor images) through `objectGlows`, which face and portal glows never join.
 - Telemetry privacy: logs, metrics labels, Sentry and Amplitude never get names, resume tokens or IPs, nor raw room
   ids: a room link is the room's only key. Server logs use `roomRef()` (a short hash), and the browser Sentry
   `beforeSend` scrubs `/r/<id>`.

@@ -133,6 +133,20 @@ describe('renderView with a lighter', () => {
     expect(firstDifference(frameOf(eye, []), frameOf(eye, [{ ...holder, x: 4.5 }]))).toBe(-1);
   });
 
+  test('a lighter lights the vacuum in front of it', () => {
+    const eye = { x: 1.5, y: 1.5, angle: EAST };
+    const vacuum = [{ model: VACUUM_MODEL, x: 4, y: 1.5, angle: 0 }];
+    const draw = (lighters: RoomScene['lighters']) => {
+      const fb = createFramebuffer();
+      renderView(fb, { ...portalScene(map, null, eye, [], dark), lighters, objects: vacuum });
+      return fb.pixels;
+    };
+    // Its glow on the floor and walls is the same in both: only the vacuum and its floor image differ.
+    const withoutVacuum = frameOf(eye, [holder]);
+    const red = (pixels: Uint32Array) => pixels.reduce((sum, c) => sum + (c & 0xff), 0);
+    expect(red(draw([holder])) - red(withoutVacuum)).toBeGreaterThan(red(draw([])) - red(frameOf(eye, [])));
+  });
+
   test("the local player's own lighter lights the way ahead too", () => {
     const eye = { x: 1.5, y: 1.5, angle: EAST };
     const fb = createFramebuffer();

@@ -62,8 +62,11 @@ export interface FirstPerson {
 const avatarGlows = createAvatarGlows();
 const portalGlows = createPortalGlows();
 const lighterGlows = createLighterGlows();
+const NO_GLOWS: readonly Glow[] = [];
 /** The avatar glows, the lighters' then the portal glows, when portals are on: one list reused from frame to frame. */
 const allGlows: Glow[] = [];
+/** This frame's lighter glows: besides the room, they light the objects. */
+let objectGlows: readonly Glow[] = [];
 /** The scene's lighters, then the own one: one list reused from frame to frame. */
 const lighterSources: LighterSource[] = [];
 
@@ -131,10 +134,11 @@ function gatherGlows(scene: RoomScene): readonly Glow[] {
   for (const g of avatarGlows.update(scene.people, scene.ownGlow)) {
     allGlows[count++] = g;
   }
-  if (scene.lighting) {
-    for (const g of lighterGlows.update(listLighters(scene), scene.map, scene.portals ?? null, scene.lighterSeconds)) {
-      allGlows[count++] = g;
-    }
+  objectGlows = scene.lighting
+    ? lighterGlows.update(listLighters(scene), scene.map, scene.portals ?? null, scene.lighterSeconds)
+    : NO_GLOWS;
+  for (const g of objectGlows) {
+    allGlows[count++] = g;
   }
   if (scene.portals) {
     for (const g of portalGlows.update(scene.portals, scene.portalPulse, scene.lighting?.portalGlowSeen ?? null)) {
@@ -345,11 +349,11 @@ export function renderHud(hud: CanvasRenderingContext2D, fb: Framebuffer, scene:
 }
 
 function drawRoom(fb: Framebuffer, scene: PassScene, glows: readonly Glow[]): void {
-  renderWalls(fb, scene, glows);
+  renderWalls(fb, scene, glows, objectGlows);
 }
 
 function drawPeopleAndObjects(fb: Framebuffer, scene: PassScene, seen: Map<string, PeerFacts> | undefined): void {
-  renderSprites(fb, scene, seen);
+  renderSprites(fb, scene, seen, objectGlows);
 }
 
 function drawFirstPerson(fb: Framebuffer, hands: FirstPerson): void {

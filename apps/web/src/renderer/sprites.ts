@@ -6,6 +6,7 @@ import type { PeerFacts } from '../media/interest';
 import { BOOMBOX_LEFT, BOOMBOX_SPRITE, BOOMBOX_TOP } from './boombox';
 import { createView, EYE_HEIGHT, isWindowPass, MIN_DEPTH, type Pass, setView, type View, WHOLE_FRAME } from './camera';
 import { type Framebuffer, rgb, scaleRgb } from './framebuffer';
+import type { Glow } from './glow';
 import {
   blitHeldSprite,
   CHEERS_LEFT,
@@ -152,6 +153,9 @@ const frameView = createView();
 const projections: Projection[] = [];
 /** People in front of the camera, far to near. */
 const visible: number[] = [];
+const NO_GLOWS: readonly Glow[] = [];
+/** The glows that light the objects this call draws: the lighters'. */
+let objectGlows = NO_GLOWS;
 // The depth sorts return Math.sign: sort can't inline its comparator, and a small integer isn't boxed as a double is.
 const spritesFarFirst = (a: number, b: number) =>
   Math.sign((projections[b] as Projection).depth - (projections[a] as Projection).depth);
@@ -172,7 +176,13 @@ const shadow: FloorShadow = { x: 0, y: 0, depth: 0, radius: 0, strength: 0 };
  * disc's diameter (both 0 when not drawn); every key in the map is zeroed first, and objects are reused. A window's
  * pass adds its columns to the facts instead, and keeps the larger diameter.
  */
-export function renderSprites(fb: Framebuffer, scene: PeopleAndObjects, facts?: Map<string, PeerFacts>): void {
+export function renderSprites(
+  fb: Framebuffer,
+  scene: PeopleAndObjects,
+  facts?: Map<string, PeerFacts>,
+  glowsOnObjects: readonly Glow[] = NO_GLOWS
+): void {
+  objectGlows = glowsOnObjects;
   const view = setView(frameView, fb, scene.eye);
   const pass = scene.pass ?? WHOLE_FRAME;
   bindFacts(scene.people, facts, pass);
@@ -405,7 +415,7 @@ const depthOfVoxel = (k: number) => voxelDepths[voxelOrder[k] as number] as numb
 
 /** Draws the `k`th object in voxelOrder. */
 function drawVoxel(fb: Framebuffer, view: View, { objects, lighting }: PeopleAndObjects, k: number, pass: Pass): void {
-  renderVoxel(fb, view, objects[voxelOrder[k] as number] as VoxelInstance, lighting, pass);
+  renderVoxel(fb, view, objects[voxelOrder[k] as number] as VoxelInstance, lighting, pass, objectGlows);
 }
 
 /** One avatar: its disc, then the drink and boombox it carries in front of it. */

@@ -801,8 +801,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     - reflections of any kind (the owner tried floor reflections in the design and set them aside);
     - light coming out through a portal's destination;
     - shadows cast by people and objects;
-    - lighting voxel objects (face glow doesn't either);
     - drawing in unlit and flat rooms.
+  - **It lights the vacuum and the ball** (the owner asked, 2026-10-31): per face direction, as a lamp does, and their
+    floor images too. Face and portal glows still don't, so every existing hash in `bench:walls` and `bench:sprites`
+    is unchanged.
   - **Through portals,** the shadow table uses the portal-aware sight test, so the light stops at a doorway's front
     instead of spilling into the room physically behind it.
   - **Starting values, untuned by play:**

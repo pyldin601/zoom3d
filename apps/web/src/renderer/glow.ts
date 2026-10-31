@@ -177,6 +177,31 @@ export function coneFactor(g: Glow, x: number, y: number): number {
   return t * t * (3 - 2 * t);
 }
 
+/**
+ * How much of glow `g` reaches the point (x, y, z) of an object, before splitting it over the object's faces: the
+ * falloff, its cone and its shadow, as glowLight has them, but without a surface's facing. 0..1.
+ */
+export function glowReaching(g: Glow, x: number, y: number, z: number): number {
+  if (hiddenByCut(g, x, y)) {
+    return 0;
+  }
+  const ahead = coneFactor(g, x, y);
+  if (ahead === 0) {
+    return 0;
+  }
+  const dx = g.x - x;
+  const dy = g.y - y;
+  const dz = EYE_HEIGHT - z;
+  const d2 = dx * dx + dy * dy + dz * dz;
+  const reach2 = g.reach * g.reach;
+  if (d2 >= reach2) {
+    return 0;
+  }
+  const seen = g.shadow ? shadowSeen(g.shadow, x, y) : 1;
+  const k = 1 - d2 / reach2;
+  return k * k * seen * ahead;
+}
+
 /** How much of its glow the floor cell holding (x, y) sees, 0..1. */
 function shadowSeen(shadow: GlowShadow, x: number, y: number): number {
   const col = Math.floor(x * shadow.sub) - shadow.firstCol;

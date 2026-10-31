@@ -11,8 +11,8 @@ sees the lighter in that player's hand and the light it throws. The user asked f
 
 Goals:
 - Key `9` holds the lighter. Others see it on the holder's disc, and the holder sees it in first person.
-- The light is a cone along the holder's facing, lighting the floor, the ceiling and the walls: what avatar glow
-  lights today (it doesn't light voxel objects).
+- The light is a cone along the holder's facing, lighting the floor, the ceiling, the walls and the voxel objects
+  (the vacuum and the ball, and their images in the floor; added 2026-10-31 at the owner's request).
 - Walls cast shadows: the light does not pass through them or round corners.
 
 Non-goals (left for later, each a project of its own):
@@ -88,6 +88,10 @@ avatar glows cost today, plus a shadow table each time a lighter moves (§3.2).
     over about 1 ms in `pnpm bench:walls`, the builder may cut it to hard shadows (one sight line per cell), skip
     cells outside the widest the cone could reach, or spread a rebuild over two frames. That choice is the builder's
     and must be recorded with the measurement.
+
+- **Objects.** The vacuum and the ball take each lighter's light per face direction, the way they take a lamp's
+  (`directLight`): falloff, cone and the lighter's shadow table at the object's spot. Their images in the floor do too.
+  Face and portal glows still don't light objects.
 
 ### 3.3 Portals
 

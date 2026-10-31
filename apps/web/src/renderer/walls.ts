@@ -108,6 +108,8 @@ interface LitRoom extends Room {
   lighting: Lighting;
   reflections: ReflectionMode;
   glows: readonly Glow[];
+  /** The glows that light the objects' images in the floor too: the lighters'. */
+  objectGlows: readonly Glow[];
   objects: readonly VoxelInstance[];
   people: readonly Sprite[];
   /** What one unit of each lamp's reflection adds, r, g, b, per texture then the floor (see reflectionColours). */
@@ -221,14 +223,19 @@ let frameTables:
  * Draws `room` into `fb` and fills its z-buffer. A lit room's walls, floor and ceiling show the lamps' reflections on
  * the surfaces `room.reflections` picks, and the avatars' `glows`.
  */
-export function renderWalls(fb: Framebuffer, room: Room, glows: readonly Glow[] = NO_GLOWS): void {
+export function renderWalls(
+  fb: Framebuffer,
+  room: Room,
+  glows: readonly Glow[] = NO_GLOWS,
+  objectGlows: readonly Glow[] = NO_GLOWS
+): void {
   setView(view, fb, room.eye);
   pass = room.pass ?? WHOLE_FRAME;
   firstCol = pass.fromCol;
   endCol = Math.min(fb.width, pass.toCol);
   portals = room.portals ?? null;
   if (room.lighting) {
-    drawLitRoom(fb, litRoomFor(room, room.lighting, glows));
+    drawLitRoom(fb, litRoomFor(room, room.lighting, glows, objectGlows));
   } else {
     drawUnlitRoom(fb, room);
   }
@@ -323,7 +330,8 @@ function mirrorPeopleAndObjects(fb: Framebuffer, room: LitRoom): void {
     if (i < people.length) {
       mirrorDisc(fb, view, people[i] as Sprite, floorMirror, pass);
     } else {
-      renderVoxelMirror(fb, view, objects[i - people.length] as VoxelInstance, room.lighting, floorMirror, pass);
+      const object = objects[i - people.length] as VoxelInstance;
+      renderVoxelMirror(fb, view, object, room.lighting, floorMirror, pass, room.objectGlows);
     }
   }
 }
@@ -338,11 +346,11 @@ function depthOfMirrored({ people, objects }: LitRoom, i: number): number {
   return depth < MIN_DEPTH ? -1 : depth;
 }
 
-function litRoomFor(room: Room, lighting: Lighting, glows: readonly Glow[]): LitRoom {
+function litRoomFor(room: Room, lighting: Lighting, glows: readonly Glow[], objectGlows: readonly Glow[]): LitRoom {
   const { map, eye, textures, reflections = 'both', objects = NO_OBJECTS, people = NO_PEOPLE } = room;
   const reflectionColours = reflectionColoursOf(textures, lighting);
   if (!litRoom) {
-    litRoom = { map, eye, lighting, textures, reflections, glows, objects, people, reflectionColours };
+    litRoom = { map, eye, lighting, textures, reflections, glows, objectGlows, objects, people, reflectionColours };
     return litRoom;
   }
   litRoom.objects = objects;
@@ -353,6 +361,7 @@ function litRoomFor(room: Room, lighting: Lighting, glows: readonly Glow[]): Lit
   litRoom.textures = textures;
   litRoom.reflections = reflections;
   litRoom.glows = glows;
+  litRoom.objectGlows = objectGlows;
   litRoom.reflectionColours = reflectionColours;
   return litRoom;
 }
