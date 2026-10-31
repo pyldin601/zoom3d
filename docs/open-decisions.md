@@ -781,5 +781,38 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     - `playUnplaced` lost its unused reverb send, and the session its unused `sequenceStarted` listener.
   - Not done: a listen to the sounds' level in the game; fades (the lights switch instantly, by design).
 
+### D31 — The lighter
+
+- *Resolved 2026-10-31* ([spec](superpowers/specs/2026-10-31-lighter-design.md)): key `9` (and a Lighter choice in the
+  touch tray) puts a lighter in the drinks' hand. It throws a warm, flickering cone of light along its holder's facing,
+  which walls block, and everyone sees it. The owner asked for the cheapest way to build it.
+  - **A held item and a glow, not a dynamic lamp.** `'lighter'` is a fourth `HeldItem`, so the protocol, storage and
+    hand sprites carry it as they are, and `PROTOCOL_VERSION` stays 5. It has no gestures: `isDrink` guards the sip and
+    cheers keys, the touch sip button and the server relay.
+    - Its light is an avatar glow with two additions: its own `reach` (4 tiles, against the faces' 2.5) and a `cone`
+      (35° each way, the last 10° fading out). With `reach` at `GLOW_RADIUS` and no cone, faces and portals draw
+      exactly as before.
+    - Rejected: a full dynamic lamp, which would mean redoing the reflections, the portal copies and the lamp lists
+      every frame.
+  - **Wall shadows, from a table refilled per floor cell.** Each holder has a pooled `GlowShadow` covering the whole
+    disc around the flame. It is refilled with `seenShare` only when they step into another floor cell or the portals
+    switch, never on a turn. A soft-shadowed refill costs 0.13 ms (median over `bench:walls`' lamp poses).
+  - **Left out, each a project of its own:**
+    - reflections of any kind (the owner tried floor reflections in the design and set them aside);
+    - light coming out through a portal's destination;
+    - shadows cast by people and objects;
+    - lighting voxel objects (face glow doesn't either);
+    - drawing in unlit and flat rooms.
+  - **Through portals,** the shadow table uses the portal-aware sight test, so the light stops at a doorway's front
+    instead of spilling into the room physically behind it.
+  - **Starting values, untuned by play:**
+    - `LIGHTER_STRENGTH` 3 (the spec's first guess of 0.8 hardly showed in an offline render);
+    - colour linear (1, 0.55, 0.2);
+    - flicker ±10% from three sines at 5.3, 8.1 and 11.7 Hz, phased per holder.
+  - **Measured** (2026-10-31, `pnpm bench:walls`):
+    - every existing hash is unchanged (pixel -601092469, doorway off -1246551896 / on -589436950, crowd off
+      2075427884 / on 2005369998);
+    - with 8 lighters per lamp pose, a frame takes 2.39 ms, against 1.85 ms for the same glows without lighters.
+
 ## Resolved
 _(none yet)_

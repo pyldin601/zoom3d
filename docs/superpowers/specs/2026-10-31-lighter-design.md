@@ -1,6 +1,6 @@
 # Lighter — design spec
 
-Date: 2026-10-31. Status: draft for review. Builds on D15 ([held items](2026-10-09-held-items-design.md)) and the
+Date: 2026-10-31. Status: approved and built (D31). Builds on D15 ([held items](2026-10-09-held-items-design.md)) and the
 avatar glow (D24 follow-ups, `renderer/glow.ts`).
 
 ## 1. Intent
