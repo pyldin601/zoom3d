@@ -87,8 +87,8 @@ test('the backtick panelâ€™s face dots show whether anyone receives the playerâ€
   const url = await createAndJoin(a, 'Ada');
   await a.locator('#stage').click();
   await a.keyboard.press('Backquote');
-  const sent = a.locator('.audio-panel .face-sent .dots span.on');
-  await expect(a.locator('.audio-panel .face-sent .dots span')).toHaveCount(3);
+  const sent = a.locator('.console-panel .face-sent .dots span.on');
+  await expect(a.locator('.console-panel .face-sent .dots span')).toHaveCount(3);
   // Alone: dynacast pauses every size.
   await expect(sent).toHaveCount(0, { timeout: 15_000 });
 

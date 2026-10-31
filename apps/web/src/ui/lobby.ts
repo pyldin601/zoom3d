@@ -1,6 +1,6 @@
 // The lobby at /r/<id> (lobby spec §2–3): what others will see and hear, set up before joining.
 // User-provided text only ever goes through textContent; the picture is a validated data: URL set as an attribute.
-import { NAME_MAX, sanitizeName } from '@zoom3d/shared';
+import { NAME_MAX_CHARS, sanitizeName } from '@zoom3d/shared';
 import { makeAvatar } from '../media/avatar';
 import type { Device, DeviceProblem } from '../media/devices';
 import { initials } from '../media/faces';
@@ -432,7 +432,7 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
   const nameField = el('input', {
     name: 'name',
     value: opts.defaultName,
-    maxLength: NAME_MAX * 2,
+    maxLength: NAME_MAX_CHARS * 2,
     placeholder: 'Your name',
   });
   nameField.setAttribute('autocomplete', 'nickname');
@@ -461,7 +461,7 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
     const name = sanitizeName(nameField.value);
     if (name === null) {
       picture.clearError();
-      error.textContent = `Enter a name (1–${NAME_MAX} characters)`;
+      error.textContent = `Enter a name (1–${NAME_MAX_CHARS} characters)`;
       return;
     }
     opts.onJoin(name, picture.avatar);

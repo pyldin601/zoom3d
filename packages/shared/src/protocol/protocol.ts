@@ -8,12 +8,12 @@ export const MAX_PEERS = 128;
 export const PROTOCOL_VERSION = 5;
 /** Bots a room may be created with (opt-in via the room link's `?bots=N`), outside MAX_PEERS. */
 export const MAX_BOTS = 100;
-export const NAME_MAX = 24;
+export const NAME_MAX_CHARS = 24;
 /** Client → server. A join carrying a full-size avatar is ≈ 12 KB. */
 export const MAX_MESSAGE_BYTES = 16384;
 /** Server → client: avatars travel over HTTP, so a welcome listing 128 people and 100 bots is ≈ 50 KB. */
 export const MAX_SERVER_MESSAGE_BYTES = 131072;
-export const AVATAR_SIZE = 128;
+export const AVATAR_SIZE_PX = 128;
 export const AVATAR_MAX_CHARS = 12_000;
 export const RESUME_GRACE_MS = 30000;
 export const STATE_INTERVAL_MS = 66;
@@ -258,7 +258,7 @@ export function sanitizeName(v: unknown): string | null {
     .replace(/\s+/g, ' ')
     .trim();
   const length = [...name].length;
-  return length >= 1 && length <= NAME_MAX ? name : null;
+  return length >= 1 && length <= NAME_MAX_CHARS ? name : null;
 }
 
 type Obj = Record<string, unknown>;

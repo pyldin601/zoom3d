@@ -10,16 +10,16 @@ export type Motion = 'drive' | 'turn' | 'still';
 
 const MOTOR_HZ: Record<Motion, number> = { drive: 110, turn: 99, still: 91 };
 const MOTION_GAIN: Record<Motion, number> = { drive: 1, turn: 0.85, still: 0.7 };
-const MOTION_TAU = 0.15;
+const MOTION_TAU_S = 0.15;
 const DRIVE_TILES_PER_S = 0.2;
 const TURN_RAD_PER_S = 0.3;
 const TWO_PI = Math.PI * 2;
 
 /** The bumper's thud, and the two "lost" beeps, high then low. */
 type Tone =
-  | { kind: 'thud'; hz: number; peak: number; decayTau: number }
+  | { kind: 'thud'; hz: number; peak: number; decayTauS: number }
   | { kind: 'beep'; hz: number; peak: number; holdS: number };
-const THUD: Tone = { kind: 'thud', hz: 70, peak: 1.2, decayTau: 0.04 };
+const THUD: Tone = { kind: 'thud', hz: 70, peak: 1.2, decayTauS: 0.04 };
 const HIGH_BEEP: Tone = { kind: 'beep', hz: 880, peak: 0.35, holdS: 0.18 };
 const LOW_BEEP: Tone = { kind: 'beep', hz: 660, peak: 0.35, holdS: 0.18 };
 /** The low beep follows the high one after this long. */
@@ -32,7 +32,7 @@ const TONE_MIN_S = 0.3;
 /** On a bump the motor strains down to this pitch, then eases back to its own after a moment. */
 const BUMP_STRAIN_HZ = 86;
 const BUMP_STRAIN_S = 0.05;
-const BUMP_RECOVERY_TAU = 0.08;
+const BUMP_RECOVERY_TAU_S = 0.08;
 
 /** What the robot is doing between two poses `dtSeconds` apart. */
 export function motionOf(prev: PlayerState, cur: PlayerState, dtSeconds: number): Motion {
@@ -135,7 +135,7 @@ export function createVacuumSound(ctx: BaseAudioContext): VacuumSound {
       env.gain.linearRampToValueAtTime(0, start + tone.holdS + BEEP_RELEASE_S);
       soundsS = tone.holdS + 2 * BEEP_RELEASE_S;
     } else {
-      env.gain.setTargetAtTime(0, start + TONE_ATTACK_S, tone.decayTau);
+      env.gain.setTargetAtTime(0, start + TONE_ATTACK_S, tone.decayTauS);
     }
     osc.connect(env).connect(master);
     osc.start(start);
@@ -152,8 +152,8 @@ export function createVacuumSound(ctx: BaseAudioContext): VacuumSound {
       }
       current = m;
       const now = ctx.currentTime;
-      motor.frequency.setTargetAtTime(MOTOR_HZ[m], now, MOTION_TAU);
-      motion.gain.setTargetAtTime(MOTION_GAIN[m], now, MOTION_TAU);
+      motor.frequency.setTargetAtTime(MOTOR_HZ[m], now, MOTION_TAU_S);
+      motion.gain.setTargetAtTime(MOTION_GAIN[m], now, MOTION_TAU_S);
     },
 
     bump() {
@@ -161,7 +161,7 @@ export function createVacuumSound(ctx: BaseAudioContext): VacuumSound {
       // The motor strains for a moment, and the bumper thuds.
       motor.frequency.cancelScheduledValues(now);
       motor.frequency.setValueAtTime(BUMP_STRAIN_HZ, now);
-      motor.frequency.setTargetAtTime(MOTOR_HZ[current], now + BUMP_STRAIN_S, BUMP_RECOVERY_TAU);
+      motor.frequency.setTargetAtTime(MOTOR_HZ[current], now + BUMP_STRAIN_S, BUMP_RECOVERY_TAU_S);
       playTone(THUD, 0);
     },
 

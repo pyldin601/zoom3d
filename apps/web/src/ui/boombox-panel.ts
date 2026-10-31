@@ -1,6 +1,6 @@
-// Boombox controls, the audio panel's right column while our boombox plays (boombox spec §3.1):
-// track name, a seekable progress bar, volume and Stop. All text goes through textContent: the
-// track name is a user's file name.
+// Boombox controls, the console panel's right column while the local player's boombox plays (boombox spec §3.1):
+// track name, a seekable progress bar, volume and Stop. All text goes through textContent: the track name is a user's
+// file name.
 import { el } from './screens';
 
 export interface BoomboxPanelOptions {

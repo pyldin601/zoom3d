@@ -10,8 +10,8 @@ import {
   MUFFLE_OPEN_HZ,
   OCCLUSION_INTERVAL_MS,
   type PlayerState,
-  TAU_OCCLUSION,
-  TAU_POSITION,
+  TAU_OCCLUSION_S,
+  TAU_POSITION_S,
   voiceGains,
 } from '@zoom3d/shared';
 
@@ -23,7 +23,7 @@ const SPEAKING_RANGE = 0.09;
 /** Seconds for the speaking level to fall by a factor of e once the voice goes quiet. */
 const SPEAKING_RELEASE_S = 0.3;
 /** About 3 time constants: the occlusion glide is ~95% done. */
-const OCCLUSION_SETTLE_MS = TAU_OCCLUSION * 3000;
+const OCCLUSION_SETTLE_MS = TAU_OCCLUSION_S * 3000;
 /** About ln(1000): an exponential decay is down 60 dB after this many time constants. */
 const DECAY_60_DB = 6.91;
 
@@ -105,7 +105,7 @@ interface Target {
 }
 
 /** A param at rest at `value`: its default, or where a jump put it. */
-const restingAt = (value: number): Target => ({ value, tau: TAU_POSITION });
+const restingAt = (value: number): Target => ({ value, tau: TAU_POSITION_S });
 
 /**
  * Glides `param` towards `value` with time constant `tau`, unless that is already its target. setTargetAtTime is
@@ -126,9 +126,9 @@ function move(param: AudioParam, last: Target, value: number, t: number, jump: b
   if (jump) {
     param.setValueAtTime(value, t);
     last.value = value;
-    last.tau = TAU_POSITION;
+    last.tau = TAU_POSITION_S;
   } else {
-    glide(param, last, value, t, TAU_POSITION);
+    glide(param, last, value, t, TAU_POSITION_S);
   }
 }
 
@@ -281,14 +281,14 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
     if (occluded !== v.occluded) {
       v.occluded = occluded;
       v.occlusionChangedAt = now;
-      v.filter.frequency.setTargetAtTime(occluded ? settings.muffleHz : MUFFLE_OPEN_HZ, t, TAU_OCCLUSION);
+      v.filter.frequency.setTargetAtTime(occluded ? settings.muffleHz : MUFFLE_OPEN_HZ, t, TAU_OCCLUSION_S);
     }
   };
 
   /** The voice's gains from its distance and occlusion, and its pan from where it is. */
   const place = (v: Voice, now: number, t: number, listener: PlayerState, pos: Source) => {
     // Each setTargetAtTime replaces the running curve, so keep the slow constant until it settles.
-    const tau = now - v.occlusionChangedAt < OCCLUSION_SETTLE_MS ? TAU_OCCLUSION : TAU_POSITION;
+    const tau = now - v.occlusionChangedAt < OCCLUSION_SETTLE_MS ? TAU_OCCLUSION_S : TAU_POSITION_S;
     const g = voiceGains(Math.hypot(pos.x - listener.x, pos.y - listener.y), v.occluded, settings);
     glide(v.dry.gain, v.dryTarget, g.dry, t, tau);
     glide(v.send.gain, v.sendTarget, g.send, t, tau);
@@ -350,8 +350,8 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
         measure(v, dt);
         const pos = sources.get(v.owner);
         if (!pos) {
-          glide(v.dry.gain, v.dryTarget, 0, t, TAU_POSITION);
-          glide(v.send.gain, v.sendTarget, 0, t, TAU_POSITION);
+          glide(v.dry.gain, v.dryTarget, 0, t, TAU_POSITION_S);
+          glide(v.send.gain, v.sendTarget, 0, t, TAU_POSITION_S);
           continue;
         }
         occlude(v, now, t, listener, pos);

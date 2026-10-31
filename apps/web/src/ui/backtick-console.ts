@@ -1,12 +1,12 @@
-// The backtick console: whether it's open, and what it shows when it is. The panel itself is audio-panel.ts; this
-// adds the boombox column while our boombox plays (boombox spec §3.1).
+// The backtick console: whether it's open, and what it shows when it is. The panel itself is console-panel.ts; this
+// adds the boombox column while the local player's boombox plays (boombox spec §3.1).
 import type { Boombox } from '../media/boombox';
-import { type AudioPanelOptions, setAudioPanelBoombox, showAudioPanel } from './audio-panel';
 import type { BoomboxPanelOptions } from './boombox-panel';
+import { type ConsolePanelOptions, setConsolePanelBoombox, showConsolePanel } from './console-panel';
 
 export interface BacktickConsoleOptions {
   /** What the panel shows, read each time it opens. */
-  panel(): AudioPanelOptions;
+  panel(): ConsolePanelOptions;
   boombox(): Boombox | null;
   saveBoomboxVolume(volume: number): void;
 }
@@ -42,18 +42,18 @@ export function createBacktickConsole(ui: HTMLElement, opts: BacktickConsoleOpti
     toggle() {
       open = !open;
       if (!open) {
-        showAudioPanel(ui, null);
+        showConsolePanel(ui, null);
         return;
       }
       // The panel is worked with the mouse: let go of mouse-look. A click on the view locks it again.
       if (document.pointerLockElement) {
         document.exitPointerLock();
       }
-      showAudioPanel(ui, opts.panel());
-      setAudioPanelBoombox(ui, boomboxColumn());
+      showConsolePanel(ui, opts.panel());
+      setConsolePanelBoombox(ui, boomboxColumn());
     },
     refreshBoombox() {
-      setAudioPanelBoombox(ui, boomboxColumn());
+      setConsolePanelBoombox(ui, boomboxColumn());
     },
   };
 }

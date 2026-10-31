@@ -93,10 +93,10 @@ export function createFloorMirror(): FloorMirror {
   let line = new Float32Array(0);
   let totals = new Float64Array(0);
   const sums = new Float64Array(CHANNELS);
-  /** The blurred texel rows, [top, bottom). */
   /** Each frame pixel's share of its texel, per texel column and row: 1/SCALE, more in a frame's last, narrower ones. */
   let shareAcross = new Float32Array(0);
   let shareDown = new Float32Array(0);
+  /** The blurred texel rows, [top, bottom). */
   let blurredTop = 0;
   let blurredBottom = 0;
   const rows = { top: 0, bottom: 0 };

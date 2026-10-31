@@ -38,9 +38,9 @@ test('in a room, the backquote key toggles the frame rate and renderer panel', a
   await createAndJoin(page, 'Ada');
   await page.locator('#stage').click();
   await page.keyboard.press('Backquote');
-  await expect(page.locator('.audio-panel .frame-rate')).toHaveText(/^Frame rate \d+ fps$/);
-  await expect(page.locator('.audio-panel .render-load')).toHaveText(/^Render time\d+% · \d+\.\d ms$/);
+  await expect(page.locator('.console-panel .frame-rate')).toHaveText(/^Frame rate \d+ fps$/);
+  await expect(page.locator('.console-panel .render-load')).toHaveText(/^Render time\d+% · \d+\.\d ms$/);
   await expect(page.getByText('Lighting')).toBeVisible();
   await page.keyboard.press('Backquote');
-  await expect(page.locator('.audio-panel')).toHaveCount(0);
+  await expect(page.locator('.console-panel')).toHaveCount(0);
 });

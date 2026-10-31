@@ -85,13 +85,13 @@ function openLocalMedia(page: PageElements): LocalMediaController {
 
 /** The local player's face glows in their camera's colour, and their own disc shows it, while the camera is on. */
 function shareCamera(local: LocalMediaController, localPlayer: LocalPlayer): void {
-  const ownFace = createOwnGlowSampler(local.framer.canvas, document);
-  const ownTexels = createOwnFaceSampler(local.framer.canvas, document);
+  const ownGlow = createOwnGlowSampler(local.framer.canvas, document);
+  const ownFace = createOwnFaceSampler(local.framer.canvas, document);
   // Kept from the controller's notifications (every camera change notifies), not asked of it every frame.
   let camOn = local.state().cam;
   local.subscribe(() => {
     camOn = local.state().cam;
   });
-  localPlayer.useCameraColour((now) => (camOn ? ownFace.colour(now) : null));
-  localPlayer.useCameraFace({ on: () => camOn, texels: (now) => ownTexels.texels(now) });
+  localPlayer.useCameraColour((now) => (camOn ? ownGlow.colour(now) : null));
+  localPlayer.useCameraFace({ on: () => camOn, texels: (now) => ownFace.texels(now) });
 }

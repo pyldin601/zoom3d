@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   AVATAR_MAX_CHARS,
-  AVATAR_SIZE,
+  AVATAR_SIZE_PX,
   avatarPath,
   CHEERS_MS,
   DRINK_GAP_MS,
@@ -36,7 +36,7 @@ const AVATAR_ID = 'abcdefghijklmnopqrstu-';
 
 describe('avatars', () => {
   test('constants', () => {
-    expect(AVATAR_SIZE).toBe(128);
+    expect(AVATAR_SIZE_PX).toBe(128);
     expect(AVATAR_MAX_CHARS).toBe(12_000);
     expect(MAX_SERVER_MESSAGE_BYTES).toBe(131_072);
   });

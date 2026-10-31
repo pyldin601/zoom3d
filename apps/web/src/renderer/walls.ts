@@ -36,7 +36,7 @@ import {
 import { createFloorMirror } from './mirror';
 import { type PatchedFloor, shadeFloor } from './object-shadows';
 import { mirrorDisc, type Sprite } from './sprites';
-import { GLOSS, REFLECTION_MATERIAL, RELIEF, RELIEF_LEVELS, type ReflectionMaterial, TEX } from './textures';
+import { GLOSS, REFLECTION_MATERIAL, RELIEF, RELIEF_LEVELS, type ReflectionMaterial, TEXTURE_PX } from './textures';
 import { renderVoxelMirror, type VoxelInstance, voxelDepth } from './voxels';
 
 /** The unlit ceiling's colour, and the colour the lit one is baked from. */
@@ -266,7 +266,7 @@ function drawPlainWallSlice(fb: Framebuffer, textures: Uint32Array[], shading: '
   const { col, start, end, wallHeightPx, tile, texX } = column;
   const tex = textures[tile] as Uint32Array;
   const shaded = shading === 'shaded';
-  const step = TEX / wallHeightPx;
+  const step = TEXTURE_PX / wallHeightPx;
   let texPos = (start - view.half + wallHeightPx / 2) * step;
   // A near wall shows each texel on many rows: shade it once and repeat it.
   let texelY = -1;
@@ -274,11 +274,11 @@ function drawPlainWallSlice(fb: Framebuffer, textures: Uint32Array[], shading: '
   for (let y = start; y < end; y++) {
     // A wall under a texture's height steps over a texel per row, so its top row can start over a texel above the
     // texture (texPos < −1): it shows the top texel.
-    const texY = texPos < 0 ? 0 : Math.min(TEX - 1, texPos | 0);
+    const texY = texPos < 0 ? 0 : Math.min(TEXTURE_PX - 1, texPos | 0);
     texPos += step;
     if (texY !== texelY) {
       texelY = texY;
-      const c = tex[texY * TEX + texX] as number;
+      const c = tex[texY * TEXTURE_PX + texX] as number;
       // SIDE_SHADE (lighting.ts) as a literal: read from the constant, this loop measured 3% slower (bench:walls).
       texel = shaded ? scaleRgb(c, 0.7) : c;
     }
@@ -476,9 +476,9 @@ function castColumnRay(fb: Framebuffer, { map, eye }: Room, col: number): void {
   const { start, end } = rowsCovered(h, wallHeightPx);
   wallStart[col] = start;
   wallEnd[col] = end;
-  let texX = Math.floor(hit.wallX * TEX);
+  let texX = Math.floor(hit.wallX * TEXTURE_PX);
   if ((hit.side === X_SIDE && rayX > 0) || (hit.side === Y_SIDE && rayY < 0)) {
-    texX = TEX - texX - 1;
+    texX = TEXTURE_PX - texX - 1;
   }
   column.col = col;
   column.start = start;
@@ -619,23 +619,23 @@ function drawLitWallSlice(fb: Framebuffer, room: LitRoom): void {
   const relief = RELIEF[tile] as Uint8Array;
   const gloss = GLOSS[tile] as Uint8Array;
   const levels = RELIEF_LEVELS.length;
-  const texelRowsToSampleRow = Math.log2(TEX / WALL_V);
+  const texelRowsToSampleRow = Math.log2(TEXTURE_PX / WALL_V);
   const lights = room.lighting.lights.length;
-  const step = TEX / wallHeightPx;
+  const step = TEXTURE_PX / wallHeightPx;
   let texPos = (start - view.half + wallHeightPx / 2) * step;
   // A near wall shows each texel on many rows: shade it once and repeat it.
   let shadedY = -1;
   let shaded = 0;
   for (let y = start; y < end; y++) {
     // Clamped at the top as in the plain slice; −1 would also match shadedY's starting −1 and write the unset `shaded`.
-    const texY = texPos < 0 ? 0 : Math.min(TEX - 1, texPos | 0);
+    const texY = texPos < 0 ? 0 : Math.min(TEXTURE_PX - 1, texPos | 0);
     texPos += step;
     if (texY === shadedY) {
       pixels[y * w + col] = shaded;
       continue;
     }
     shadedY = texY;
-    const t = texY * TEX + texX;
+    const t = texY * TEXTURE_PX + texX;
     const c = tex[t] as number;
     let r = 0;
     let g = 0;
@@ -648,7 +648,7 @@ function drawLitWallSlice(fb: Framebuffer, room: LitRoom): void {
     }
     if (glows > 0) {
       // Blended between the two heights either side of this texel row.
-      const at = (1 - (texY + 0.5) / TEX) * (GLOW_HEIGHTS - 1);
+      const at = (1 - (texY + 0.5) / TEXTURE_PX) * (GLOW_HEIGHTS - 1);
       const below = at | 0;
       const above = Math.min(below + 1, GLOW_HEIGHTS - 1);
       const k = at - below;
@@ -661,7 +661,7 @@ function drawLitWallSlice(fb: Framebuffer, room: LitRoom): void {
     }
     if (shines && gloss[t] === 1) {
       // Blended between the two samples either side of this texel row, in the colour of the brighter one's lamp.
-      const at = (1 - (texY + 0.5) / TEX) * (REFLECTION_SAMPLES - 1);
+      const at = (1 - (texY + 0.5) / TEXTURE_PX) * (REFLECTION_SAMPLES - 1);
       const below = at | 0;
       const above = Math.min(below + 1, REFLECTION_SAMPLES - 1);
       const low = columnShine[below] as number;

@@ -7,7 +7,7 @@ import { GLOW_RADIUS, GLOW_STRENGTH, type Glow } from './glow';
 import { bakeLighting, corridorLights, REFLECTION_RANGE, SIDE_SHADE } from './lighting';
 import { BALL_MODEL } from './models/ball';
 import { firstDifference } from './test-helpers';
-import { makeTextures, TEX } from './textures';
+import { makeTextures, TEXTURE_PX } from './textures';
 import type { VoxelInstance } from './voxels';
 import { CEILING, FLOOR, renderWalls } from './walls';
 
@@ -27,7 +27,7 @@ function column(fb: ReturnType<typeof createFramebuffer>, x: number): number[] {
 
 function textureColumn(tile: number, texX: number): number[] {
   const tex = textures[tile] as Uint32Array;
-  return Array.from({ length: TEX }, (_, y) => tex[y * TEX + texX] as number);
+  return Array.from({ length: TEXTURE_PX }, (_, y) => tex[y * TEXTURE_PX + texX] as number);
 }
 
 describe('renderWalls', () => {
@@ -86,7 +86,7 @@ describe('renderWalls', () => {
   });
 
   test('x-side walls use unshaded texels (column mirrored when facing +x)', () => {
-    const allowed = new Set(textureColumn(1, TEX - 32 - 1));
+    const allowed = new Set(textureColumn(1, TEXTURE_PX - 32 - 1));
     const wall = column(fb, 320).filter((c) => c !== CEILING && c !== FLOOR);
     expect(wall.every((c) => allowed.has(c))).toBe(true);
   });
@@ -107,7 +107,11 @@ describe('makeTextures', () => {
   });
 
   test('has three distinct 64x64 opaque wall textures', () => {
-    expect(textures.slice(1).map((t) => t.length)).toEqual([TEX * TEX, TEX * TEX, TEX * TEX]);
+    expect(textures.slice(1).map((t) => t.length)).toEqual([
+      TEXTURE_PX * TEXTURE_PX,
+      TEXTURE_PX * TEXTURE_PX,
+      TEXTURE_PX * TEXTURE_PX,
+    ]);
     expect(textures[1]).not.toEqual(textures[2]);
     expect(textures[2]).not.toEqual(textures[3]);
     expect(textures.slice(1).every((t) => t.every((c) => c >>> 24 === 0xff))).toBe(true);

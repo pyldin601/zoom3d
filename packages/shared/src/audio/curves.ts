@@ -25,8 +25,8 @@ export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
 };
 
 export const MUFFLE_OPEN_HZ = 16000;
-export const TAU_POSITION = 0.05;
-export const TAU_OCCLUSION = 0.15;
+export const TAU_POSITION_S = 0.05;
+export const TAU_OCCLUSION_S = 0.15;
 export const OCCLUSION_INTERVAL_MS = 100;
 
 /** Reverb send within `ref`; it falls only 3 dB per doubling, so the room outlasts the voice. */

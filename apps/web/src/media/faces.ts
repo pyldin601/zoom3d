@@ -4,7 +4,7 @@ import { type FrameVideo, VIDEO_POLL_MS } from './video-frames';
 
 export const FACE_SIZE = 256;
 export const FACE_STALL_MS = 2000;
-/** Avatars are AVATAR_SIZE²; anything much larger is a hostile decode bomb and is never drawn. */
+/** Avatars are AVATAR_SIZE_PX²; anything much larger is a hostile decode bomb and is never drawn. */
 export const AVATAR_MAX_DIM = 512;
 
 export function squareCrop(w: number, h: number): { sx: number; sy: number; size: number } {

@@ -6,7 +6,7 @@ import type { Portals } from '../portals/wiring';
 export const MOVE_SPEED = 3; // tiles/s
 export const TURN_SPEED = 2.5; // rad/s
 export const PLAYER_RADIUS = 0.25; // tiles
-export const MAX_DT = 0.1; // s; protects against tunnelling after long frames
+export const MAX_STEP_S = 0.1; // protects against tunnelling after long frames
 
 const TWO_PI = Math.PI * 2;
 
@@ -54,7 +54,7 @@ export function stepPlayer(
   out: PlayerState,
   portals: Portals | null = null
 ): PlayerState {
-  const t = Math.min(Math.max(dt, 0), MAX_DT);
+  const t = Math.min(Math.max(dt, 0), MAX_STEP_S);
   let angle = (s.angle + input.turn * TURN_SPEED * t) % TWO_PI;
   if (angle < 0) {
     angle += TWO_PI;

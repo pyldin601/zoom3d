@@ -25,7 +25,7 @@ export const LANDING_CAMERA: PlayerState = { x: 1.2, y: 4.8, angle: -0.4 };
 /** A portrait phone's narrower view (mobile spec §3): backed into the corner, so Max, Ada and Bob all still fit. */
 export const LANDING_CAMERA_PORTRAIT: PlayerState = { x: 1.05, y: 4.9, angle: -0.36 };
 
-/** SPIKE: two ceiling lamps down the corridor; Max's alcove stays in the dark. */
+/** Two ceiling lamps down the corridor; Max's alcove stays in the dark. */
 export const LANDING_LIGHTS: readonly Light[] = [
   { x: 5.5, y: 4.5, z: 0.85, radius: 4.5, ...LAMP },
   { x: 11, y: 4.5, z: 0.85, radius: 4.5, ...LAMP },
@@ -43,7 +43,7 @@ export const FACE_GRID = 16;
  * The title's distance from the top and from the right, in framebuffer pixels. The panel keeps the same inset from
  * the bottom-right corner (index.html: 28 / 640 = 4.375% of the stage width).
  */
-const LOGO_MARGIN = 28;
+const LOGO_MARGIN_PX = 28;
 
 /** Shared face colours; a person can override any of them (hair, beard). */
 export const FACE_PALETTE = {
@@ -227,6 +227,6 @@ export function renderLandingScene(
   renderWalls(fb, landingRoom);
   renderSprites(fb, landingRoom);
   if (logo) {
-    drawLogo(fb, LOGO_MARGIN, camera === LANDING_CAMERA_PORTRAIT ? 'center' : 'right');
+    drawLogo(fb, LOGO_MARGIN_PX, camera === LANDING_CAMERA_PORTRAIT ? 'center' : 'right');
   }
 }

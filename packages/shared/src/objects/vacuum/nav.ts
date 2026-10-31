@@ -3,18 +3,18 @@
 import { hasLineOfSight } from '../../geometry/los';
 import { type GameMap, isWallAt } from '../../map/map';
 
-/** Tiles per patch side. */
-const PATCH = 3;
-/** Route point spacing in tiles, a little under the robot's width so lanes overlap (tuned for the ~1.5 h full clean). */
-const LANE = 0.6;
+/** A patch's side. */
+const PATCH_TILES = 3;
+/** Route point spacing, a little under the robot's width so lanes overlap (tuned for the ~1.5 h full clean). */
+const LANE_SPACING_TILES = 0.6;
 /** The robot's collision radius in tiles. */
 export const VACUUM_RADIUS = 0.35;
 /** How far a route point keeps the robot's centre from a wall. */
 const CLEARANCE = VACUUM_RADIUS + 0.01;
 /** Route points per patch side. */
-const GRID = Math.round(PATCH / LANE);
-if (Math.abs(GRID * LANE - PATCH) > 1e-9) {
-  throw new Error('LANE must divide PATCH into whole lanes');
+const POINTS_PER_PATCH_SIDE = Math.round(PATCH_TILES / LANE_SPACING_TILES);
+if (Math.abs(POINTS_PER_PATCH_SIDE * LANE_SPACING_TILES - PATCH_TILES) > 1e-9) {
+  throw new Error('LANE_SPACING_TILES must divide PATCH_TILES into whole lanes');
 }
 
 export interface Point {
@@ -46,10 +46,13 @@ interface PatchPoints {
 
 /** Grid positions of the patch's outer ring, clockwise from the top-left corner (y grows down). */
 const RING: readonly (readonly [number, number])[] = [
-  ...Array.from({ length: GRID }, (_, i) => [i, 0] as const),
-  ...Array.from({ length: GRID - 1 }, (_, j) => [GRID - 1, j + 1] as const),
-  ...Array.from({ length: GRID - 1 }, (_, i) => [GRID - 2 - i, GRID - 1] as const),
-  ...Array.from({ length: GRID - 2 }, (_, j) => [0, GRID - 2 - j] as const),
+  ...Array.from({ length: POINTS_PER_PATCH_SIDE }, (_, i) => [i, 0] as const),
+  ...Array.from({ length: POINTS_PER_PATCH_SIDE - 1 }, (_, j) => [POINTS_PER_PATCH_SIDE - 1, j + 1] as const),
+  ...Array.from(
+    { length: POINTS_PER_PATCH_SIDE - 1 },
+    (_, i) => [POINTS_PER_PATCH_SIDE - 2 - i, POINTS_PER_PATCH_SIDE - 1] as const
+  ),
+  ...Array.from({ length: POINTS_PER_PATCH_SIDE - 2 }, (_, j) => [0, POINTS_PER_PATCH_SIDE - 2 - j] as const),
 ];
 
 const samePoint = (a: Point, b: Point) => Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.y - b.y) < 1e-9;
@@ -91,10 +94,10 @@ function snakeLanes(rows: readonly Point[][], from: Point): Point[] {
 
 export function createVacuumNav(map: GameMap): VacuumNav {
   const { width, height } = map;
-  const cols = Math.ceil(width / PATCH);
-  const rows = Math.ceil(height / PATCH);
+  const cols = Math.ceil(width / PATCH_TILES);
+  const rows = Math.ceil(height / PATCH_TILES);
   const wall = (tx: number, ty: number) => isWallAt(map, tx + 0.5, ty + 0.5);
-  const patchOf = (tx: number, ty: number) => Math.floor(ty / PATCH) * cols + Math.floor(tx / PATCH);
+  const patchOf = (tx: number, ty: number) => Math.floor(ty / PATCH_TILES) * cols + Math.floor(tx / PATCH_TILES);
   const tileIndex = (p: Point) => Math.floor(p.y) * width + Math.floor(p.x);
   const tileCentre = (index: number): Point => ({ x: (index % width) + 0.5, y: Math.floor(index / width) + 0.5 });
   const inside = (p: Point) => p.x >= 0 && p.y >= 0 && p.x < width && p.y < height;
@@ -132,18 +135,18 @@ export function createVacuumNav(map: GameMap): VacuumNav {
 
   /** Each patch's route points, by patch index: points on walls dropped, the rest kept clear of walls. */
   const patches = Array.from({ length: cols * rows }, (_, index): PatchPoints => {
-    const ox = (index % cols) * PATCH;
-    const oy = Math.floor(index / cols) * PATCH;
+    const ox = (index % cols) * PATCH_TILES;
+    const oy = Math.floor(index / cols) * PATCH_TILES;
     const at = (i: number, j: number): Point | null => {
-      const x = ox + LANE / 2 + i * LANE;
-      const y = oy + LANE / 2 + j * LANE;
+      const x = ox + LANE_SPACING_TILES / 2 + i * LANE_SPACING_TILES;
+      const y = oy + LANE_SPACING_TILES / 2 + j * LANE_SPACING_TILES;
       return wall(Math.floor(x), Math.floor(y)) ? null : clearOfWalls(x, y);
     };
     const ring = RING.map(([i, j]) => at(i, j)).filter((p) => p !== null);
     const inner: Point[][] = [];
-    for (let j = 1; j < GRID - 1; j++) {
+    for (let j = 1; j < POINTS_PER_PATCH_SIDE - 1; j++) {
       const row: Point[] = [];
-      for (let i = 1; i < GRID - 1; i++) {
+      for (let i = 1; i < POINTS_PER_PATCH_SIDE - 1; i++) {
         const p = at(i, j);
         if (p) {
           row.push(p);

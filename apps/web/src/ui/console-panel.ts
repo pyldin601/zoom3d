@@ -1,18 +1,18 @@
-// The backtick panel: the frame rate, the render time and which of our face sizes others receive at the top, the renderer's lighting mode
-// under them, and the boombox's controls on the right while it plays (boombox spec §3.1). All text goes through
-// textContent.
+// The backtick panel: the frame rate, the render time and which face sizes others receive at the top, the renderer's
+// lighting mode under them, and the boombox's controls on the right while it plays (boombox spec §3.1). All text goes
+// through textContent.
 import { frameRateBand, type RenderLoad, renderLoadBand } from '../game/frame-rate';
 import type { FacesSent } from '../media/transport';
 import { type BoomboxPanelOptions, showBoomboxPanel } from './boombox-panel';
 import { normalizeRenderSettings, RENDER_MODE_NAMES, RENDER_MODES, type RenderSettings } from './render-settings';
 import { el } from './screens';
 
-export interface AudioPanelOptions {
+export interface ConsolePanelOptions {
   /** Frames per second, or null before it is measured; refreshed while the panel is open. */
   frameRate: () => number | null;
   /** The time drawing a frame takes, also as a share of a screen frame, or null before it is measured. */
   renderLoad: () => RenderLoad | null;
-  /** Which of our face sizes others receive (6c); refreshed while the panel is open. */
+  /** Which of the local face sizes others receive (6c); refreshed while the panel is open. */
   facesSent: () => FacesSent;
   /** The renderer's options. */
   render: { settings: RenderSettings; onChange(s: RenderSettings): void };
@@ -25,8 +25,8 @@ const FACE_SIZES: readonly (keyof FacesSent)[] = [256, 128, 64];
 const REFRESH_MS = 200;
 const timers = new WeakMap<HTMLElement, ReturnType<typeof setInterval>>();
 
-export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null): void {
-  const existing = root.querySelector<HTMLElement>(':scope > .audio-panel');
+export function showConsolePanel(root: HTMLElement, opts: ConsolePanelOptions | null): void {
+  const existing = root.querySelector<HTMLElement>(':scope > .console-panel');
   if (existing) {
     clearInterval(timers.get(existing));
     const slot = existing.querySelector<HTMLElement>(':scope > .boombox-slot');
@@ -39,7 +39,7 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
     return;
   }
 
-  const panel = el('div', { className: 'audio-panel' });
+  const panel = el('div', { className: 'console-panel' });
   // The renderer on the left; the boombox's controls on the right while it plays.
   const renderer = el('div', { className: 'renderer' });
   const slot = el('div', { className: 'boombox-slot' });
@@ -80,7 +80,7 @@ export function showAudioPanel(root: HTMLElement, opts: AudioPanelOptions | null
   root.append(panel);
 }
 
-function lightingRow(opts: AudioPanelOptions['render']): HTMLElement {
+function lightingRow(opts: ConsolePanelOptions['render']): HTMLElement {
   let current = opts.settings;
   const mode = el('select');
   for (const value of RENDER_MODES) {
@@ -97,8 +97,8 @@ function lightingRow(opts: AudioPanelOptions['render']): HTMLElement {
 }
 
 /** Shows (or with null, clears) the boombox controls in the open panel; no-op when it's closed. */
-export function setAudioPanelBoombox(root: HTMLElement, opts: BoomboxPanelOptions | null): void {
-  const slot = root.querySelector<HTMLElement>(':scope > .audio-panel > .boombox-slot');
+export function setConsolePanelBoombox(root: HTMLElement, opts: BoomboxPanelOptions | null): void {
+  const slot = root.querySelector<HTMLElement>(':scope > .console-panel > .boombox-slot');
   if (slot) {
     showBoomboxPanel(slot, opts);
   }

@@ -34,6 +34,6 @@ test('opening the backtick panel releases pointer lock so the mouse can use it',
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await expect.poll(() => page.evaluate(() => document.pointerLockElement?.id ?? null)).toBe('game');
   await page.keyboard.press('Backquote');
-  await expect(page.locator('.audio-panel')).toBeVisible();
+  await expect(page.locator('.console-panel')).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.pointerLockElement?.id ?? null)).toBeNull();
 });

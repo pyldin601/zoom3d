@@ -1,6 +1,6 @@
 // The optional avatar picture shown instead of initials while the camera is off (spec §8.1):
 // a small JPEG data URL, kept per browser and sent in `join`.
-import { AVATAR_SIZE, isValidAvatar } from '@zoom3d/shared';
+import { AVATAR_SIZE_PX, isValidAvatar } from '@zoom3d/shared';
 import { squareCrop } from './faces';
 
 export const AVATAR_KEY = 'zoom3d.avatar';
@@ -34,7 +34,7 @@ export function saveAvatar(storage: Pick<Storage, 'setItem' | 'removeItem'> | nu
   }
 }
 
-/** Centre square of the image at AVATAR_SIZE², as the best JPEG quality that fits. */
+/** Centre square of the image at AVATAR_SIZE_PX², as the best JPEG quality that fits. */
 export async function makeAvatar(blob: Blob, deps: AvatarDeps = {}): Promise<string> {
   const decode = deps.decode ?? ((b: Blob) => createImageBitmap(b));
   let img: Decoded;
@@ -44,17 +44,17 @@ export async function makeAvatar(blob: Blob, deps: AvatarDeps = {}): Promise<str
     throw new Error('unreadable');
   }
   const canvas = (deps.document ?? document).createElement('canvas');
-  canvas.width = AVATAR_SIZE;
-  canvas.height = AVATAR_SIZE;
+  canvas.width = AVATAR_SIZE_PX;
+  canvas.height = AVATAR_SIZE_PX;
   const ctx = canvas.getContext('2d');
   if (!ctx) {
     throw new Error('unreadable');
   }
   // JPEG has no alpha: transparent pixels would otherwise turn black.
   ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, AVATAR_SIZE, AVATAR_SIZE);
+  ctx.fillRect(0, 0, AVATAR_SIZE_PX, AVATAR_SIZE_PX);
   const { sx, sy, size } = squareCrop(img.width, img.height);
-  ctx.drawImage(img, sx, sy, size, size, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
+  ctx.drawImage(img, sx, sy, size, size, 0, 0, AVATAR_SIZE_PX, AVATAR_SIZE_PX);
   img.close?.();
   for (const q of QUALITIES) {
     const url = canvas.toDataURL('image/jpeg', q);

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { isWallAt, parseMap } from '../map/map';
-import { MAX_DT, MOVE_SPEED, type MoveInput, PLAYER_RADIUS, type PlayerState, stepPlayer } from './movement';
+import { MAX_STEP_S, MOVE_SPEED, type MoveInput, PLAYER_RADIUS, type PlayerState, stepPlayer } from './movement';
 
 const ROOM = parseMap('11111\n1...1\n1.S.1\n1...1\n11111');
 const input = (forward = 0, strafe = 0, turn = 0): MoveInput => ({ forward, strafe, turn });
@@ -34,7 +34,7 @@ describe('stepPlayer', () => {
 
   test('clamps huge dt so the player cannot tunnel', () => {
     const p = stepPlayer(ROOM, player(2.5, 2.5), input(1), 5, player(0, 0));
-    expect(p.x - 2.5).toBeLessThanOrEqual(MOVE_SPEED * MAX_DT + 1e-9);
+    expect(p.x - 2.5).toBeLessThanOrEqual(MOVE_SPEED * MAX_STEP_S + 1e-9);
   });
 
   test('ignores negative dt', () => {

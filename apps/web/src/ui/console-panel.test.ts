@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { type AudioPanelOptions, setAudioPanelBoombox, showAudioPanel } from './audio-panel';
 import { PROGRESS_MS } from './boombox-panel';
+import { type ConsolePanelOptions, setConsolePanelBoombox, showConsolePanel } from './console-panel';
 
 let root: HTMLElement;
 beforeEach(() => {
@@ -9,7 +9,7 @@ beforeEach(() => {
   root = document.getElementById('ui') as HTMLElement;
 });
 
-const options = (overrides: Partial<AudioPanelOptions> = {}): AudioPanelOptions => ({
+const options = (overrides: Partial<ConsolePanelOptions> = {}): ConsolePanelOptions => ({
   frameRate: () => null,
   renderLoad: () => null,
   facesSent: () => ({ 256: false, 128: false, 64: false }),
@@ -18,8 +18,8 @@ const options = (overrides: Partial<AudioPanelOptions> = {}): AudioPanelOptions 
 });
 
 test('the frame rate comes first, then the renderer options, with no audio tuning or speaking list', () => {
-  showAudioPanel(root, options());
-  const column = root.querySelector('.audio-panel > .renderer') as HTMLElement;
+  showConsolePanel(root, options());
+  const column = root.querySelector('.console-panel > .renderer') as HTMLElement;
   expect(column.firstElementChild?.className).toBe('frame-rate');
   expect(column.textContent).toContain('Lighting');
   expect(root.querySelector('input[type=range]')).toBeNull();
@@ -30,7 +30,7 @@ test('the frame rate is refreshed while the panel is open and coloured by band',
   vi.useFakeTimers();
   try {
     let fps: number | null = null;
-    showAudioPanel(root, options({ frameRate: () => fps }));
+    showConsolePanel(root, options({ frameRate: () => fps }));
     const rate = root.querySelector('.frame-rate span') as HTMLElement;
     expect(rate.parentElement?.textContent).toContain('Frame rate');
     expect(rate.textContent).toBe('–');
@@ -50,7 +50,7 @@ test('under the frame rate, the render time shows as a share of a screen frame a
   vi.useFakeTimers();
   try {
     let load: { ms: number; share: number } | null = null;
-    showAudioPanel(root, options({ renderLoad: () => load }));
+    showConsolePanel(root, options({ renderLoad: () => load }));
     const value = root.querySelector('.renderer .frame-rate + .render-load span') as HTMLElement;
     expect(value.parentElement?.firstChild?.textContent).toBe('Render time');
     expect(value.textContent).toBe('–');
@@ -71,7 +71,7 @@ test('under the frame rate, a dot and number per face size show which ones other
   vi.useFakeTimers();
   try {
     let sent = { 256: true, 128: false, 64: true };
-    showAudioPanel(root, options({ facesSent: () => sent }));
+    showConsolePanel(root, options({ facesSent: () => sent }));
     const row = root.querySelector('.renderer .render-load + .face-sent') as HTMLElement;
     expect(row.firstChild?.textContent).toBe('Face sent');
     const dots = [...row.querySelectorAll('.dots > span')];
@@ -89,8 +89,8 @@ test('closing the panel stops refreshing the frame rate', () => {
   vi.useFakeTimers();
   try {
     const frameRate = vi.fn(() => 60);
-    showAudioPanel(root, options({ frameRate }));
-    showAudioPanel(root, null);
+    showConsolePanel(root, options({ frameRate }));
+    showConsolePanel(root, null);
     frameRate.mockClear();
     vi.advanceTimersByTime(1000);
     expect(frameRate).not.toHaveBeenCalled();
@@ -100,15 +100,15 @@ test('closing the panel stops refreshing the frame rate', () => {
 });
 
 test('null removes the panel', () => {
-  showAudioPanel(root, options());
-  expect(root.querySelector('.audio-panel')).not.toBeNull();
-  showAudioPanel(root, null);
-  expect(root.querySelector('.audio-panel')).toBeNull();
+  showConsolePanel(root, options());
+  expect(root.querySelector('.console-panel')).not.toBeNull();
+  showConsolePanel(root, null);
+  expect(root.querySelector('.console-panel')).toBeNull();
 });
 
 test('the renderer section switches the lighting mode', () => {
   const onRender = vi.fn();
-  showAudioPanel(root, options({ render: { settings: { mode: 'reflections' }, onChange: onRender } }));
+  showConsolePanel(root, options({ render: { settings: { mode: 'reflections' }, onChange: onRender } }));
   expect(root.textContent).toContain('Renderer');
   const select = root.querySelector('.renderer select') as HTMLSelectElement;
   expect(select.parentElement?.textContent).toContain('Lighting');
@@ -135,32 +135,32 @@ describe('boombox column', () => {
   });
 
   test('sits to the right of the renderer settings, empty until filled', () => {
-    showAudioPanel(root, options());
-    const children = [...(root.querySelector('.audio-panel') as HTMLElement).children].map((c) => c.className);
+    showConsolePanel(root, options());
+    const children = [...(root.querySelector('.console-panel') as HTMLElement).children].map((c) => c.className);
     expect(children).toEqual(['renderer', 'boombox-slot']);
     expect(root.querySelector('.boombox-slot')?.children).toHaveLength(0);
   });
 
-  test('setAudioPanelBoombox fills and clears the column', () => {
-    showAudioPanel(root, options());
-    setAudioPanelBoombox(root, boombox());
+  test('setConsolePanelBoombox fills and clears the column', () => {
+    showConsolePanel(root, options());
+    setConsolePanelBoombox(root, boombox());
     expect(root.querySelector('.boombox-slot .boombox-panel')?.textContent).toContain('song.mp3');
-    setAudioPanelBoombox(root, null);
+    setConsolePanelBoombox(root, null);
     expect(root.querySelector('.boombox-panel')).toBeNull();
   });
 
-  test('with the panel closed, setAudioPanelBoombox does nothing', () => {
-    setAudioPanelBoombox(root, boombox());
+  test('with the panel closed, setConsolePanelBoombox does nothing', () => {
+    setConsolePanelBoombox(root, boombox());
     expect(root.children).toHaveLength(0);
   });
 
   test('closing the panel stops the boombox column updating', () => {
     vi.useFakeTimers();
     try {
-      showAudioPanel(root, options());
+      showConsolePanel(root, options());
       const progress = vi.fn(() => ({ current: 0, duration: 0 }));
-      setAudioPanelBoombox(root, boombox(progress));
-      showAudioPanel(root, null);
+      setConsolePanelBoombox(root, boombox(progress));
+      showConsolePanel(root, null);
       progress.mockClear();
       vi.advanceTimersByTime(PROGRESS_MS * 3);
       expect(progress).not.toHaveBeenCalled();

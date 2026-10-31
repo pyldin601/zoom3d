@@ -8,10 +8,10 @@ const STEPS_PER_SECOND = 3;
 export const BOB_STRIDE = MOVE_SPEED / STEPS_PER_SECOND;
 /** The drink trails the avatar by this much phase (radians), so it swings behind the step. */
 const ITEM_LAG = 0.9;
-/** Seconds for the bob to settle after stopping. */
-const EASE_OUT = 0.15;
+/** How long the bob takes to settle after stopping. */
+const SETTLE_S = 0.15;
 /** A jump larger than this in one frame (resume, correction) is not walking. */
-const MAX_STEP = 1;
+const MAX_STEP_TILES = 1;
 
 export interface Bob {
   /** 0..1: how far up the avatar is in its step. */
@@ -36,11 +36,11 @@ export function createBob(): Bob {
       const step = Math.hypot(x - lastX, y - lastY);
       lastX = x;
       lastY = y;
-      if (step > 1e-4 && step < MAX_STEP) {
+      if (step > 1e-4 && step < MAX_STEP_TILES) {
         phase += (Math.PI * step) / BOB_STRIDE;
         amp = 1;
       } else {
-        amp = Math.max(0, amp - dt / EASE_OUT);
+        amp = Math.max(0, amp - dt / SETTLE_S);
       }
       bob.lift = amp * Math.abs(Math.sin(phase));
       bob.itemLift = amp * Math.abs(Math.sin(phase - ITEM_LAG));

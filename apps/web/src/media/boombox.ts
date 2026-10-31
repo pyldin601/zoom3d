@@ -34,8 +34,8 @@ function isSupported(file: File): boolean {
   return FORMATS.some((f) => f.exts.some((ext) => name.endsWith(ext)));
 }
 
-/** Volume changes glide this fast (s), so dragging the slider doesn't click. */
-const VOLUME_TAU = 0.02;
+/** Volume changes glide this fast, so dragging the slider doesn't click. */
+const VOLUME_TAU_S = 0.02;
 
 export interface Boombox {
   /** The B key: opens the file picker when off (only if `canOpen`: in a room), and always stops. */
@@ -184,7 +184,7 @@ export function createBoombox(opts: BoomboxOptions): Boombox {
     volume: () => volumeLevel,
     setVolume(v) {
       volumeLevel = Math.min(Math.max(v, 0), 1);
-      volumeNode?.gain.setTargetAtTime(volumeLevel, ctx.currentTime, VOLUME_TAU);
+      volumeNode?.gain.setTargetAtTime(volumeLevel, ctx.currentTime, VOLUME_TAU_S);
     },
     progress() {
       const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
