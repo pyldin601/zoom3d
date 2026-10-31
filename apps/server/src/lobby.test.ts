@@ -617,6 +617,14 @@ describe('sips', () => {
     expect(to('A')).toHaveLength(aSent);
   });
 
+  test('a lighter in hand relays no sip and no cheers', () => {
+    lobby.held('A', { type: 'held', item: 'lighter' });
+    lobby.drink('A');
+    lobby.cheers('A');
+    expect(drinks('B')).toEqual([]);
+    expect(to('B').filter((m) => m.type === 'peer_cheers')).toEqual([]);
+  });
+
   test('nothing in hand, no sip', () => {
     lobby.held('A', { type: 'held', item: null });
     lobby.drink('A');

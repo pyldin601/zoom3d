@@ -8,8 +8,16 @@
 // portals off (the plain table) and on (the portals-on table).
 import { LEVEL1, parseMap, tileAt, wirePortals } from '@zoom3d/shared';
 import { createFramebuffer } from '../src/renderer/framebuffer';
-import { createPortalGlows, type Glow } from '../src/renderer/glow';
-import { bakeLighting, bakePortalLighting, corridorLights, type Lighting } from '../src/renderer/lighting';
+import { createPortalGlows, GLOW_RADIUS, type Glow } from '../src/renderer/glow';
+import { createLighterGlows, LIGHTER_REACH } from '../src/renderer/lighter';
+import {
+  bakeLighting,
+  bakePortalLighting,
+  corridorLights,
+  fillGlowSeen,
+  type Lighting,
+  newGlowShadow,
+} from '../src/renderer/lighting';
 import { averageColour, makeTextures } from '../src/renderer/textures';
 import { CEILING, FLOOR, type Room, renderWalls } from '../src/renderer/walls';
 
@@ -154,6 +162,50 @@ for (const state of ['off', 'on'] as const) {
   console.log(`both + crowd, portals ${state.padEnd(3)} ${median(crowdTimes[state]).toFixed(3)} ms/frame (lamp poses)`);
 }
 
+// A lighter's shadow table (lighter spec §3.2), rebuilt at every lamp pose: what a holder pays per floor cell walked.
+const lighterShadow = newGlowShadow(LIGHTER_REACH);
+const rebuildTimes: number[] = [];
+for (let round = 0; round < ROUNDS; round++) {
+  const start = performance.now();
+  for (const p of poses) {
+    fillGlowSeen(map, null, p.x, p.y, LIGHTER_REACH, null, lighterShadow);
+  }
+  rebuildTimes.push((performance.now() - start) / poses.length);
+}
+console.log(`lighter shadow rebuild ${median(rebuildTimes).toFixed(3)} ms`);
+
+// 'both + glow' with a lighter in the eye's hand and in each nearby avatar's, every table already filled: what a frame
+// pays for the lighters' light once nobody changes cell. Kept out of MODES, so their pixel hash stays as it was.
+const lighterGlowsAt = poses.map((p) => {
+  const holders = p.glows.map((g, i) => ({ key: `h${i}`, x: g.x, y: g.y, angle: p.angle + i }));
+  holders.push({ key: 'eye', x: p.x, y: p.y, angle: p.angle });
+  return [...p.glows, ...createLighterGlows().update(holders, map, null, 0)];
+});
+let lighterHash = 0;
+const drawLit = (i: number) => {
+  const p = poses.at(i);
+  room.eye = p ?? room.eye;
+  room.lighting = lighting;
+  room.reflections = 'both';
+  renderWalls(fb, room, lighterGlowsAt.at(i));
+};
+poses.forEach((_, i) => {
+  drawLit(i);
+  for (const c of fb.pixels) {
+    lighterHash = (Math.imul(lighterHash, 31) + c) | 0;
+  }
+});
+const lighterTimes: number[] = [];
+for (let round = 0; round < ROUNDS; round++) {
+  const frames = poses.length * FRAMES_PER_POSE;
+  const start = performance.now();
+  for (let f = 0; f < frames; f++) {
+    drawLit(f % poses.length);
+  }
+  lighterTimes.push((performance.now() - start) / frames);
+}
+console.log(`both + lighters ${median(lighterTimes).toFixed(3)} ms/frame; pixel hash ${lighterHash}`);
+
 function draw(mode: Mode, p: Pose): void {
   room.eye = p;
   room.lighting = mode === 'unlit' ? null : lighting;
@@ -209,10 +261,20 @@ function posesNearLamps(): Pose[] {
         const gx = x + (rand() - 0.5) * 4;
         const gy = y + (rand() - 0.5) * 4;
         if (open(gx, gy)) {
-          glows.push({ x: gx, y: gy, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6, cut: null, shadow: null });
+          glows.push({
+            x: gx,
+            y: gy,
+            r: rand() * 0.6,
+            g: rand() * 0.6,
+            b: rand() * 0.6,
+            cut: null,
+            shadow: null,
+            reach: GLOW_RADIUS,
+            cone: null,
+          });
         }
       }
-      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null, shadow: null });
+      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null, shadow: null, reach: GLOW_RADIUS, cone: null });
       out.push({ x, y, angle: rand() * Math.PI * 2, glows });
     }
   }
@@ -231,7 +293,17 @@ function crowdGlows(): Glow[] {
     const x = rand() * map.width;
     const y = rand() * map.height;
     if (tileAt(map, Math.floor(x), Math.floor(y)) === 0) {
-      out.push({ x, y, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6, cut: null, shadow: null });
+      out.push({
+        x,
+        y,
+        r: rand() * 0.6,
+        g: rand() * 0.6,
+        b: rand() * 0.6,
+        cut: null,
+        shadow: null,
+        reach: GLOW_RADIUS,
+        cone: null,
+      });
     }
   }
   return out;

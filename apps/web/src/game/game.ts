@@ -228,9 +228,11 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
 
   /** The one path for changing the drink in hand, from a number key or the touch tray. */
   function chooseDrink(item: HeldItem | null): void {
+    const before = localPlayer.drink;
     if (!localPlayer.takeDrink(item)) {
       return;
     }
+    room?.lighterSounds.own(before, item);
     drinkKey.cancel();
     controls.refresh();
     saveHeld(pageStorage(), item);

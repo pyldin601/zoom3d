@@ -10,6 +10,7 @@ import {
   HELD_ITEMS,
   INTERP_DELAY_MS,
   isAvatarId,
+  isDrink,
   isHeldItem,
   isValidAvatar,
   isValidRoomId,
@@ -302,13 +303,28 @@ describe('held items', () => {
   });
 
   test('isHeldItem accepts only the listed items', () => {
-    expect(HELD_ITEMS).toEqual(['beer', 'coffee', 'wine']);
+    expect(HELD_ITEMS).toEqual(['beer', 'coffee', 'wine', 'lighter']);
     for (const item of HELD_ITEMS) {
       expect(isHeldItem(item)).toBe(true);
     }
     for (const v of ['pizza', '', null, undefined, 1, 'Beer']) {
       expect(isHeldItem(v)).toBe(false);
     }
+  });
+
+  test('the lighter is held but is no drink', () => {
+    expect(isDrink('lighter')).toBe(false);
+    expect(isDrink(null)).toBe(false);
+    for (const drink of ['beer', 'coffee', 'wine'] as const) {
+      expect(isDrink(drink)).toBe(true);
+    }
+  });
+
+  test('a peer holding the lighter keeps it', () => {
+    expect(parseServerMessage(json({ type: 'peer_joined', peer: { ...peer, held: 'lighter' } }))).toEqual({
+      type: 'peer_joined',
+      peer: { ...peer, held: 'lighter' },
+    });
   });
 
   test('client held accepts null or an item and strips extra fields', () => {

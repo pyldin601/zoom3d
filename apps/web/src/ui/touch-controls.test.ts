@@ -60,6 +60,20 @@ test('Nothing puts the drink down', () => {
   expect(opts.onPick).toHaveBeenCalledWith(null);
 });
 
+test('Lighter picks the lighter', () => {
+  const opts = options();
+  showTouchControls(root, opts);
+  $('.more').click();
+  $('[aria-label="Lighter"]').click();
+  expect(opts.onPick).toHaveBeenCalledWith('lighter');
+});
+
+test('the drink button stays hidden while holding the lighter: it has no sip', () => {
+  const controls = showTouchControls(root, options());
+  controls.update({ held: 'lighter', boombox: false, map: false, lighting: 'reflections', kick: false });
+  expect($('.drink').hidden).toBe(true);
+});
+
 test('⋯ again or a tap outside the tray closes it', () => {
   showTouchControls(root, options());
   $('.more').click();

@@ -9,7 +9,7 @@ import { FACE_SIZE } from '../src/media/faces';
 import type { PeerFacts } from '../src/media/interest';
 import { renderView } from '../src/renderer/frame';
 import { createFramebuffer, rgb } from '../src/renderer/framebuffer';
-import type { Glow } from '../src/renderer/glow';
+import { GLOW_RADIUS, type Glow } from '../src/renderer/glow';
 import { bakeLighting, bakePortalLighting, corridorLights } from '../src/renderer/lighting';
 import { BALL_MODEL } from '../src/renderer/models/ball';
 import { VACUUM_MODEL } from '../src/renderer/models/vacuum';
@@ -162,6 +162,9 @@ function drawWholeFrame(state: 'off' | 'on', s: Scene): void {
     objects: s.voxels,
     labels: [],
     ownGlow: null,
+    lighters: [],
+    ownLighter: null,
+    lighterSeconds: 0,
     self: null,
     ownLabel: null,
     portalPulse: 1,
@@ -286,9 +289,19 @@ function scenesNearLamps(): Scene[] {
           held,
           boombox: j % 3 === 0,
         });
-        glows.push({ x: at.x, y: at.y, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6, cut: null, shadow: null });
+        glows.push({
+          x: at.x,
+          y: at.y,
+          r: rand() * 0.6,
+          g: rand() * 0.6,
+          b: rand() * 0.6,
+          cut: null,
+          shadow: null,
+          reach: GLOW_RADIUS,
+          cone: null,
+        });
       }
-      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null, shadow: null });
+      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null, shadow: null, reach: GLOW_RADIUS, cone: null });
       const spot = ahead(0.6);
       const voxels = open(spot.x, spot.y) ? [{ model: VACUUM_MODEL, x: spot.x, y: spot.y, angle: rand() * 7 }] : [];
       // Straight ahead, so the seeded poses (and the hash of everything else) stay as they were.

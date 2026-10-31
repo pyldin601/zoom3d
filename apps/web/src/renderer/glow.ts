@@ -6,8 +6,9 @@ import { PORTAL_PINK } from '../game/portal-pulse';
 import { EYE_HEIGHT } from './camera';
 
 /**
- * A glowing disc at (x, y), centred at eye height: light r, g, b (1 = a full lamp's brightness). With a `cut`, it
- * lights only the side of that plane it stands on; with a `shadow`, only as much as a point sees of it past the walls.
+ * A glowing disc at (x, y), centred at eye height: light r, g, b (1 = a full lamp's brightness), reaching `reach`
+ * tiles. With a `cut`, it lights only the side of that plane it stands on; with a `shadow`, only as much as a point
+ * sees of it past the walls; with a `cone`, only what lies ahead of it.
  */
 export interface Glow {
   x: number;
@@ -15,8 +16,21 @@ export interface Glow {
   r: number;
   g: number;
   b: number;
+  reach: number;
   cut: GlowCut | null;
   shadow: GlowShadow | null;
+  cone: GlowCone | null;
+}
+
+/**
+ * Seen from above, the glow's light leaves along unit direction (dx, dy): full where the cosine of a point's angle
+ * off it is at least `cosFull`, none at `cosEdge` or less, blended between.
+ */
+export interface GlowCone {
+  dx: number;
+  dy: number;
+  cosEdge: number;
+  cosFull: number;
 }
 
 /** A vertical plane through (cx, cy) with normal (nx, ny): points on it or on its +n side get none of the glow. */
@@ -107,19 +121,24 @@ function unpackColour(colour: number): typeof channels {
 }
 
 /**
- * How much of glow `g` reaches the surface at (x, y, z) facing (nx, ny, nz): a lamp-like falloff to nothing at
- * GLOW_RADIUS, times how squarely the surface faces the disc and how much of it the surface sees. 0..1, before the
- * glow's colour.
+ * How much of glow `g` reaches the surface at (x, y, z) facing (nx, ny, nz): a lamp-like falloff to nothing at its
+ * reach, times how squarely the surface faces the disc, how much of it the surface sees and how far inside its cone
+ * the surface lies. 0..1, before the glow's colour.
  */
 export function glowLight(g: Glow, x: number, y: number, z: number, nx: number, ny: number, nz: number): number {
   if (hiddenByCut(g, x, y)) {
+    return 0;
+  }
+  // First, as most cells round a lighter lie outside its cone: the rest would be wasted on them.
+  const ahead = coneFactor(g, x, y);
+  if (ahead === 0) {
     return 0;
   }
   const dx = g.x - x;
   const dy = g.y - y;
   const dz = EYE_HEIGHT - z;
   const d2 = dx * dx + dy * dy + dz * dz;
-  const reach2 = GLOW_RADIUS * GLOW_RADIUS;
+  const reach2 = g.reach * g.reach;
   if (d2 >= reach2) {
     return 0;
   }
@@ -132,7 +151,55 @@ export function glowLight(g: Glow, x: number, y: number, z: number, nx: number, 
     return 0;
   }
   const k = 1 - d2 / reach2;
-  return k * k * (facing / Math.sqrt(d2)) * seen;
+  return k * k * (facing / Math.sqrt(d2)) * seen * ahead;
+}
+
+/** How far inside `g`'s cone (x, y) lies, seen from above: 0 outside, 1 well inside, and 1 for a glow without one. */
+export function coneFactor(g: Glow, x: number, y: number): number {
+  const { cone } = g;
+  if (cone === null) {
+    return 1;
+  }
+  const dx = x - g.x;
+  const dy = y - g.y;
+  const d = Math.sqrt(dx * dx + dy * dy);
+  if (d === 0) {
+    return 1;
+  }
+  const cos = (dx * cone.dx + dy * cone.dy) / d;
+  if (cos <= cone.cosEdge) {
+    return 0;
+  }
+  if (cos >= cone.cosFull) {
+    return 1;
+  }
+  const t = (cos - cone.cosEdge) / (cone.cosFull - cone.cosEdge);
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * How much of glow `g` reaches the point (x, y, z) of an object, before splitting it over the object's faces: the
+ * falloff, its cone and its shadow, as glowLight has them, but without a surface's facing. 0..1.
+ */
+export function glowReaching(g: Glow, x: number, y: number, z: number): number {
+  if (hiddenByCut(g, x, y)) {
+    return 0;
+  }
+  const ahead = coneFactor(g, x, y);
+  if (ahead === 0) {
+    return 0;
+  }
+  const dx = g.x - x;
+  const dy = g.y - y;
+  const dz = EYE_HEIGHT - z;
+  const d2 = dx * dx + dy * dy + dz * dz;
+  const reach2 = g.reach * g.reach;
+  if (d2 >= reach2) {
+    return 0;
+  }
+  const seen = g.shadow ? shadowSeen(g.shadow, x, y) : 1;
+  const k = 1 - d2 / reach2;
+  return k * k * seen * ahead;
 }
 
 /** How much of its glow the floor cell holding (x, y) sees, 0..1. */
@@ -165,7 +232,7 @@ export function createAvatarGlows(): AvatarGlows {
   const add = (source: GlowSource) => {
     let g = pool.at(count);
     if (!g) {
-      g = { x: 0, y: 0, r: 0, g: 0, b: 0, cut: null, shadow: null };
+      g = { x: 0, y: 0, r: 0, g: 0, b: 0, reach: GLOW_RADIUS, cut: null, shadow: null, cone: null };
       pool.push(g);
     }
     glowOf(source, g);
@@ -200,7 +267,17 @@ export interface PortalGlows {
 export type PortalGlow = Glow & { cut: GlowCut };
 
 export function newPortalGlow(): PortalGlow {
-  return { x: 0, y: 0, r: 0, g: 0, b: 0, cut: { cx: 0, cy: 0, nx: 0, ny: 0 }, shadow: null };
+  return {
+    x: 0,
+    y: 0,
+    r: 0,
+    g: 0,
+    b: 0,
+    reach: GLOW_RADIUS,
+    cut: { cx: 0, cy: 0, nx: 0, ny: 0 },
+    shadow: null,
+    cone: null,
+  };
 }
 
 /** Moves `g` in front of `portal`'s doorway and cuts it at the doorway's plane. */

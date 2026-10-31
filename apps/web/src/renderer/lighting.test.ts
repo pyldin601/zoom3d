@@ -13,9 +13,11 @@ import {
   distanceToWall,
   FLOOR_NORMAL,
   FLOOR_SUB,
+  fillGlowSeen,
   type Light,
   type Lighting,
   lampCopies,
+  newGlowShadow,
   REFLECTION_LAMPS,
   REFLECTION_PATH,
   reflection,
@@ -583,5 +585,40 @@ describe('bakePortalLighting', () => {
   });
   test('the plain bake is not portal-aware', () => {
     expect(bakeLighting(hall, [], 0.1, GREY, GREY).portals).toBeNull();
+  });
+});
+
+describe('fillGlowSeen', () => {
+  const seenAt = (shadow: ReturnType<typeof newGlowShadow>, x: number, y: number) => {
+    const col = Math.floor(x * FLOOR_SUB) - shadow.firstCol;
+    const row = Math.floor(y * FLOOR_SUB) - shadow.firstRow;
+    return shadow.seen[row * shadow.across + col];
+  };
+
+  test('open floor within reach sees the point; floor behind the pillar and the pillar itself see none', () => {
+    const shadow = newGlowShadow(4);
+    fillGlowSeen(map, null, 1.5, 1.5, 4, null, shadow);
+    expect(seenAt(shadow, 2.5, 2.5)).toBeGreaterThan(0);
+    expect(seenAt(shadow, 4.5, 1.5)).toBe(0);
+    expect(seenAt(shadow, 3.5, 1.5)).toBe(0);
+  });
+
+  test('near the map edge the table is clipped to the map', () => {
+    const shadow = newGlowShadow(4);
+    fillGlowSeen(map, null, 1.5, 1.5, 4, null, shadow);
+    expect(shadow.firstCol).toBe(0);
+    expect(shadow.firstRow).toBe(0);
+    expect(shadow.firstCol + shadow.across).toBeLessThanOrEqual(map.width * FLOOR_SUB);
+    expect(shadow.firstRow + shadow.down).toBeLessThanOrEqual(map.height * FLOOR_SUB);
+  });
+
+  test('refilling at another point answers for that point, in the same buffer', () => {
+    const shadow = newGlowShadow(4);
+    fillGlowSeen(map, null, 1.5, 1.5, 4, null, shadow);
+    const buffer = shadow.seen;
+    fillGlowSeen(map, null, 5.5, 1.5, 4, null, shadow);
+    expect(shadow.seen).toBe(buffer);
+    expect(seenAt(shadow, 4.5, 1.5)).toBeGreaterThan(0);
+    expect(seenAt(shadow, 1.5, 1.5)).toBe(0);
   });
 });

@@ -2,6 +2,7 @@ import { type PlayerState, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { createView, setView } from './camera';
 import { createFramebuffer, rgb, scaleRgb } from './framebuffer';
+import { createLighterGlows } from './lighter';
 import { bakeLighting, type Light } from './lighting';
 import { createFloorMirror } from './mirror';
 import { BALL_MODEL } from './models/ball';
@@ -262,6 +263,23 @@ describe('renderVoxel with lighting', () => {
     expect(red(lit)).toBeGreaterThan(red(dark));
   });
 
+  test("a lighter aimed at the box lights the face turned to it; one aimed away doesn't", () => {
+    const dark = bakeLighting(room, [], 0.45, RED, RED);
+    // Between the camera and the box: the box's face turned to the camera is turned to the lighter too.
+    const lighterAt = (angle: number) => [
+      ...createLighterGlows().update([{ key: 'h', x: 2, y: 4.5, angle }], room, null, 0),
+    ];
+    const none = blank();
+    renderVoxel(none, view, box, dark);
+    const aimed = blank();
+    renderVoxel(aimed, view, box, dark, undefined, lighterAt(0));
+    const away = blank();
+    renderVoxel(away, view, box, dark, undefined, lighterAt(Math.PI));
+    const red = (fb: ReturnType<typeof blank>) => Math.max(...[...drawn(fb)].map((c) => c & 0xff));
+    expect(red(aimed)).toBeGreaterThan(red(none));
+    expect(firstDifference(away.pixels, none.pixels)).toBe(-1);
+  });
+
   describe('glowing voxels shine like the ball (one emission rule for every model)', () => {
     const glowingIn = (amount: number, ambient: number) => {
       const fb = blank();
@@ -350,6 +368,28 @@ describe('renderVoxel with lighting', () => {
 });
 
 describe('renderVoxelMirror', () => {
+  test('a lighter aimed at the object lights its image in the floor too', () => {
+    const room = parseMap('1111111\n1S....1\n1.....1\n1.....1\n1.....1\n1.....1\n1111111');
+    const dark = bakeLighting(room, [], 0.3, RED, RED);
+    const ball: VoxelInstance = { model: BALL_MODEL, x: 3.0, y: 4.5, angle: 0 };
+    const plotted = (glows: Parameters<typeof renderVoxelMirror>[6]) => {
+      const fb = blank();
+      const mirror = createFloorMirror();
+      mirror.fit(fb.width, fb.height);
+      mirror.clear();
+      let red = 0;
+      const plot = mirror.plot;
+      mirror.plot = (x, y, colour, kind) => {
+        red += colour & 0xff;
+        plot(x, y, colour, kind);
+      };
+      renderVoxelMirror(fb, view, ball, dark, mirror, undefined, glows);
+      return red;
+    };
+    const lighter = [...createLighterGlows().update([{ key: 'h', x: 2, y: 4.5, angle: 0 }], room, null, 0)];
+    expect(plotted(lighter)).toBeGreaterThan(plotted([]));
+  });
+
   test('the ball’s underside shows: its mirror has no holes', () => {
     const fb = blank();
     const room = parseMap('1111111\n1S....1\n1.....1\n1.....1\n1.....1\n1.....1\n1111111');

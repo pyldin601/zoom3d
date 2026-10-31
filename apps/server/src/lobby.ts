@@ -20,6 +20,7 @@ import {
   DRINK_GAP_MS,
   type GameMap,
   type HeldMessage,
+  isDrink,
   isPlausibleMove,
   isValidAvatar,
   isValidRoomId,
@@ -996,7 +997,7 @@ export class Lobby {
   private gesture(conn: string, type: 'peer_drink' | 'peer_cheers'): void {
     const found = this.peerOf(conn);
     const now = this.opts.now();
-    if (!found || found.peer.held === null || now - found.peer.lastGestureAt < DRINK_GAP_MS) {
+    if (!found || !isDrink(found.peer.held) || now - found.peer.lastGestureAt < DRINK_GAP_MS) {
       return;
     }
     found.peer.lastGestureAt = now;

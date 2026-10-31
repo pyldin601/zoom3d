@@ -47,8 +47,18 @@ test('number keys pick a drink: 1 beer, 2 coffee, 3 wine, 0 nothing', () => {
   expect(heldForKey('Numpad0')).toBeNull();
 });
 
+test('9 picks the lighter, and a stored lighter comes back', () => {
+  expect(heldForKey('Digit9')).toBe('lighter');
+  expect(heldForKey('Numpad9')).toBe('lighter');
+  expect(loadHeld({ getItem: () => 'lighter' })).toBe('lighter');
+});
+
+test('the lighter key never sips or cheers the lighter in hand', () => {
+  expect(heldKeyAction('lighter', 'lighter')).toBe('pick');
+});
+
 test('other keys are not drink keys', () => {
-  for (const code of ['Digit4', 'Digit9', 'Numpad5', 'KeyW', 'KeyB', 'Space', '']) {
+  for (const code of ['Digit4', 'Digit8', 'Numpad5', 'KeyW', 'KeyB', 'Space', '']) {
     expect(heldForKey(code)).toBeUndefined();
   }
 });

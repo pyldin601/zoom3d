@@ -1,10 +1,19 @@
 // The other people and the world objects as the room frame shows them: their interpolated positions, for the audio
 // and the interest rule, and the discs, name labels and voxel models the renderer draws. Each peer keeps one record
 // from frame to frame, so a full room allocates nothing per frame (AGENTS.md: never block the render loop).
-import { type Apparent, type Ball, INTERP_DELAY_MS, type PlayerState, type Point, type Portals } from '@zoom3d/shared';
+import {
+  type Apparent,
+  type Ball,
+  INTERP_DELAY_MS,
+  isDrink,
+  type PlayerState,
+  type Point,
+  type Portals,
+} from '@zoom3d/shared';
 import { nearTier } from '../net/peer-delay';
 import { objectKey, type RemotePeer, type Session } from '../net/session';
 import { type Bob, createBob } from '../renderer/bob';
+import type { LighterSource } from '../renderer/lighter';
 import { BALL_MODEL } from '../renderer/models/ball';
 import { VACUUM_MODEL } from '../renderer/models/vacuum';
 import { gesturePose } from '../renderer/sip';
@@ -35,13 +44,15 @@ export interface PeerMedia {
 
 export interface RemoteWorld {
   /** Where each peer (by id) and each world object (by objectKey) is now; the same objects from frame to frame. */
-  readonly positions: ReadonlyMap<string, Point>;
+  readonly positions: ReadonlyMap<string, PlayerState>;
   /** Each world object's pose now, by objectKey: the same objects as in `positions`. */
   readonly objectPoses: ReadonlyMap<string, PlayerState>;
   /** This frame's discs, labels and voxel models, from `collect`; reused objects, so read them before the next. */
   readonly sprites: readonly Sprite[];
   readonly labels: readonly PeerLabel[];
   readonly voxels: readonly VoxelInstance[];
+  /** This frame's lit lighters, from `collect`: everyone holding one, where they stand and face. Reused objects. */
+  readonly lighters: readonly LighterSource[];
   /**
    * Samples every peer's and object's position at `now`: every frame, and from the hidden-tab ticker. The ball is the
    * one object not drawn from its buffer: it is where the client's prediction has it, in the present (ball spec §3.3).
@@ -60,16 +71,18 @@ interface PeerRecord {
   bob: Bob;
   sprite: Sprite;
   label: PeerLabel;
+  lighter: { key: string; x: number; y: number; angle: number };
 }
 
 export function createRemoteWorld(): RemoteWorld {
-  const positions = new Map<string, Point>();
+  const positions = new Map<string, PlayerState>();
   const objectPoses = new Map<string, PlayerState>();
   /** Each object's objectKey, made once rather than every frame. */
   const objectKeys = new Map<string, string>();
   const records = new Map<string, PeerRecord>();
   const sprites: Sprite[] = [];
   const labels: PeerLabel[] = [];
+  const lighters: LighterSource[] = [];
   const voxels: VoxelInstance[] = [];
   const at = { x: 0, y: 0, angle: 0 };
 
@@ -132,8 +145,9 @@ export function createRemoteWorld(): RemoteWorld {
       if (pos) {
         pos.x = at.x;
         pos.y = at.y;
+        pos.angle = at.angle;
       } else {
-        positions.set(peer.info.id, { x: at.x, y: at.y });
+        positions.set(peer.info.id, { x: at.x, y: at.y, angle: at.angle });
       }
     }
   };
@@ -145,6 +159,7 @@ export function createRemoteWorld(): RemoteWorld {
         bob: createBob(),
         sprite: blankSprite(id),
         label: { x: 0, y: 0, shownX: 0, shownY: 0, color: '', name: '', mic: false },
+        lighter: { key: id, x: 0, y: 0, angle: 0 },
       };
       records.set(id, record);
     }
@@ -164,14 +179,21 @@ export function createRemoteWorld(): RemoteWorld {
       }
     }
     let n = 0;
+    let lit = 0;
     for (const peer of s.peers.values()) {
       const id = peer.info.id;
       const pos = positions.get(id);
       if (!pos) {
         continue;
       }
-      const { bob, sprite, label } = recordOf(id);
+      const { bob, sprite, label, lighter } = recordOf(id);
       bob.update(pos.x, pos.y, dt);
+      if (peer.info.held === 'lighter') {
+        lighter.x = pos.x;
+        lighter.y = pos.y;
+        lighter.angle = pos.angle;
+        lighters[lit++] = lighter;
+      }
       fillSprite(sprite, peer, pos, bob, media, now);
       fillLabel(label, peer, pos, apparent?.get(id) ?? pos);
       sprites[n] = sprite;
@@ -181,6 +203,7 @@ export function createRemoteWorld(): RemoteWorld {
     // Written by index and trimmed: `length = 0` would make V8 drop the arrays' storage every frame.
     sprites.length = n;
     labels.length = n;
+    lighters.length = lit;
   };
 
   const collectVoxels = (s: Session) => {
@@ -207,6 +230,7 @@ export function createRemoteWorld(): RemoteWorld {
     sprites,
     labels,
     voxels,
+    lighters,
     sample(s, player, now, ball = null, portals = null) {
       forgetGone(s);
       sampleObjects(s, now, ball);
@@ -249,8 +273,10 @@ function fillSprite(sprite: Sprite, peer: RemotePeer, pos: Point, bob: Bob, medi
   sprite.bob = bob.lift;
   sprite.itemBob = bob.itemLift;
   const gesture = peer.gesture;
-  // The sprite's sip, cheers and wobble are a HeldPose.
-  gesturePose(gesture ? gesture.kind : null, gesture ? now - gesture.at : 0, sprite);
+  // The sprite's sip, cheers and wobble are a HeldPose. The lighter has no gestures: one under way when it was taken
+  // stops.
+  const shown = gesture && isDrink(held) ? gesture : null;
+  gesturePose(shown ? shown.kind : null, shown ? now - shown.at : 0, sprite);
   sprite.held = held;
   sprite.boombox = boombox;
 }
