@@ -424,6 +424,20 @@ test('peer_held updates the peer and ignores unknown ids', () => {
   expect(() => ws.receive({ type: 'peer_held', id: 'zzz', item: 'beer' })).not.toThrow();
 });
 
+test('peer_held tells the listener what the peer held before and holds now, only when it changes', () => {
+  const changes: [string, string | null, string | null][] = [];
+  const { ws } = joinedSession([{ ...peer('a'), held: 'beer' }], {
+    peerHeld: (id, before, after) => changes.push([id, before, after]),
+  });
+  ws.receive({ type: 'peer_held', id: 'a', item: 'lighter' });
+  ws.receive({ type: 'peer_held', id: 'a', item: 'lighter' });
+  ws.receive({ type: 'peer_held', id: 'a', item: null });
+  expect(changes).toEqual([
+    ['a', 'beer', 'lighter'],
+    ['a', 'lighter', null],
+  ]);
+});
+
 test('sendDrink sends only while open', () => {
   const session = createSession({
     url: 'ws://t/ws',

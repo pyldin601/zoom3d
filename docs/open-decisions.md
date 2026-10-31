@@ -805,6 +805,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **It lights the vacuum and the ball** (the owner asked, 2026-10-31): per face direction, as a lamp does, and their
     floor images too. Face and portal glows still don't, so every existing hash in `bench:walls` and `bench:sprites`
     is unchanged.
+  - **It clicks** (the owner asked, 2026-10-31): lit, a lid click, a flint rasp and the flame catching; put away, a
+    lid snap. Synthesised like the ball. Others hear a peer's from their spot; the holder hears their own unplaced. It
+    hasn't been listened to in the game.
   - **Through portals,** the shadow table uses the portal-aware sight test, so the light stops at a doorway's front
     instead of spilling into the room physically behind it.
   - **Starting values, untuned by play:**

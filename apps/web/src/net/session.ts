@@ -55,6 +55,8 @@ export interface SessionListener {
   peerJoined?(peer: PeerInfo): void;
   peerLeft?(id: string): void;
   peerMedia?(id: string, cam: boolean, mic: boolean): void;
+  /** A peer's hand changed (not called for what a welcome or a join lists). */
+  peerHeld?(id: string, before: HeldItem | null, after: HeldItem | null): void;
   /** Something an object did (a bump, a lost beep, a kick), after its pose was applied; `by` is a ball's kicker. */
   objectEvent?(id: string, event: ObjectEvent, by?: string): void;
   /** Every applied (not stale) object state, for the ball's prediction. */
@@ -297,9 +299,13 @@ export function createSession(opts: SessionOptions): Session {
     if (!peer) {
       return;
     }
+    const before = peer.info.held;
     peer.info.held = item;
     if (item === null) {
       peer.gesture = null;
+    }
+    if (before !== item) {
+      listener.peerHeld?.(id, before, item);
     }
   };
 

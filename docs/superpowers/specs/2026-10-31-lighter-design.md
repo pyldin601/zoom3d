@@ -107,7 +107,21 @@ avatar glows cost today, plus a shadow table each time a lighter moves (§3.2).
 - Telemetry: none added.
 - The ray-traced spike renderer is out of scope.
 
-## 4. Testing
+### 3.5 Sound (added 2026-10-31 at the owner's request)
+
+- **Lit:** the lid clicks open (thin brass partials at 2.8, 4.1 and 6.3 kHz), then 0.12 s later the flint rasps (noise
+  band-passed round 3.5 kHz) and the flame catches (a low rush of noise under 600 Hz).
+- **Put away:** the lid snaps shut, a duller clack at 1.2 and 2.4 kHz.
+- **Swapping:** changing one drink for another makes no sound.
+- **Who hears it, and from where:**
+  - Others hear a peer's lighter from where that peer stands, through the voice path, like the ball (`lighter:<id>`).
+    It is detached when they leave.
+  - The holder hears their own unplaced.
+  - Only changes sound: a welcome or a join that lists a lighter already lit plays nothing.
+- **Level:** `LIGHTER_GAIN` 0.15, like the ball's, keeps its loudest part 12 dB under a voice. It hasn't been tuned by
+  ear.
+
+
 
 - **First, failing tests** for:
   - the cone falloff in `glowLight` (inside, at the edge, behind, beyond `reach`);
