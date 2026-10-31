@@ -21,6 +21,7 @@ import { VACUUM_MODEL } from './models/vacuum';
 import { shimmerAndRim, toSketchPx, windowRipple } from './portal-window';
 import { createRoomLighting } from './room-lighting';
 import type { Sprite } from './sprites';
+import { firstDifference } from './test-helpers';
 import { makeTextures } from './textures';
 import { CEILING, FLOOR, renderWalls, rowsCovered } from './walls';
 
@@ -71,6 +72,9 @@ describe('renderView without portals', () => {
     objects: [{ model: VACUUM_MODEL, x: sx + 1.1, y: sy - 0.6, angle: 0.7 }],
     labels: [],
     ownGlow: { x: sx, y: sy, face: null, color: rgb(250, 220, 120) },
+    lighters: [],
+    ownLighter: null,
+    lighterSeconds: 0,
     self: null,
     ownLabel: null,
     portalPulse: 1,
@@ -89,6 +93,51 @@ describe('renderView without portals', () => {
       return hashOf(fb);
     });
     expect(hashes).toEqual(expected);
+  });
+});
+
+describe('renderView with a lighter', () => {
+  // A dark one-tile corridor with a wall across it at x = 6; nobody's face glows.
+  const map = parseMap(`
+1111111111111
+1S....1.....1
+1111111111111
+`);
+  const dark = bakeLighting(map, [], 0.08, FLOOR, CEILING);
+  const EAST = 0;
+  const WEST = Math.PI;
+  const holder = { key: 'h', x: 2.5, y: 1.5, angle: EAST };
+  const frameOf = (eye: PlayerState, lighters: RoomScene['lighters']) => {
+    const fb = createFramebuffer();
+    renderView(fb, { ...portalScene(map, null, eye, [], dark), lighters });
+    return fb.pixels;
+  };
+
+  test('the floor and walls ahead of someone holding a lighter are brighter', () => {
+    const eye = { x: 1.5, y: 1.5, angle: EAST };
+    const without = frameOf(eye, []);
+    const lit = frameOf(eye, [holder]);
+    expect(firstDifference(without, lit)).toBeGreaterThanOrEqual(0);
+    const red = (pixels: Uint32Array) => pixels.reduce((sum, c) => sum + (c & 0xff), 0);
+    expect(red(lit)).toBeGreaterThan(red(without));
+  });
+
+  test('nothing behind its holder is lit', () => {
+    // Holder and eye back to back on one spot: all the eye sees lies behind the holder.
+    const eye = { x: 5.5, y: 1.5, angle: WEST };
+    expect(firstDifference(frameOf(eye, []), frameOf(eye, [{ ...holder, x: 5.5 }]))).toBe(-1);
+  });
+
+  test('nothing behind a wall in front of its holder is lit', () => {
+    const eye = { x: 11.5, y: 1.5, angle: WEST };
+    expect(firstDifference(frameOf(eye, []), frameOf(eye, [{ ...holder, x: 4.5 }]))).toBe(-1);
+  });
+
+  test("the local player's own lighter lights the way ahead too", () => {
+    const eye = { x: 1.5, y: 1.5, angle: EAST };
+    const fb = createFramebuffer();
+    renderView(fb, { ...portalScene(map, null, eye, [], dark), ownLighter: { ...holder, x: 1.5 } });
+    expect(firstDifference(frameOf(eye, []), fb.pixels)).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -120,6 +169,9 @@ function portalScene(
     objects: [],
     labels: [],
     ownGlow: null,
+    lighters: [],
+    ownLighter: null,
+    lighterSeconds: 0,
     self: null,
     ownLabel: null,
     portalPulse: 1,

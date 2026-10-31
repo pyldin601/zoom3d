@@ -9,6 +9,7 @@
 import { LEVEL1, parseMap, tileAt, wirePortals } from '@zoom3d/shared';
 import { createFramebuffer } from '../src/renderer/framebuffer';
 import { createPortalGlows, GLOW_RADIUS, type Glow } from '../src/renderer/glow';
+import { createLighterGlows, LIGHTER_REACH } from '../src/renderer/lighter';
 import {
   bakeLighting,
   bakePortalLighting,
@@ -24,8 +25,6 @@ import { CEILING, FLOOR, type Room, renderWalls } from '../src/renderer/walls';
 const FRAMES_PER_POSE = 2;
 const ROUNDS = 7;
 const MODES = ['unlit', 'none', 'walls', 'both', 'both + glow', 'both + crowd', 'only'] as const;
-/** A lighter's reach, as LIGHTER_REACH in renderer/lighter.ts. */
-const LIGHTER_REACH_TILES = 4;
 /** Glowing avatars in the crowd mode. */
 const CROWD = 100;
 type Mode = (typeof MODES)[number];
@@ -164,16 +163,48 @@ for (const state of ['off', 'on'] as const) {
 }
 
 // A lighter's shadow table (lighter spec §3.2), rebuilt at every lamp pose: what a holder pays per floor cell walked.
-const lighterShadow = newGlowShadow(LIGHTER_REACH_TILES);
+const lighterShadow = newGlowShadow(LIGHTER_REACH);
 const rebuildTimes: number[] = [];
 for (let round = 0; round < ROUNDS; round++) {
   const start = performance.now();
   for (const p of poses) {
-    fillGlowSeen(map, null, p.x, p.y, LIGHTER_REACH_TILES, null, lighterShadow);
+    fillGlowSeen(map, null, p.x, p.y, LIGHTER_REACH, null, lighterShadow);
   }
   rebuildTimes.push((performance.now() - start) / poses.length);
 }
 console.log(`lighter shadow rebuild ${median(rebuildTimes).toFixed(3)} ms`);
+
+// 'both + glow' with a lighter in the eye's hand and in each nearby avatar's, every table already filled: what a frame
+// pays for the lighters' light once nobody changes cell. Kept out of MODES, so their pixel hash stays as it was.
+const lighterGlowsAt = poses.map((p) => {
+  const holders = p.glows.map((g, i) => ({ key: `h${i}`, x: g.x, y: g.y, angle: p.angle + i }));
+  holders.push({ key: 'eye', x: p.x, y: p.y, angle: p.angle });
+  return [...p.glows, ...createLighterGlows().update(holders, map, null, 0)];
+});
+let lighterHash = 0;
+const drawLit = (i: number) => {
+  const p = poses.at(i);
+  room.eye = p ?? room.eye;
+  room.lighting = lighting;
+  room.reflections = 'both';
+  renderWalls(fb, room, lighterGlowsAt.at(i));
+};
+poses.forEach((_, i) => {
+  drawLit(i);
+  for (const c of fb.pixels) {
+    lighterHash = (Math.imul(lighterHash, 31) + c) | 0;
+  }
+});
+const lighterTimes: number[] = [];
+for (let round = 0; round < ROUNDS; round++) {
+  const frames = poses.length * FRAMES_PER_POSE;
+  const start = performance.now();
+  for (let f = 0; f < frames; f++) {
+    drawLit(f % poses.length);
+  }
+  lighterTimes.push((performance.now() - start) / frames);
+}
+console.log(`both + lighters ${median(lighterTimes).toFixed(3)} ms/frame; pixel hash ${lighterHash}`);
 
 function draw(mode: Mode, p: Pose): void {
   room.eye = p;

@@ -120,6 +120,25 @@ describe('sample', () => {
 });
 
 describe('collect', () => {
+  test('a peer holding the lighter is listed among the lighters, where they stand and face', () => {
+    const world = createRemoteWorld();
+    room.addPeer('ada', 2, 3);
+    room.addPeer('bob', 5, 3);
+    const ada = room.peers.get('ada');
+    if (!ada) {
+      throw new Error('no ada');
+    }
+    ada.info.held = 'lighter';
+    ada.buffer = new SnapshotBuffer();
+    ada.buffer.push({ t: 0, x: 2, y: 3, angle: 1.2 });
+    world.sample(room.session, player, NOW);
+    world.collect(room.session, media, NOW, 0);
+    expect(world.lighters).toEqual([{ key: 'ada', x: 2, y: 3, angle: 1.2 }]);
+    ada.info.held = null;
+    world.collect(room.session, media, NOW, 0);
+    expect(world.lighters).toEqual([]);
+  });
+
   test('one disc and one label per placed peer, with their face, ring, voice and drink', () => {
     const world = createRemoteWorld();
     room.addPeer('ada', 2, 3);

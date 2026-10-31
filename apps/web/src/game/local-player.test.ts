@@ -62,6 +62,20 @@ test('the own disc: none without a ring colour, else at the pose with the camera
   expect(localPlayer.avatar(600, '#ff0000', true)).toBe(disc);
 });
 
+test('the own lighter: none with a drink or nothing in hand, else where the player stands and faces', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  expect(localPlayer.lighter()).toBeNull();
+  localPlayer.takeDrink('beer');
+  expect(localPlayer.lighter()).toBeNull();
+  localPlayer.takeDrink('lighter');
+  expect(localPlayer.lighter()).toEqual({
+    key: OWN_SPRITE_KEY,
+    x: localPlayer.pose.x,
+    y: localPlayer.pose.y,
+    angle: localPlayer.pose.angle,
+  });
+});
+
 test('the own face is read only while a window shows the own disc, keeping the last one between', () => {
   const localPlayer = createLocalPlayer(MAP, () => 0.5);
   let reads = 0;

@@ -5,6 +5,7 @@ import { type Apparent, type Ball, INTERP_DELAY_MS, type PlayerState, type Point
 import { nearTier } from '../net/peer-delay';
 import { objectKey, type RemotePeer, type Session } from '../net/session';
 import { type Bob, createBob } from '../renderer/bob';
+import type { LighterSource } from '../renderer/lighter';
 import { BALL_MODEL } from '../renderer/models/ball';
 import { VACUUM_MODEL } from '../renderer/models/vacuum';
 import { gesturePose } from '../renderer/sip';
@@ -42,6 +43,8 @@ export interface RemoteWorld {
   readonly sprites: readonly Sprite[];
   readonly labels: readonly PeerLabel[];
   readonly voxels: readonly VoxelInstance[];
+  /** This frame's lit lighters, from `collect`: everyone holding one, where they stand and face. Reused objects. */
+  readonly lighters: readonly LighterSource[];
   /**
    * Samples every peer's and object's position at `now`: every frame, and from the hidden-tab ticker. The ball is the
    * one object not drawn from its buffer: it is where the client's prediction has it, in the present (ball spec §3.3).
@@ -60,16 +63,20 @@ interface PeerRecord {
   bob: Bob;
   sprite: Sprite;
   label: PeerLabel;
+  lighter: { key: string; x: number; y: number; angle: number };
 }
 
 export function createRemoteWorld(): RemoteWorld {
   const positions = new Map<string, Point>();
+  /** Each peer's facing at the last sample, radians: positions keep only where they are. */
+  const facings = new Map<string, number>();
   const objectPoses = new Map<string, PlayerState>();
   /** Each object's objectKey, made once rather than every frame. */
   const objectKeys = new Map<string, string>();
   const records = new Map<string, PeerRecord>();
   const sprites: Sprite[] = [];
   const labels: PeerLabel[] = [];
+  const lighters: LighterSource[] = [];
   const voxels: VoxelInstance[] = [];
   const at = { x: 0, y: 0, angle: 0 };
 
@@ -84,6 +91,7 @@ export function createRemoteWorld(): RemoteWorld {
     for (const id of positions.keys()) {
       if (!s.peers.has(id) && !objectPoses.has(id)) {
         positions.delete(id);
+        facings.delete(id);
       }
     }
   };
@@ -135,6 +143,7 @@ export function createRemoteWorld(): RemoteWorld {
       } else {
         positions.set(peer.info.id, { x: at.x, y: at.y });
       }
+      facings.set(peer.info.id, at.angle);
     }
   };
 
@@ -145,6 +154,7 @@ export function createRemoteWorld(): RemoteWorld {
         bob: createBob(),
         sprite: blankSprite(id),
         label: { x: 0, y: 0, shownX: 0, shownY: 0, color: '', name: '', mic: false },
+        lighter: { key: id, x: 0, y: 0, angle: 0 },
       };
       records.set(id, record);
     }
@@ -164,14 +174,21 @@ export function createRemoteWorld(): RemoteWorld {
       }
     }
     let n = 0;
+    let lit = 0;
     for (const peer of s.peers.values()) {
       const id = peer.info.id;
       const pos = positions.get(id);
       if (!pos) {
         continue;
       }
-      const { bob, sprite, label } = recordOf(id);
+      const { bob, sprite, label, lighter } = recordOf(id);
       bob.update(pos.x, pos.y, dt);
+      if (peer.info.held === 'lighter') {
+        lighter.x = pos.x;
+        lighter.y = pos.y;
+        lighter.angle = facings.get(id) ?? 0;
+        lighters[lit++] = lighter;
+      }
       fillSprite(sprite, peer, pos, bob, media, now);
       fillLabel(label, peer, pos, apparent?.get(id) ?? pos);
       sprites[n] = sprite;
@@ -181,6 +198,7 @@ export function createRemoteWorld(): RemoteWorld {
     // Written by index and trimmed: `length = 0` would make V8 drop the arrays' storage every frame.
     sprites.length = n;
     labels.length = n;
+    lighters.length = lit;
   };
 
   const collectVoxels = (s: Session) => {
@@ -207,6 +225,7 @@ export function createRemoteWorld(): RemoteWorld {
     sprites,
     labels,
     voxels,
+    lighters,
     sample(s, player, now, ball = null, portals = null) {
       forgetGone(s);
       sampleObjects(s, now, ball);

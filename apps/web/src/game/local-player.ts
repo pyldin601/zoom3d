@@ -13,6 +13,7 @@ import {
 import { type Bob, createBob } from '../renderer/bob';
 import type { FirstPerson } from '../renderer/frame';
 import type { GlowSource } from '../renderer/glow';
+import type { LighterSource } from '../renderer/lighter';
 import { createGestureClock, type GestureClock } from '../renderer/sip';
 import { ringRgb, type Sprite } from '../renderer/sprites';
 import { blankSprite } from './remote-world';
@@ -50,6 +51,8 @@ export interface LocalPlayer {
   useFallbackFace(faceFor: (ringColour: string) => FallbackFace): void;
   /** In the camera's colour, else the ring's; null until the room gives the player a ring colour. */
   glow(now: number, ringColour: string | null): GlowSource | null;
+  /** The lighter in hand as a light, where the player stands and faces; null while they hold anything else. */
+  lighter(): LighterSource | null;
   /**
    * The own disc as others see it, with the fallback face while the camera is off; null until the room gives a ring
    * colour. The camera's face is read again only when `faceShown` (a window drew the disc last frame), else the last
@@ -70,6 +73,7 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
   let fallback: FallbackFace | null = null;
   let fallbackColour: string | null = null;
   const glowSource = { x: 0, y: 0, face: null, color: 0 };
+  const lighterSource = { key: OWN_SPRITE_KEY, x: 0, y: 0, angle: 0 };
   // The room measures no level of the own mic, so the own ring never brightens: `speaking` stays 0.
   const ownDisc = blankSprite(OWN_SPRITE_KEY);
   const held: FirstPerson = { drink: null, boombox: false, step, gesture: gesture.pose(0) };
@@ -115,6 +119,15 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       glowSource.y = pose.y;
       glowSource.color = cameraColour(now) ?? ringRgb(ringColour);
       return glowSource;
+    },
+    lighter() {
+      if (drink !== 'lighter') {
+        return null;
+      }
+      lighterSource.x = pose.x;
+      lighterSource.y = pose.y;
+      lighterSource.angle = pose.angle;
+      return lighterSource;
     },
     avatar(now, ringColour, faceShown) {
       if (!ringColour) {

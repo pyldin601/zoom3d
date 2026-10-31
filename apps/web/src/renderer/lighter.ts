@@ -7,8 +7,8 @@ import { FLOOR_SUB, fillGlowSeen, newGlowShadow } from './lighting';
 
 /** How far a lighter's light reaches (tiles). */
 export const LIGHTER_REACH = 4;
-/** A lighter's light at the flame, as a share of a full lamp's. */
-export const LIGHTER_STRENGTH = 0.8;
+/** A lighter's light at the flame, as a share of a full lamp's: at 0.8 (the spec's first guess) its pool on the floor hardly showed. */
+export const LIGHTER_STRENGTH = 3;
 /** Linear colour of a lighter's flame. */
 export const LIGHTER_COLOUR = { r: 1, g: 0.55, b: 0.2 };
 /** Half the cone's width: past it, no light. */
