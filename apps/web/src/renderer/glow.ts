@@ -129,6 +129,11 @@ export function glowLight(g: Glow, x: number, y: number, z: number, nx: number, 
   if (hiddenByCut(g, x, y)) {
     return 0;
   }
+  // First, as most cells round a lighter lie outside its cone: the rest would be wasted on them.
+  const ahead = coneFactor(g, x, y);
+  if (ahead === 0) {
+    return 0;
+  }
   const dx = g.x - x;
   const dy = g.y - y;
   const dz = EYE_HEIGHT - z;
@@ -143,10 +148,6 @@ export function glowLight(g: Glow, x: number, y: number, z: number, nx: number, 
   }
   const seen = g.shadow ? shadowSeen(g.shadow, x + nx * IN_FRONT_OF_WALL, y + ny * IN_FRONT_OF_WALL) : 1;
   if (seen === 0) {
-    return 0;
-  }
-  const ahead = coneFactor(g, x, y);
-  if (ahead === 0) {
     return 0;
   }
   const k = 1 - d2 / reach2;

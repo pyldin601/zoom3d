@@ -4,6 +4,7 @@
 import {
   type GameMap,
   type HeldItem,
+  isDrink,
   type MoveInput,
   type PlayerState,
   type Portals,
@@ -40,7 +41,7 @@ export interface LocalPlayer {
   readonly gesture: GestureClock;
   readonly drink: HeldItem | null;
   boombox: boolean;
-  /** Null puts the drink down, ending any gesture. False when that drink was already in hand. */
+  /** Null puts the drink down and the lighter takes its place, both ending any gesture. False when already in hand. */
   takeDrink(item: HeldItem | null): boolean;
   /** With `portals` (the room's, while on) a step through a doorway comes out of its destination, turned with it. */
   walk(map: GameMap, move: MoveInput, turnRad: number, dt: number, portals?: Portals | null): void;
@@ -91,7 +92,7 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
         return false;
       }
       drink = item;
-      if (item === null) {
+      if (!isDrink(item)) {
         gesture.cancel();
       }
       return true;

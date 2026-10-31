@@ -812,7 +812,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Measured** (2026-10-31, `pnpm bench:walls`):
     - every existing hash is unchanged (pixel -601092469, doorway off -1246551896 / on -589436950, crowd off
       2075427884 / on 2005369998);
-    - with 8 lighters per lamp pose, a frame takes 2.39 ms, against 1.85 ms for the same glows without lighters.
+    - with 8 lighters per lamp pose, a frame takes 2.23 ms, against 1.85 ms for the same glows without lighters
+      (2.39 ms before the review moved the cone test ahead of the rest of `glowLight`).
 
 ## Resolved
 _(none yet)_

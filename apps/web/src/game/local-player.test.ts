@@ -17,6 +17,14 @@ test('taking a drink says whether it changed; putting it down ends the gesture',
   expect(localPlayer.drink).toBeNull();
 });
 
+test('taking the lighter ends a gesture under way: it has none', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  localPlayer.takeDrink('beer');
+  localPlayer.gesture.start('cheers', 0);
+  localPlayer.takeDrink('lighter');
+  expect(localPlayer.gesture.kind(1)).toBeNull();
+});
+
 test('walking turns the player and moves them', () => {
   const localPlayer = createLocalPlayer(MAP, () => 0.5);
   const { x, angle } = localPlayer.pose;

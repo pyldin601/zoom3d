@@ -1,7 +1,15 @@
 // The other people and the world objects as the room frame shows them: their interpolated positions, for the audio
 // and the interest rule, and the discs, name labels and voxel models the renderer draws. Each peer keeps one record
 // from frame to frame, so a full room allocates nothing per frame (AGENTS.md: never block the render loop).
-import { type Apparent, type Ball, INTERP_DELAY_MS, type PlayerState, type Point, type Portals } from '@zoom3d/shared';
+import {
+  type Apparent,
+  type Ball,
+  INTERP_DELAY_MS,
+  isDrink,
+  type PlayerState,
+  type Point,
+  type Portals,
+} from '@zoom3d/shared';
 import { nearTier } from '../net/peer-delay';
 import { objectKey, type RemotePeer, type Session } from '../net/session';
 import { type Bob, createBob } from '../renderer/bob';
@@ -36,7 +44,7 @@ export interface PeerMedia {
 
 export interface RemoteWorld {
   /** Where each peer (by id) and each world object (by objectKey) is now; the same objects from frame to frame. */
-  readonly positions: ReadonlyMap<string, Point>;
+  readonly positions: ReadonlyMap<string, PlayerState>;
   /** Each world object's pose now, by objectKey: the same objects as in `positions`. */
   readonly objectPoses: ReadonlyMap<string, PlayerState>;
   /** This frame's discs, labels and voxel models, from `collect`; reused objects, so read them before the next. */
@@ -67,9 +75,7 @@ interface PeerRecord {
 }
 
 export function createRemoteWorld(): RemoteWorld {
-  const positions = new Map<string, Point>();
-  /** Each peer's facing at the last sample, radians: positions keep only where they are. */
-  const facings = new Map<string, number>();
+  const positions = new Map<string, PlayerState>();
   const objectPoses = new Map<string, PlayerState>();
   /** Each object's objectKey, made once rather than every frame. */
   const objectKeys = new Map<string, string>();
@@ -91,7 +97,6 @@ export function createRemoteWorld(): RemoteWorld {
     for (const id of positions.keys()) {
       if (!s.peers.has(id) && !objectPoses.has(id)) {
         positions.delete(id);
-        facings.delete(id);
       }
     }
   };
@@ -140,10 +145,10 @@ export function createRemoteWorld(): RemoteWorld {
       if (pos) {
         pos.x = at.x;
         pos.y = at.y;
+        pos.angle = at.angle;
       } else {
-        positions.set(peer.info.id, { x: at.x, y: at.y });
+        positions.set(peer.info.id, { x: at.x, y: at.y, angle: at.angle });
       }
-      facings.set(peer.info.id, at.angle);
     }
   };
 
@@ -186,7 +191,7 @@ export function createRemoteWorld(): RemoteWorld {
       if (peer.info.held === 'lighter') {
         lighter.x = pos.x;
         lighter.y = pos.y;
-        lighter.angle = facings.get(id) ?? 0;
+        lighter.angle = pos.angle;
         lighters[lit++] = lighter;
       }
       fillSprite(sprite, peer, pos, bob, media, now);
@@ -268,8 +273,10 @@ function fillSprite(sprite: Sprite, peer: RemotePeer, pos: Point, bob: Bob, medi
   sprite.bob = bob.lift;
   sprite.itemBob = bob.itemLift;
   const gesture = peer.gesture;
-  // The sprite's sip, cheers and wobble are a HeldPose.
-  gesturePose(gesture ? gesture.kind : null, gesture ? now - gesture.at : 0, sprite);
+  // The sprite's sip, cheers and wobble are a HeldPose. The lighter has no gestures: one under way when it was taken
+  // stops.
+  const shown = gesture && isDrink(held) ? gesture : null;
+  gesturePose(shown ? shown.kind : null, shown ? now - shown.at : 0, sprite);
   sprite.held = held;
   sprite.boombox = boombox;
 }
