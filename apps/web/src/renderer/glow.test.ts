@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { FACE_SIZE } from '../media/faces';
 import { rgb } from './framebuffer';
 import {
+  coneFactor,
   createAvatarGlows,
   createPortalGlows,
   GLOW_RADIUS,
@@ -21,7 +22,7 @@ const GREY = rgb(100, 100, 100);
 describe('glowOf', () => {
   test('a face glows its average colour, scaled to GLOW_STRENGTH', () => {
     const face = new Uint32Array(FACE_SIZE * FACE_SIZE).fill(rgb(255, 128, 0));
-    const g: Glow = { x: 0, y: 0, r: 0, g: 0, b: 0, cut: null, shadow: null };
+    const g: Glow = { x: 0, y: 0, r: 0, g: 0, b: 0, cut: null, shadow: null, reach: GLOW_RADIUS, cone: null };
     glowOf({ x: 2, y: 3, face, color: rgb(0, 0, 255) }, g);
     expect([g.x, g.y]).toEqual([2, 3]);
     expect(g.r).toBeCloseTo(GLOW_STRENGTH, 2);
@@ -30,14 +31,14 @@ describe('glowOf', () => {
   });
 
   test('a disc without a face glows its ring colour', () => {
-    const g: Glow = { x: 0, y: 0, r: 0, g: 0, b: 0, cut: null, shadow: null };
+    const g: Glow = { x: 0, y: 0, r: 0, g: 0, b: 0, cut: null, shadow: null, reach: GLOW_RADIUS, cone: null };
     glowOf({ x: 0, y: 0, face: null, color: rgb(0, 0, 255) }, g);
     expect([g.r, g.g, g.b]).toEqual([0, 0, GLOW_STRENGTH]);
   });
 });
 
 describe('glowLight', () => {
-  const g: Glow = { x: 0, y: 0, r: 1, g: 1, b: 1, cut: null, shadow: null };
+  const g: Glow = { x: 0, y: 0, r: 1, g: 1, b: 1, cut: null, shadow: null, reach: GLOW_RADIUS, cone: null };
 
   test('the floor under the disc gets the most, fading to nothing at GLOW_RADIUS', () => {
     const under = glowLight(g, 0, 0, 0, 0, 0, 1);
@@ -60,6 +61,39 @@ describe('glowLight', () => {
     // A wall at x = 0.5 facing +x, the disc on its back side.
     expect(glowLight(g, 0.5, 0, 0.5, 1, 0, 0)).toBe(0);
     expect(glowLight(g, 0.5, 0, 0.5, -1, 0, 0)).toBeGreaterThan(0);
+  });
+});
+
+describe('a glow with its own reach and a cone', () => {
+  const deg = (d: number) => (d * Math.PI) / 180;
+  const at = (d: number, r = 2) => [r * Math.cos(deg(d)), r * Math.sin(deg(d))] as const;
+  const far: Glow = { x: 0, y: 0, r: 1, g: 1, b: 1, cut: null, shadow: null, reach: 4, cone: null };
+  const cone = { dx: 1, dy: 0, cosEdge: Math.cos(deg(35)), cosFull: Math.cos(deg(25)) };
+  const lighter: Glow = { ...far, cone };
+
+  test('a longer reach lights at 3 tiles and fades to nothing at 4', () => {
+    expect(glowLight(far, 3, 0, 0, 0, 0, 1)).toBeGreaterThan(0);
+    expect(glowLight(far, 4, 0, 0, 0, 0, 1)).toBe(0);
+  });
+
+  test('the cone is full near its axis, fades at its edge and is dark outside and behind', () => {
+    expect(coneFactor(lighter, 2, 0)).toBe(1);
+    expect(coneFactor(lighter, ...at(20))).toBe(1);
+    const edge = coneFactor(lighter, ...at(30));
+    expect(edge).toBeGreaterThan(0);
+    expect(edge).toBeLessThan(1);
+    expect(coneFactor(lighter, ...at(40))).toBe(0);
+    expect(coneFactor(lighter, -2, 0)).toBe(0);
+  });
+
+  test('without a cone, or right under the glow, the factor is 1', () => {
+    expect(coneFactor(far, -2, 0)).toBe(1);
+    expect(coneFactor(lighter, 0, 0)).toBe(1);
+  });
+
+  test('the cone lights the floor ahead and leaves the floor behind dark', () => {
+    expect(glowLight(lighter, 2, 0, 0, 0, 0, 1)).toBeGreaterThan(0);
+    expect(glowLight(lighter, -2, 0, 0, 0, 0, 1)).toBe(0);
   });
 });
 
@@ -97,7 +131,17 @@ describe('createAvatarGlows', () => {
 
 describe('a glow with a cut', () => {
   const plane = { cx: 2.5, cy: 3.5, nx: 0, ny: 1 }; // front side is y < 3.5
-  const glow = (cut: GlowCut | null): Glow => ({ x: 2.5, y: 2.9, r: 1, g: 1, b: 1, cut, shadow: null });
+  const glow = (cut: GlowCut | null): Glow => ({
+    x: 2.5,
+    y: 2.9,
+    r: 1,
+    g: 1,
+    b: 1,
+    cut,
+    shadow: null,
+    reach: GLOW_RADIUS,
+    cone: null,
+  });
 
   test('a glow without a cut lights as before, on both sides', () => {
     expect(glowLight(glow(null), 2.5, 4.0, 0, 0, 0, 1)).toBeGreaterThan(0);

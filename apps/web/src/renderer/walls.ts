@@ -14,7 +14,7 @@ import { createView, EYE_HEIGHT, isWindowPass, MIN_DEPTH, type Pass, setView, WH
 import { reflectedColour } from './colour';
 import { createFrameEyes } from './frame-eyes';
 import { type Framebuffer, rgb, scaleRgb } from './framebuffer';
-import { GLOW_RADIUS, type Glow, glowLight, hiddenByCut } from './glow';
+import { type Glow, glowLight, hiddenByCut } from './glow';
 import {
   bounceHeight,
   distanceToWall,
@@ -579,7 +579,7 @@ function findColumnGlows(glows: readonly Glow[]): number {
     const dx = g.x - hitX;
     const dy = g.y - hitY;
     const facesColumn = dx * normal.dx + dy * normal.dy > 0;
-    if (facesColumn && dx * dx + dy * dy < GLOW_RADIUS * GLOW_RADIUS && !hiddenByCut(g, hitX, hitY)) {
+    if (facesColumn && dx * dx + dy * dy < g.reach * g.reach && !hiddenByCut(g, hitX, hitY)) {
       columnGlows[count++] = g;
     }
   }
@@ -773,7 +773,7 @@ function putBackFrameTables(lm: Lighting): NonNullable<typeof frameTables> {
 }
 
 /**
- * Each avatar in view lights the cells within its reach, √(GLOW_RADIUS² − ½²) of its disc. Glows add up, and a cell
+ * Each glow in view lights the cells within its reach, √(reach² − ½²) of its disc. Glows add up, and a cell
  * takes their sum where it's brighter than its light, shadows included (see withGlow). The cost is the cells near
  * avatars in view, not the pixels showing them.
  *
@@ -782,10 +782,10 @@ function putBackFrameTables(lm: Lighting): NonNullable<typeof frameTables> {
  */
 function addGlow(lm: Lighting, glows: readonly Glow[], t: NonNullable<typeof frameTables>): void {
   const { stride, rows } = lm;
-  const reach = Math.sqrt(GLOW_RADIUS * GLOW_RADIUS - EYE_HEIGHT * EYE_HEIGHT);
-  const span = Math.ceil(reach * FLOOR_SUB);
-  const cellsReach = ((span + 1) * Math.SQRT2) / FLOOR_SUB;
   for (const g of glows) {
+    const reach = Math.sqrt(g.reach * g.reach - EYE_HEIGHT * EYE_HEIGHT);
+    const span = Math.ceil(reach * FLOOR_SUB);
+    const cellsReach = ((span + 1) * Math.SQRT2) / FLOOR_SUB;
     if (!mayShow(g.x, g.y, cellsReach)) {
       continue;
     }

@@ -8,7 +8,7 @@
 // portals off (the plain table) and on (the portals-on table).
 import { LEVEL1, parseMap, tileAt, wirePortals } from '@zoom3d/shared';
 import { createFramebuffer } from '../src/renderer/framebuffer';
-import { createPortalGlows, type Glow } from '../src/renderer/glow';
+import { createPortalGlows, GLOW_RADIUS, type Glow } from '../src/renderer/glow';
 import { bakeLighting, bakePortalLighting, corridorLights, type Lighting } from '../src/renderer/lighting';
 import { averageColour, makeTextures } from '../src/renderer/textures';
 import { CEILING, FLOOR, type Room, renderWalls } from '../src/renderer/walls';
@@ -209,10 +209,20 @@ function posesNearLamps(): Pose[] {
         const gx = x + (rand() - 0.5) * 4;
         const gy = y + (rand() - 0.5) * 4;
         if (open(gx, gy)) {
-          glows.push({ x: gx, y: gy, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6, cut: null, shadow: null });
+          glows.push({
+            x: gx,
+            y: gy,
+            r: rand() * 0.6,
+            g: rand() * 0.6,
+            b: rand() * 0.6,
+            cut: null,
+            shadow: null,
+            reach: GLOW_RADIUS,
+            cone: null,
+          });
         }
       }
-      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null, shadow: null });
+      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null, shadow: null, reach: GLOW_RADIUS, cone: null });
       out.push({ x, y, angle: rand() * Math.PI * 2, glows });
     }
   }
@@ -231,7 +241,17 @@ function crowdGlows(): Glow[] {
     const x = rand() * map.width;
     const y = rand() * map.height;
     if (tileAt(map, Math.floor(x), Math.floor(y)) === 0) {
-      out.push({ x, y, r: rand() * 0.6, g: rand() * 0.6, b: rand() * 0.6, cut: null, shadow: null });
+      out.push({
+        x,
+        y,
+        r: rand() * 0.6,
+        g: rand() * 0.6,
+        b: rand() * 0.6,
+        cut: null,
+        shadow: null,
+        reach: GLOW_RADIUS,
+        cone: null,
+      });
     }
   }
   return out;
