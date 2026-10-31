@@ -1,6 +1,6 @@
 // Billboard disc avatars, depth-tested per column against the wall z-buffer, each with a soft
 // shadow on the floor right under it; voxel objects (the robot vacuum) are drawn in the same far-to-near order.
-import type { HeldItem, PlayerState } from '@zoom3d/shared';
+import { type HeldItem, isDrink, type PlayerState } from '@zoom3d/shared';
 import { FACE_SIZE } from '../media/faces';
 import type { PeerFacts } from '../media/interest';
 import { BOOMBOX_LEFT, BOOMBOX_SPRITE, BOOMBOX_TOP } from './boombox';
@@ -538,6 +538,7 @@ function drawBoombox(fb: Framebuffer, s: Sprite, { screenX, depth, size }: Proje
 
 /** The drink's left edge in `pose`, in disc radii right of the disc's centre. */
 const drinkLeft = (drink: HeldItem, pose: HeldPose) =>
-  poseBlend(pose, HELD_LEFT, sipLeft(drink), CHEERS_LEFT) + CHEERS_WOBBLE * pose.wobble;
-/** The drink's top in `pose`, in disc radii above the eye line. */
-const drinkTop = (drink: HeldItem, pose: HeldPose) => poseBlend(pose, HELD_TOP, sipTop(drink), CHEERS_TOP);
+  poseBlend(pose, HELD_LEFT, isDrink(drink) ? sipLeft(drink) : HELD_LEFT, CHEERS_LEFT) + CHEERS_WOBBLE * pose.wobble;
+/** The drink's top in `pose`, in disc radii above the eye line; the lighter is never sipped, so it stays at rest. */
+const drinkTop = (drink: HeldItem, pose: HeldPose) =>
+  poseBlend(pose, HELD_TOP, isDrink(drink) ? sipTop(drink) : HELD_TOP, CHEERS_TOP);

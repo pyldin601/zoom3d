@@ -32,6 +32,7 @@ export const OWN_HELD_SPRITES: Record<HeldItem, HeldSprite> = {
   beer: toHeldSprite(mirror(HELD_MAPS.beer)),
   coffee: toHeldSprite(mirror(HELD_MAPS.coffee)),
   wine: toHeldSprite(mirror(HELD_MAPS.wine)),
+  lighter: toHeldSprite(mirror(HELD_MAPS.lighter)),
 };
 
 /** The walking step as the held items feel it: `itemLift` 0..1 drops it, `sway` −1..1 shifts it sideways. */
