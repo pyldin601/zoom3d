@@ -9,7 +9,14 @@
 import { LEVEL1, parseMap, tileAt, wirePortals } from '@zoom3d/shared';
 import { createFramebuffer } from '../src/renderer/framebuffer';
 import { createPortalGlows, GLOW_RADIUS, type Glow } from '../src/renderer/glow';
-import { bakeLighting, bakePortalLighting, corridorLights, type Lighting } from '../src/renderer/lighting';
+import {
+  bakeLighting,
+  bakePortalLighting,
+  corridorLights,
+  fillGlowSeen,
+  type Lighting,
+  newGlowShadow,
+} from '../src/renderer/lighting';
 import { averageColour, makeTextures } from '../src/renderer/textures';
 import { CEILING, FLOOR, type Room, renderWalls } from '../src/renderer/walls';
 
@@ -17,6 +24,8 @@ import { CEILING, FLOOR, type Room, renderWalls } from '../src/renderer/walls';
 const FRAMES_PER_POSE = 2;
 const ROUNDS = 7;
 const MODES = ['unlit', 'none', 'walls', 'both', 'both + glow', 'both + crowd', 'only'] as const;
+/** A lighter's reach, as LIGHTER_REACH in renderer/lighter.ts. */
+const LIGHTER_REACH_TILES = 4;
 /** Glowing avatars in the crowd mode. */
 const CROWD = 100;
 type Mode = (typeof MODES)[number];
@@ -153,6 +162,18 @@ console.log(`crowd: ${crowdPoses.length} poses, pixel hash off ${crowdHashes.off
 for (const state of ['off', 'on'] as const) {
   console.log(`both + crowd, portals ${state.padEnd(3)} ${median(crowdTimes[state]).toFixed(3)} ms/frame (lamp poses)`);
 }
+
+// A lighter's shadow table (lighter spec §3.2), rebuilt at every lamp pose: what a holder pays per floor cell walked.
+const lighterShadow = newGlowShadow(LIGHTER_REACH_TILES);
+const rebuildTimes: number[] = [];
+for (let round = 0; round < ROUNDS; round++) {
+  const start = performance.now();
+  for (const p of poses) {
+    fillGlowSeen(map, null, p.x, p.y, LIGHTER_REACH_TILES, null, lighterShadow);
+  }
+  rebuildTimes.push((performance.now() - start) / poses.length);
+}
+console.log(`lighter shadow rebuild ${median(rebuildTimes).toFixed(3)} ms`);
 
 function draw(mode: Mode, p: Pose): void {
   room.eye = p;
