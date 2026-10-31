@@ -17,6 +17,14 @@ test('taking a drink says whether it changed; putting it down ends the gesture',
   expect(localPlayer.drink).toBeNull();
 });
 
+test('taking the lighter ends a gesture under way: it has none', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  localPlayer.takeDrink('beer');
+  localPlayer.gesture.start('cheers', 0);
+  localPlayer.takeDrink('lighter');
+  expect(localPlayer.gesture.kind(1)).toBeNull();
+});
+
 test('walking turns the player and moves them', () => {
   const localPlayer = createLocalPlayer(MAP, () => 0.5);
   const { x, angle } = localPlayer.pose;
@@ -60,6 +68,20 @@ test('the own disc: none without a ring colour, else at the pose with the camera
   expect(disc).toMatchObject({ face, held: 'beer', boombox: true, cheers: 0 });
   expect(disc?.sip).toBeGreaterThan(0);
   expect(localPlayer.avatar(600, '#ff0000', true)).toBe(disc);
+});
+
+test('the own lighter: none with a drink or nothing in hand, else where the player stands and faces', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  expect(localPlayer.lighter()).toBeNull();
+  localPlayer.takeDrink('beer');
+  expect(localPlayer.lighter()).toBeNull();
+  localPlayer.takeDrink('lighter');
+  expect(localPlayer.lighter()).toEqual({
+    key: OWN_SPRITE_KEY,
+    x: localPlayer.pose.x,
+    y: localPlayer.pose.y,
+    angle: localPlayer.pose.angle,
+  });
 });
 
 test('the own face is read only while a window shows the own disc, keeping the last one between', () => {

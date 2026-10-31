@@ -1,7 +1,7 @@
 // Pixel-art drinks held in a floating hand beside an avatar disc (held items spec §2). Column 0 is
 // the side next to the disc: the drink is there and the hand grips it from the outside, mugs by the
-// handle, the wine glass by the stem.
-import type { HeldItem } from '@zoom3d/shared';
+// handle, the wine glass by the stem, the lighter by its case with the flame on top (lighter spec §3.1).
+import type { Drink, HeldItem } from '@zoom3d/shared';
 import { MOUTH_Y_IN_CROP } from '../media/framing';
 import { WHOLE_FRAME } from './camera';
 import { type Framebuffer, rgb } from './framebuffer';
@@ -25,14 +25,14 @@ const FACE_SPAN = 1.7;
  */
 export const FACE_MOUTH_Y = (MOUTH_Y_IN_CROP - 0.5) * FACE_SPAN;
 /** The texel (u, v) of each drink that meets the lips at the top of a sip: its rim, or the foam. */
-export const HELD_LIPS: Readonly<Record<HeldItem, readonly [number, number]>> = {
+export const HELD_LIPS: Readonly<Record<Drink, readonly [number, number]>> = {
   beer: [3.5, 2.5],
   coffee: [3.5, 2],
   wine: [4, 0.5],
 };
 /** At the top of a sip: the sprite's left edge and top (as HELD_LEFT/HELD_TOP) that put its lip point on the mouth. */
-export const sipLeft = (item: HeldItem) => -(HELD_LIPS[item][0] * HELD_TEXEL);
-export const sipTop = (item: HeldItem) => HELD_LIPS[item][1] * HELD_TEXEL - FACE_MOUTH_Y;
+export const sipLeft = (item: Drink) => -(HELD_LIPS[item][0] * HELD_TEXEL);
+export const sipTop = (item: Drink) => HELD_LIPS[item][1] * HELD_TEXEL - FACE_MOUTH_Y;
 
 export interface HeldSprite {
   w: number;
@@ -59,6 +59,10 @@ export const HELD_PALETTE: Readonly<Record<string, string>> = {
   W: '#bdbdbd',
   R: '#8e1b2b',
   r: '#c23a4c',
+  k: '#c8ccd2',
+  K: '#8d939b',
+  y: '#ffe27a',
+  Y: '#ff9a2e',
 };
 
 // biome-ignore format: one row per line keeps the pixel art readable
@@ -98,6 +102,18 @@ export const HELD_MAPS: Readonly<Record<HeldItem, readonly string[]>> = {
     '.ooooo.',
     '.ggggg.',
   ],
+  lighter: [
+    '.Y.....',
+    'YyY....',
+    '.y.....',
+    'kkkooo.',
+    'kKkosso',
+    'kKkolso',
+    'kKkosso',
+    'kKkooo.',
+    'kKk....',
+    'kkk....',
+  ],
 };
 
 /** Packs a pixel map (one string per row, `.` transparent) into a texture. */
@@ -121,6 +137,7 @@ export const HELD_SPRITES: Record<HeldItem, HeldSprite> = {
   beer: toHeldSprite(HELD_MAPS.beer),
   coffee: toHeldSprite(HELD_MAPS.coffee),
   wine: toHeldSprite(HELD_MAPS.wine),
+  lighter: toHeldSprite(HELD_MAPS.lighter),
 };
 
 /**

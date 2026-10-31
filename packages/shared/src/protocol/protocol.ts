@@ -225,9 +225,11 @@ export function isValidAvatar(v: unknown): v is string {
   return typeof v === 'string' && v.length <= AVATAR_MAX_CHARS && AVATAR.test(v);
 }
 
-/** Drinks a peer can hold beside its avatar; "nothing" is null. */
-export const HELD_ITEMS = ['beer', 'coffee', 'wine'] as const;
+/** What a peer can hold beside its avatar: a drink or the lighter (lighter spec); "nothing" is null. */
+export const HELD_ITEMS = ['beer', 'coffee', 'wine', 'lighter'] as const;
 export type HeldItem = (typeof HELD_ITEMS)[number];
+/** A held item that can be sipped and raised in a cheers. */
+export type Drink = Exclude<HeldItem, 'lighter'>;
 
 /** One sip of the held drink lasts this long (held items spec §2.3). */
 export const SIP_MS = 1400;
@@ -241,6 +243,10 @@ export const DRINK_GAP_MS = 1000;
 
 export function isHeldItem(v: unknown): v is HeldItem {
   return HELD_ITEMS.includes(v as HeldItem);
+}
+
+export function isDrink(item: HeldItem | null): item is Drink {
+  return item !== null && item !== 'lighter';
 }
 
 const isControl = (ch: string) => {

@@ -2,7 +2,7 @@
 // button while the ball is in reach (ball spec §7), a drink button (tap to sip, hold to cheers) and a ⋯ button whose
 // tray holds the occasional actions. DOM only: main.ts
 // wires the handlers, and input/touch.ts reads the pad.
-import type { HeldItem } from '@zoom3d/shared';
+import { type HeldItem, isDrink } from '@zoom3d/shared';
 import { touchIcon } from './icons';
 import { RENDER_MODE_NAMES, type RenderMode } from './render-settings';
 import { el } from './screens';
@@ -40,6 +40,7 @@ const DRINKS: readonly { item: HeldItem | null; label: string }[] = [
   { item: 'beer', label: 'Beer' },
   { item: 'coffee', label: 'Coffee' },
   { item: 'wine', label: 'Wine' },
+  { item: 'lighter', label: 'Lighter' },
   { item: null, label: 'Nothing' },
 ];
 
@@ -134,8 +135,8 @@ function createDrinkButton(opts: TouchControlsOptions) {
   return {
     button,
     update(held: HeldItem | null) {
-      button.hidden = held === null;
-      if (held) {
+      button.hidden = !isDrink(held);
+      if (isDrink(held)) {
         button.setAttribute('aria-label', `Sip ${held} (hold to cheers)`);
         button.replaceChildren(touchIcon(held));
       }

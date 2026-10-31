@@ -4,7 +4,18 @@
 import { EYE_HEIGHT, MIN_DEPTH, type Pass, type View, WHOLE_FRAME } from './camera';
 import { luma } from './colour';
 import { type Framebuffer, scaleRgb } from './framebuffer';
-import { ambientAt, directLight, type Lighting } from './lighting';
+import { type Glow, glowReaching } from './glow';
+import {
+  ambientAt,
+  DIR_BACK,
+  DIR_BOTTOM,
+  DIR_FRONT,
+  DIR_LEFT,
+  DIR_RIGHT,
+  DIR_TOP,
+  directLight,
+  type Lighting,
+} from './lighting';
 import type { FloorMirror } from './mirror';
 
 export interface VoxelModel {
@@ -167,7 +178,8 @@ let faceDepths = new Float64Array(0);
 const faceOrder: number[] = [];
 /** Far to near. Math.sign: sort can't inline its comparator, and a small integer isn't boxed as a double is. */
 const facesFarFirst = (a: number, b: number) => Math.sign((faceDepths[b] as number) - (faceDepths[a] as number));
-/** Lamp light per face direction (r, g, b × 6), then ambient × shade added: this instance's multipliers. */
+const NO_GLOWS: readonly Glow[] = [];
+/** Lamp and glow light per face direction (r, g, b × 6), then ambient × shade added: this instance's multipliers. */
 const directionLight = new Float64Array(FACES.length * 3);
 /** The ambient light, r, g, b, where this instance stands. */
 const ambient = new Float64Array(3);
@@ -182,7 +194,8 @@ export function renderVoxel(
   view: View,
   v: VoxelInstance,
   lighting: Lighting | null = null,
-  pass = WHOLE_FRAME
+  pass = WHOLE_FRAME,
+  glows: readonly Glow[] = NO_GLOWS
 ): void {
   const { model } = v;
   if (faceDepths.length < model.faceCount) {
@@ -190,7 +203,7 @@ export function renderVoxel(
     faceDepths = new Float64Array(model.faceCount);
   }
   if (lighting) {
-    lightDirections(lighting, v);
+    lightDirections(lighting, v, glows);
   }
   projectFaces(view, v, 'upright');
   for (const f of faceOrder) {
@@ -198,9 +211,16 @@ export function renderVoxel(
   }
 }
 
-/** The light on each face direction of this instance into `directionLight`. */
-function lightDirections(lighting: Lighting, v: VoxelInstance): void {
-  directLight(lighting, v.x, v.y, v.model.height / 2, v.angle, directionLight);
+/**
+ * The light on each face direction of this instance into `directionLight`: the lamps', the `glows` that light objects
+ * (the lighters'), then the ambient share of each face's shade.
+ */
+function lightDirections(lighting: Lighting, v: VoxelInstance, glows: readonly Glow[]): void {
+  const z = v.model.height / 2;
+  directLight(lighting, v.x, v.y, z, v.angle, directionLight);
+  for (const g of glows) {
+    addGlowLight(g, v, z);
+  }
   ambientAt(lighting, v.x, v.y, ambient);
   for (let dir = 0; dir < FACES.length; dir++) {
     const { shade } = FACES[dir] as (typeof FACES)[number];
@@ -208,6 +228,35 @@ function lightDirections(lighting: Lighting, v: VoxelInstance): void {
       directionLight[dir * 3 + ch] = (directionLight[dir * 3 + ch] as number) + (ambient[ch] as number) * shade;
     }
   }
+}
+
+/** Glow `g`'s light on each face direction of `v`, sampled at height `z`, split over the faces as directLight splits a lamp's. */
+function addGlowLight(g: Glow, v: VoxelInstance, z: number): void {
+  const amount = glowReaching(g, v.x, v.y, z);
+  if (amount === 0) {
+    return;
+  }
+  const dx = g.x - v.x;
+  const dy = g.y - v.y;
+  const dz = EYE_HEIGHT - z;
+  const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  const ca = Math.cos(v.angle);
+  const sa = Math.sin(v.angle);
+  // The glow's direction in model space: rotate the horizontal part by −angle.
+  const fx = (dx * ca + dy * sa) / dist;
+  const fy = (-dx * sa + dy * ca) / dist;
+  addGlowOnFace(g, DIR_TOP, amount * Math.max(0, dz / dist));
+  addGlowOnFace(g, DIR_FRONT, amount * Math.max(0, fx));
+  addGlowOnFace(g, DIR_BACK, amount * Math.max(0, -fx));
+  addGlowOnFace(g, DIR_RIGHT, amount * Math.max(0, fy));
+  addGlowOnFace(g, DIR_LEFT, amount * Math.max(0, -fy));
+  addGlowOnFace(g, DIR_BOTTOM, amount * Math.max(0, -dz / dist));
+}
+
+function addGlowOnFace(g: Glow, dir: number, k: number): void {
+  directionLight[dir * 3] = (directionLight[dir * 3] as number) + g.r * k;
+  directionLight[dir * 3 + 1] = (directionLight[dir * 3 + 1] as number) + g.g * k;
+  directionLight[dir * 3 + 2] = (directionLight[dir * 3 + 2] as number) + g.b * k;
 }
 
 /**
@@ -367,7 +416,8 @@ export function renderVoxelMirror(
   v: VoxelInstance,
   lighting: Lighting,
   mirror: FloorMirror,
-  pass = WHOLE_FRAME
+  pass = WHOLE_FRAME,
+  glows: readonly Glow[] = NO_GLOWS
 ): void {
   if (voxelDepth(view, v) < 0) {
     return;
@@ -377,7 +427,7 @@ export function renderVoxelMirror(
     screenCorners = new Float64Array(model.faceCount * 8);
     faceDepths = new Float64Array(model.faceCount);
   }
-  lightDirections(lighting, v);
+  lightDirections(lighting, v, glows);
   projectFaces(view, v, 'mirrored');
   for (const f of faceOrder) {
     plotFace(fb, mirror, f, litColor(model, f, directionLight), pass);

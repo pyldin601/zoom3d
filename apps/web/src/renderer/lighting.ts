@@ -14,7 +14,7 @@ import {
 } from '@zoom3d/shared';
 import { EYE_HEIGHT } from './camera';
 import { rgb } from './framebuffer';
-import { GLOW_RADIUS, type GlowShadow, hiddenByCut, newPortalGlow, placePortalGlow } from './glow';
+import { GLOW_RADIUS, type Glow, type GlowShadow, hiddenByCut, newPortalGlow, placePortalGlow } from './glow';
 import { RELIEF_LEVELS, type ReflectionMaterial } from './textures';
 
 export interface Light {
@@ -297,24 +297,52 @@ function bakePortalGlowSeen(map: GameMap, portals: Portals): GlowShadow[] {
   const glow = newPortalGlow();
   return portals.list.map((portal) => {
     placePortalGlow(glow, portal);
-    const disc: Light = { x: glow.x, y: glow.y, z: EYE_HEIGHT, radius: GLOW_RADIUS, r: 0, g: 0, b: 0 };
-    const firstCol = Math.max(0, Math.floor((glow.x - GLOW_RADIUS) * FLOOR_SUB));
-    const firstRow = Math.max(0, Math.floor((glow.y - GLOW_RADIUS) * FLOOR_SUB));
-    const across = Math.min(map.width * FLOOR_SUB, Math.ceil((glow.x + GLOW_RADIUS) * FLOOR_SUB)) - firstCol;
-    const down = Math.min(map.height * FLOOR_SUB, Math.ceil((glow.y + GLOW_RADIUS) * FLOOR_SUB)) - firstRow;
-    const seen = new Uint8Array(across * down);
-    for (let row = 0; row < down; row++) {
-      for (let col = 0; col < across; col++) {
-        const x = (firstCol + col + 0.5) / FLOOR_SUB;
-        const y = (firstRow + row + 0.5) / FLOOR_SUB;
-        if (tileAt(map, Math.floor(x), Math.floor(y)) !== 0 || hiddenByCut(glow, x, y)) {
-          continue;
-        }
-        seen[row * across + col] = Math.round(seenShare(map, portals, x, y, disc) * 255);
-      }
-    }
-    return { sub: FLOOR_SUB, firstCol, firstRow, across, down, seen };
+    const shadow = newGlowShadow(GLOW_RADIUS);
+    fillGlowSeen(map, portals, glow.x, glow.y, GLOW_RADIUS, glow, shadow);
+    return shadow;
   });
+}
+
+/** An empty shadow table whose buffer fits the largest one a glow reaching `reach` tiles can need. */
+export function newGlowShadow(reach: number): GlowShadow {
+  const side = 2 * Math.ceil(reach * FLOOR_SUB) + 2;
+  return { sub: FLOOR_SUB, firstCol: 0, firstRow: 0, across: 0, down: 0, seen: new Uint8Array(side * side) };
+}
+
+/**
+ * Refills `out` with how much of a glow's disc at (x, y), eye high, each floor cell within `reach` of it sees, as a
+ * lamp's (seenShare, soft edges across LAMP_RADIUS), clipped to the map. Cells in walls or hidden by `cut` see none.
+ */
+export function fillGlowSeen(
+  map: GameMap,
+  portals: Portals | null,
+  x: number,
+  y: number,
+  reach: number,
+  cut: Glow | null,
+  out: GlowShadow
+): void {
+  const disc: Light = { x, y, z: EYE_HEIGHT, radius: reach, r: 0, g: 0, b: 0 };
+  const firstCol = Math.max(0, Math.floor((x - reach) * FLOOR_SUB));
+  const firstRow = Math.max(0, Math.floor((y - reach) * FLOOR_SUB));
+  const across = Math.min(map.width * FLOOR_SUB, Math.ceil((x + reach) * FLOOR_SUB)) - firstCol;
+  const down = Math.min(map.height * FLOOR_SUB, Math.ceil((y + reach) * FLOOR_SUB)) - firstRow;
+  const { seen } = out;
+  seen.fill(0, 0, across * down);
+  for (let row = 0; row < down; row++) {
+    for (let col = 0; col < across; col++) {
+      const cx = (firstCol + col + 0.5) / FLOOR_SUB;
+      const cy = (firstRow + row + 0.5) / FLOOR_SUB;
+      if (tileAt(map, Math.floor(cx), Math.floor(cy)) !== 0 || (cut !== null && hiddenByCut(cut, cx, cy))) {
+        continue;
+      }
+      seen[row * across + col] = Math.round(seenShare(map, portals, cx, cy, disc) * 255);
+    }
+  }
+  out.firstCol = firstCol;
+  out.firstRow = firstRow;
+  out.across = across;
+  out.down = down;
 }
 
 function checkLampCount(baker: string, lights: readonly Light[]): void {

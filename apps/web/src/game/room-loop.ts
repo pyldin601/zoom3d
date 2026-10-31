@@ -69,6 +69,9 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     objects: world.voxels,
     labels: world.labels,
     ownGlow: null,
+    lighters: world.lighters,
+    ownLighter: null,
+    lighterSeconds: 0,
     self: null,
     ownLabel: null,
     portalPulse: 1,
@@ -213,8 +216,11 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     const portalSeconds = performance.now() / 1000;
     scene.portalPulse = portalPulse(portalSeconds);
     scene.portalTime = portalSeconds;
+    scene.lighterSeconds = portalSeconds;
     const ringColour = room?.session.selfColor() ?? null;
     scene.ownGlow = localPlayer.glow(now, ringColour);
+    // Held only in the room: the lobby shows no hands.
+    scene.ownLighter = isConnected(room) ? localPlayer.lighter() : null;
     // Only windows draw the own disc, and reading its face back stalls on the GPU: read it only while one shows it.
     scene.self = scene.portals && isConnected(room) ? localPlayer.avatar(now, ringColour, ownAvatarShown()) : null;
     scene.ownLabel = labelOwnImage(room);

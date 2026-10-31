@@ -1,5 +1,5 @@
 // The drink in hand, remembered per browser; storage may be missing or throw (private mode, blocked).
-import { type HeldItem, isHeldItem } from '@zoom3d/shared';
+import { type HeldItem, isDrink, isHeldItem } from '@zoom3d/shared';
 
 export const HELD_KEY = 'zoom3d.held';
 
@@ -29,13 +29,18 @@ const KEY_ITEMS: Record<string, HeldItem | null> = {
   Digit1: 'beer',
   Digit2: 'coffee',
   Digit3: 'wine',
+  Digit9: 'lighter',
   Numpad0: null,
   Numpad1: 'beer',
   Numpad2: 'coffee',
   Numpad3: 'wine',
+  Numpad9: 'lighter',
 };
 
-/** The drink a number key picks (by key position, so any layout): 1–3 a drink, 0 nothing; undefined otherwise. */
+/**
+ * What a number key picks (by key position, so any layout): 1–3 a drink, 9 the lighter, 0 nothing; undefined
+ * otherwise.
+ */
 export function heldForKey(code: string): HeldItem | null | undefined {
   return Object.hasOwn(KEY_ITEMS, code) ? KEY_ITEMS[code] : undefined;
 }
@@ -45,5 +50,5 @@ export function heldForKey(code: string): HeldItem | null | undefined {
  * that drink (or nothing).
  */
 export function heldKeyAction(keyItem: HeldItem | null, holding: HeldItem | null): 'sip' | 'pick' {
-  return keyItem !== null && keyItem === holding ? 'sip' : 'pick';
+  return isDrink(keyItem) && keyItem === holding ? 'sip' : 'pick';
 }

@@ -4,6 +4,7 @@
 import type { GameMap, HeldItem, PlayerState, Portals } from '@zoom3d/shared';
 import { createDoorbell, withDoorbell } from '../audio/doorbell';
 import { type AudioEngine, createAudioEngine } from '../audio/engine';
+import { createLighterSounds, type LighterSounds } from '../audio/lighter-sounds';
 import { createObjectSounds, type ObjectSounds } from '../audio/object-sounds';
 import { createPortalHums, type PortalHums } from '../audio/portal-hum';
 import { createPortalSwitchSounds, type PortalSwitchSounds } from '../audio/portal-switch-sound';
@@ -27,6 +28,8 @@ export interface Room {
   readonly call: Call;
   readonly audio: AudioEngine;
   readonly objectSounds: ObjectSounds;
+  /** Lighters lit and put away, the local player's own and everyone else's. */
+  readonly lighterSounds: LighterSounds;
   /** A hum from each portal doorway while `portals()` isn't null. */
   readonly hums: PortalHums;
   readonly boombox: Boombox;
@@ -75,10 +78,11 @@ export function joinRoom(opts: JoinOptions): Room {
   let session: Session | null = null;
   const objectSounds = createObjectSounds(opts.audioCtx, audio, () => session?.selfId() ?? null);
   const hums = createPortalHums(opts.audioCtx, audio);
+  const lighterSounds = createLighterSounds(opts.audioCtx, audio);
   const call = createRoomCall(opts, audio);
   const tracker = createRoomTracker(track, () => performance.now());
   const ball = createBallPrediction(opts.map, () => portals());
-  const joined = connectSession(opts, call, tracker, objectSounds, ball, () => portals());
+  const joined = connectSession(opts, call, tracker, objectSounds, lighterSounds, ball, () => portals());
   session = joined;
   call.attach(joined);
   const boombox = createOwnBoombox(opts, call, joined);
@@ -102,6 +106,7 @@ export function joinRoom(opts: JoinOptions): Room {
     call,
     audio,
     objectSounds,
+    lighterSounds,
     hums,
     boombox,
     tracker,
@@ -135,9 +140,11 @@ function connectSession(
   call: Call,
   tracker: RoomTracker,
   sounds: ObjectSounds,
+  lighterSounds: LighterSounds,
   ball: BallPrediction,
   portals: () => Portals | null
 ): Session {
+  const people = withRoomTracker(withDoorbell(call.listener, createDoorbell(opts.audioCtx)), tracker, () => session);
   const session: Session = createSession({
     url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
     roomId: opts.roomId,
@@ -149,7 +156,12 @@ function connectSession(
     portals,
     now: () => performance.now(),
     listener: {
-      ...withRoomTracker(withDoorbell(call.listener, createDoorbell(opts.audioCtx)), tracker, () => session),
+      ...people,
+      peerLeft(id) {
+        people.peerLeft?.(id);
+        lighterSounds.peerLeft(id);
+      },
+      peerHeld: (id, before, after) => lighterSounds.peerHeld(id, before, after),
       portalsChanged: (on) => opts.onPortalsChanged(on),
       objectEvent: (id, e, by) => sounds.event(id, e, by),
       objectState: (m) => ball.server(m, session.selfId(), performance.now()),
