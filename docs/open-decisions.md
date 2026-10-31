@@ -810,8 +810,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     hasn't been listened to in the game.
   - **Through portals,** the shadow table uses the portal-aware sight test, so the light stops at a doorway's front
     instead of spilling into the room physically behind it.
-  - **Starting values, untuned by play:**
-    - `LIGHTER_STRENGTH` 3 (the spec's first guess of 0.8 hardly showed in an offline render);
+  - **Starting values, tuned by play only for brightness:**
+    - `LIGHTER_STRENGTH` 1.5 (the spec's first guess of 0.8 hardly showed in an offline render; 3 was too bright in
+      play, while the reach of 4 tiles was right, 2026-10-31);
     - colour linear (1, 0.55, 0.2);
     - flicker ±10% from three sines at 5.3, 8.1 and 11.7 Hz, phased per holder.
   - **Measured** (2026-10-31, `pnpm bench:walls`):

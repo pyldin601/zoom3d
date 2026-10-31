@@ -69,8 +69,8 @@ avatar glows cost today, plus a shadow table each time a lighter moves (§3.2).
   - Everything that reads glows (`addGlow` and `findColumnGlows` in `walls.ts`) honours both, through `glowLight`
     and the reach.
 - **Colour and flicker:**
-  - The colour is warm, about linear (1.0, 0.55, 0.2) × `LIGHTER_STRENGTH` 3 (0.8 at first; its pool on the floor hardly
-    showed in an offline render, 2026-10-31).
+  - The colour is warm, about linear (1.0, 0.55, 0.2) × `LIGHTER_STRENGTH` 1.5 (0.8 at first, whose pool on the floor hardly
+    showed in an offline render; then 3, too bright in play, 2026-10-31). The reach of 4 tiles played right.
   - Its brightness flickers ±10% on a cheap noise of the time, a few times a second, with a different phase per
     holder (from their key).
   - All of these numbers are starting values, to be tuned by playing.
