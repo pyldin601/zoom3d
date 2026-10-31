@@ -1,15 +1,15 @@
 import { describe, expect, test } from 'vitest';
 import { rgb } from './framebuffer';
-import { averageColour, makeTextures, RELIEF, RELIEF_LEVELS, TEX } from './textures';
+import { averageColour, makeTextures, RELIEF, RELIEF_LEVELS, TEXTURE_PX } from './textures';
 
 const at = (tile: number, x: number, y: number) =>
-  RELIEF_LEVELS[(RELIEF[tile] as Uint8Array)[y * TEX + x] as number] as number;
+  RELIEF_LEVELS[(RELIEF[tile] as Uint8Array)[y * TEXTURE_PX + x] as number] as number;
 
 describe('RELIEF', () => {
-  test('one map per texture, TEX² texels each', () => {
+  test('one map per texture, TEXTURE_PX² texels each', () => {
     expect(RELIEF).toHaveLength(makeTextures(1).length);
     for (const r of RELIEF.slice(1)) {
-      expect(r).toHaveLength(TEX * TEX);
+      expect(r).toHaveLength(TEXTURE_PX * TEXTURE_PX);
     }
   });
 

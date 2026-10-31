@@ -1,4 +1,4 @@
-import { AVATAR_MAX_CHARS, AVATAR_SIZE } from '@zoom3d/shared';
+import { AVATAR_MAX_CHARS, AVATAR_SIZE_PX } from '@zoom3d/shared';
 import { describe, expect, test, vi } from 'vitest';
 import { AVATAR_KEY, loadAvatar, makeAvatar, saveAvatar } from './avatar';
 
@@ -58,14 +58,14 @@ function fakeCanvas(lengthFor: (quality: number) => number) {
 const image = (width: number, height: number) => ({ width, height, close: vi.fn() });
 
 describe('makeAvatar', () => {
-  test('draws the centre square at AVATAR_SIZE on white and encodes JPEG', async () => {
+  test('draws the centre square at AVATAR_SIZE_PX on white and encodes JPEG', async () => {
     const { canvas, context, toDataURL, document } = fakeCanvas(() => 5000);
     const img = image(3000, 2000);
     const url = await makeAvatar(new Blob(), { decode: async () => img as never, document });
-    expect(canvas.width).toBe(AVATAR_SIZE);
-    expect(canvas.height).toBe(AVATAR_SIZE);
-    expect(context.fillRect).toHaveBeenCalledWith(0, 0, AVATAR_SIZE, AVATAR_SIZE);
-    expect(context.drawImage).toHaveBeenCalledWith(img, 500, 0, 2000, 2000, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
+    expect(canvas.width).toBe(AVATAR_SIZE_PX);
+    expect(canvas.height).toBe(AVATAR_SIZE_PX);
+    expect(context.fillRect).toHaveBeenCalledWith(0, 0, AVATAR_SIZE_PX, AVATAR_SIZE_PX);
+    expect(context.drawImage).toHaveBeenCalledWith(img, 500, 0, 2000, 2000, 0, 0, AVATAR_SIZE_PX, AVATAR_SIZE_PX);
     expect(toDataURL).toHaveBeenCalledWith('image/jpeg', 0.85);
     expect(url).toMatch(/^data:image\/jpeg;base64,/);
     expect(img.close).toHaveBeenCalled();

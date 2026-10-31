@@ -116,7 +116,7 @@ export interface LobbyOptions {
 }
 
 /** The server sees a kicker a little late, so it allows them this much further away than the client does. */
-const KICK_SLACK = 0.5;
+const KICK_SLACK_TILES = 0.5;
 const seen: Apparent = { x: 0, y: 0, sees: false, through: 0, cos: 1, sin: 0 };
 
 /** A walker whose last pose is older than this is standing still, as far as the ball can tell. */
@@ -420,7 +420,7 @@ export class Lobby {
     const portals = this.activePortals(found.roomId);
     const kicker = this.seenFrom(portals, ball, found.peer);
     const angle = msg.angle + Math.atan2(kicker.sin, kicker.cos);
-    if (kickBall(ball, kicker, angle, KICK_SLACK)) {
+    if (kickBall(ball, kicker, angle, KICK_SLACK_TILES)) {
       found.peer.lastKickAt = now;
       this.kicks.set(found.roomId, { by: found.peer.id, k: msg.k });
     }

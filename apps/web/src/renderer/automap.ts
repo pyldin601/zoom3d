@@ -6,7 +6,7 @@ import { inLabelRange } from './labels';
 const FILL = 0.9;
 const ZONE_COLORS = ['', '#8c8e8c', '#7a5530', '#1a2cc0'];
 const BACKDROP = 'rgba(0, 0, 0, 0.75)';
-const YOUR_ARROW_COLOUR = '#ffd400';
+const OWN_ARROW_COLOUR = '#ffd400';
 const NAME_COLOUR = '#fff';
 /** Sizes in map cells, each with a floor in HUD pixels so a large map stays readable. */
 const DOT_RADIUS = 0.45;
@@ -132,7 +132,7 @@ function drawPlayerArrow(
   const py = originY + p.y * cell;
   const cos = Math.cos(p.angle);
   const sin = Math.sin(p.angle);
-  ctx.fillStyle = YOUR_ARROW_COLOUR;
+  ctx.fillStyle = OWN_ARROW_COLOUR;
   ctx.beginPath();
   ctx.moveTo(px + cos * size, py + sin * size);
   ctx.lineTo(

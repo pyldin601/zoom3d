@@ -22,7 +22,7 @@ export function createRoomTracker(track: (e: AnalyticsEvent) => void, now: () =>
   let met = false;
   let done = false;
 
-  // Activation: the first time anyone else is in the room with us.
+  // Activation: the first time anyone else is in the room with the local player.
   const meet = (peers: number) => {
     if (peers > 0 && joinedAt !== null && !met) {
       met = true;

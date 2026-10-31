@@ -242,7 +242,7 @@ function ambientInto(
 /**
  * Bakes a map's lighting: its wall faces and their runs, then each wall sample and each floor and ceiling cell lit by
  * the lamps in sight (soft shadows) over the ambient, with `bounce` light on top if given, and the lamps each can
- * reflect. About 100 ms for LEVEL1. At most MAX_LAMPS lamps.
+ * reflect. About 125 ms for LEVEL1 (D28). At most MAX_LAMPS lamps.
  */
 export function bakeLighting(
   map: GameMap,

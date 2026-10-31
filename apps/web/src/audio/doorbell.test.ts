@@ -17,8 +17,8 @@ test('rings a falling ding-dong straight to the speakers, not through the spatia
   expect(ding?.hz).toBeGreaterThan(dong?.hz ?? Number.POSITIVE_INFINITY);
   const fundamentals = oscillators().filter((o) => DOORBELL_NOTES.some((n) => n.hz === o.frequency.value));
   expect(fundamentals.map((o) => [o.frequency.value, o.startedAt])).toEqual([
-    [ding?.hz, ctx.currentTime + (ding?.at ?? 0)],
-    [dong?.hz, ctx.currentTime + (dong?.at ?? 0)],
+    [ding?.hz, ctx.currentTime + (ding?.atS ?? 0)],
+    [dong?.hz, ctx.currentTime + (dong?.atS ?? 0)],
   ]);
   for (const o of oscillators()) {
     expect(o.stoppedAt).toBeGreaterThan(o.startedAt);

@@ -247,15 +247,15 @@ export function createSession(opts: SessionOptions): Session {
       addObject(o);
     }
     listener.objectsReset?.(m.objects);
-    // Our pose goes out on the next tick: after a resume the server only has the one from before the outage
+    // The local pose goes out on the next tick: after a resume the server only has the one from before the outage
     // (moves sent into a dying socket were lost), and a fresh spawn costs one message.
     lastSent = null;
-    resendWhatWeShow();
+    resendOwnState();
     listener.welcome?.(m.selfId, m.livekit, identityChanged);
   };
 
   /** The server forgets these on a fresh identity; resending them on a resume is harmless. */
-  const resendWhatWeShow = () => {
+  const resendOwnState = () => {
     if (media) {
       conn.send({ type: 'media', ...media });
     }

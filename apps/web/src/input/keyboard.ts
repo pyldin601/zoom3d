@@ -2,7 +2,7 @@
 import type { MoveInput } from '@zoom3d/shared';
 import type { TouchSource } from './touch';
 
-export const MOUSE_TURN_PER_PX = 0.0025; // radians
+export const MOUSE_TURN_RAD_PER_PX = 0.0025;
 
 export interface Listenable {
   addEventListener(type: string, listener: EventListener): void;
@@ -84,7 +84,7 @@ export function createInput(win: Listenable, doc: InputDocument, touch?: TouchSo
   });
   doc.addEventListener('mousemove', (event) => {
     if (doc.pointerLockElement) {
-      mouseTurn += (event as MouseEvent).movementX * MOUSE_TURN_PER_PX;
+      mouseTurn += (event as MouseEvent).movementX * MOUSE_TURN_RAD_PER_PX;
     }
   });
 

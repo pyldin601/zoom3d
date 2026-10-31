@@ -58,8 +58,8 @@ export function createCall(opts: CallOptions): Call {
   const { local, remote } = opts;
   const faces = new Map<string, FaceSource>();
   const wantedFrom = new Map<string, Want>();
-  /** Our camera and mic as last told to the session. */
-  const ourMedia = { cam: local.state().cam, mic: local.state().mic };
+  /** The local camera and mic as last told to the session. */
+  const ownMedia = { cam: local.state().cam, mic: local.state().mic };
   let session: Session | null = null;
   let transport: MediaTransport | null = null;
   let boomboxTrack: MediaStreamTrack | null = null;
@@ -161,10 +161,10 @@ export function createCall(opts: CallOptions): Call {
     faces.clear();
   };
 
-  const tellSessionOurMedia = () => session?.setMedia(ourMedia.cam, ourMedia.mic);
+  const tellSessionOwnMedia = () => session?.setMedia(ownMedia.cam, ownMedia.mic);
 
-  /** Picks up the controller's state, publishing only when it changed (a camera restart, an unplugged mic). */
   let micTrack = local.micTrack();
+  /** Picks up the controller's state, publishing only when it changed (a camera restart, an unplugged mic). */
   const followLocalMedia = () => {
     // A replaced mic (unplugged headset) must reach senders that already exist.
     const track = local.micTrack();
@@ -175,10 +175,10 @@ export function createCall(opts: CallOptions): Call {
       }
     }
     const { cam, mic } = local.state();
-    if (cam !== ourMedia.cam || mic !== ourMedia.mic) {
-      ourMedia.cam = cam;
-      ourMedia.mic = mic;
-      tellSessionOurMedia();
+    if (cam !== ownMedia.cam || mic !== ownMedia.mic) {
+      ownMedia.cam = cam;
+      ownMedia.mic = mic;
+      tellSessionOwnMedia();
     }
   };
   const unsubscribe = local.subscribe(followLocalMedia);
@@ -242,7 +242,7 @@ export function createCall(opts: CallOptions): Call {
     listener,
     attach(s) {
       session = s;
-      tellSessionOurMedia();
+      tellSessionOwnMedia();
     },
     faceOf: (id) => faces.get(id)?.texels ?? null,
     isLive: (id) => faces.get(id)?.live() ?? false,
@@ -261,14 +261,14 @@ export function createCall(opts: CallOptions): Call {
     async setCam(on) {
       await local.setCam(on);
       followLocalMedia();
-      return ourMedia.cam;
+      return ownMedia.cam;
     },
     setMic(on) {
       local.setMic(on);
       followLocalMedia();
-      return ourMedia.mic;
+      return ownMedia.mic;
     },
-    localState: () => ({ ...ourMedia }),
+    localState: () => ({ ...ownMedia }),
     update(now) {
       for (const face of faces.values()) {
         face.update(now);

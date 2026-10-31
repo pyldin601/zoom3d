@@ -1,7 +1,7 @@
 // Procedural 64x64 wall textures, deterministic per seed. Index = tile id (0 unused).
 import { rgb } from './framebuffer';
 
-export const TEX = 64;
+export const TEXTURE_PX = 64;
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -17,11 +17,11 @@ function mulberry32(seed: number): () => number {
 type Paint = (x: number, y: number, noise: number) => [number, number, number];
 
 function texture(rand: () => number, paint: Paint): Uint32Array {
-  const tex = new Uint32Array(TEX * TEX);
-  for (let y = 0; y < TEX; y++) {
-    for (let x = 0; x < TEX; x++) {
+  const tex = new Uint32Array(TEXTURE_PX * TEXTURE_PX);
+  for (let y = 0; y < TEXTURE_PX; y++) {
+    for (let x = 0; x < TEXTURE_PX; x++) {
       const [r, g, b] = paint(x, y, rand() * 2 - 1);
-      tex[y * TEX + x] = rgb(r, g, b);
+      tex[y * TEXTURE_PX + x] = rgb(r, g, b);
     }
   }
   return tex;
@@ -49,12 +49,12 @@ const SHADOWED = 3;
 
 /** Brick relief, lit from above. Rows past the texture's edge count as no edge. */
 function brickRelief(): Uint8Array {
-  const relief = new Uint8Array(TEX * TEX);
-  for (let y = 0; y < TEX; y++) {
-    for (let x = 0; x < TEX; x++) {
+  const relief = new Uint8Array(TEXTURE_PX * TEXTURE_PX);
+  for (let y = 0; y < TEXTURE_PX; y++) {
+    for (let x = 0; x < TEXTURE_PX; x++) {
       const here = isMortar(x, y);
       const above = y > 0 && isMortar(x, y - 1);
-      const below = y < TEX - 1 && isMortar(x, y + 1);
+      const below = y < TEXTURE_PX - 1 && isMortar(x, y + 1);
       let v = FLAT;
       if (!here && above) {
         v = RAISED;
@@ -63,7 +63,7 @@ function brickRelief(): Uint8Array {
       } else if (here && y > 0 && !above) {
         v = SHADOWED;
       }
-      relief[y * TEX + x] = v;
+      relief[y * TEXTURE_PX + x] = v;
     }
   }
   return relief;
@@ -73,16 +73,16 @@ function brickRelief(): Uint8Array {
 export const RELIEF: readonly Uint8Array[] = [
   new Uint8Array(0),
   brickRelief(),
-  new Uint8Array(TEX * TEX),
+  new Uint8Array(TEXTURE_PX * TEXTURE_PX),
   brickRelief(),
 ];
 
 /** Bricks shine, mortar doesn't. */
 function brickGloss(): Uint8Array {
-  const gloss = new Uint8Array(TEX * TEX);
-  for (let y = 0; y < TEX; y++) {
-    for (let x = 0; x < TEX; x++) {
-      gloss[y * TEX + x] = isMortar(x, y) ? 0 : 1;
+  const gloss = new Uint8Array(TEXTURE_PX * TEXTURE_PX);
+  for (let y = 0; y < TEXTURE_PX; y++) {
+    for (let x = 0; x < TEXTURE_PX; x++) {
+      gloss[y * TEXTURE_PX + x] = isMortar(x, y) ? 0 : 1;
     }
   }
   return gloss;
@@ -118,7 +118,7 @@ export const REFLECTION_MATERIAL: readonly ReflectionMaterial[] = [
 export const GLOSS: readonly Uint8Array[] = [
   new Uint8Array(0),
   brickGloss(),
-  new Uint8Array(TEX * TEX).fill(1),
+  new Uint8Array(TEXTURE_PX * TEXTURE_PX).fill(1),
   brickGloss(),
 ];
 

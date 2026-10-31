@@ -1,7 +1,7 @@
 // The room's one-key shortcuts besides walking (keyboard.ts): ` the console, Tab the map, B the boombox (spec §3),
 // 0–3 the drinks (held items spec §2.4), M and C the mic and camera (media-keys.ts), Space the kick (ball spec §7),
 // Y the portals (portal doorways spec §2.1).
-// Pure: main.ts listens and acts.
+// Pure: room-controls.ts listens and acts.
 import type { HeldItem } from '@zoom3d/shared';
 import { heldForKey } from '../ui/held-store';
 import { mediaKey } from './media-keys';

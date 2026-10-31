@@ -45,13 +45,13 @@ export const INTEREST_MS = 250;
 export const HOLD_MS = 1000;
 export const LOOKAHEAD_TILES = 20;
 export const LOOKAHEAD_DEG = 15;
-/** Framebuffer px: at least this big → 256, else at least `SIZE_128` → 128, else 64. */
-export const SIZE_256 = 128;
-export const SIZE_128 = 48;
+/** The smallest drawn face (framebuffer px) received at 256, and at 128; smaller ones get 64. */
+export const FACE_256_MIN_PX = 128;
+export const FACE_128_MIN_PX = 48;
 /** A size is kept until the face shrinks this far below its threshold. */
 const HYSTERESIS = 0.8;
-export const AUDIO_ON_MARGIN = 2;
-export const AUDIO_OFF_MARGIN = 4;
+export const AUDIO_ON_MARGIN_TILES = 2;
+export const AUDIO_OFF_MARGIN_TILES = 4;
 export const MAX_VIDEOS = 12;
 export const MAX_VOICES = 24;
 
@@ -82,10 +82,10 @@ function angleDiff(a: number, b: number): number {
 function sizeFor(projected: number, current: VideoWant): VideoWant {
   const keep = (size: VideoWant, threshold: number) =>
     RANK[current] >= RANK[size] && projected >= threshold * HYSTERESIS;
-  if (projected >= SIZE_256 || keep(256, SIZE_256)) {
+  if (projected >= FACE_256_MIN_PX || keep(256, FACE_256_MIN_PX)) {
     return 256;
   }
-  if (projected >= SIZE_128 || keep(128, SIZE_128)) {
+  if (projected >= FACE_128_MIN_PX || keep(128, FACE_128_MIN_PX)) {
     return 128;
   }
   return 64;
@@ -133,7 +133,7 @@ export function createInterest(): { update(input: InterestInput): ReadonlyMap<st
         states.set(peer.id, state);
       }
       const distance = Math.hypot(peer.x - player.x, peer.y - player.y);
-      const audio = distance <= maxDistance + (state.audio ? AUDIO_OFF_MARGIN : AUDIO_ON_MARGIN);
+      const audio = distance <= maxDistance + (state.audio ? AUDIO_OFF_MARGIN_TILES : AUDIO_ON_MARGIN_TILES);
       candidates.push({ id: peer.id, state, distance, video: target(input, peer, distance, state), audio });
     }
     for (const id of states.keys()) {

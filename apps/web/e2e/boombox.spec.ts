@@ -130,7 +130,7 @@ test('the audio panel shows boombox controls while playing, and its volume reach
   await expect(a.locator('.boombox-panel')).toHaveCount(0);
   await a.keyboard.press('Backquote');
   // Right of the renderer settings, in the backtick panel.
-  const panel = a.locator('.audio-panel > .boombox-slot > .boombox-panel');
+  const panel = a.locator('.console-panel > .boombox-slot > .boombox-panel');
   await expect(panel).toContainText('tone.wav');
   await expect.poll(() => peakLevel(b, `boombox:${ada}`, 1500), { timeout: 20_000 }).toBeGreaterThan(0.005);
 

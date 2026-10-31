@@ -3,7 +3,7 @@
 
 export interface PageFlags {
   pixelPerfect: boolean;
-  /** SPIKE: baked corridor lamps; `?lights=off` shows the old flat look. */
+  /** Baked corridor lamps; `?lights=off` shows the old flat look. */
   lights: boolean;
   /** Touch mode (mobile spec §2.0): read once at load and never again, so the frame never flips mid-visit. */
   touch: boolean;

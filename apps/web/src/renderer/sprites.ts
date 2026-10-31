@@ -441,7 +441,7 @@ function drawDisc(fb: Framebuffer, s: Sprite, { screenX, depth, size }: Projecti
     }
     const dx = col + 0.5 - screenX;
     const dx2 = dx * dx;
-    // Not mirrored: we face the person.
+    // Not mirrored: the eye faces the person.
     const u = faceTexel(dx, faceR, faceSize);
     for (let row = firstRow; row <= lastRow; row++) {
       const dy = row + 0.5 - centreY;
