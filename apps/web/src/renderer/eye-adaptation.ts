@@ -32,9 +32,9 @@ const SAMPLE_STRIDE_PX = 8;
 const EDGE_WEIGHT = 0.25;
 
 /**
- * The frame's centre-weighted log-mean luma (0..255). The log makes a bright area count for less than its share, as it
- * does for an eye. It works on the encoded channels, not linear light: that isn't what the eye meters, but it is what the
- * screen shows, and the reference is measured on the same scale.
+ * The frame's centre-weighted log-mean luma (0..255). The log makes a bright area count for less than its share, as
+ * it does for an eye. It works on the encoded channels, not linear light: that isn't what the eye meters, but it is
+ * what the screen shows, and the reference is measured on the same scale.
  */
 export function meterFrame(fb: Framebuffer): number {
   const { pixels, width, height } = fb;
@@ -91,7 +91,7 @@ export function eyeGain(level: number | null): number {
 }
 
 export interface Exposure {
-  /** Scales every pixel's colour channels by `gain`, clamped at 255 and keeping alpha; a gain near 1 changes nothing. */
+  /** Scales every pixel's colour channels by `gain`, clamped at 255, keeping alpha; a gain near 1 changes nothing. */
   apply(fb: Framebuffer, gain: number): void;
 }
 
