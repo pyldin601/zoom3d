@@ -53,7 +53,7 @@ supporting HDR displays.
 - **Off:**
   - In unlit rooms (`?lights=off`, or flat mode) it isn't run.
   - While the room is dark in a portal sequence, the eye's level is frozen and adapts again after.
-  - Its state is reset (gain 1) when the room changes, so joining a room doesn't start mid-adaptation.
+  - Its state is reset when the room changes: a fresh eye takes its first reading as is, so joining a room starts adapted, not mid-adaptation.
 - **Benchmarks:** the existing `bench:walls` and `bench:sprites` hashes stay as they are, since the step sits outside
   their passes. A new bench line measures its cost.
 

@@ -836,8 +836,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     - meter: log-mean luma of every 8th pixel of every 8th row, the corners weighted 0.25 against the centre;
     - adapting: exponential by real time, 0.3 s into light, 1.5 s into the dark;
     - gain: `(REFERENCE / level) ^ 0.5`, clamped to [0.6, 2.5];
-    - the table is rebuilt only when the gain moves by more than 0.01, and a gain within 0.01 of 1 skips the pass, so
-      ordinary places draw exactly as before.
+    - the table is rebuilt only when the gain moves by more than 0.01, and a gain within 0.01 of 1 skips the pass. That
+      is a meter level within about 2% of `REFERENCE` (49 to 51), which draws exactly as before; elsewhere, ordinary
+      lit places get a gain near 1.
   - **`REFERENCE` is 50**: the median meter reading (50.3) of `bench:walls`' 176 lamp poses drawn as 'both + glow',
     the lit frame with the own glow the game always draws (as 'both', without glows, the median is 42.1).
   - **Left out, and frozen:**
@@ -851,7 +852,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
       -1246551896 / on -589436950, crowd off 2075427884 / on 2005369998, lighters -777278983), and so are
       `bench:sprites`' (sprite -1772863200, doorway off 484592104 / on 844068579);
     - the step costs 0.18 ms a frame: the meter 0.013 ms and the exposure at a gain that applies 0.163 ms, with the
-      table rebuilt every frame. A frame near `REFERENCE` pays only the meter.
+      table rebuilt every frame. A frame metered within about 2% of `REFERENCE` pays only the meter.
   - **Not yet tuned by play:** the speeds, the strength, the clamps and `REFERENCE` were set offline.
 
 ## Resolved

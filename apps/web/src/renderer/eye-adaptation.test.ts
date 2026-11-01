@@ -51,6 +51,26 @@ describe('meterFrame', () => {
     expect(meterFrame(fb)).toBeLessThan(60 * 1.25);
   });
 
+  it('counts a large bright area for less than its share, unlike an arithmetic mean', () => {
+    const fb = greyFrame(60);
+    fillBlock(fb, 320 - 160, 180 - 90, 320, 180, rgb(255, 255, 255));
+    // The same samples and weights as the meter, averaged without the log.
+    let weightedSum = 0;
+    let weightSum = 0;
+    for (let y = 0; y < fb.height; y += 8) {
+      for (let x = 0; x < fb.width; x += 8) {
+        const nx = (x + 0.5 - fb.width / 2) / (fb.width / 2);
+        const ny = (y + 0.5 - fb.height / 2) / (fb.height / 2);
+        const weight = 1 - 0.75 * ((nx * nx + ny * ny) / 2);
+        weightedSum += weight * ((fb.pixels[y * fb.width + x] as number) & 0xff);
+        weightSum += weight;
+      }
+    }
+    const arithmeticMean = weightedSum / weightSum;
+    expect(arithmeticMean).toBeGreaterThan(110);
+    expect(meterFrame(fb)).toBeLessThan(arithmeticMean * 0.9);
+  });
+
   it('reads any frame size', () => {
     expect(meterFrame(greyFrame(90, 320, 180))).toBeCloseTo(meterFrame(greyFrame(90, 640, 360)), 0);
   });

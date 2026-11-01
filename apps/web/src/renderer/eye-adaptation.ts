@@ -21,7 +21,8 @@ export const GAIN_MIN = 0.6;
 export const GAIN_MAX = 2.5;
 /**
  * The table is only rebuilt when the gain moved by more than this, which is below what the eye tells apart; a gain
- * this close to 1 skips the pass, so ordinary places look exactly as they did before adaptation.
+ * this close to 1 skips the pass. That is a frame metered within about 2% of REFERENCE (49 to 51), which draws
+ * exactly as before adaptation.
  */
 const GAIN_STEP = 0.01;
 
@@ -31,8 +32,8 @@ const SAMPLE_STRIDE_PX = 8;
 const EDGE_WEIGHT = 0.25;
 
 /**
- * The frame's centre-weighted log-mean luma (0..255). The log makes a small bright patch count for little, as it does
- * for an eye. It works on the encoded channels, not linear light: that isn't what the eye meters, but it is what the
+ * The frame's centre-weighted log-mean luma (0..255). The log makes a bright area count for less than its share, as it
+ * does for an eye. It works on the encoded channels, not linear light: that isn't what the eye meters, but it is what the
  * screen shows, and the reference is measured on the same scale.
  */
 export function meterFrame(fb: Framebuffer): number {
@@ -65,7 +66,7 @@ export function createEye(): Eye {
 
 /** Moves the eye's level towards a reading, exponentially and by real time, so the frame rate doesn't matter. */
 export function adaptEye(eye: Eye, reading: number, dtS: number): void {
-  // Negated so NaN fails too: one NaN reaching the level would stay there for good.
+  // Negated so NaN fails as well as negatives: one NaN reaching the level would stay there for good.
   if (!(reading >= 0)) {
     return;
   }
