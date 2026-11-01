@@ -216,8 +216,8 @@ importers:
   apps/web:
     dependencies:
       '@amplitude/analytics-browser':
-        specifier: 2.47.5
-        version: 2.47.5
+        specifier: 2.49.0
+        version: 2.49.0
       '@mediapipe/tasks-vision':
         specifier: 1.1.1
         version: 1.1.1
@@ -239,38 +239,40 @@ importers:
 
 packages:
 
-  '@amplitude/analytics-browser@2.47.5':
-    resolution: {integrity: sha512-bQiASmTuoZ7nsSeNcITP142c+cma05OhNDtKl8Yryau/BcqnC9Nmkwr3eAMFg55t6ppfteRguH4bKyV3f3qmwg==}
+  '@amplitude/analytics-browser@2.49.0':
+    resolution: {integrity: sha512-Z706g7rhoCvOCH3K5j1cZaxfLXR95Ah93VC9ZQnQfh/aiGrLkX3+kL50ROVU6lrBsUxywlpr7u2j4Zp5LNqjsQ==}
 
-  '@amplitude/analytics-connector@1.6.8':
-    resolution: {integrity: sha512-ryZUsakytEZZ+g/O5mTsObckhCKtZrNdZw+KKcbuzVCZa1LJFPWHvKj+jwQpPO0ngsbb6oEpC5laaIEM5B4XKQ==}
+  '@amplitude/analytics-connector@1.7.0':
+    resolution: {integrity: sha512-HTnunOzcN+CdJUxdaim3E/CA5xbYRng4rpYvobjzl2ud2BXtpJdRnGuVmPKskYYyUTkz7X6QIOQPYlAgcGaWcg==}
 
-  '@amplitude/analytics-core@2.60.2':
-    resolution: {integrity: sha512-T6nLR8JRw/byPAaysis1sAD3MmMdbb+tU8ocPT2uOmQb3P2jo+htfJ/6WIovaxdXfqOBv6gPmxl3+DB8aLy4ZA==}
+  '@amplitude/analytics-core@2.62.0':
+    resolution: {integrity: sha512-5yLJViAMfULn/eu9BJE2ZdNCqM8gt+TY5ttY2qjayczhss/XqVuX5pb5q8Ggn02XAYY0Ea3Yx4qX8xxOPrtjjQ==}
 
   '@amplitude/element-selector@0.3.2':
     resolution: {integrity: sha512-alL7Jhwn0qzT83645rdRRmVMZZYjzjyv9aTfzjqscPeBE8STMlB+psBFoVAo25CBa4xbp+oID/UrxQ9hX0o3Jg==}
 
-  '@amplitude/plugin-autocapture-browser@1.30.2':
-    resolution: {integrity: sha512-5Fu/qjSjmILnKGZ0J69oFtHTecFjB9DVlnnfKHsGqLVP96MJ6smIIO1ssZap+4x9qqVBj9JVJfCwQIw++z3JjQ==}
+  '@amplitude/plugin-autocapture-browser@1.31.0':
+    resolution: {integrity: sha512-mzvKbLJkemNjmBz3TQTJvcmYCZot8A6SjvLi+TtsiY8dZKV7hP3oSe4Jr/pp0bFMw2bRJnBa54OK8gkmw6kSuQ==}
 
-  '@amplitude/plugin-custom-enrichment-browser@0.1.26':
-    resolution: {integrity: sha512-8sS9BKaxN/yvbMeKSMG1qdHZqOgIbhNtRffv8BEi8DwDOZLb5A0TYS5GmiYcXLZvYiN6V9jIDxG2JHB8hFebMg==}
+  '@amplitude/plugin-custom-enrichment-browser@1.0.0':
+    resolution: {integrity: sha512-OqPBrWayaZ9jZqFYgqlmiBFHwL+rzwgHomSnN3Q+51X5CRUkf/2zjdPnaUCrDKvZc3OrOJhI67L+YyAYbjRvzw==}
+    peerDependencies:
+      '@amplitude/analytics-core': ^2.61.0
 
-  '@amplitude/plugin-event-property-attribution-browser@0.2.22':
-    resolution: {integrity: sha512-i61aWVnrJ38BXh6493PPxNB3VaQcL2fVoAuREJiUBsJnmlpzCa9liRfvdgy1KoLC4MGlP4CO09c/1wq8sXP+Pg==}
+  '@amplitude/plugin-event-property-attribution-browser@0.2.25':
+    resolution: {integrity: sha512-YCS6+4k+3WQS5LBAGAZnApaHSEsGIqTHWgAoQKUa0UuK7D8n7Kq4Bf9pn6XeXPawTYZvS3yudkrgimUZtA6a6w==}
 
-  '@amplitude/plugin-network-capture-browser@1.10.22':
-    resolution: {integrity: sha512-HcZiPFMucQL045msN+OlSny7HWC1tcgJEal9FkQ1toqtcqtOSvvW0EpABLbxlomRGyaGgEEtaLc/4tOejTAE7w==}
+  '@amplitude/plugin-network-capture-browser@1.11.0':
+    resolution: {integrity: sha512-sCsWdmaDaUT4sILTEZgP9updMcFBQa0PHdw4iJ3k+tNizNLMOLnHUjse9DMgrTwHaDQNacPUUtLVuWuboGW1Eg==}
 
-  '@amplitude/plugin-page-url-enrichment-browser@0.7.32':
-    resolution: {integrity: sha512-1WSzb4WbIB6wBgTjy7brE1J57DoNsd0aI+np2VxG/qrmIL1S7pmJTrguiyWM/uAxQCPuso5fm35525jIwQqJ2w==}
+  '@amplitude/plugin-page-url-enrichment-browser@0.7.35':
+    resolution: {integrity: sha512-N31kk7evXbMgtb38GGGJw3ueIQVv58QB7Ooz7J3yXZBWWUVhlVfYwNGZi3DDcX+It06Bua49jEEqXD2Ojsg5wQ==}
 
-  '@amplitude/plugin-page-view-tracking-browser@2.11.22':
-    resolution: {integrity: sha512-Uhw/cvWGdf8i4OPubffBFUo4i14+5KsiwUREkhxG/MkKi7ep8d0GeYDOZOAQca5xUClY7mANRC1AdHoPlcS93g==}
+  '@amplitude/plugin-page-view-tracking-browser@2.12.0':
+    resolution: {integrity: sha512-lyuAunzerRvaNzOLj2iPqbKbB5VG6HC4WISlszodzHGk8JoF5HzbQA0cTMFnNZk2Hr9GQYjK26g6VmMAWVH5eA==}
 
-  '@amplitude/plugin-web-vitals-browser@1.2.5':
-    resolution: {integrity: sha512-9bQylONVbO+8r/7+O+A+dYrf1jsGqejOYgsCXtC9SJJq04QYKi1IEhebDzBBCxtTGTnNCMrtrv576ESWOZTNmg==}
+  '@amplitude/plugin-web-vitals-browser@1.2.8':
+    resolution: {integrity: sha512-pF1YJJfvxfS6btjenUNl78G3bRg7HnqblRtfGO6xV2PP4L4bxpMMcz1tRAyYKGBYyS4jNKCC4F4iQhJDKTTyLg==}
 
   '@biomejs/biome@2.5.15':
     resolution: {integrity: sha512-WZTW4slm/pdkh92K6t/3aEN++44JD1PQ7squ7RCMLI1flHGl43DVOIGXvCjHiZgBMO1V4uYxoFNtqrIA4qGuIQ==}
@@ -1373,23 +1375,23 @@ packages:
 
 snapshots:
 
-  '@amplitude/analytics-browser@2.47.5':
+  '@amplitude/analytics-browser@2.49.0':
     dependencies:
-      '@amplitude/analytics-core': 2.60.2
-      '@amplitude/plugin-autocapture-browser': 1.30.2
-      '@amplitude/plugin-custom-enrichment-browser': 0.1.26
-      '@amplitude/plugin-event-property-attribution-browser': 0.2.22
-      '@amplitude/plugin-network-capture-browser': 1.10.22
-      '@amplitude/plugin-page-url-enrichment-browser': 0.7.32
-      '@amplitude/plugin-page-view-tracking-browser': 2.11.22
-      '@amplitude/plugin-web-vitals-browser': 1.2.5
+      '@amplitude/analytics-core': 2.62.0
+      '@amplitude/plugin-autocapture-browser': 1.31.0
+      '@amplitude/plugin-custom-enrichment-browser': 1.0.0(@amplitude/analytics-core@2.62.0)
+      '@amplitude/plugin-event-property-attribution-browser': 0.2.25
+      '@amplitude/plugin-network-capture-browser': 1.11.0
+      '@amplitude/plugin-page-url-enrichment-browser': 0.7.35
+      '@amplitude/plugin-page-view-tracking-browser': 2.12.0
+      '@amplitude/plugin-web-vitals-browser': 1.2.8
       tslib: 2.8.1
 
-  '@amplitude/analytics-connector@1.6.8': {}
+  '@amplitude/analytics-connector@1.7.0': {}
 
-  '@amplitude/analytics-core@2.60.2':
+  '@amplitude/analytics-core@2.62.0':
     dependencies:
-      '@amplitude/analytics-connector': 1.6.8
+      '@amplitude/analytics-connector': 1.7.0
       '@types/zen-observable': 0.8.3
       safe-json-stringify: 1.2.0
       tslib: 2.8.1
@@ -1399,40 +1401,40 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@amplitude/plugin-autocapture-browser@1.30.2':
+  '@amplitude/plugin-autocapture-browser@1.31.0':
     dependencies:
-      '@amplitude/analytics-core': 2.60.2
+      '@amplitude/analytics-core': 2.62.0
       '@amplitude/element-selector': 0.3.2
       tslib: 2.8.1
 
-  '@amplitude/plugin-custom-enrichment-browser@0.1.26':
+  '@amplitude/plugin-custom-enrichment-browser@1.0.0(@amplitude/analytics-core@2.62.0)':
     dependencies:
-      '@amplitude/analytics-core': 2.60.2
+      '@amplitude/analytics-core': 2.62.0
       tslib: 2.8.1
 
-  '@amplitude/plugin-event-property-attribution-browser@0.2.22':
+  '@amplitude/plugin-event-property-attribution-browser@0.2.25':
     dependencies:
-      '@amplitude/analytics-core': 2.60.2
+      '@amplitude/analytics-core': 2.62.0
       tslib: 2.8.1
 
-  '@amplitude/plugin-network-capture-browser@1.10.22':
+  '@amplitude/plugin-network-capture-browser@1.11.0':
     dependencies:
-      '@amplitude/analytics-core': 2.60.2
+      '@amplitude/analytics-core': 2.62.0
       tslib: 2.8.1
 
-  '@amplitude/plugin-page-url-enrichment-browser@0.7.32':
+  '@amplitude/plugin-page-url-enrichment-browser@0.7.35':
     dependencies:
-      '@amplitude/analytics-core': 2.60.2
+      '@amplitude/analytics-core': 2.62.0
       tslib: 2.8.1
 
-  '@amplitude/plugin-page-view-tracking-browser@2.11.22':
+  '@amplitude/plugin-page-view-tracking-browser@2.12.0':
     dependencies:
-      '@amplitude/analytics-core': 2.60.2
+      '@amplitude/analytics-core': 2.62.0
       tslib: 2.8.1
 
-  '@amplitude/plugin-web-vitals-browser@1.2.5':
+  '@amplitude/plugin-web-vitals-browser@1.2.8':
     dependencies:
-      '@amplitude/analytics-core': 2.60.2
+      '@amplitude/analytics-core': 2.62.0
       tslib: 2.8.1
       web-vitals: 6.2.1
 
