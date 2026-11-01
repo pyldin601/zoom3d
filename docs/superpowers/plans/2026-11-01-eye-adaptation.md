@@ -106,8 +106,12 @@ lamp would pump. Covered by the meter test.
 
 - [ ] **Step 1: Write the failing frame tests:**
   - `with adaptation null the frame is unchanged` (pixels equal to a render without the field).
-  - `a dim scene brightens once the eye adapts` (render the same dim scene twice with one `Eye`, the second
-    with `dtS` 10: its whole-frame red sum is higher than the first's).
+  - `a dim scene brightens once the eye adapts`: an `Eye` whose `level` is set to 255, as if it had just come from
+    a bright place, renders a dim scene with `dtS` 0.01, then again with `dtS` 10. The second frame's whole-frame red
+    sum is higher than the first's. A fresh eye wouldn't do: its first reading is taken as is, so both frames would
+    get the same gain.
+  - `renderView meters the frame before exposing it`: with `level` null and a dim scene, `eye.level` afterwards
+    equals `meterFrame` of the same scene rendered with adaptation null.
   - `a frozen eye keeps its level`.
   - `the first-person hands aren't exposed` (the lighter sprite's pixels match a render with adaptation null).
 
