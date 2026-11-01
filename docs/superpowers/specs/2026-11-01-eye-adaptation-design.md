@@ -1,6 +1,6 @@
 # Eye adaptation — design spec
 
-Date: 2026-11-01. Status: draft, awaiting the owner's approval. A small change, so this is the short design.
+Date: 2026-11-01. Status: approved and built (D32). A small change, so this is the short design.
 
 ## Intent
 
