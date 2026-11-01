@@ -821,5 +821,39 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     - with 8 lighters per lamp pose, a frame takes 2.23 ms, against 1.85 ms for the same glows without lighters
       (2.39 ms before the review moved the cone test ahead of the rest of `glowLight`).
 
+### D32 — Eye adaptation
+
+- *Resolved 2026-11-01* ([spec](superpowers/specs/2026-11-01-eye-adaptation-design.md)): in a lit room the frame's
+  brightness follows the eye. A first look into a dim corridor is dark and brightens over a second or two; stepping
+  under a lamp first looks too bright, then settles. The owner asked for the cheap kind, not HDR.
+  - **One step after the frame, not exposure inside the lighting.** `renderView` meters the finished room (windows
+    included), moves the eye's level towards the reading, and scales every pixel through a 256-entry table
+    (`renderer/eye-adaptation.ts`). It touches no lighting path, so every benchmark proof stands.
+    - Rejected: exposure before every clamp (it would bring back detail when adapting down, but touches every fast
+      path), and exposure from the baked light at the player's spot (never pumps, but ignores where they look).
+    - The cost of the choice: pixels are clipped at 255 when written, so adapting down only greys the bright parts.
+  - **The numbers, all starting values to tune by play:**
+    - meter: log-mean luma of every 8th pixel of every 8th row, the corners weighted 0.25 against the centre;
+    - adapting: exponential by real time, 0.3 s into light, 1.5 s into the dark;
+    - gain: `(REFERENCE / level) ^ 0.5`, clamped to [0.6, 2.5];
+    - the table is rebuilt only when the gain moves by more than 0.01, and a gain within 0.01 of 1 skips the pass. That
+      is a meter level within about 2% of `REFERENCE` (49 to 51), which draws exactly as before; elsewhere, ordinary
+      lit places get a gain near 1.
+  - **`REFERENCE` is 50**: the median meter reading (50.3) of `bench:walls`' 176 lamp poses drawn as 'both + glow',
+    the lit frame with the own glow the game always draws (as 'both', without glows, the median is 42.1).
+  - **Left out, and frozen:**
+    - the first-person hands come after the step, neither metered nor exposed;
+    - nothing meters or exposes inside a pass: a window is part of the frame it shows in;
+    - with no lighting (`?lights=off`, flat mode) `scene.adaptation` is null and nothing runs;
+    - while the room is dark in a portal sequence (D30) the level is frozen, so the blackout stays black;
+    - a new room starts a fresh eye, and its first reading is taken as is: it starts adapted, not mid-adaptation.
+  - **Measured** (2026-11-01, `pnpm bench:walls`):
+    - every existing hash is unchanged (lighting -701427082, pixel -601092469, portal lighting -926095752, doorway off
+      -1246551896 / on -589436950, crowd off 2075427884 / on 2005369998, lighters -777278983), and so are
+      `bench:sprites`' (sprite -1772863200, doorway off 484592104 / on 844068579);
+    - the step costs 0.18 ms a frame: the meter 0.013 ms and the exposure at a gain that applies 0.163 ms, with the
+      table rebuilt every frame. A frame metered within about 2% of `REFERENCE` pays only the meter.
+  - **Not yet tuned by play:** the speeds, the strength, the clamps and `REFERENCE` were set offline.
+
 ## Resolved
 _(none yet)_

@@ -14,7 +14,8 @@ import { describe, expect, test } from 'vitest';
 import { twoDoorways } from '../../../../packages/shared/src/portals/test-doorways';
 import { PORTAL_PINK } from '../game/portal-pulse';
 import type { PeerFacts } from '../media/interest';
-import { ownAvatarShown, type RoomScene, renderView } from './frame';
+import { createEye, type Eye, meterFrame } from './eye-adaptation';
+import { type FirstPerson, ownAvatarShown, type RoomScene, renderView } from './frame';
 import { createFramebuffer, type Framebuffer, rgb } from './framebuffer';
 import { bakeLighting, corridorLights, type Lighting } from './lighting';
 import { VACUUM_MODEL } from './models/vacuum';
@@ -80,6 +81,7 @@ describe('renderView without portals', () => {
     portalPulse: 1,
     portalTime: 0,
     firstPerson: null,
+    adaptation: null,
   });
 
   // Hashes taken before portals reached the renderer: with none, every pixel must stay as it was.
@@ -93,6 +95,71 @@ describe('renderView without portals', () => {
       return hashOf(fb);
     });
     expect(hashes).toEqual(expected);
+  });
+
+  test('with adaptation null the frame is unchanged', () => {
+    const fb = createFramebuffer();
+    // An adapted frame first: whatever it leaves behind must not reach the frames after it.
+    renderView(fb, { ...sceneAt(0, true), adaptation: { eye: { level: 255 }, dtS: 0.016, frozen: false } });
+    const hashes = [0, 2.1, 4.4].map((angle) => {
+      renderView(fb, { ...sceneAt(angle, true), adaptation: null });
+      return hashOf(fb);
+    });
+    expect(hashes).toEqual([-305545625, 661863139, -625539523]);
+  });
+});
+
+describe('renderView with eye adaptation', () => {
+  // The dark corridor of the lighter tests: no lamps, so it meters far below REFERENCE.
+  const map = parseMap(`
+1111111111111
+1S....1.....1
+1111111111111
+`);
+  const dark = bakeLighting(map, [], 0.08, FLOOR, CEILING);
+  const eye: PlayerState = { x: 1.5, y: 1.5, angle: 0 };
+  const lighterInHand: FirstPerson = {
+    drink: 'lighter',
+    boombox: false,
+    step: { itemLift: 0, sway: 0 },
+    gesture: { sip: 0, cheers: 0, wobble: 0 },
+  };
+  const dimFrame = (adaptation: RoomScene['adaptation'], firstPerson: FirstPerson | null = null) => {
+    const fb = createFramebuffer();
+    renderView(fb, { ...portalScene(map, null, eye, [], dark), adaptation, firstPerson });
+    return fb;
+  };
+  const redSum = (fb: Framebuffer) => fb.pixels.reduce((sum, c) => sum + (c & 0xff), 0);
+  /** An eye that has just come from a bright place. */
+  const fromTheLight = (): Eye => ({ level: 255 });
+
+  test('a dim scene brightens once the eye adapts', () => {
+    const adapting = fromTheLight();
+    const first = dimFrame({ eye: adapting, dtS: 0.01, frozen: false });
+    const later = dimFrame({ eye: adapting, dtS: 10, frozen: false });
+    expect(redSum(later)).toBeGreaterThan(redSum(first));
+  });
+
+  test('renderView meters the frame before exposing it', () => {
+    const fresh = createEye();
+    dimFrame({ eye: fresh, dtS: 0.016, frozen: false });
+    expect(fresh.level).toBe(meterFrame(dimFrame(null)));
+  });
+
+  test('a frozen eye keeps its level', () => {
+    const frozen = fromTheLight();
+    dimFrame({ eye: frozen, dtS: 10, frozen: true });
+    expect(frozen.level).toBe(255);
+  });
+
+  test("the first-person hands aren't exposed", () => {
+    const plain = dimFrame(null);
+    const handsPlain = dimFrame(null, lighterInHand);
+    const handsExposed = dimFrame({ eye: fromTheLight(), dtS: 0.01, frozen: false }, lighterInHand);
+    const handPixels = [...handsPlain.pixels.keys()].filter((i) => handsPlain.pixels.at(i) !== plain.pixels.at(i));
+    expect(handPixels.length).toBeGreaterThan(0);
+    expect(handPixels.every((i) => handsExposed.pixels.at(i) === handsPlain.pixels.at(i))).toBe(true);
+    expect(firstDifference(handsExposed.pixels, handsPlain.pixels)).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -191,6 +258,7 @@ function portalScene(
     portalPulse: 1,
     portalTime: 0,
     firstPerson: null,
+    adaptation: null,
     portals,
   };
 }
