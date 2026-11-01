@@ -170,6 +170,7 @@ function drawWholeFrame(state: 'off' | 'on', s: Scene): void {
     portalPulse: 1,
     portalTime: 0,
     firstPerson: null,
+    adaptation: null,
   });
 }
 

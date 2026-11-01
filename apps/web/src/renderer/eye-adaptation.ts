@@ -8,15 +8,21 @@ import type { Framebuffer } from './framebuffer';
 export const ADAPT_UP_S = 0.3;
 /** Time constant (s) when the frame is darker than the level: adapting to the dark is slower. */
 export const ADAPT_DOWN_S = 1.5;
-/** The level (0..255) of an ordinary lit spot, where the gain is 1. A placeholder until it is measured. */
-export const REFERENCE = 90;
+/**
+ * The level (0..255) of an ordinary lit spot, where the gain is 1: the median meter reading, 50.3, of `bench:walls`'
+ * 176 lamp poses drawn as 'both + glow' (2026-11-01, D32).
+ */
+export const REFERENCE = 50;
 /** The gain only adapts this share of the way (in the exponent), as eyes do; 1 would flatten every room. */
 const STRENGTH = 0.5;
 /** Below this the lowest dark shades fall apart into bands. */
 export const GAIN_MIN = 0.6;
 /** Past this the few dark shades show as bands. */
 export const GAIN_MAX = 2.5;
-/** The table is only rebuilt when the gain moved by more than this, which is below what the eye tells apart. */
+/**
+ * The table is only rebuilt when the gain moved by more than this, which is below what the eye tells apart; a gain
+ * this close to 1 skips the pass, so ordinary places look exactly as they did before adaptation.
+ */
 const GAIN_STEP = 0.01;
 
 /** Every this-many columns of every this-many rows is metered: about one pixel in 64. */
@@ -59,11 +65,15 @@ export function createEye(): Eye {
 
 /** Moves the eye's level towards a reading, exponentially and by real time, so the frame rate doesn't matter. */
 export function adaptEye(eye: Eye, reading: number, dtS: number): void {
+  // Negated so NaN fails too: one NaN reaching the level would stay there for good.
+  if (!(reading >= 0)) {
+    return;
+  }
   if (eye.level === null) {
     eye.level = reading;
     return;
   }
-  if (dtS <= 0) {
+  if (!(dtS > 0)) {
     return;
   }
   const timeConstantS = reading > eye.level ? ADAPT_UP_S : ADAPT_DOWN_S;
@@ -80,7 +90,7 @@ export function eyeGain(level: number | null): number {
 }
 
 export interface Exposure {
-  /** Scales every pixel's colour channels by `gain`, clamped at 255 and keeping alpha. */
+  /** Scales every pixel's colour channels by `gain`, clamped at 255 and keeping alpha; a gain near 1 changes nothing. */
   apply(fb: Framebuffer, gain: number): void;
 }
 
@@ -89,7 +99,7 @@ export function createExposure(): Exposure {
   let tableGain = Number.NaN;
   return {
     apply(fb, gain) {
-      if (gain === 1) {
+      if (Math.abs(gain - 1) <= GAIN_STEP) {
         return;
       }
       if (!(Math.abs(gain - tableGain) <= GAIN_STEP)) {

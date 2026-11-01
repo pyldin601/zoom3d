@@ -94,6 +94,21 @@ describe('adaptEye', () => {
     adaptEye(eye, 200, -1);
     expect(eye.level).toBe(10);
   });
+
+  it('stays put with dt NaN', () => {
+    const eye = { level: 10 as number | null };
+    adaptEye(eye, 200, Number.NaN);
+    expect(eye.level).toBe(10);
+  });
+
+  it('never takes a NaN reading', () => {
+    const adapted = { level: 10 as number | null };
+    adaptEye(adapted, Number.NaN, 0.016);
+    expect(adapted.level).toBe(10);
+    const fresh = createEye();
+    adaptEye(fresh, Number.NaN, 0.016);
+    expect(fresh.level).toBeNull();
+  });
 });
 
 describe('eyeGain', () => {
@@ -120,6 +135,13 @@ describe('createExposure', () => {
     fb.pixels[3] = rgb(10, 200, 33);
     const before = fb.pixels.slice();
     createExposure().apply(fb, 1);
+    expect(fb.pixels).toEqual(before);
+  });
+
+  it('apply at a gain within a step of 1 changes no pixel', () => {
+    const fb = greyFrame(200, 8, 8);
+    const before = fb.pixels.slice();
+    createExposure().apply(fb, 1.005);
     expect(fb.pixels).toEqual(before);
   });
 
