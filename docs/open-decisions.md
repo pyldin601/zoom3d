@@ -523,6 +523,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     left the kicker's ball flying until the hold ran out. The server now replies `kick_refused`, the client holds a kick
     until it hears either answer (1 s at most), and the server's reach grows with the ball's speed, since a rolling ball
     has moved on by the time the kick arrives.
+  - **A push holds only within 1 tile** (2026-11-02, after 5-minute prod runs where jumps of 3+ tiles came 300 ms after
+    the player's last push): a push held off the server for as long as the player kept touching the ball, so anything
+    only the server saw, such as a bounce off another body, stayed unseen until the ball had to snap across the gap.
+    Ending the hold on another player's kick didn't help (14 jumps against 6), since most came with no such kick.
   - **The vacuum kicks it** (owner): a vacuum driving into the ball knocks it off at 2.5 tiles/s or more. The vacuum
     itself doesn't react.
   - **Bots never touch it,** for the same reason they never bump the vacuum.

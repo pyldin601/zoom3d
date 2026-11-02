@@ -106,6 +106,53 @@ describe('holding the local touch', () => {
     expect(ballOf(p).vx).toBe(0);
   });
 
+  describe('a server ball that moves away during a push', () => {
+    const movedAway = state(3.5, 3.5, { vx: 8 });
+    /** Pushes for a few frames, delivers the state to the pusher and a watcher, then keeps stepping for 300 ms. */
+    function playOut(walkerAt: (ballX: number, t: number) => number) {
+      const pusher = predicted();
+      const watcher = predicted();
+      let t = 0;
+      const frame = () => {
+        pusher.step(DT, t, walker(walkerAt(ballOf(pusher).x, t), 3.5, 3));
+        watcher.step(DT, t, null);
+        t += 1000 * DT;
+      };
+      for (let i = 0; i < 3; i++) {
+        frame();
+      }
+      pusher.server(movedAway, 'me', t);
+      watcher.server(movedAway, 'watcher', t);
+      let largestMove = 0;
+      for (let i = 0; i < 18; i++) {
+        const before = ballOf(pusher).x;
+        frame();
+        largestMove = Math.max(largestMove, Math.abs(ballOf(pusher).x - before));
+      }
+      return { gap: Math.abs(ballOf(pusher).x - ballOf(watcher).x), largestMove };
+    }
+
+    test('stops holding once it has drifted, so the ball glides after it', () => {
+      const { gap, largestMove } = playOut((_, t) => 2.6 + (3 * t) / 1000);
+      expect(gap).toBeLessThan(1);
+      expect(largestMove).toBeLessThan(0.5);
+    });
+
+    test('is followed even by a player still walking into the ball', () => {
+      const { gap, largestMove } = playOut((ballX) => ballX - 0.4);
+      expect(gap).toBeLessThan(1);
+      expect(largestMove).toBeLessThan(0.5);
+    });
+  });
+
+  test('a far server ball leaves a local kick waiting for its own answer', () => {
+    const p = predicted();
+    expect(p.kick({ x: 2.6, y: 3.5 }, 0, 0)).toBe(1);
+    p.server(state(3, 3.5, { event: 'kick', by: 'other', k: 1, vx: -8 }), 'me', 20);
+    p.step(DT, 40, null);
+    expect(ballOf(p).vx).toBeGreaterThan(0);
+  });
+
   test('a refused kick ends the hold at once', () => {
     const p = predicted();
     const k = p.kick({ x: 2.6, y: 3.5 }, 0, 0);

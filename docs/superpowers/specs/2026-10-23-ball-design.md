@@ -131,7 +131,9 @@ The ball is drawn at the **local** ball's position: in the present, not at the o
      the server answers it,** the local ball is left alone (the server hasn't seen the touch yet, and pulling toward it
      is the snap-back the anti-goals forbid). The answer is either the `kick` echo in a server state (§4: `by` is the
      local player's id and `k` is at least the local kick's) or `kick_refused`; with neither within 1 s the hold ends
-     anyway. Pushes have no echo and just use the timeout. Other people's touches never end the hold **(my call)**.
+     anyway. Pushes have no echo and just use the timeout. A push stops holding once the balls are more than 1 tile apart:
+     latency can't explain that, so someone else's kick or a bounce off a body only the server has must have moved the
+     ball, and it glides there instead of snapping later. A local kick still waits for its own answer.
   3. Otherwise the local ball eases onto the advanced server ball: position error decays with a ~100 ms time constant,
      velocity is taken from the server. An error over **3 tiles** snaps; that is above any kick's error, which is about
      1 tile from rest and 2.5 from a ball rolling the other way.

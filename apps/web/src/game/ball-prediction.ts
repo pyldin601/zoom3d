@@ -21,6 +21,11 @@ import {
 
 /** After the local player's last touch, server states are ignored this long: they can't include the touch yet. */
 const HOLD_MS = 300;
+/**
+ * More than a push's latency can explain: someone else's kick, or a bounce off a body only the server has, has moved
+ * the ball. Holding on would leave it to snap across the gap when the player finally stops touching it.
+ */
+const PUSH_DRIFT_TILES = 1;
 /** A kick holds until the server answers, however slow the link; this is for an answer that never comes. */
 const ANSWER_WAIT_MS = 1000;
 /** A server state is about this old when it arrives, so it is advanced this far before comparing. */
@@ -102,6 +107,8 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
     Math.hypot(self.vx, self.vy) > STILL_SPEED &&
     Math.hypot(ball.x - self.x, ball.y - self.y) < self.radius + BALL_RADIUS + 1e-6;
 
+  const pushDriftedFrom = (b: Ball, s: Ball) => unechoed === null && Math.hypot(s.x - b.x, s.y - b.y) > PUSH_DRIFT_TILES;
+
   const easeOntoServer = (b: Ball, s: Ball, dt: number) => {
     const error = Math.hypot(s.x - b.x, s.y - b.y);
     const atRest = !ballMoving(b) && !ballMoving(s);
@@ -166,7 +173,7 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
       }
       if (server) {
         stepBall(map, server, dt, NO_BODIES, wiring);
-        if (now >= holdUntil) {
+        if (now >= holdUntil || pushDriftedFrom(ball, server)) {
           easeOntoServer(ball, server, dt);
         }
       }
