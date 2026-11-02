@@ -1,0 +1,356 @@
+// The ball's personality, a curious puppy (living ball spec §2): a state machine the server runs before the physics.
+// It only ever sets a velocity at or below its own speed, and only once a kick, push or bounce has played out, so it
+// can't get in the way of the ball being a ball.
+import { hasLineOfSight } from '../../geometry/los';
+import { PLAYER_RADIUS } from '../../geometry/movement';
+import type { GameMap } from '../../map/map';
+import type { BallCry, BallMood } from '../../protocol/protocol';
+import { BALL_RADIUS, type Ball, type BallTouch } from './ball';
+import { BALL_CRIES } from './cries';
+
+/** Tiles/s: a person walks at 3, so anyone can catch it. */
+export const BALL_OWN_SPEED = 1;
+export const BALL_WAKE_S = 10;
+export const BALL_SEES_TILES = 6;
+const TOUCHING_TILES = PLAYER_RADIUS + BALL_RADIUS;
+/** Not touching, so it isn't a push, and still within kick reach. */
+export const BALL_STOP_TILES = TOUCHING_TILES + 0.25;
+/** Beyond this it follows, so small shuffles don't set off a chase. */
+const WIGGLE_LEAVE_TILES = TOUCHING_TILES + 1;
+const CHASE_S = 6;
+const SCARED_S = 6;
+const IGNORE_S = 15;
+const FORGIVE_TILES = 2;
+export const BALL_CRY_COOLDOWN_S = 3;
+const GIGGLE_CALM_S = 5;
+const WANDER_MIN_TILES = 1;
+const WANDER_MAX_TILES = 3;
+const WANDER_TARGET_S = 5;
+const WANDER_PAUSE_MIN_S = 1;
+const WANDER_PAUSE_MAX_S = 4;
+/** Its own steering can round to just above its own speed, and mustn't count as being pushed. */
+const SPEED_ROUNDING = 1e-6;
+/** This close to a spot counts as there. */
+const ARRIVED_TILES = 0.2;
+
+interface Spot {
+  x: number;
+  y: number;
+}
+
+type Chasing = { person: string; lastSeen: Spot; chaseLeftS: number };
+
+type MindState =
+  | { mood: 'asleep'; secondsLeft: number; lost: boolean }
+  | { mood: 'wandering'; target: Spot | null; secondsLeft: number }
+  | ({ mood: 'approaching' } & Chasing)
+  | { mood: 'wiggling'; person: string; lastSeen: Spot }
+  | ({ mood: 'following' } & Chasing)
+  | { mood: 'scared'; secondsLeft: number };
+
+export interface BallMind {
+  readonly mood: BallMood;
+  state: MindState;
+  cooldownLeftS: number;
+  sinceLastPushS: number;
+  /** Seconds left of ignoring each person it gave up on. */
+  ignored: Map<string, number>;
+  lastVariants: Map<BallCry, number>;
+}
+
+export interface BallSenses {
+  people: readonly { id: string; x: number; y: number }[];
+  touch: BallTouch;
+}
+
+export interface BallCryChoice {
+  cry: BallCry;
+  variant: number;
+}
+
+type Person = BallSenses['people'][number];
+
+export function createBallMind(): BallMind {
+  return {
+    get mood() {
+      return this.state.mood;
+    },
+    state: fallAsleep(false),
+    cooldownLeftS: 0,
+    sinceLastPushS: Number.POSITIVE_INFINITY,
+    ignored: new Map(),
+    lastVariants: new Map(),
+  };
+}
+
+function fallAsleep(lost: boolean): MindState {
+  return { mood: 'asleep', secondsLeft: BALL_WAKE_S, lost };
+}
+
+/** A person's kick: always wins. Only the yelp ignores the cooldown, and only an awake ball yelps. */
+export function kickBallMind(mind: BallMind, rng: () => number): BallCryChoice | null {
+  const { state } = mind;
+  mind.state = fallAsleep(state.mood === 'asleep' && state.lost);
+  return state.mood === 'asleep' ? null : voice(mind, 'yelp', rng);
+}
+
+/** One tick, before the physics. Returns what it says this tick. */
+export function stepBallMind(
+  map: GameMap,
+  mind: BallMind,
+  ball: Ball,
+  dt: number,
+  senses: BallSenses,
+  rng: () => number
+): BallCryChoice | null {
+  const say = (cry: BallCry) => (mind.cooldownLeftS > 0 ? null : voice(mind, cry, rng));
+  passTime(mind, ball, dt, senses.people);
+  const cry = reactToTouch(map, mind, ball, senses, say);
+  if (mind.state.mood === 'asleep') {
+    return cry ?? sleep(map, mind, ball, dt, senses.people, rng, say);
+  }
+  if (Math.hypot(ball.vx, ball.vy) > BALL_OWN_SPEED + SPEED_ROUNDING) {
+    return cry;
+  }
+  return cry ?? behave(map, mind, ball, dt, senses.people, rng, say);
+}
+
+function passTime(mind: BallMind, ball: Ball, dt: number, people: readonly Person[]): void {
+  mind.cooldownLeftS = Math.max(0, mind.cooldownLeftS - dt);
+  mind.sinceLastPushS += dt;
+  for (const [id, secondsLeft] of mind.ignored) {
+    const person = people.find((p) => p.id === id);
+    const forgiven = person !== undefined && distance(ball, person) <= FORGIVE_TILES;
+    if (forgiven || secondsLeft <= dt) {
+      mind.ignored.delete(id);
+    } else {
+      mind.ignored.set(id, secondsLeft - dt);
+    }
+  }
+}
+
+function reactToTouch(
+  map: GameMap,
+  mind: BallMind,
+  ball: Ball,
+  { people, touch }: BallSenses,
+  say: (cry: BallCry) => BallCryChoice | null
+): BallCryChoice | null {
+  const { state } = mind;
+  const calmed = mind.sinceLastPushS >= GIGGLE_CALM_S;
+  if (touch.pushed) {
+    mind.sinceLastPushS = 0;
+  }
+  if (state.mood === 'asleep') {
+    state.lost ||= touch.crossedPortal;
+    return null;
+  }
+  let cry: BallCryChoice | null = null;
+  if (touch.crossedPortal) {
+    const person = nearestSeen(map, mind, ball, people);
+    if (person) {
+      mind.state = chase('approaching', person);
+      cry = say('yip');
+    } else {
+      mind.state = { mood: 'scared', secondsLeft: SCARED_S };
+      cry = say('whimper');
+    }
+  }
+  if (touch.pushed && calmed) {
+    cry ??= say('giggle');
+  }
+  if (touch.knocked) {
+    cry ??= say('startled');
+  }
+  return cry;
+}
+
+function sleep(
+  map: GameMap,
+  mind: BallMind,
+  ball: Ball,
+  dt: number,
+  people: readonly Person[],
+  rng: () => number,
+  say: (cry: BallCry) => BallCryChoice | null
+): BallCryChoice | null {
+  const { state } = mind;
+  if (state.mood !== 'asleep') {
+    return null;
+  }
+  state.secondsLeft -= dt;
+  if (state.secondsLeft > 0) {
+    return null;
+  }
+  if (state.lost && nearestSeen(map, mind, ball, people) === null) {
+    mind.state = { mood: 'scared', secondsLeft: SCARED_S };
+    return say('whimper');
+  }
+  mind.state = paused(rng);
+  return say('yawn');
+}
+
+function behave(
+  map: GameMap,
+  mind: BallMind,
+  ball: Ball,
+  dt: number,
+  people: readonly Person[],
+  rng: () => number,
+  say: (cry: BallCry) => BallCryChoice | null
+): BallCryChoice | null {
+  const { state } = mind;
+  switch (state.mood) {
+    case 'asleep':
+      return null;
+    case 'wandering': {
+      const person = nearestSeen(map, mind, ball, people);
+      if (person) {
+        mind.state = chase('approaching', person);
+        return say('happy');
+      }
+      wander(map, mind, ball, dt, rng);
+      return null;
+    }
+    case 'scared': {
+      stop(ball);
+      const person = nearestSeen(map, mind, ball, people);
+      if (person) {
+        mind.state = chase('approaching', person);
+        return say('relieved');
+      }
+      state.secondsLeft -= dt;
+      if (state.secondsLeft <= 0) {
+        mind.state = paused(rng);
+      }
+      return null;
+    }
+    case 'wiggling': {
+      const person = visiblePerson(map, ball, people, state.person);
+      if (person) {
+        state.lastSeen = { x: person.x, y: person.y };
+      }
+      if (!person || distance(ball, person) > WIGGLE_LEAVE_TILES) {
+        mind.state = { mood: 'following', person: state.person, lastSeen: state.lastSeen, chaseLeftS: CHASE_S };
+      }
+      return null;
+    }
+    case 'approaching':
+    case 'following': {
+      state.chaseLeftS -= dt;
+      const person = visiblePerson(map, ball, people, state.person);
+      if (person) {
+        state.lastSeen = { x: person.x, y: person.y };
+        if (distance(ball, person) <= BALL_STOP_TILES) {
+          stop(ball);
+          mind.state = { mood: 'wiggling', person: state.person, lastSeen: state.lastSeen };
+          return null;
+        }
+      } else if (state.mood === 'approaching') {
+        mind.state = { ...state, mood: 'following' };
+      }
+      if (state.chaseLeftS <= 0) {
+        stop(ball);
+        mind.ignored.set(state.person, IGNORE_S);
+        mind.state = paused(rng);
+        return say('sad');
+      }
+      if (distance(ball, state.lastSeen) > ARRIVED_TILES) {
+        steer(ball, state.lastSeen);
+      } else {
+        stop(ball);
+      }
+      return null;
+    }
+  }
+}
+
+function wander(map: GameMap, mind: BallMind, ball: Ball, dt: number, rng: () => number): void {
+  const { state } = mind;
+  if (state.mood !== 'wandering') {
+    return;
+  }
+  state.secondsLeft -= dt;
+  if (state.target === null) {
+    // A pause leaves the ball to its friction: a slow roll carries on and comes to rest by itself.
+    if (state.secondsLeft <= 0) {
+      const target = wanderSpot(map, ball, rng);
+      mind.state = target ? { mood: 'wandering', target, secondsLeft: WANDER_TARGET_S } : paused(rng);
+    }
+    return;
+  }
+  if (state.secondsLeft <= 0 || distance(ball, state.target) <= ARRIVED_TILES) {
+    stop(ball);
+    mind.state = paused(rng);
+    return;
+  }
+  steer(ball, state.target);
+}
+
+function wanderSpot(map: GameMap, ball: Ball, rng: () => number): Spot | null {
+  const angle = rng() * Math.PI * 2;
+  const tiles = WANDER_MIN_TILES + rng() * (WANDER_MAX_TILES - WANDER_MIN_TILES);
+  const x = ball.x + Math.cos(angle) * tiles;
+  const y = ball.y + Math.sin(angle) * tiles;
+  return hasLineOfSight(map, ball.x, ball.y, x, y) ? { x, y } : null;
+}
+
+function paused(rng: () => number): MindState {
+  const pauseS = WANDER_PAUSE_MIN_S + rng() * (WANDER_PAUSE_MAX_S - WANDER_PAUSE_MIN_S);
+  return { mood: 'wandering', target: null, secondsLeft: pauseS };
+}
+
+function chase(mood: 'approaching', person: Person): MindState {
+  return { mood, person: person.id, lastSeen: { x: person.x, y: person.y }, chaseLeftS: CHASE_S };
+}
+
+function canSee(map: GameMap, ball: Ball, person: Person): boolean {
+  return distance(ball, person) <= BALL_SEES_TILES && hasLineOfSight(map, ball.x, ball.y, person.x, person.y);
+}
+
+function visiblePerson(map: GameMap, ball: Ball, people: readonly Person[], id: string): Person | null {
+  const person = people.find((p) => p.id === id);
+  return person && canSee(map, ball, person) ? person : null;
+}
+
+function nearestSeen(map: GameMap, mind: BallMind, ball: Ball, people: readonly Person[]): Person | null {
+  let nearest: Person | null = null;
+  for (const person of people) {
+    const closer = nearest === null || distance(ball, person) < distance(ball, nearest);
+    if (closer && !mind.ignored.has(person.id) && canSee(map, ball, person)) {
+      nearest = person;
+    }
+  }
+  return nearest;
+}
+
+function distance(a: Spot, b: Spot): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function steer(ball: Ball, to: Spot): void {
+  const tiles = distance(ball, to);
+  ball.vx = ((to.x - ball.x) / tiles) * BALL_OWN_SPEED;
+  ball.vy = ((to.y - ball.y) / tiles) * BALL_OWN_SPEED;
+}
+
+function stop(ball: Ball): void {
+  ball.vx = 0;
+  ball.vy = 0;
+}
+
+function voice(mind: BallMind, cry: BallCry, rng: () => number): BallCryChoice {
+  const variant = pickCryVariant(BALL_CRIES[cry].length, mind.lastVariants.get(cry), rng);
+  mind.lastVariants.set(cry, variant);
+  mind.cooldownLeftS = BALL_CRY_COOLDOWN_S;
+  return { cry, variant };
+}
+
+/** Any of `count` sounds but the last one played, so an emotion never repeats itself. */
+export function pickCryVariant(count: number, last: number | undefined, rng: () => number): number {
+  if (last === undefined || count < 2) {
+    return Math.floor(rng() * count);
+  }
+  const variant = Math.floor(rng() * (count - 1));
+  return variant >= last ? variant + 1 : variant;
+}
