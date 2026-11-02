@@ -43,6 +43,7 @@ export interface ServerOptions {
   vacuumNearlyDone?: boolean;
   /** Every new room gets a ball; on unless set to false. */
   ball?: boolean;
+  ballMind?: boolean;
 }
 
 export interface RunningServer {
@@ -147,6 +148,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     onEvent: (e) => observe(e, log, metrics),
     vacuum: opts.vacuum ?? true,
     ball: opts.ball ?? true,
+    ballMind: opts.ballMind ?? true,
     vacuumNearlyDone: opts.vacuumNearlyDone,
   });
   const restored = opts.stateFile ? loadSnapshot(opts.stateFile, log) : null;
