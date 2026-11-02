@@ -1,6 +1,6 @@
 # The living ball: a puppy that is still a ball
 
-Status: design for owner approval. Follows the ball spec (`2026-10-23-ball-design.md`, D26) and builds on PR 132 (the
+Status: approved design, 2026-11-02. Follows the ball spec (`2026-10-23-ball-design.md`, D26) and builds on PR 132 (the
 push drift limit), which isn't merged yet. Decision record: D33 (D32 is taken by the postponed eye adaptation, PR 130).
 
 Calls marked **(my call)** were made by the designer, not the owner, and can be overridden.

@@ -190,6 +190,11 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   Portal windows shimmer and their fronts glow and hum (D29): portal glows are avatar glows with a `cut` plane and a
   shadow table baked with the portals-on lighting (`Glow.shadow`, `Lighting.portalGlowSeen`), and every pass that uses
   glow light must honour both (through `glowLight`).
+- Living ball (D33, spec `docs/superpowers/specs/2026-11-02-living-ball-design.md`): `objects/ball/mind.ts` only runs on the
+  server and only sets the ball's velocity, at or below `BALL_OWN_SPEED`, so `stepBall` and kicks stay the physics they
+  were. A kick goes through `kickBallMind` and always wins. The wiggle and tremble are drawn (`game/ball-shake.ts`), never
+  added to its position. Its cries are data (`objects/ball/cries.ts`); the server picks one and everyone plays it. Dev:
+  `__game.ballCry('yip', 0)` and `__game.forceBallMood('scared')`.
 - Lighter (D31, spec `docs/superpowers/specs/2026-10-31-lighter-design.md`):
   - **Item:** key 9 holds it. It is a `HeldItem` with no gestures, so `isDrink` guards every sip and cheers.
   - **Light:** a glow with a `cone` and its own `reach`, plus a pooled shadow table refilled only per floor cell
