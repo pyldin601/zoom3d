@@ -242,6 +242,43 @@ describe('crossing a portal', () => {
     expect(said().at(-1)).toBe('yip');
   });
 
+  test('crossing while chasing the same person does not restart the chase', () => {
+    const p = approaching(3);
+    const keepAway = (seconds: number) => {
+      for (let i = 0; i < Math.round(seconds / DT); i++) {
+        p.x = ball.x + 3;
+        p.y = ball.y;
+        tick();
+      }
+    };
+    keepAway(4);
+    touch.crossedPortal = true;
+    keepAway(1.8);
+    expect(mind.mood).toBe('approaching');
+    keepAway(0.4);
+    expect(mind.mood).toBe('wandering');
+  });
+
+  test('crossing towards someone new starts a full chase', () => {
+    const p = approaching(3);
+    for (let i = 0; i < Math.round(4 / DT); i++) {
+      p.x = ball.x + 3;
+      p.y = ball.y;
+      tick();
+    }
+    people = [{ id: 'b', x: ball.x + 3, y: ball.y }];
+    touch.crossedPortal = true;
+    for (let i = 0; i < Math.round(4 / DT); i++) {
+      const other = people.at(0);
+      if (other) {
+        other.x = ball.x + 3;
+        other.y = ball.y;
+      }
+      tick();
+    }
+    expect(mind.mood).toBe('approaching');
+  });
+
   test('crossing again while scared restarts its 6 s', () => {
     scared();
     run(5);
@@ -411,6 +448,38 @@ describe('giving up', () => {
   test('forgives them early within 2 tiles', () => {
     const p = approaching(3);
     walkAway(p, 6.1);
+    p.x = ball.x + 1.9;
+    p.y = ball.y;
+    tick();
+    expect(mind.mood).toBe('approaching');
+  });
+
+  test('someone it gave up on while close by is not forgiven at once, so it stops pushing', () => {
+    wake();
+    calm();
+    // Close, and in sight, but it never gets there: something holds it back each tick.
+    Object.assign(ball, { x: 10, y: 15, vx: 0, vy: 0 });
+    people.push({ id: 'a', x: 11.5, y: 15 });
+    let chasingTicks = 0;
+    const ticks = Math.round(21 / DT);
+    for (let i = 0; i < ticks; i++) {
+      Object.assign(ball, { x: 10, y: 15 });
+      const cry = stepBallMind(ROOM, mind, ball, DT, { people, touch }, rng);
+      if (cry) {
+        cries.push(cry);
+      }
+      chasingTicks += mind.mood === 'approaching' || mind.mood === 'following' ? 1 : 0;
+    }
+    expect(said().filter((c) => c === 'sad')).toHaveLength(1);
+    expect(chasingTicks * DT).toBeLessThan(12.5);
+  });
+
+  test('someone it gave up on from afar is forgiven only once they come close', () => {
+    const p = approaching(3);
+    walkAway(p, 6.1);
+    expect(mind.mood).toBe('wandering');
+    walkAway(p, 1);
+    expect(mind.mood).toBe('wandering');
     p.x = ball.x + 1.9;
     p.y = ball.y;
     tick();

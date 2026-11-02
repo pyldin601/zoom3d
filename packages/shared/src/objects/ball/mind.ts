@@ -53,8 +53,8 @@ export interface BallMind {
   state: MindState;
   cooldownLeftS: number;
   sinceLastPushS: number;
-  /** Seconds left of ignoring each person it gave up on. */
-  ignored: Map<string, number>;
+  /** Each person it gave up on. Only coming back forgives them, so they must have been away first. */
+  ignored: Map<string, { secondsLeft: number; beenAway: boolean }>;
   lastVariants: Map<BallCry, number>;
 }
 
@@ -118,13 +118,13 @@ export function stepBallMind(
 function passTime(mind: BallMind, ball: Ball, dt: number, people: readonly Person[]): void {
   mind.cooldownLeftS = Math.max(0, mind.cooldownLeftS - dt);
   mind.sinceLastPushS += dt;
-  for (const [id, secondsLeft] of mind.ignored) {
+  for (const [id, ignoring] of mind.ignored) {
     const person = people.find((p) => p.id === id);
-    const forgiven = person !== undefined && distance(ball, person) <= FORGIVE_TILES;
-    if (forgiven || secondsLeft <= dt) {
+    const near = person !== undefined && distance(ball, person) <= FORGIVE_TILES;
+    ignoring.secondsLeft -= dt;
+    ignoring.beenAway ||= !near;
+    if ((near && ignoring.beenAway) || ignoring.secondsLeft <= 0) {
       mind.ignored.delete(id);
-    } else {
-      mind.ignored.set(id, secondsLeft - dt);
     }
   }
 }
@@ -149,7 +149,9 @@ function reactToTouch(
   if (touch.crossedPortal) {
     const person = nearestSeen(map, mind, ball, people);
     if (person) {
-      mind.state = chase('approaching', person);
+      // A crossing doesn't reset a chase of the same person, or doorways could keep it going for ever.
+      const sameChase = (state.mood === 'approaching' || state.mood === 'following') && state.person === person.id;
+      mind.state = chase('approaching', person, sameChase ? state.chaseLeftS : CHASE_S);
       cry = say('yip');
     } else {
       mind.state = { mood: 'scared', secondsLeft: SCARED_S };
@@ -251,7 +253,7 @@ function behave(
       }
       if (state.chaseLeftS <= 0) {
         stop(ball);
-        mind.ignored.set(state.person, IGNORE_S);
+        mind.ignored.set(state.person, { secondsLeft: IGNORE_S, beenAway: false });
         mind.state = paused(rng);
         return say('sad');
       }
@@ -300,8 +302,8 @@ function paused(rng: () => number): MindState {
   return { mood: 'wandering', target: null, secondsLeft: pauseS };
 }
 
-function chase(mood: 'approaching', person: Person): MindState {
-  return { mood, person: person.id, lastSeen: { x: person.x, y: person.y }, chaseLeftS: CHASE_S };
+function chase(mood: 'approaching', person: Person, chaseLeftS = CHASE_S): MindState {
+  return { mood, person: person.id, lastSeen: { x: person.x, y: person.y }, chaseLeftS };
 }
 
 function canSee(map: GameMap, ball: Ball, person: Person): boolean {
