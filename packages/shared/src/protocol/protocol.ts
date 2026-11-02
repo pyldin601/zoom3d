@@ -67,6 +67,22 @@ export type ObjectKind = 'vacuum' | 'ball';
 export type ObjectEvent = 'bump' | 'lost' | 'kick' | 'bounce';
 const OBJECT_KINDS: readonly ObjectKind[] = ['vacuum', 'ball'];
 const OBJECT_EVENTS: readonly ObjectEvent[] = ['bump', 'lost', 'kick', 'bounce'];
+/** What the ball's mind is doing (living ball spec §2). */
+export type BallMood = 'asleep' | 'wandering' | 'approaching' | 'wiggling' | 'following' | 'scared';
+const BALL_MOODS: readonly BallMood[] = ['asleep', 'wandering', 'approaching', 'wiggling', 'following', 'scared'];
+/** The emotions the ball can voice (living ball spec §5). */
+export type BallCry = 'yawn' | 'happy' | 'relieved' | 'sad' | 'yelp' | 'giggle' | 'whimper' | 'yip' | 'startled';
+const BALL_CRY_NAMES: readonly BallCry[] = [
+  'yawn',
+  'happy',
+  'relieved',
+  'sad',
+  'yelp',
+  'giggle',
+  'whimper',
+  'yip',
+  'startled',
+];
 
 export interface ObjectInfo {
   id: string;
@@ -77,6 +93,8 @@ export interface ObjectInfo {
   /** The ball's velocity in tiles/s; absent when still, and on the vacuum. */
   vx?: number;
   vy?: number;
+  /** The ball's mood; absent means asleep, and on the vacuum. */
+  mood?: BallMood;
 }
 
 /** Where and how a peer joins the room's LiveKit SFU (LiveKit spec §3). */
@@ -169,6 +187,11 @@ export type ServerMessage =
       /** On a person's kick of the ball: who kicked, and their kick counter from `kick`. */
       by?: string;
       k?: number;
+      /** The ball's mood; absent means asleep. */
+      mood?: BallMood;
+      /** Something the ball voices, and which of that emotion's sounds. They come together or not at all. */
+      cry?: BallCry;
+      cryVariant?: number;
     }
   | { type: 'correction'; x: number; y: number; angle: number; seq: number }
   /** The sender's kick `k` didn't land, so its prediction can stop waiting for the echo. */
@@ -389,12 +412,22 @@ export function parseObjectInfo(v: unknown): ObjectInfo | null {
     return null;
   }
   const p = pose(v);
-  return p && { id: v.id, kind: v.kind as ObjectKind, ...p, ...velocity(v) };
+  return p && { id: v.id, kind: v.kind as ObjectKind, ...p, ...velocity(v), ...ballMood(v) };
 }
 
 /** A ball's velocity, kept only when both parts are numbers. */
 function velocity(m: Obj): { vx: number; vy: number } | Record<string, never> {
   return isNum(m.vx) && isNum(m.vy) ? { vx: m.vx, vy: m.vy } : {};
+}
+
+function ballMood(m: Obj): { mood: BallMood } | Record<string, never> {
+  return BALL_MOODS.includes(m.mood as BallMood) ? { mood: m.mood as BallMood } : {};
+}
+
+function ballCry(m: Obj): { cry: BallCry; cryVariant: number } | Record<string, never> {
+  return BALL_CRY_NAMES.includes(m.cry as BallCry) && isSeq(m.cryVariant)
+    ? { cry: m.cry as BallCry, cryVariant: m.cryVariant }
+    : {};
 }
 
 const SEQUENCE_KINDS: readonly SequenceKind[] = ['first_on', 'on', 'off'];
@@ -475,7 +508,17 @@ export function parseServerMessage(raw: string): ServerMessage | null {
       }
       const event = OBJECT_EVENTS.includes(m.event as ObjectEvent) ? { event: m.event as ObjectEvent } : {};
       const echo = isStr(m.by) && isSeq(m.k) ? { by: m.by, k: m.k } : {};
-      return { type: 'object_state', id: m.id, ...p, seq: m.seq, ...event, ...velocity(m), ...echo };
+      return {
+        type: 'object_state',
+        id: m.id,
+        ...p,
+        seq: m.seq,
+        ...event,
+        ...velocity(m),
+        ...echo,
+        ...ballMood(m),
+        ...ballCry(m),
+      };
     }
     case 'correction': {
       const p = pose(m);
