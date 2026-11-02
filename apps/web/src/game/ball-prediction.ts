@@ -21,10 +21,13 @@ import {
 
 /** After the local player's last touch, server states are ignored this long: they can't include the touch yet. */
 const HOLD_MS = 300;
+/** A kick holds until the server answers, however slow the link; this is for an answer that never comes. */
+const ANSWER_WAIT_MS = 1000;
 /** A server state is about this old when it arrives, so it is advanced this far before comparing. */
 const LATENCY_S = 0.06;
 const EASE_S = 0.1;
-const SNAP_TILES = 1.5;
+/** Above any kick's error: a rolling ball someone reverses is about 2.5 tiles from its state, and should glide there. */
+const SNAP_TILES = 3;
 /** Two balls at rest this close are one ball: snap, so every screen shows the same spot. */
 const REST_SNAP_TILES = 0.05;
 /** Tiles/s under which the local player counts as standing still. */
@@ -39,6 +42,8 @@ export interface BallPrediction {
   reset(info: ObjectInfo | null): void;
   /** A server state for the ball; `selfId` recognises the local player's own kick echo. */
   server(m: ObjectStateMessage, selfId: string | null, now: number): void;
+  /** The server turned down the local kick `k`: if it's the latest, the server's ball is right again. */
+  refused(k: number, now: number): void;
   /** Steps the ball with the local player as its only body; returns the local event, for sound. */
   step(dt: number, now: number, self: BallBody | null): BallEvent | null;
   /** A local kick: applies at once if in reach and returns the kick counter to send, else null. */
@@ -124,7 +129,8 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
         vy: info.vy ?? 0,
         heading: info.angle,
       };
-      server = null;
+      // A copy, not null: a refused kick has to find its way back to a ball that no state has mentioned yet.
+      server = ball && { ...ball };
       holdUntil = Number.NEGATIVE_INFINITY;
       unechoed = null;
     },
@@ -142,6 +148,13 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
       }
     },
 
+    refused(k, now) {
+      if (unechoed !== null && k >= unechoed) {
+        unechoed = null;
+        holdUntil = now;
+      }
+    },
+
     step(dt, now, self) {
       if (!ball) {
         return null;
@@ -149,7 +162,7 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
       const wiring = portals();
       const body = self && bodySeenFromBall(wiring, self);
       if (body && pushing(body)) {
-        holdUntil = now + HOLD_MS;
+        holdUntil = Math.max(holdUntil, now + HOLD_MS);
       }
       if (server) {
         stepBall(map, server, dt, NO_BODIES, wiring);
@@ -175,7 +188,7 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
       lastKickAt = now;
       kicks++;
       unechoed = kicks;
-      holdUntil = now + HOLD_MS;
+      holdUntil = now + ANSWER_WAIT_MS;
       return kicks;
     },
   };

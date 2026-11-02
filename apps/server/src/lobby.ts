@@ -117,6 +117,10 @@ export interface LobbyOptions {
 
 /** The server sees a kicker a little late, so it allows them this much further away than the client does. */
 const KICK_SLACK_TILES = 0.5;
+/** A rolling ball was in reach on the kicker's screen about this long ago: at kick speed it has gone over a tile since. */
+const KICK_SEEN_LATE_S = 0.2;
+/** Clients space kicks BALL_KICK_GAP_MS apart when they send them; the network can bunch two by this much. */
+const KICK_GAP_JITTER_MS = 50;
 const seen: Apparent = { x: 0, y: 0, sees: false, through: 0, cos: 1, sin: 0 };
 
 /** A walker whose last pose is older than this is standing still, as far as the ball can tell. */
@@ -251,7 +255,7 @@ export class Lobby {
   /** Each room's ball, by room id. Not a peer either. */
   private readonly balls = new Map<string, Ball>();
   /** A person's kick since the ball's last broadcast, echoed in it so the kicker recognises its own kick. */
-  private readonly kicks = new Map<string, { by: string; k: number }>();
+  private readonly kicks = new Map<string, { conn: string; by: string; k: number }>();
   /** Each room's portals flag, when it last flipped and whether it was ever on; no entry is off and never flipped. */
   private readonly portalModes = new Map<string, PortalMode>();
   /** Each room's running portal switch, by room id; the bend flips its portal mode. */
@@ -409,20 +413,32 @@ export class Lobby {
     this.broadcast(room, peer.id, { type: 'peer_boombox', id: peer.id, on: msg.on });
   }
 
-  /** Kicks the room's ball from where the server last saw the kicker, if they're near enough and not kicking too often. */
+  /**
+   * Kicks the room's ball from where the server last saw the kicker, if they're near enough and not kicking too often.
+   * The kicker's screen already shows the kick, so a refusal is said out loud.
+   */
   kick(conn: string, msg: KickMessage): void {
     const found = this.peerOf(conn);
     const ball = found && this.balls.get(found.roomId);
-    const now = this.opts.now();
-    if (!found || !ball || now - found.peer.lastKickAt < BALL_KICK_GAP_MS) {
+    if (!found || !ball) {
       return;
     }
+    const now = this.opts.now();
+    const rested = now - found.peer.lastKickAt >= BALL_KICK_GAP_MS - KICK_GAP_JITTER_MS;
     const portals = this.activePortals(found.roomId);
     const kicker = this.seenFrom(portals, ball, found.peer);
     const angle = msg.angle + Math.atan2(kicker.sin, kicker.cos);
-    if (kickBall(ball, kicker, angle, KICK_SLACK_TILES)) {
+    const slack = KICK_SLACK_TILES + Math.hypot(ball.vx, ball.vy) * KICK_SEEN_LATE_S;
+    if (rested && kickBall(ball, kicker, angle, slack)) {
       found.peer.lastKickAt = now;
-      this.kicks.set(found.roomId, { by: found.peer.id, k: msg.k });
+      // Only one echo goes out per tick: a kick overtaken before its broadcast never reached the ball.
+      const overtaken = this.kicks.get(found.roomId);
+      if (overtaken) {
+        this.opts.out.send(overtaken.conn, { type: 'kick_refused', k: overtaken.k });
+      }
+      this.kicks.set(found.roomId, { conn, by: found.peer.id, k: msg.k });
+    } else {
+      this.opts.out.send(conn, { type: 'kick_refused', k: msg.k });
     }
   }
 

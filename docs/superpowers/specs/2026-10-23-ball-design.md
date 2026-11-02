@@ -107,8 +107,10 @@ The product owner picked **B**.
 - **`kick` message** (client → server): `{ type: 'kick', angle: number, k: number }`, `k` a per-client kick counter.
   The server kicks from the sender's last
   accepted pose with that angle, if the ball is in reach with **0.5 tile extra slack** for latency (the client may see
-  itself further along than the server does) **(my call)**. At most one kick per 250 ms per person; others are dropped.
-  A kick out of reach is dropped silently.
+  itself further along than the server does) plus **the ball's speed × 0.2 s** (it was in reach on the kicker's screen,
+  and has rolled on since) **(my call)**. Kicks are 250 ms apart when sent; the server allows 200 ms for network jitter.
+  A kick that doesn't land is answered with `kick_refused`, as is one overtaken by another person's kick in the same
+  tick (only one echo goes out per tick).
 - **Broadcast:** `object_state` with velocity (§4) every tick **while the ball moves**, one more on the tick it stops,
   and none while it rests. A rested ball costs nothing.
 
@@ -125,15 +127,17 @@ The ball is drawn at the **local** ball's position: in the present, not at the o
   1. `object_state` has no `age` (only `peers` entries do), so the client treats each as the server ball one estimated
      one-way latency ago and advances a copy of it to now with `stepBall` (no touchers) **(builder picks the estimate; a
      fixed 60 ms is fine)**.
-  2. **While the local player is touching the ball, and for 300 ms after the last local push or kick,** the local ball
-     is left alone (the server hasn't seen the touch yet, and pulling toward it is the snap-back the anti-goals forbid).
-     A server state that already includes the local kick is recognised by its `kick` echo (§4: `by` is the local
-     player's id and `k` is at least the local kick's); then the hold ends early. Pushes have no echo and just use the
-     timeout. Other people's touches never end the hold **(my call)**.
+  2. **While the local player is touching the ball, for 300 ms after the last local push, and after a local kick until
+     the server answers it,** the local ball is left alone (the server hasn't seen the touch yet, and pulling toward it
+     is the snap-back the anti-goals forbid). The answer is either the `kick` echo in a server state (§4: `by` is the
+     local player's id and `k` is at least the local kick's) or `kick_refused`; with neither within 1 s the hold ends
+     anyway. Pushes have no echo and just use the timeout. Other people's touches never end the hold **(my call)**.
   3. Otherwise the local ball eases onto the advanced server ball: position error decays with a ~100 ms time constant,
-     velocity is taken from the server. An error over **1.5 tiles** snaps.
+     velocity is taken from the server. An error over **3 tiles** snaps; that is above any kick's error, which is about
+     1 tile from rest and 2.5 from a ball rolling the other way.
   4. A ball at rest on the server with the local one at rest within 0.05 tiles: snap exactly, so all screens agree.
-- On `welcome` the local ball is reset to the server's (seq resets after a restart, as for the vacuum).
+- On `welcome` both the local ball and the copy of the server's are reset to the welcome's, so a refused kick finds its
+  way back even if no state has come yet (seq resets after a restart, as for the vacuum).
 
 ## 4. Protocol
 
@@ -145,6 +149,8 @@ The ball is drawn at the **local** ball's position: in the present, not at the o
   from the `kick` message), so the kicker recognises its own kick (§3.3, §6). A vacuum kick has neither.
 - New client message `KickMessage = { type: 'kick'; angle: number; k: number }`, validated like `state` (finite angle,
   non-negative integer `k`).
+- New server message `{ type: 'kick_refused'; k: number }`, to the kicker only. No version bump: an older client drops
+  it, and a new client on an older server falls back on the 1 s limit (§3.3).
 - **No `PROTOCOL_VERSION` bump** **(my call)**: older clients drop the unknown `'ball'` kind from `welcome.objects` and
   ignore `object_state` for ids they don't have (checked: `parseObjectInfo` and `applyObjectState`). Server and web
   ship as one release, so no new client meets an old server for long; an old server ignores an unknown message type.
