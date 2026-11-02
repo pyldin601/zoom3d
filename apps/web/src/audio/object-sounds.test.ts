@@ -1,4 +1,4 @@
-import { type ObjectInfo, parseMap, SnapshotBuffer } from '@zoom3d/shared';
+import { BALL_CRIES, type ObjectInfo, parseMap, SnapshotBuffer } from '@zoom3d/shared';
 import { beforeEach, expect, test } from 'vitest';
 import { objectKey, type RemoteObject } from '../net/session';
 import { createAudioEngine } from './engine';
@@ -105,4 +105,27 @@ test("the server's bounces are left to the local ball, which plays its own", () 
   sounds.localEvent('b', 'kick');
   expect(taps()).toHaveLength(1);
   expect(thumps()).toHaveLength(1);
+});
+
+// Living ball spec §5: the server says which sound; everyone plays it, the kicker too.
+const carrierHz = () => (ctx.byKind('oscillator').at(0) as unknown as { frequency: FakeParam } | undefined)?.frequency;
+
+test('a cry plays the sound the server chose', () => {
+  ballSetup().cry('b', 'yelp', 2);
+  expect(carrierHz()?.events.at(0)?.[1]).toBe(BALL_CRIES.yelp.at(2)?.startHz);
+});
+
+test('a sound the table does not have, or a cry from something else, plays nothing', () => {
+  const sounds = ballSetup();
+  sounds.cry('b', 'yelp', 99);
+  sounds.cry('nothing', 'yelp', 0);
+  expect(ctx.byKind('oscillator')).toEqual([]);
+});
+
+test('a vacuum has no voice', () => {
+  const { sounds } = setup();
+  sounds.sync(new Map([['v', object('v')]]), new Map(), 0.016);
+  const before = ctx.byKind('oscillator').length;
+  sounds.cry('v', 'yelp', 0);
+  expect(ctx.byKind('oscillator')).toHaveLength(before);
 });

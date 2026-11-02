@@ -1,7 +1,7 @@
 // The world objects' sounds: one hum per robot vacuum (robot vacuum spec §5.4), started when it appears and stopped
 // when it goes (a server restart brings a new id), its motion read from the interpolated poses; and the ball's kicks
 // and bounces (ball spec §6). Events play as they arrive.
-import type { ObjectEvent, PlayerState } from '@zoom3d/shared';
+import { BALL_CRIES, type BallCry, type ObjectEvent, type PlayerState } from '@zoom3d/shared';
 import { objectKey, type RemoteObject } from '../net/session';
 import { type BallSound, createBallSound } from './ball-sound';
 import type { AudioEngine } from './engine';
@@ -14,6 +14,8 @@ export interface ObjectSounds {
   event(id: string, e: ObjectEvent, by?: string): void;
   /** An event of the ball as this client predicts it: the local player's own kick, and every bounce on screen. */
   localEvent(id: string, e: ObjectEvent): void;
+  /** The ball voices one of an emotion's sounds, as the server chose. */
+  cry(id: string, cry: BallCry, variant: number): void;
 }
 
 type Entry = { kind: 'vacuum'; sound: VacuumSound; last: PlayerState | null } | { kind: 'ball'; sound: BallSound };
@@ -88,6 +90,14 @@ export function createObjectSounds(
       const entry = sounds.get(id);
       if (entry?.kind === 'ball') {
         playBall(entry.sound, e);
+      }
+    },
+
+    cry(id, cry, variant) {
+      const entry = sounds.get(id);
+      const sound = BALL_CRIES[cry].at(variant);
+      if (entry?.kind === 'ball' && sound) {
+        entry.sound.cry(sound);
       }
     },
   };
