@@ -181,6 +181,7 @@ Nine emotions: yawn, happy, relieved, sad, yelp, giggle, whimper, yip and startl
   - **Kicks:** the same 5-minute two-player run with the mind off, then on. On must be no worse in jumps over 0.6 tiles.
   - **Awake:** 5 minutes of no kicks, with scripted players pushing and walking past the steering ball. The drawn ball must
     never correct by over 0.6 tiles in one go. A failure of either blocks shipping.
+    The awake bar failed, and the owner accepted that on 2026-11-02 (D33).
 - **Owner plays it** to tune speeds, distances and sounds.
 
 ## 7. Left to the builder

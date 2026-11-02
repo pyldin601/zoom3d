@@ -841,6 +841,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     through asleep, it wakes up scared. Giving up on a chase ignores that person for 15 s (owner).
   - **Sound:** one to five FM sounds per emotion (owner); only on state changes, with a 3 s cooldown, under voices. The
     owner left the sounds themselves to the builder (`objects/ball/cries.ts`).
+  - **Corrections over 0.6 tiles accepted** (owner, 2026-11-02): the spec's bar for an awake ball failed. In 20 simulated
+    five-minute runs there were 240 with the mind on and 23 with it off, the largest 0.78 and 0.88 tiles. Nearly all are a
+    walker bumping a ball playing at their feet, which looks like a shove at 4 to 5 tiles/s (inferred from the numbers).
   - **Playing is real movement** (owner, after playing a drawn wiggle: "not moving like it is shaking"): it dashes to
     spots around its person. **No jumps for now** (owner). A scared ball's tremble is a drawn offset, never in its physics.
 
