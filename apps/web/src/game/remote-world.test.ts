@@ -233,6 +233,23 @@ describe('collect', () => {
     expect(world.positions.get(objectKey('b1'))).toMatchObject({ x: 6, y: 7 });
   });
 
+  test("the ball's mood shakes where it is drawn, and sleeping draws it where it is", () => {
+    const world = createRemoteWorld();
+    room.addObject('b1', 4, 5, 0, 'ball');
+    const ball = createBall('b1', 6, 7);
+    const shaken = new Set<number>();
+    for (let i = 0; i < 20; i++) {
+      world.sample(room.session, player, NOW + i * 13, ball, null, 'wiggling');
+      const y = world.objectPoses.get(objectKey('b1'))?.y ?? 0;
+      shaken.add(y);
+      expect(Math.abs(y - 7)).toBeLessThanOrEqual(0.05);
+    }
+    expect(shaken.size).toBeGreaterThan(1);
+    world.sample(room.session, player, NOW, ball, null, 'asleep');
+    expect(world.objectPoses.get(objectKey('b1'))).toMatchObject({ x: 6, y: 7 });
+    expect(ball).toMatchObject({ x: 6, y: 7 });
+  });
+
   test('a vacuum and a ball get their own models', () => {
     const world = createRemoteWorld();
     room.addObject('v1', 4, 5, 1);

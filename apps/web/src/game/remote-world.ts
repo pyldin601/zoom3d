@@ -4,6 +4,7 @@
 import {
   type Apparent,
   type Ball,
+  type BallMood,
   INTERP_DELAY_MS,
   isDrink,
   type PlayerState,
@@ -19,6 +20,7 @@ import { VACUUM_MODEL } from '../renderer/models/vacuum';
 import { gesturePose } from '../renderer/sip';
 import { ringRgb, type Sprite } from '../renderer/sprites';
 import type { VoxelInstance } from '../renderer/voxels';
+import { ballShake } from './ball-shake';
 
 /** A peer's name label and automap dot. */
 export interface PeerLabel {
@@ -58,7 +60,14 @@ export interface RemoteWorld {
    * one object not drawn from its buffer: it is where the client's prediction has it, in the present (ball spec §3.3).
    * `portals` (the room's wiring while they are on) decides, as on the server, which peers are near.
    */
-  sample(session: Session, player: Point, now: number, ball?: Ball | null, portals?: Portals | null): void;
+  sample(
+    session: Session,
+    player: Point,
+    now: number,
+    ball?: Ball | null,
+    portals?: Portals | null,
+    ballMood?: BallMood
+  ): void;
   /**
    * Builds this frame's sprites, labels and voxels from the last sample; `dt` (seconds) walks the bobs. `apparent`
    * places the labels; a person it doesn't list is labelled where they are.
@@ -101,7 +110,8 @@ export function createRemoteWorld(): RemoteWorld {
     }
   };
 
-  const sampleObjects = (s: Session, now: number, ball: Ball | null) => {
+  const shake = { x: 0, y: 0 };
+  const sampleObjects = (s: Session, now: number, ball: Ball | null, ballMood: BallMood) => {
     // Objects come every tick; each peer is drawn as late as its updates need (6d spec §2.3).
     const drawnAt = now - INTERP_DELAY_MS;
     for (const obj of s.objects.values()) {
@@ -111,8 +121,9 @@ export function createRemoteWorld(): RemoteWorld {
           continue;
         }
         // Its pattern rolls in world axes (models/ball.ts), so the model itself never turns.
-        at.x = ball.x;
-        at.y = ball.y;
+        ballShake(ballMood, ball.heading, now, shake);
+        at.x = ball.x + shake.x;
+        at.y = ball.y + shake.y;
         at.angle = 0;
       } else if (!obj.buffer.sample(drawnAt, at)) {
         continue;
@@ -231,9 +242,9 @@ export function createRemoteWorld(): RemoteWorld {
     labels,
     voxels,
     lighters,
-    sample(s, player, now, ball = null, portals = null) {
+    sample(s, player, now, ball = null, portals = null, ballMood = 'asleep') {
       forgetGone(s);
-      sampleObjects(s, now, ball);
+      sampleObjects(s, now, ball, ballMood);
       samplePeers(s, player, now, portals);
     },
     collect(s, media, now, dt, apparent) {
