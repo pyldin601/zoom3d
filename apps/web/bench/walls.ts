@@ -7,6 +7,7 @@
 // bake time and hash of the portals-on table (D28), and the doorway and crowd frames timed and hashed with the room's
 // portals off (the plain table) and on (the portals-on table).
 import { LEVEL1, parseMap, tileAt, wirePortals } from '@zoom3d/shared';
+import { adaptEye, createExposure, createEye, meterFrame, REFERENCE } from '../src/renderer/eye-adaptation';
 import { createFramebuffer } from '../src/renderer/framebuffer';
 import { createPortalGlows, GLOW_RADIUS, type Glow } from '../src/renderer/glow';
 import { createLighterGlows, LIGHTER_REACH } from '../src/renderer/lighter';
@@ -205,6 +206,39 @@ for (let round = 0; round < ROUNDS; round++) {
   lighterTimes.push((performance.now() - start) / frames);
 }
 console.log(`both + lighters ${median(lighterTimes).toFixed(3)} ms/frame; pixel hash ${lighterHash}`);
+
+// Eye adaptation (D32): each lamp pose drawn as 'both + glow' (the game always draws the own glow) and metered, the
+// median being REFERENCE; then what the step costs a frame: the meter feeding an eye, and the exposure at gains that
+// really apply, alternated so the table is rebuilt every frame. Kept out of MODES and run last, so no hash above sees
+// an exposed frame.
+const lampPoseReadings = poses.map((p) => {
+  draw('both + glow', p);
+  return meterFrame(fb);
+});
+const exposure = createExposure();
+const eye = createEye();
+const meterTimes: number[] = [];
+const exposeTimes: number[] = [];
+for (let round = 0; round < ROUNDS; round++) {
+  const frames = poses.length * FRAMES_PER_POSE;
+  let start = performance.now();
+  for (let f = 0; f < frames; f++) {
+    adaptEye(eye, meterFrame(fb), 0.016);
+  }
+  meterTimes.push((performance.now() - start) / frames);
+  start = performance.now();
+  for (let f = 0; f < frames; f++) {
+    exposure.apply(fb, f % 2 === 0 ? 1.5 : 1.52);
+  }
+  exposeTimes.push((performance.now() - start) / frames);
+}
+const meterMs = median(meterTimes);
+const exposeMs = median(exposeTimes);
+console.log(
+  `eye adaptation ${(meterMs + exposeMs).toFixed(3)} ms/frame ` +
+    `(meter ${meterMs.toFixed(3)}, expose at gain ≠ 1 ${exposeMs.toFixed(3)}); ` +
+    `lamp poses meter median ${median(lampPoseReadings).toFixed(1)}, REFERENCE ${REFERENCE}`
+);
 
 function draw(mode: Mode, p: Pose): void {
   room.eye = p;

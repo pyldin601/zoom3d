@@ -5,7 +5,8 @@ import { type Apparent, BALL_KICK_REACH, type BallBody, type GameMap, JUMP_TILES
 import { HIDDEN_TICK_MS } from '../audio/ticker';
 import type { Input } from '../input/keyboard';
 import { createSubscription } from '../media/subscription';
-import { ownAvatarShown, type RoomScene, renderHud, renderView } from '../renderer/frame';
+import { createEye } from '../renderer/eye-adaptation';
+import { type EyeAdaptation, ownAvatarShown, type RoomScene, renderHud, renderView } from '../renderer/frame';
 import type { NameLabel } from '../renderer/labels';
 import type { Lighting } from '../renderer/lighting';
 import { BALL_MODEL, createBallRoll, recolourBall, rollBy } from '../renderer/models/ball';
@@ -77,8 +78,12 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     portalPulse: 1,
     portalTime: 0,
     firstPerson: null,
+    adaptation: null,
     portals: null,
   };
+  const adaptation: EyeAdaptation = { eye: createEye(), dtS: 0, frozen: false };
+  /** The room the eye adapted in: a new room starts a new eye, so joining doesn't begin mid-adaptation. */
+  let eyeRoom: Room | null = null;
 
   const ownLabel: NameLabel = { shownX: 0, shownY: 0, name: '', mic: false };
   /** The own label, named as the others see it, where a portal shows the own spot; else null. */
@@ -206,7 +211,17 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     room.audio.update(now, localPlayer.pose, apparent);
   };
 
-  const describeScene = (now: number) => {
+  const adaptEyeTo = (room: Room | null, dtS: number) => {
+    if (room !== eyeRoom) {
+      adaptation.eye = createEye();
+      eyeRoom = room;
+    }
+    adaptation.dtS = dtS;
+    adaptation.frozen = room?.sequence.dark ?? false;
+    return adaptation;
+  };
+
+  const describeScene = (now: number, dtS: number) => {
     // The console's lighting mode; flat is drawn unlit, as with `?lights=off`.
     const reflections = litReflections(o.renderMode());
     scene.reflections = reflections ?? 'none';
@@ -225,6 +240,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     scene.self = scene.portals && isConnected(room) ? localPlayer.avatar(now, ringColour, ownAvatarShown()) : null;
     scene.ownLabel = labelOwnImage(room);
     scene.firstPerson = isConnected(room) ? localPlayer.firstPerson(now) : null;
+    scene.adaptation = scene.lighting ? adaptEyeTo(room, dtS) : null;
     return scene;
   };
 
@@ -255,7 +271,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
         showCountdown(o.ui, null);
       }
       const drawStart = performance.now();
-      const shown = describeScene(drawStart);
+      const shown = describeScene(drawStart, dt);
       // The hum swells with the very pulse this frame's glow is drawn with.
       room?.hums.sync(room.portals(), shown.portalPulse, localPlayer.pose, apparent);
       renderView(screen.fb, shown, subscription.seen);

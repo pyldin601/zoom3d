@@ -4,6 +4,7 @@ import { applyAngle, applyPoint, type HeldItem, type PlayerState, type Portal } 
 import type { PeerFacts } from '../media/interest';
 import { type AutomapPeer, drawAutomap } from './automap';
 import { createView, type Pass, setView, WHOLE_FRAME, WINDOW_LEVELS } from './camera';
+import { adaptEye, createExposure, type Eye, eyeGain, meterFrame } from './eye-adaptation';
 import { createFramebuffer, type Framebuffer } from './framebuffer';
 import { createAvatarGlows, createPortalGlows, type Glow, type GlowSource } from './glow';
 import { drawLabels, type NameLabel } from './labels';
@@ -48,6 +49,16 @@ export interface RoomScene extends PassScene {
   ownLabel: NameLabel | null;
   /** What the local player holds; null while they aren't in the room (reconnecting). */
   firstPerson: FirstPerson | null;
+  /** The frame's exposure follows the eye; null leaves the frame as drawn (an unlit room). */
+  adaptation: EyeAdaptation | null;
+}
+
+export interface EyeAdaptation {
+  eye: Eye;
+  /** Real time since the last frame. */
+  dtS: number;
+  /** The eye's level stays as it is, and the frame is exposed by it: the portal blackout (D30) must stay dark. */
+  frozen: boolean;
 }
 
 export type PersonLabel = AutomapPeer & NameLabel;
@@ -86,6 +97,7 @@ let ownAvatarDrawn = false;
 /** The own label, as the one-entry list drawLabels takes. */
 const ownLabels: NameLabel[] = [];
 const frameView = createView();
+const exposure = createExposure();
 
 /** `seen` gets, per person, how much of them this frame drew (dynamic subscription reads it). */
 export function renderView(fb: Framebuffer, scene: RoomScene, seen?: Map<string, PeerFacts>): void {
@@ -102,6 +114,9 @@ export function renderView(fb: Framebuffer, scene: RoomScene, seen?: Map<string,
   }
   ownAvatarDrawn =
     windowsCounted && scene.self !== null && (seenThroughWindows.get(scene.self.key)?.drawnColumns ?? 0) > 0;
+  if (scene.adaptation) {
+    exposeToEye(fb, scene.adaptation);
+  }
   if (scene.firstPerson) {
     drawFirstPerson(fb, scene.firstPerson);
   }
@@ -354,6 +369,17 @@ function drawRoom(fb: Framebuffer, scene: PassScene, glows: readonly Glow[]): vo
 
 function drawPeopleAndObjects(fb: Framebuffer, scene: PassScene, seen: Map<string, PeerFacts> | undefined): void {
   renderSprites(fb, scene, seen, objectGlows);
+}
+
+/**
+ * Meters the finished room, windows included, and exposes it by the eye's level (eye adaptation spec). The hands come
+ * after: they are neither metered nor exposed.
+ */
+function exposeToEye(fb: Framebuffer, adaptation: EyeAdaptation): void {
+  if (!adaptation.frozen) {
+    adaptEye(adaptation.eye, meterFrame(fb), adaptation.dtS);
+  }
+  exposure.apply(fb, eyeGain(adaptation.eye.level));
 }
 
 function drawFirstPerson(fb: Framebuffer, hands: FirstPerson): void {

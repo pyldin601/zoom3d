@@ -196,6 +196,14 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
     (`renderer/lighter.ts`). Glows with no cone and `reach: GLOW_RADIUS` must keep drawing exactly as before.
   - **Not covered:** it makes no reflections and doesn't light anything through a portal. It lights objects (and their
     floor images) through `objectGlows`, which face and portal glows never join.
+- Eye adaptation (D32, spec `docs/superpowers/specs/2026-11-01-eye-adaptation-design.md`):
+  - **Where:** `renderView` meters the finished frame and exposes it after the main pass and its windows, and before
+    the first-person hands, which are never metered or exposed. Nothing meters or exposes inside a pass: a window is
+    part of the frame it shows in, not a frame of its own.
+  - **Frozen** while the room is dark in a portal sequence (`room.sequence.dark`), so the blackout stays black.
+  - **Off** with no lighting (`?lights=off`, flat mode): `scene.adaptation` is null. A gain within `GAIN_STEP` of 1
+    skips the pass: a frame metered within about 2% of `REFERENCE` (49 to 51) draws exactly as before, and ordinary
+    lit places elsewhere get a gain near 1. The eye starts afresh in every new room.
 - Telemetry privacy: logs, metrics labels, Sentry and Amplitude never get names, resume tokens or IPs, nor raw room
   ids: a room link is the room's only key. Server logs use `roomRef()` (a short hash), and the browser Sentry
   `beforeSend` scrubs `/r/<id>`.
