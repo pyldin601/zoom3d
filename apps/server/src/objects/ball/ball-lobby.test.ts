@@ -479,28 +479,30 @@ describe('its mind (living ball spec §3)', () => {
     expect(ballStates('A').find((s) => s.cry === 'yawn')?.mood).toBe('wandering');
   });
 
-  test('once awake it heads for someone it can see, and stops at their feet', () => {
+  test('once awake it heads for someone it can see, and plays around them', () => {
     const { person } = ballBeside(2, ALIVE);
     step(WAKE_TICKS + 60);
     const last = defined(ballStates('A').at(-1), 'ball state');
-    expect(last.mood).toBe('wiggling');
-    expect(Math.hypot(last.x - person.x, last.y - person.y)).toBeLessThanOrEqual(BALL_STOP_TILES + 0.1);
+    expect(last.mood).toBe('playing');
+    expect(Math.hypot(last.x - person.x, last.y - person.y)).toBeLessThanOrEqual(BALL_STOP_TILES + 1);
   });
 
-  test('a ball resting in any mood sends nothing further', () => {
+  test('resting between its dashes sends nothing', () => {
     ballBeside(0.6, ALIVE);
     step(WAKE_TICKS + 3);
     const sentSoFar = ballStates('A').length;
-    expect(ballStates('A').at(-1)?.mood).toBe('wiggling');
-    step(30);
-    expect(ballStates('A')).toHaveLength(sentSoFar);
+    expect(ballStates('A').at(-1)?.mood).toBe('playing');
+    step(150);
+    const sent = ballStates('A').length - sentSoFar;
+    expect(sent).toBeGreaterThan(10);
+    expect(sent).toBeLessThan(150);
   });
 
   test('someone joining is told its mood', () => {
     ballBeside(0.6, ALIVE);
     step(WAKE_TICKS + 3);
     join('B');
-    expect(ballInWelcome('B').mood).toBe('wiggling');
+    expect(ballInWelcome('B').mood).toBe('playing');
   });
 
   /** Everything about the ball's roll after a kick following `ticks` of waiting. */
@@ -513,12 +515,32 @@ describe('its mind (living ball spec §3)', () => {
     return ballStates('A').slice(from);
   };
 
-  test('a kick on a wiggling ball moves it exactly as a kick on a ball with no mind', () => {
+  test('a kick on a playing ball moves it exactly as a kick on a ball with no mind', () => {
     const alive = rollAfterKick(ALIVE, WAKE_TICKS + 3);
     const plain = rollAfterKick({ ball: true }, WAKE_TICKS + 3);
     const motion = ({ x, y, vx, vy, angle }: (typeof alive)[number]) => ({ x, y, vx, vy, angle });
     expect(alive.length).toBeGreaterThan(10);
     expect(alive.map(motion)).toEqual(plain.map(motion));
+  });
+
+  test('a kick mid-dash replaces its steering outright', () => {
+    const { person, ball } = ballBeside(0.6, ALIVE);
+    const dashing = () => {
+      const last = ballStates('A').at(-1);
+      return last?.mood === 'playing' && Math.hypot(last.vx ?? 0, last.vy ?? 0) > 0;
+    };
+    step(WAKE_TICKS);
+    while (!dashing()) {
+      step();
+    }
+    const from = ballStates('A').length;
+    const angle = Math.atan2(ball.y - person.y, ball.x - person.x);
+    lobby.kick('A', { type: 'kick', angle, k: 1 });
+    step();
+    const [kicked] = ballStates('A').slice(from);
+    expect(kicked).toMatchObject({ event: 'kick', mood: 'asleep', cry: 'yelp' });
+    expect(Math.hypot(kicked?.vx ?? 0, kicked?.vy ?? 0)).toBeGreaterThan(7);
+    expect(Math.cos(Math.atan2(kicked?.vy ?? 0, kicked?.vx ?? 0) - angle)).toBeCloseTo(1);
   });
 
   test('a kick says the yelp and the new mood in the same message as its echo', () => {

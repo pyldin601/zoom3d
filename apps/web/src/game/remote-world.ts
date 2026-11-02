@@ -121,7 +121,7 @@ export function createRemoteWorld(): RemoteWorld {
           continue;
         }
         // Its pattern rolls in world axes (models/ball.ts), so the model itself never turns.
-        ballShake(ballMood, ball.heading, now, shake);
+        ballShake(ballMood, now, shake);
         at.x = ball.x + shake.x;
         at.y = ball.y + shake.y;
         at.angle = 0;

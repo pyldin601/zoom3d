@@ -11,7 +11,7 @@ Today the ball only reacts to physics. The owner wants it to have a personality:
 itself, notices people and makes sounds that show how it feels. It must remain a ball people can play with, so a kick
 always wins over anything it is doing.
 
-The owner chose the character of a curious puppy: it comes over to people, wiggles at their feet, follows them when they
+The owner chose the character of a curious puppy: it comes over to people, plays around their feet, follows them when they
 leave and is scared when it ends up somewhere strange alone.
 
 ### Goals
@@ -34,7 +34,7 @@ leave and is scared when it ends up somewhere strange alone.
 
 ### Anti-goals (a failure even if it works)
 
-- **A kick interleaves with its behaviour:** any steering, wiggle or trembling continuing on a kicked ball.
+- **A kick interleaves with its behaviour:** any steering or trembling continuing on a kicked ball.
 - **Dribbling or kicking changes:** the ball is harder to catch, kick or dribble awake than asleep, or kicks land with
   different results than today.
 - **Jumps come back:** its self-movement causes visible corrections beyond the small glide in §4.
@@ -50,9 +50,9 @@ on the name)**. All values are starting points, tuned by playing **(my call)**.
 |---|---|---|
 | `asleep` | No steering, silent; its timer runs | 10 s after the last kick → `wandering` (yawn), or `scared` (whimper) if it crossed a portal since falling asleep and sees nobody |
 | `wandering` | Rolls to a random visible spot within about 3 tiles, pauses 1–4 s, repeats | Sees a person → `approaching` (happy) |
-| `approaching` | Rolls towards its person | Reaches their feet → `wiggling`; loses them → `following`; chase over → `wandering` (sad) |
-| `wiggling` | Rests just short of their feet; the wiggle is drawn (§4) | They move out of its stopping range → `following` |
-| `following` | Rolls towards its person, or their last seen spot if out of sight | Reaches them → `wiggling`; chase over → `wandering` (sad) |
+| `approaching` | Rolls towards its person | Reaches their feet → `playing`; loses them → `following`; chase over → `wandering` (sad) |
+| `playing` | Dashes to spots around its person, resting 0.2–0.8 s between dashes (owner, after playing it: real moves, not a shake) | They move a tile past touching → `following` |
+| `following` | Rolls towards its person, or their last seen spot if out of sight | Reaches them → `playing`; chase over → `wandering` (sad) |
 | `scared` | Rests; the trembling is drawn (§4) | Sees a person → `approaching` (relieved); after about 6 s → `wandering` |
 
 **Giving up (owner):** a chase lasts about 6 s in total across `approaching` and `following`, however often it switches
@@ -91,9 +91,10 @@ physics, and steering resumes only once the ball has slowed down to it, with no 
 
 | Constant | Value | Why |
 |---|---|---|
-| Own speed | **1** tile/s | Walking is 3, so anyone can catch it |
+| Own speed | **2** tiles/s (owner: faster than the first 1) | Walking is 3, so anyone can catch it |
+| Play spots | **0.35–0.85** tiles past touching, each dash swinging 0.6–1.8 radians around the person | Clear of them, never cutting through them, and soon back in kick reach |
 | Stopping distance | touching distance + **0.25** tiles | Not touching, so it doesn't count as a push, and still in kick reach (touching + 0.5) |
-| Leaves `wiggling` beyond | touching distance + **1** tile | So small shuffles don't trigger a chase |
+| Leaves `playing` beyond | touching distance + **1** tile | So small shuffles don't trigger a chase |
 | Wake | **10 s** after the last kick (owner) | |
 | Sound cooldown | **3 s** shared, all sounds except the yelp | Keeps it occasional (§5) |
 
@@ -102,7 +103,7 @@ physics, and steering resumes only once the ball has slowed down to it, with no 
 ### Approaches considered
 
 1. **The brain on the server, clients follow its states (owner's pick).** Almost no new prediction code. During the 300 ms
-   after a push the local ball can be up to about 0.3 tiles off, and glides back. About 15 updates per second while it rolls.
+   after a push the local ball can be up to about 0.6 tiles off, and glides back. About 15 updates per second while it rolls.
 2. **The brain on the server, clients also predict its steering.** Slightly smoother, but more code and more ways to
    disagree, in the code where teleports have only just been reduced. Hard to notice at 1 tile/s.
 3. **The brain only on clients.** Rejected: everyone would see the ball in a different place and kicks would miss.
@@ -131,18 +132,19 @@ physics, and steering resumes only once the ball has slowed down to it, with no 
 
 - `ball-prediction.ts` keeps its position logic unchanged, and gains the mood.
 - **A local kick sets the local mood to `asleep` at once,** and server moods are ignored until the kick is answered, using
-  the existing `unechoed` hold. A refused kick takes the server's mood again. So the wiggle stops on the frame of the kick.
+  the existing `unechoed` hold. A refused kick takes the server's mood again. So a shake stops on the frame of the kick.
 
 ## 4. Look
 
-The wiggle and trembling are **drawn only**: a small offset added where the client places the ball
-(`remote-world.ts`, `sampleObjects`), never to its physics or to what is kicked **(my call)**. They can't fight a push, and
-send nothing over the network.
+The tremble is **drawn only**: a small offset added where the client places the ball (`remote-world.ts`,
+`sampleObjects`), never to its physics or to what is kicked **(my call)**. It can't fight a push, and sends nothing over the
+network.
 
-- **Wiggle:** about ±0.05 tiles side to side at about 2 Hz.
 - **Tremble:** about ±0.03 tiles at about 14 Hz. A voxel is 0.05 tiles, so this is checked by eye at a few distances.
 - Shadow and floor mirror follow the drawn position, in the main view and through portal windows. The roll is computed
   from the ball's real position, so a shake doesn't turn its pattern.
+
+An earlier drawn wiggle for `playing` was replaced after the owner played it ("not moving like it is shaking").
 
 ## 5. Sound
 

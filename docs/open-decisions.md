@@ -836,12 +836,13 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     touches are fine. The vacuum only startles it.
   - **A state machine, on the server** (owner's pick over clients also predicting its steering, and over a brain on
     clients only): `packages/shared/src/objects/ball/mind.ts` runs before `stepBall` in `Lobby.stepBalls`. It only sets a
-    velocity, at or below 1 tile/s, once a push or bounce has slowed to that. Clients keep their position prediction.
+    velocity, at or below 2 tiles/s (owner, after playing it), once a push or bounce has slowed to that. Clients keep their position prediction.
   - **Frights** (owner: the portal is enough for now): rolling through a portal with nobody in sight scares it; kicked
     through asleep, it wakes up scared. Giving up on a chase ignores that person for 15 s (owner).
   - **Sound:** one to five FM sounds per emotion (owner); only on state changes, with a 3 s cooldown, under voices. The
     owner left the sounds themselves to the builder (`objects/ball/cries.ts`).
-  - **No jumps for now** (owner). The wiggle and tremble are a drawn offset, never in its physics.
+  - **Playing is real movement** (owner, after playing a drawn wiggle: "not moving like it is shaking"): it dashes to
+    spots around its person. **No jumps for now** (owner). A scared ball's tremble is a drawn offset, never in its physics.
 
 ## Resolved
 _(none yet)_

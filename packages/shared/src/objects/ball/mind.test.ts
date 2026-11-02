@@ -20,6 +20,8 @@ import {
 // Living ball spec §2: the puppy's states, its senses, and physics coming first.
 const DT = 1 / 15;
 const TOUCHING = PLAYER_RADIUS + BALL_RADIUS;
+/** It follows beyond a tile past touching, and a tick's roll can carry it a little further first. */
+const PLAY_LIMIT = TOUCHING + 1.2;
 
 /** An open room with one wall column at x = 25, rows 10 to 20. */
 const ROOM = parseMap(
@@ -104,15 +106,15 @@ function approaching(tiles = 4): Person {
   return p;
 }
 
-function wiggling(): Person {
+function playing(): Person {
   const p = approaching(2);
   run(3);
-  expect(mind.mood).toBe('wiggling');
+  expect(mind.mood).toBe('playing');
   return p;
 }
 
 function following(): Person {
-  const p = wiggling();
+  const p = playing();
   p.x += 3;
   tick();
   expect(mind.mood).toBe('following');
@@ -130,7 +132,7 @@ function scared(): void {
 const states: readonly [string, () => void][] = [
   ['wandering', wake],
   ['approaching', approaching],
-  ['wiggling', wiggling],
+  ['playing', playing],
   ['following', following],
   ['scared', scared],
 ];
@@ -234,7 +236,7 @@ describe('crossing a portal', () => {
   });
 
   test('awake with someone in sight: approaches them with a yip', () => {
-    wiggling();
+    playing();
     calm();
     touch.crossedPortal = true;
     tick();
@@ -276,7 +278,7 @@ describe('crossing a portal', () => {
       }
       tick();
     }
-    expect(mind.mood).toBe('approaching');
+    expect(['approaching', 'following']).toContain(mind.mood);
   });
 
   test('crossing again while scared restarts its 6 s', () => {
@@ -319,7 +321,7 @@ describe('seeing people', () => {
     const far = personBeside(5, 'far');
     const near = personBeside(2, 'near');
     run(3);
-    expect(mind.mood).toBe('wiggling');
+    expect(mind.mood).toBe('playing');
     expect(distanceTo(near)).toBeLessThan(distanceTo(far));
   });
 
@@ -327,12 +329,13 @@ describe('seeing people', () => {
     const first = approaching(5);
     const second = personBeside(-1.5, 'second');
     run(6);
-    expect(mind.mood).toBe('wiggling');
-    expect(distanceTo(first)).toBeLessThanOrEqual(BALL_STOP_TILES + 0.1);
-    second.x = ball.x - 1.5;
-    second.y = ball.y;
-    run(1);
-    expect(distanceTo(first)).toBeLessThanOrEqual(BALL_STOP_TILES + 0.1);
+    expect(mind.mood).toBe('playing');
+    second.x = first.x + 1;
+    second.y = first.y + 1;
+    for (let i = 0; i < 90; i++) {
+      tick();
+      expect(distanceTo(first)).toBeLessThanOrEqual(PLAY_LIMIT);
+    }
   });
 });
 
@@ -340,7 +343,11 @@ describe('going to someone', () => {
   test('stops at its stopping distance, not touching and within kick reach', () => {
     expect(BALL_STOP_TILES).toBeGreaterThan(TOUCHING);
     expect(BALL_STOP_TILES).toBeLessThan(BALL_KICK_REACH);
-    const p = wiggling();
+    const p = approaching(2);
+    while (mind.mood === 'approaching') {
+      tick();
+    }
+    expect(mind.mood).toBe('playing');
     expect(ball.vx).toBe(0);
     expect(ball.vy).toBe(0);
     expect(distanceTo(p)).toBeGreaterThan(TOUCHING);
@@ -354,7 +361,7 @@ describe('going to someone', () => {
       expect(Math.hypot(ball.vx, ball.vy)).toBeLessThanOrEqual(BALL_OWN_SPEED + 1e-9);
       stepBall(ROOM, ball, DT, []);
     }
-    expect(BALL_OWN_SPEED).toBe(1);
+    expect(BALL_OWN_SPEED).toBe(2);
   });
 
   test('a happy chirp when it notices someone, if the cooldown has passed', () => {
@@ -365,42 +372,99 @@ describe('going to someone', () => {
     expect(said().at(-1)).toBe('happy');
   });
 
-  test('wiggling holds within a tile of touching, and follows beyond it', () => {
-    const p = wiggling();
+  test('playing holds within a tile of touching, and follows beyond it', () => {
+    const p = playing();
     p.x = ball.x + TOUCHING + 0.9;
     p.y = ball.y;
     tick();
-    expect(mind.mood).toBe('wiggling');
+    expect(mind.mood).toBe('playing');
     p.x = ball.x + TOUCHING + 1.1;
     tick();
     expect(mind.mood).toBe('following');
   });
 
-  test('wiggling follows when a wall comes between them', () => {
+  test('playing follows when a wall comes between them', () => {
     wake();
     Object.assign(ball, { x: 24, y: 9.5, vx: 0, vy: 0 });
     const p = { id: 'a', x: 24.75, y: 9.5 };
     people.push(p);
     run(1);
-    expect(mind.mood).toBe('wiggling');
+    expect(mind.mood).toBe('playing');
     Object.assign(ball, { x: 24.8, y: 12 });
     Object.assign(p, { x: 26.1, y: 12 });
     tick();
     expect(mind.mood).toBe('following');
   });
 
-  test('following turns back to wiggling on catching up, with a fresh chase', () => {
+  test('following turns back to playing on catching up, with a fresh chase', () => {
     const p = following();
     run(1);
     p.x = ball.x + 1.5;
     p.y = ball.y;
     run(2);
-    expect(mind.mood).toBe('wiggling');
+    expect(mind.mood).toBe('playing');
     for (let i = 0; i < Math.round(5.5 / DT); i++) {
       p.x = ball.x + 3;
       tick();
     }
     expect(mind.mood).toBe('following');
+  });
+});
+
+describe('playing', () => {
+  test('it dashes about its person, resting between dashes, on every side of them', () => {
+    const p = playing();
+    let dashing = 0;
+    let resting = 0;
+    const sides = new Set<number>();
+    for (let i = 0; i < Math.round(30 / DT); i++) {
+      tick();
+      expect(mind.mood).toBe('playing');
+      expect(distanceTo(p)).toBeGreaterThan(TOUCHING);
+      expect(distanceTo(p)).toBeLessThanOrEqual(PLAY_LIMIT);
+      if (ball.vx !== 0 || ball.vy !== 0) {
+        dashing++;
+      } else {
+        resting++;
+      }
+      sides.add(Math.floor(((Math.atan2(ball.y - p.y, ball.x - p.x) + Math.PI) / (2 * Math.PI)) * 4));
+    }
+    expect(dashing).toBeGreaterThan(30);
+    expect(resting).toBeGreaterThan(30);
+    expect(sides.size).toBe(4);
+  });
+
+  test('its dashes are real moves, not a shake', () => {
+    playing();
+    let longest = 0;
+    let from = { x: ball.x, y: ball.y };
+    for (let i = 0; i < Math.round(30 / DT); i++) {
+      tick();
+      if (ball.vx === 0 && ball.vy === 0) {
+        longest = Math.max(longest, Math.hypot(ball.x - from.x, ball.y - from.y));
+        from = { x: ball.x, y: ball.y };
+      }
+    }
+    expect(longest).toBeGreaterThan(0.5);
+  });
+
+  test('never faster than its own speed', () => {
+    playing();
+    for (let i = 0; i < 300; i++) {
+      stepBallMind(ROOM, mind, ball, DT, { people, touch }, rng);
+      expect(Math.hypot(ball.vx, ball.vy)).toBeLessThanOrEqual(BALL_OWN_SPEED + 1e-9);
+      stepBall(ROOM, ball, DT, []);
+    }
+  });
+
+  test('a spot behind a wall is not one it heads for', () => {
+    wake();
+    Object.assign(ball, { x: 24.3, y: 15, vx: 0, vy: 0 });
+    people.push({ id: 'a', x: 23.6, y: 15 });
+    for (let i = 0; i < Math.round(20 / DT); i++) {
+      tick();
+      expect(ball.x).toBeLessThan(25);
+    }
   });
 });
 
@@ -620,10 +684,10 @@ describe('one-off sounds', () => {
   });
 
   test('a push does not change its mood', () => {
-    wiggling();
+    playing();
     touch.pushed = true;
     tick();
-    expect(mind.mood).toBe('wiggling');
+    expect(mind.mood).toBe('playing');
   });
 
   test('a vacuum knock startles an awake ball and never sleeps it', () => {

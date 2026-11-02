@@ -458,7 +458,7 @@ describe('world objects', () => {
   });
 
   test("welcome keeps a ball's mood and drops an unknown one", () => {
-    const ball = { ...vacuum, id: 'b', kind: 'ball', mood: 'wiggling' };
+    const ball = { ...vacuum, id: 'b', kind: 'ball', mood: 'playing' };
     const objects = [ball, { ...ball, id: 'c', mood: 'hungry' }];
     expect(parseServerMessage(json({ ...welcome, objects }))).toEqual({
       ...welcome,

@@ -306,7 +306,7 @@ describe('through portals', () => {
 // Living ball spec §3: the mood follows the server's, except that a local kick stops it on that frame.
 describe('its mood', () => {
   const FROM = { x: 2.6, y: 3.5 };
-  const wiggling = (seq = 1) => state(3, 3.5, { mood: 'wiggling', seq });
+  const playing = (seq = 1) => state(3, 3.5, { mood: 'playing', seq });
 
   test('a welcome says its mood, and no mood means asleep', () => {
     const p = createBallPrediction(MAP);
@@ -318,21 +318,21 @@ describe('its mood', () => {
 
   test("a server state's mood shows on the next step", () => {
     const p = predicted();
-    p.server(wiggling(), 'me', 0);
+    p.server(playing(), 'me', 0);
     p.step(DT, 0, null);
-    expect(p.mood).toBe('wiggling');
+    expect(p.mood).toBe('playing');
   });
 
   test("another ball's state says nothing about this one", () => {
     const p = predicted();
-    p.server({ ...wiggling(), id: 'other' }, 'me', 0);
+    p.server({ ...playing(), id: 'other' }, 'me', 0);
     p.step(DT, 0, null);
     expect(p.mood).toBe('asleep');
   });
 
   const kicked = () => {
     const p = predicted();
-    p.server(wiggling(), 'me', 0);
+    p.server(playing(), 'me', 0);
     p.step(DT, 0, null);
     expect(p.kick(FROM, 0, 100)).toBe(1);
     return p;
@@ -344,7 +344,7 @@ describe('its mood', () => {
 
   test('server states are ignored until the kick is answered', () => {
     const p = kicked();
-    p.server(wiggling(2), 'me', 120);
+    p.server(playing(2), 'me', 120);
     p.step(DT, 120, null);
     expect(p.mood).toBe('asleep');
   });
@@ -360,7 +360,7 @@ describe('its mood', () => {
     const p = kicked();
     p.refused(1, 150);
     p.step(DT, 150, null);
-    expect(p.mood).toBe('wiggling');
+    expect(p.mood).toBe('playing');
   });
 
   test('with no answer in a second, the mood comes back anyway', () => {
@@ -368,7 +368,7 @@ describe('its mood', () => {
     p.step(DT, 1099, null);
     expect(p.mood).toBe('asleep');
     p.step(DT, 1101, null);
-    expect(p.mood).toBe('wiggling');
+    expect(p.mood).toBe('playing');
   });
 
   test("a reconnect's welcome replaces a held kick's mood", () => {
@@ -381,11 +381,11 @@ describe('its mood', () => {
   test('a forced mood wins until it is lifted', () => {
     const p = predicted();
     p.forceMood('scared');
-    p.server(wiggling(), 'me', 0);
+    p.server(playing(), 'me', 0);
     p.step(DT, 0, null);
     expect(p.mood).toBe('scared');
     p.forceMood(null);
-    expect(p.mood).toBe('wiggling');
+    expect(p.mood).toBe('playing');
   });
 
   test('a mood never moves the ball', () => {

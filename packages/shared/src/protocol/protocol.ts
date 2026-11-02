@@ -68,8 +68,8 @@ export type ObjectEvent = 'bump' | 'lost' | 'kick' | 'bounce';
 const OBJECT_KINDS: readonly ObjectKind[] = ['vacuum', 'ball'];
 const OBJECT_EVENTS: readonly ObjectEvent[] = ['bump', 'lost', 'kick', 'bounce'];
 /** What the ball's mind is doing (living ball spec §2). */
-export type BallMood = 'asleep' | 'wandering' | 'approaching' | 'wiggling' | 'following' | 'scared';
-const BALL_MOODS: readonly BallMood[] = ['asleep', 'wandering', 'approaching', 'wiggling', 'following', 'scared'];
+export type BallMood = 'asleep' | 'wandering' | 'approaching' | 'playing' | 'following' | 'scared';
+const BALL_MOODS: readonly BallMood[] = ['asleep', 'wandering', 'approaching', 'playing', 'following', 'scared'];
 /** The emotions the ball can voice (living ball spec §5). */
 export type BallCry = 'yawn' | 'happy' | 'relieved' | 'sad' | 'yelp' | 'giggle' | 'whimper' | 'yip' | 'startled';
 const BALL_CRY_NAMES: readonly BallCry[] = [

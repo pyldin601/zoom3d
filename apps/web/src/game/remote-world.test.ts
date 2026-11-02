@@ -239,10 +239,10 @@ describe('collect', () => {
     const ball = createBall('b1', 6, 7);
     const shaken = new Set<number>();
     for (let i = 0; i < 20; i++) {
-      world.sample(room.session, player, NOW + i * 13, ball, null, 'wiggling');
+      world.sample(room.session, player, NOW + i * 13, ball, null, 'scared');
       const y = world.objectPoses.get(objectKey('b1'))?.y ?? 0;
       shaken.add(y);
-      expect(Math.abs(y - 7)).toBeLessThanOrEqual(0.05);
+      expect(Math.abs(y - 7)).toBeLessThanOrEqual(0.03);
     }
     expect(shaken.size).toBeGreaterThan(1);
     world.sample(room.session, player, NOW, ball, null, 'asleep');

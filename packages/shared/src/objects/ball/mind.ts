@@ -9,20 +9,29 @@ import { BALL_RADIUS, type Ball, type BallTouch } from './ball';
 import { BALL_CRIES } from './cries';
 
 /** Tiles/s: a person walks at 3, so anyone can catch it. */
-export const BALL_OWN_SPEED = 1;
+export const BALL_OWN_SPEED = 2;
 export const BALL_WAKE_S = 10;
 export const BALL_SEES_TILES = 6;
 const TOUCHING_TILES = PLAYER_RADIUS + BALL_RADIUS;
 /** Not touching, so it isn't a push, and still within kick reach. */
 export const BALL_STOP_TILES = TOUCHING_TILES + 0.25;
 /** Beyond this it follows, so small shuffles don't set off a chase. */
-const WIGGLE_LEAVE_TILES = TOUCHING_TILES + 1;
+const PLAY_LEAVE_TILES = TOUCHING_TILES + 1;
 const CHASE_S = 6;
 const SCARED_S = 6;
 const IGNORE_S = 15;
 const FORGIVE_TILES = 2;
 export const BALL_CRY_COOLDOWN_S = 3;
 const GIGGLE_CALM_S = 5;
+/** Playing, it dashes to spots this far from its person: clear of them, and close enough to be kicked soon. */
+const PLAY_MIN_TILES = TOUCHING_TILES + 0.35;
+const PLAY_MAX_TILES = TOUCHING_TILES + 0.85;
+/** Each dash swings this far around its person, so it never cuts through them. */
+const PLAY_SWING_MIN_RADIANS = 0.6;
+const PLAY_SWING_MAX_RADIANS = 1.8;
+const PLAY_DASH_S = 1;
+const PLAY_REST_MIN_S = 0.2;
+const PLAY_REST_MAX_S = 0.8;
 const WANDER_MIN_TILES = 1;
 const WANDER_MAX_TILES = 3;
 const WANDER_TARGET_S = 5;
@@ -44,7 +53,7 @@ type MindState =
   | { mood: 'asleep'; secondsLeft: number; lost: boolean }
   | { mood: 'wandering'; target: Spot | null; secondsLeft: number }
   | ({ mood: 'approaching' } & Chasing)
-  | { mood: 'wiggling'; person: string; lastSeen: Spot }
+  | { mood: 'playing'; person: string; lastSeen: Spot; dash: Spot | null; secondsLeft: number }
   | ({ mood: 'following' } & Chasing)
   | { mood: 'scared'; secondsLeft: number };
 
@@ -227,14 +236,16 @@ function behave(
       }
       return null;
     }
-    case 'wiggling': {
+    case 'playing': {
       const person = visiblePerson(map, ball, people, state.person);
       if (person) {
         state.lastSeen = { x: person.x, y: person.y };
       }
-      if (!person || distance(ball, person) > WIGGLE_LEAVE_TILES) {
+      if (!person || distance(ball, person) > PLAY_LEAVE_TILES) {
         mind.state = { mood: 'following', person: state.person, lastSeen: state.lastSeen, chaseLeftS: CHASE_S };
+        return null;
       }
+      play(map, state, ball, person, dt, rng);
       return null;
     }
     case 'approaching':
@@ -245,7 +256,13 @@ function behave(
         state.lastSeen = { x: person.x, y: person.y };
         if (distance(ball, person) <= BALL_STOP_TILES) {
           stop(ball);
-          mind.state = { mood: 'wiggling', person: state.person, lastSeen: state.lastSeen };
+          mind.state = {
+            mood: 'playing',
+            person: state.person,
+            lastSeen: state.lastSeen,
+            dash: null,
+            secondsLeft: playRestS(rng),
+          };
           return null;
         }
       } else if (state.mood === 'approaching') {
@@ -265,6 +282,45 @@ function behave(
       return null;
     }
   }
+}
+
+function play(
+  map: GameMap,
+  state: Extract<MindState, { mood: 'playing' }>,
+  ball: Ball,
+  person: Person,
+  dt: number,
+  rng: () => number
+): void {
+  state.secondsLeft -= dt;
+  if (state.dash === null) {
+    if (state.secondsLeft <= 0) {
+      state.dash = playSpot(map, ball, person, rng);
+      state.secondsLeft = state.dash ? PLAY_DASH_S : playRestS(rng);
+    }
+    return;
+  }
+  if (state.secondsLeft <= 0 || distance(ball, state.dash) <= ARRIVED_TILES) {
+    stop(ball);
+    state.dash = null;
+    state.secondsLeft = playRestS(rng);
+    return;
+  }
+  steer(ball, state.dash);
+}
+
+function playSpot(map: GameMap, ball: Ball, person: Person, rng: () => number): Spot | null {
+  const side = rng() < 0.5 ? -1 : 1;
+  const swing = PLAY_SWING_MIN_RADIANS + rng() * (PLAY_SWING_MAX_RADIANS - PLAY_SWING_MIN_RADIANS);
+  const angle = Math.atan2(ball.y - person.y, ball.x - person.x) + side * swing;
+  const tiles = PLAY_MIN_TILES + rng() * (PLAY_MAX_TILES - PLAY_MIN_TILES);
+  const x = person.x + Math.cos(angle) * tiles;
+  const y = person.y + Math.sin(angle) * tiles;
+  return hasLineOfSight(map, ball.x, ball.y, x, y) ? { x, y } : null;
+}
+
+function playRestS(rng: () => number): number {
+  return PLAY_REST_MIN_S + rng() * (PLAY_REST_MAX_S - PLAY_REST_MIN_S);
 }
 
 function wander(map: GameMap, mind: BallMind, ball: Ball, dt: number, rng: () => number): void {
