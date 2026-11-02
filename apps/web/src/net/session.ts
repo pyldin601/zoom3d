@@ -61,6 +61,8 @@ export interface SessionListener {
   objectEvent?(id: string, event: ObjectEvent, by?: string): void;
   /** Every applied (not stale) object state, for the ball's prediction. */
   objectState?(m: ObjectStateMessage): void;
+  /** The server turned down the local player's kick `k`. */
+  kickRefused?(k: number): void;
   /** The room's objects as a welcome lists them, after the session has taken them. */
   objectsReset?(objects: readonly ObjectInfo[]): void;
   /** The room's portals were flipped (by anyone, the local player included); not called for a welcome's flag. */
@@ -219,6 +221,9 @@ export function createSession(opts: SessionOptions): Session {
         break;
       case 'correction':
         Object.assign(player, { x: m.x, y: m.y, angle: m.angle });
+        break;
+      case 'kick_refused':
+        listener.kickRefused?.(m.k);
         break;
       case 'error':
         error = m.code;

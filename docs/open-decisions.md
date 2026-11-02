@@ -519,6 +519,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     every client (`game/ball-prediction.ts`). The client applies only the local player's touches, ignores the server
     for 300 ms after them, and otherwise eases onto the server's ball. A kick is echoed with the kicker's id and kick
     counter so the kicker knows when the server has it.
+  - **A kick is always answered** (2026-11-02, after kicks shown locally were teleporting back): silently dropping one
+    left the kicker's ball flying until the hold ran out. The server now replies `kick_refused`, the client holds a kick
+    until it hears either answer (1 s at most), and the server's reach grows with the ball's speed, since a rolling ball
+    has moved on by the time the kick arrives.
   - **The vacuum kicks it** (owner): a vacuum driving into the ball knocks it off at 2.5 tiles/s or more. The vacuum
     itself doesn't react.
   - **Bots never touch it,** for the same reason they never bump the vacuum.

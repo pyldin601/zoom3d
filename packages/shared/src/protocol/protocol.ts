@@ -171,6 +171,8 @@ export type ServerMessage =
       k?: number;
     }
   | { type: 'correction'; x: number; y: number; angle: number; seq: number }
+  /** The sender's kick `k` didn't land, so its prediction can stop waiting for the echo. */
+  | { type: 'kick_refused'; k: number }
   | { type: 'error'; code: ErrorCode; message: string };
 export type ObjectStateMessage = Extract<ServerMessage, { type: 'object_state' }>;
 
@@ -479,6 +481,8 @@ export function parseServerMessage(raw: string): ServerMessage | null {
       const p = pose(m);
       return p && isSeq(m.seq) ? { type: 'correction', ...p, seq: m.seq } : null;
     }
+    case 'kick_refused':
+      return isSeq(m.k) ? { type: 'kick_refused', k: m.k } : null;
     case 'error':
       return ERROR_CODES.includes(m.code as ErrorCode) && isStr(m.message)
         ? { type: 'error', code: m.code as ErrorCode, message: m.message }

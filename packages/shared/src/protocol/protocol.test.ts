@@ -227,6 +227,7 @@ describe('parseServerMessage', () => {
     { type: 'peers', s: [[0, 1, 2, 3, 40]] },
     { type: 'error', code: 'outdated', message: 'zoom3d was updated: reload the page' },
     { type: 'correction', x: 1, y: 2, angle: 3, seq: 4 },
+    { type: 'kick_refused', k: 5 },
     { type: 'error', code: 'room_full', message: 'full' },
   ];
 

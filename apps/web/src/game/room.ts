@@ -165,6 +165,7 @@ function connectSession(
       portalsChanged: (on) => opts.onPortalsChanged(on),
       objectEvent: (id, e, by) => sounds.event(id, e, by),
       objectState: (m) => ball.server(m, session.selfId(), performance.now()),
+      kickRefused: (k) => ball.refused(k, performance.now()),
       objectsReset: (objects) => ball.reset(objects.find((o) => o.kind === 'ball') ?? null),
     },
   });

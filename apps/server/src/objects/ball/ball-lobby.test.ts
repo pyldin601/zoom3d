@@ -69,6 +69,8 @@ const ballStates = (conn: string) =>
   sent
     .filter((s) => s.conn === conn && s.msg.type === 'object_state' && s.msg.id === ballId(conn))
     .map((s) => s.msg as Extract<ServerMessage, { type: 'object_state' }>);
+const refusals = (conn: string) =>
+  sent.filter((s) => s.conn === conn && s.msg.type === 'kick_refused').map((s) => s.msg);
 const step = (times = 1) => {
   for (let i = 0; i < times; i++) {
     time += TICK_MS;
@@ -153,6 +155,71 @@ describe('kicks', () => {
         .filter((s) => s.event === 'kick')
         .map((s) => s.k)
     ).toEqual([1]);
+  });
+
+  test('network jitter between two kicks the client spaced 250 ms apart does not drop the second', () => {
+    const { person, ball } = ballBeside(0.6);
+    const angle = Math.atan2(ball.y - person.y, ball.x - person.x);
+    lobby.kick('A', { type: 'kick', angle, k: 1 });
+    time += 220;
+    lobby.kick('A', { type: 'kick', angle: angle + Math.PI, k: 2 });
+    step();
+    expect(ballStates('A').at(-1)).toMatchObject({ event: 'kick', k: 2 });
+  });
+
+  test('a kick that arrives just after the ball rolled out of reach still lands', () => {
+    const { person, ball } = ballBeside(0.6);
+    const angle = Math.atan2(ball.y - person.y, ball.x - person.x);
+    lobby.kick('A', { type: 'kick', angle, k: 1 });
+    step(4);
+    const rolled = defined(ballStates('A').at(-1), 'state');
+    expect(Math.hypot(rolled.x - person.x, rolled.y - person.y)).toBeGreaterThan(BALL_KICK_REACH + 0.5);
+    lobby.kick('A', { type: 'kick', angle, k: 2 });
+    step();
+    expect(ballStates('A').at(-1)).toMatchObject({ event: 'kick', k: 2 });
+    expect(refusals('A')).toEqual([]);
+  });
+
+  test('a kick at a ball long gone is refused, and only the kicker hears', () => {
+    const { person, ball } = ballBeside(0.6);
+    join('B');
+    const angle = Math.atan2(ball.y - person.y, ball.x - person.x);
+    lobby.kick('A', { type: 'kick', angle, k: 1 });
+    step(10);
+    const rolled = defined(ballStates('A').at(-1), 'state');
+    expect(Math.hypot(rolled.x - person.x, rolled.y - person.y)).toBeGreaterThan(BALL_KICK_REACH + 2.5);
+    lobby.kick('A', { type: 'kick', angle, k: 2 });
+    expect(refusals('A')).toEqual([{ type: 'kick_refused', k: 2 }]);
+    expect(refusals('B')).toEqual([]);
+  });
+
+  test('of two kicks in one tick the later wins, and the earlier kicker hears it did not', () => {
+    const { person, ball } = ballBeside(0.6);
+    join('B');
+    const angle = Math.atan2(ball.y - person.y, ball.x - person.x);
+    time += 60_000;
+    lobby.state('B', { type: 'state', x: person.x, y: person.y, angle: 0, seq: 1 });
+    lobby.kick('A', { type: 'kick', angle, k: 1 });
+    lobby.kick('B', { type: 'kick', angle, k: 9 });
+    step();
+    expect(refusals('B')).toEqual([]);
+    expect(ballStates('A').at(-1)).toMatchObject({ event: 'kick', k: 9 });
+    expect(refusals('A')).toEqual([{ type: 'kick_refused', k: 1 }]);
+  });
+
+  test('a kick beyond reach at a resting ball is refused', () => {
+    ballBeside(BALL_KICK_REACH + 0.6);
+    lobby.kick('A', { type: 'kick', angle: 0, k: 3 });
+    expect(refusals('A')).toEqual([{ type: 'kick_refused', k: 3 }]);
+  });
+
+  test('a kick too soon after the last is refused', () => {
+    const { person, ball } = ballBeside(0.6);
+    const angle = Math.atan2(ball.y - person.y, ball.x - person.x);
+    lobby.kick('A', { type: 'kick', angle, k: 1 });
+    time += 100;
+    lobby.kick('A', { type: 'kick', angle, k: 2 });
+    expect(refusals('A')).toEqual([{ type: 'kick_refused', k: 2 }]);
   });
 });
 

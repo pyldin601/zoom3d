@@ -654,6 +654,13 @@ test('objectState hears every applied state with its velocity and echo, and neve
   expect(heard).toEqual([{ ...objectState(2, 4, 'kick'), vx: 1, vy: 2, by: 'me', k: 1 }]);
 });
 
+test('a refused kick reaches the listener with its counter', () => {
+  const refused: number[] = [];
+  const { ws } = withVacuum({ kickRefused: (k) => refused.push(k) });
+  ws.receive({ type: 'kick_refused', k: 4 });
+  expect(refused).toEqual([4]);
+});
+
 test("objectEvent carries a kick's kicker", () => {
   const seen: unknown[] = [];
   const { ws } = withVacuum({ objectEvent: (id, e, by) => seen.push([id, e, by]) });

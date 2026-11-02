@@ -77,9 +77,9 @@ describe('holding the local touch', () => {
     const p = predicted();
     const k = p.kick({ x: 2.6, y: 3.5 }, 0, 0);
     expect(k).toBe(1);
-    p.server(state(6, 3.5, { event: 'kick', by: 'me', k: 1 }), 'me', 50);
+    p.server(state(7, 3.5, { event: 'kick', by: 'me', k: 1 }), 'me', 50);
     p.step(0, 50, null);
-    expect(ballOf(p).x).toBe(6);
+    expect(ballOf(p).x).toBe(7);
   });
 
   test("someone else's kick does not end it", () => {
@@ -88,6 +88,52 @@ describe('holding the local touch', () => {
     p.server(state(6, 3.5, { event: 'kick', by: 'other', k: 1 }), 'me', 50);
     p.step(0, 50, null);
     expect(ballOf(p).x).toBe(3);
+  });
+
+  test('a kick waits for its echo on a link slower than the hold', () => {
+    const p = predicted();
+    p.kick({ x: 2.6, y: 3.5 }, 0, 0);
+    p.server(state(3, 3.5), 'me', 400);
+    p.step(DT, 400, null);
+    expect(ballOf(p).vx).toBeGreaterThan(7);
+  });
+
+  test('a kick that never hears back gives up after a second', () => {
+    const p = predicted();
+    p.kick({ x: 2.6, y: 3.5 }, 0, 0);
+    p.server(state(3, 3.5), 'me', 1100);
+    p.step(DT, 1100, null);
+    expect(ballOf(p).vx).toBe(0);
+  });
+
+  test('a refused kick ends the hold at once', () => {
+    const p = predicted();
+    const k = p.kick({ x: 2.6, y: 3.5 }, 0, 0);
+    p.step(0.05, 50, null);
+    p.refused(k ?? -1, 50);
+    p.step(DT, 66, null);
+    expect(ballOf(p).vx).toBe(0);
+    expect(ballOf(p).x).toBeLessThan(3.4);
+  });
+
+  test('a refusal of an older kick leaves the newer one held', () => {
+    const p = predicted();
+    p.kick({ x: 2.6, y: 3.5 }, 0, 0);
+    p.kick({ x: 2.6, y: 3.5 }, 0, 260);
+    p.refused(1, 270);
+    p.step(DT, 280, null);
+    expect(ballOf(p).vx).toBeGreaterThan(7);
+  });
+
+  test('a refused kick returns the ball to the welcome spot though no server state ever came', () => {
+    const p = predicted(3, 3.5);
+    const k = p.kick({ x: 2.6, y: 3.5 }, 0, 0);
+    p.refused(k ?? -1, 50);
+    for (let i = 0; i < 60; i++) {
+      p.step(DT, 50 + i * 16, null);
+    }
+    expect(ballOf(p).x).toBe(3);
+    expect(ballOf(p).vx).toBe(0);
   });
 
   test('a second kick within 250 ms is not made, as the server would drop it', () => {
@@ -117,11 +163,18 @@ describe('easing onto the server', () => {
     expect(4 - ballOf(p).x).toBeLessThan(Math.exp(-1) * 1.15);
   });
 
-  test('it snaps when the error is over 1.5 tiles', () => {
-    const p = predicted(3, 3.5);
-    p.server(state(5, 3.5), 'me', 0);
+  test('it snaps when the error is over 3 tiles', () => {
+    const p = predicted(2, 3.5);
+    p.server(state(6, 3.5), 'me', 0);
     p.step(DT, 0, null);
-    expect(ballOf(p).x).toBe(5);
+    expect(ballOf(p).x).toBe(6);
+  });
+
+  test("someone else's kick reversing a rolling ball glides, however far ahead the state is", () => {
+    const p = predicted(5, 3.5);
+    p.server(state(3, 3.5, { vx: -7, event: 'kick', by: 'other', k: 1 }), 'me', 0);
+    p.step(DT, 0, null);
+    expect(ballOf(p).x).toBeGreaterThan(4.3);
   });
 
   test('it snaps exactly when both are at rest within 0.05 tiles', () => {
@@ -161,8 +214,7 @@ describe('welcomes', () => {
 describe('through portals', () => {
   const { map, portals } = twoDoorways();
   const through = (p: ReturnType<typeof createBallPrediction>) => {
-    p.reset(info('b', 2.5, 3.2));
-    ballOf(p).vy = 3;
+    p.reset({ ...info('b', 2.5, 3.2), vy: 3 });
     for (let i = 0; i < 20; i++) {
       p.step(DT, i * 16, null);
     }
