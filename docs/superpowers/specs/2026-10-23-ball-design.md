@@ -23,6 +23,9 @@ It is the first thing in the room that people act on, and something to do with y
 - **The vacuum kicks it too** (product owner): when the robot drives into the ball, the ball is knocked away.
 - It survives a server restart, like the vacuum.
 
+*Since 2026-11-02 (D33) it has a mind of its own between kicks, on top of this same physics:
+`2026-11-02-living-ball-design.md`.*
+
 ### Non-goals
 
 - **Height.** The ball stays on the floor; no lofted kicks, gravity or bouncing up (product owner: "stay on the floor

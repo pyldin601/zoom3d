@@ -6,6 +6,8 @@ export * from './map/level1';
 export * from './map/map';
 export * from './net/interpolation';
 export * from './objects/ball/ball';
+export * from './objects/ball/cries';
+export * from './objects/ball/mind';
 export * from './objects/vacuum/nav';
 export * from './objects/vacuum/vacuum';
 export * from './portals/apparent';

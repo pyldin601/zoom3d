@@ -457,6 +457,15 @@ describe('world objects', () => {
     expect(parseServerMessage(json({ ...welcome, objects }))).toEqual({ ...welcome, objects: [vacuum] });
   });
 
+  test("welcome keeps a ball's mood and drops an unknown one", () => {
+    const ball = { ...vacuum, id: 'b', kind: 'ball', mood: 'playing' };
+    const objects = [ball, { ...ball, id: 'c', mood: 'hungry' }];
+    expect(parseServerMessage(json({ ...welcome, objects }))).toEqual({
+      ...welcome,
+      objects: [ball, { ...vacuum, id: 'c', kind: 'ball' }],
+    });
+  });
+
   test('object_state parses with and without event', () => {
     const state = { type: 'object_state', id: 'v', x: 1, y: 2, angle: 0.5, seq: 3 };
     expect(parseServerMessage(json(state))).toEqual(state);
@@ -492,6 +501,22 @@ describe('the ball (ball spec §4)', () => {
   test("object_state carries a ball's velocity and kick echo", () => {
     const kicked = { ...state, vx: 1, vy: -2, event: 'kick', by: 'p1', k: 3 };
     expect(parseServerMessage(json(kicked))).toEqual(kicked);
+  });
+
+  test("object_state carries the ball's mood and cry", () => {
+    const crying = { ...state, mood: 'scared', cry: 'whimper', cryVariant: 2 };
+    expect(parseServerMessage(json(crying))).toEqual(crying);
+  });
+
+  test('an unknown mood or cry drops only that field', () => {
+    expect(parseServerMessage(json({ ...state, mood: 'hungry' }))).toEqual(state);
+    expect(parseServerMessage(json({ ...state, cry: 'howl', cryVariant: 1 }))).toEqual(state);
+  });
+
+  test('a cry and its variant come together or not at all', () => {
+    expect(parseServerMessage(json({ ...state, cry: 'yip' }))).toEqual(state);
+    expect(parseServerMessage(json({ ...state, cry: 'yip', cryVariant: -1 }))).toEqual(state);
+    expect(parseServerMessage(json({ ...state, cryVariant: 1 }))).toEqual(state);
   });
 
   test('a bad velocity drops only the velocity', () => {

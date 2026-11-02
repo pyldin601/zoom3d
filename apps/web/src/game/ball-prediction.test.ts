@@ -302,3 +302,97 @@ describe('through portals', () => {
     expect(ballOf(p).vx).toBeCloseTo(0);
   });
 });
+
+// Living ball spec §3: the mood follows the server's, except that a local kick stops it on that frame.
+describe('its mood', () => {
+  const FROM = { x: 2.6, y: 3.5 };
+  const playing = (seq = 1) => state(3, 3.5, { mood: 'playing', seq });
+
+  test('a welcome says its mood, and no mood means asleep', () => {
+    const p = createBallPrediction(MAP);
+    p.reset({ ...info('b', 3, 3.5), mood: 'scared' });
+    expect(p.mood).toBe('scared');
+    p.reset(info('b', 3, 3.5));
+    expect(p.mood).toBe('asleep');
+  });
+
+  test("a server state's mood shows on the next step", () => {
+    const p = predicted();
+    p.server(playing(), 'me', 0);
+    p.step(DT, 0, null);
+    expect(p.mood).toBe('playing');
+  });
+
+  test("another ball's state says nothing about this one", () => {
+    const p = predicted();
+    p.server({ ...playing(), id: 'other' }, 'me', 0);
+    p.step(DT, 0, null);
+    expect(p.mood).toBe('asleep');
+  });
+
+  const kicked = () => {
+    const p = predicted();
+    p.server(playing(), 'me', 0);
+    p.step(DT, 0, null);
+    expect(p.kick(FROM, 0, 100)).toBe(1);
+    return p;
+  };
+
+  test('a local kick sleeps it at once', () => {
+    expect(kicked().mood).toBe('asleep');
+  });
+
+  test('server states are ignored until the kick is answered', () => {
+    const p = kicked();
+    p.server(playing(2), 'me', 120);
+    p.step(DT, 120, null);
+    expect(p.mood).toBe('asleep');
+  });
+
+  test('the echo hands the mood back to the server', () => {
+    const p = kicked();
+    p.server(state(3, 3.5, { mood: 'following', event: 'kick', by: 'me', k: 1, seq: 2 }), 'me', 150);
+    p.step(DT, 150, null);
+    expect(p.mood).toBe('following');
+  });
+
+  test('a refusal hands the mood back to the server', () => {
+    const p = kicked();
+    p.refused(1, 150);
+    p.step(DT, 150, null);
+    expect(p.mood).toBe('playing');
+  });
+
+  test('with no answer in a second, the mood comes back anyway', () => {
+    const p = kicked();
+    p.step(DT, 1099, null);
+    expect(p.mood).toBe('asleep');
+    p.step(DT, 1101, null);
+    expect(p.mood).toBe('playing');
+  });
+
+  test("a reconnect's welcome replaces a held kick's mood", () => {
+    const p = kicked();
+    p.reset({ ...info('b', 3, 3.5), mood: 'wandering' });
+    p.step(DT, 120, null);
+    expect(p.mood).toBe('wandering');
+  });
+
+  test('a forced mood wins until it is lifted', () => {
+    const p = predicted();
+    p.forceMood('scared');
+    p.server(playing(), 'me', 0);
+    p.step(DT, 0, null);
+    expect(p.mood).toBe('scared');
+    p.forceMood(null);
+    expect(p.mood).toBe('playing');
+  });
+
+  test('a mood never moves the ball', () => {
+    const p = predicted();
+    p.server(state(3, 3.5, { mood: 'scared' }), 'me', 0);
+    p.step(DT, 0, null);
+    expect(ballOf(p).x).toBe(3);
+    expect(ballOf(p).y).toBe(3.5);
+  });
+});

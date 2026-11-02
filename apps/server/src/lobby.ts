@@ -10,11 +10,16 @@ import {
   BALL_KICK_GAP_MS,
   type Ball,
   type BallBody,
+  type BallCryChoice,
+  type BallMind,
+  type BallMood,
   type BallSave,
+  type BallTouch,
   type BoomboxMessage,
   ballInfo,
   ballMoving,
   createBall,
+  createBallMind,
   createVacuum,
   createVacuumNav,
   DRINK_GAP_MS,
@@ -27,6 +32,7 @@ import {
   type JoinMessage,
   type KickMessage,
   kickBall,
+  kickBallMind,
   type LiveKitAccess,
   MAX_PEERS,
   type MediaMessage,
@@ -47,6 +53,7 @@ import {
   sequenceTimes,
   spawnPoint,
   stepBall,
+  stepBallMind,
   stepVacuum,
   VACUUM_RADIUS,
   type Vacuum,
@@ -114,6 +121,8 @@ export interface LobbyOptions {
   vacuumNearlyDone?: boolean;
   /** Every new room gets a ball (ball spec §3.2). Off unless set, so tests opt in. */
   ball?: boolean;
+  /** The ball has a mind of its own (living ball spec §3). Off unless set, so tests with a ball keep it still. */
+  ballMind?: boolean;
 }
 
 /** The server sees a kicker a little late, so it allows them this much further away than the client does. */
@@ -255,6 +264,11 @@ export class Lobby {
   private readonly vacuumVelocities = new Map<string, { vx: number; vy: number }>();
   /** Each room's ball, by room id. Not a peer either. */
   private readonly balls = new Map<string, Ball>();
+  /** Each ball's mind, by room id, with what the physics told it and a kick's cry waiting for the next broadcast. */
+  private readonly ballMinds = new Map<
+    string,
+    { mind: BallMind; touch: BallTouch; pendingCry: BallCryChoice | null }
+  >();
   /** A person's kick since the ball's last broadcast, echoed in it so the kicker recognises its own kick. */
   private readonly kicks = new Map<string, { conn: string; by: string; k: number }>();
   /** Each room's portals flag, when it last flipped and whether it was ever on; no entry is off and never flipped. */
@@ -432,6 +446,10 @@ export class Lobby {
     const slack = KICK_SLACK_TILES + Math.hypot(ball.vx, ball.vy) * KICK_SEEN_LATE_S;
     if (rested && kickBall(ball, kicker, angle, slack)) {
       found.peer.lastKickAt = now;
+      const minded = this.ballMinds.get(found.roomId);
+      if (minded) {
+        minded.pendingCry = kickBallMind(minded.mind, this.opts.rng) ?? minded.pendingCry;
+      }
       // Only one echo goes out per tick: a kick overtaken before its broadcast never reached the ball.
       const overtaken = this.kicks.get(found.roomId);
       if (overtaken) {
@@ -566,7 +584,7 @@ export class Lobby {
       }
       const restoredBall = this.opts.ball && ball ? restoreBall(this.opts.map, ball, this.opts.newToken()) : null;
       if (restoredBall) {
-        this.balls.set(id, restoredBall);
+        this.placeBall(id, restoredBall);
       } else {
         this.spawnBall(id);
       }
@@ -681,6 +699,7 @@ export class Lobby {
     this.vacuums.delete(roomId);
     this.vacuumVelocities.delete(roomId);
     this.balls.delete(roomId);
+    this.ballMinds.delete(roomId);
     this.kicks.delete(roomId);
     this.portalModes.delete(roomId);
     this.sequences.delete(roomId);
@@ -710,7 +729,10 @@ export class Lobby {
       spawn: { x: self.x, y: self.y, angle: self.angle },
       peers: [...room.values()].filter((p) => p.id !== self.id).map(peerInfo),
       livekit: this.opts.liveKitFor(roomId, self.id),
-      objects: [...(vacuum ? [vacuumInfo(vacuum)] : []), ...(ball ? [ballInfo(ball)] : [])],
+      objects: [
+        ...(vacuum ? [vacuumInfo(vacuum)] : []),
+        ...(ball ? [{ ...ballInfo(ball), ...this.ballMood(roomId) }] : []),
+      ],
       portals: this.portalModes.get(roomId)?.on === true,
       ...(sequence ? { sequence: { kind: sequence.kind, age: now - sequence.startedAt } } : {}),
     });
@@ -826,13 +848,26 @@ export class Lobby {
     if (this.opts.ball) {
       this.floor ??= floorTiles(this.opts.map);
       const tile = this.floor[Math.floor(this.opts.rng() * this.floor.length)] ?? this.opts.map.spawn;
-      this.balls.set(roomId, createBall(this.opts.newToken(), tile.x + 0.5, tile.y + 0.5));
+      this.placeBall(roomId, createBall(this.opts.newToken(), tile.x + 0.5, tile.y + 0.5));
     }
+  }
+
+  private placeBall(roomId: string, ball: Ball): void {
+    this.balls.set(roomId, ball);
+    if (this.opts.ballMind) {
+      const touch = { pushed: false, knocked: false, crossedPortal: false };
+      this.ballMinds.set(roomId, { mind: createBallMind(), touch, pendingCry: null });
+    }
+  }
+
+  private ballMood(roomId: string): { mood: BallMood } | Record<string, never> {
+    const minded = this.ballMinds.get(roomId);
+    return minded ? { mood: minded.mind.mood } : {};
   }
 
   /**
    * Steps each room's ball against its connected people (never bots) and its vacuum, and relays it as `object_state`
-   * whenever it moved, stopped or was kicked. A ball at rest costs nothing.
+   * whenever it moved, stopped, was kicked or changed mood or spoke. A quiet ball at rest costs nothing.
    */
   private stepBalls(dt: number): void {
     const now = this.opts.now();
@@ -877,12 +912,32 @@ export class Lobby {
           radius: VACUUM_RADIUS,
         });
       }
+      const minded = this.ballMinds.get(roomId);
+      const moodBefore = minded?.mind.mood;
+      let cry: BallCryChoice | null = null;
       const { x, y, vx, vy } = ball;
-      const event = stepBall(this.opts.map, ball, dt, bodies, portals);
+      if (minded) {
+        const people = [...room.values()].filter((p) => p.conn !== null && isPerson(p));
+        const stepped = stepBallMind(
+          this.opts.map,
+          minded.mind,
+          ball,
+          dt,
+          { people, touch: minded.touch },
+          this.opts.rng
+        );
+        cry = minded.pendingCry ?? stepped;
+        minded.pendingCry = null;
+        minded.touch.pushed = false;
+        minded.touch.knocked = false;
+        minded.touch.crossedPortal = false;
+      }
+      const event = stepBall(this.opts.map, ball, dt, bodies, portals, minded?.touch ?? null);
       const kick = this.kicks.get(roomId);
       this.kicks.delete(roomId);
       const changed = ball.x !== x || ball.y !== y || ball.vx !== vx || ball.vy !== vy;
-      if (!changed && !kick && !ballMoving(ball)) {
+      const moodChanged = minded?.mind.mood !== moodBefore;
+      if (!changed && !kick && !moodChanged && !cry && !ballMoving(ball)) {
         continue;
       }
       ball.seq++;
@@ -898,6 +953,8 @@ export class Lobby {
         vx: ball.vx,
         vy: ball.vy,
         ...said,
+        ...this.ballMood(roomId),
+        ...(cry ? { cry: cry.cry, cryVariant: cry.variant } : {}),
       });
     }
   }
