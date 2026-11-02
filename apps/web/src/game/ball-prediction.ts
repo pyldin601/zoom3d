@@ -107,7 +107,8 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
     Math.hypot(self.vx, self.vy) > STILL_SPEED &&
     Math.hypot(ball.x - self.x, ball.y - self.y) < self.radius + BALL_RADIUS + 1e-6;
 
-  const pushDriftedFrom = (b: Ball, s: Ball) => unechoed === null && Math.hypot(s.x - b.x, s.y - b.y) > PUSH_DRIFT_TILES;
+  const pushDriftedFrom = (b: Ball, s: Ball) =>
+    unechoed === null && Math.hypot(s.x - b.x, s.y - b.y) > PUSH_DRIFT_TILES;
 
   const easeOntoServer = (b: Ball, s: Ball, dt: number) => {
     const error = Math.hypot(s.x - b.x, s.y - b.y);
