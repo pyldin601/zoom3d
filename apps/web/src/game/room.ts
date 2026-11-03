@@ -164,7 +164,12 @@ function connectSession(
       peerHeld: (id, before, after) => lighterSounds.peerHeld(id, before, after),
       portalsChanged: (on) => opts.onPortalsChanged(on),
       objectEvent: (id, e, by) => sounds.event(id, e, by),
-      objectState: (m) => ball.server(m, session.selfId(), performance.now()),
+      objectState: (m) => {
+        ball.server(m, session.selfId(), performance.now());
+        if (m.cry !== undefined && m.cryVariant !== undefined) {
+          sounds.cry(m.id, m.cry, m.cryVariant);
+        }
+      },
       kickRefused: (k) => ball.refused(k, performance.now()),
       objectsReset: (objects) => ball.reset(objects.find((o) => o.kind === 'ball') ?? null),
     },

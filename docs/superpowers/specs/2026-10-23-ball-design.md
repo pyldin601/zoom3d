@@ -23,6 +23,9 @@ It is the first thing in the room that people act on, and something to do with y
 - **The vacuum kicks it too** (product owner): when the robot drives into the ball, the ball is knocked away.
 - It survives a server restart, like the vacuum.
 
+*Since 2026-11-02 (D33) it has a mind of its own between kicks, on top of this same physics:
+`2026-11-02-living-ball-design.md`.*
+
 ### Non-goals
 
 - **Height.** The ball stays on the floor; no lofted kicks, gravity or bouncing up (product owner: "stay on the floor
@@ -131,7 +134,9 @@ The ball is drawn at the **local** ball's position: in the present, not at the o
      the server answers it,** the local ball is left alone (the server hasn't seen the touch yet, and pulling toward it
      is the snap-back the anti-goals forbid). The answer is either the `kick` echo in a server state (§4: `by` is the
      local player's id and `k` is at least the local kick's) or `kick_refused`; with neither within 1 s the hold ends
-     anyway. Pushes have no echo and just use the timeout. Other people's touches never end the hold **(my call)**.
+     anyway. Pushes have no echo and just use the timeout. A push stops holding once the balls are more than 1 tile apart:
+     latency can't explain that, so someone else's kick or a bounce off a body only the server has must have moved the
+     ball, and it glides there instead of snapping later. A local kick still waits for its own answer.
   3. Otherwise the local ball eases onto the advanced server ball: position error decays with a ~100 ms time constant,
      velocity is taken from the server. An error over **3 tiles** snaps; that is above any kick's error, which is about
      1 tile from rest and 2.5 from a ball rolling the other way.

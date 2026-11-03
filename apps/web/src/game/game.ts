@@ -1,6 +1,6 @@
 // The game: the landing picture, then the lobby, then the room. createGame makes its parts once per page and wires
 // them together; each part is its own module.
-import { type HeldItem, LEVEL1, newRoomId, parseMap, wirePortals } from '@zoom3d/shared';
+import { type BallCry, type BallMood, type HeldItem, LEVEL1, newRoomId, parseMap, wirePortals } from '@zoom3d/shared';
 import { startHiddenTicker } from '../audio/ticker';
 import { createDrinkKey } from '../input/drink-key';
 import { createInput } from '../input/keyboard';
@@ -125,6 +125,17 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
       },
       get audio() {
         return room?.audio ?? null;
+      },
+      /** Plays one of the ball's sounds where it is, to tune them by ear. */
+      ballCry(cry: BallCry, variant: number) {
+        const id = room?.ball.ball?.id;
+        if (id !== undefined) {
+          room?.objectSounds.cry(id, cry, variant);
+        }
+      },
+      /** Shows a mood on the ball on this screen only, until lifted with null. */
+      forceBallMood(mood: BallMood | null) {
+        room?.ball.forceMood(mood);
       },
       /** Whether the room's portal sequence has its lamps out now. */
       sequenceDark: () => room?.sequence.dark ?? false,

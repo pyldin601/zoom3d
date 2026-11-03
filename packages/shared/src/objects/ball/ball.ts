@@ -65,6 +65,15 @@ export interface BallBody {
   radius: number;
 }
 
+/** What a step's physics did, for the ball's mind. A step only sets these; the caller clears them. */
+export interface BallTouch {
+  /** A person walked into it. */
+  pushed: boolean;
+  /** The vacuum drove into it. */
+  knocked: boolean;
+  crossedPortal: boolean;
+}
+
 export interface BallSave {
   x: number;
   y: number;
@@ -104,7 +113,8 @@ export function stepBall(
   ball: Ball,
   dt: number,
   bodies: readonly BallBody[],
-  portals: Portals | null = null
+  portals: Portals | null = null,
+  touch: BallTouch | null = null
 ): BallEvent | null {
   const t = Math.min(Math.max(dt, 0), MAX_STEP_S);
   const steps = Math.max(1, Math.ceil(t / SUBSTEP_S));
@@ -119,11 +129,11 @@ export function stepBall(
     // Before the bodies: a shove moves the ball too, and may take it across a plane.
     const { x, y } = ball;
     for (const body of bodies) {
-      collide(map, ball, body, note);
+      collide(map, ball, body, note, touch);
     }
     roll(map, ball, h, note);
-    if (portals !== null) {
-      carryBall(portals, ball, x, y);
+    if (portals !== null && carryBall(portals, ball, x, y) && touch !== null) {
+      touch.crossedPortal = true;
     }
     slow(ball, h);
   }
@@ -133,7 +143,13 @@ export function stepBall(
   return event;
 }
 
-function collide(map: GameMap, ball: Ball, body: BallBody, note: (e: BallEvent) => void): void {
+function collide(
+  map: GameMap,
+  ball: Ball,
+  body: BallBody,
+  note: (e: BallEvent) => void,
+  touch: BallTouch | null
+): void {
   const dx = ball.x - body.x;
   const dy = ball.y - body.y;
   const distance = Math.hypot(dx, dy);
@@ -156,6 +172,13 @@ function collide(map: GameMap, ball: Ball, body: BallBody, note: (e: BallEvent) 
   const ballNormal = ball.vx * nx + ball.vy * ny;
   const bodyNormal = Math.min(body.vx * nx + body.vy * ny, BODY_MAX_SPEED);
   if (bodyNormal > 0) {
+    if (touch !== null) {
+      if (body.kind === 'vacuum') {
+        touch.knocked = true;
+      } else {
+        touch.pushed = true;
+      }
+    }
     const pushed = bodyNormal * PUSH_FACTOR;
     const target = body.kind === 'vacuum' ? Math.max(pushed, VACUUM_KICK_SPEED) : pushed;
     if (ballNormal < target) {
@@ -194,14 +217,16 @@ function roll(map: GameMap, ball: Ball, h: number, note: (e: BallEvent) => void)
   }
 }
 
-/** Carries the ball through the portal it rolled into from (fromX, fromY), turning its velocity with it. */
-function carryBall(portals: Portals, ball: Ball, fromX: number, fromY: number): void {
+/** Carries the ball through the portal it rolled into from (fromX, fromY), turning its velocity with it, if it did. */
+function carryBall(portals: Portals, ball: Ball, fromX: number, fromY: number): boolean {
   carried.x = ball.x;
   carried.y = ball.y;
-  if (carryThroughPortal(portals, fromX, fromY, carried, ball)) {
+  const crossed = carryThroughPortal(portals, fromX, fromY, carried, ball);
+  if (crossed) {
     ball.x = carried.x;
     ball.y = carried.y;
   }
+  return crossed;
 }
 
 /** Moves without bouncing, as far as the walls allow on each axis: how a body shoves it out of the way. */

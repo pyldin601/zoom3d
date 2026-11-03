@@ -523,6 +523,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     left the kicker's ball flying until the hold ran out. The server now replies `kick_refused`, the client holds a kick
     until it hears either answer (1 s at most), and the server's reach grows with the ball's speed, since a rolling ball
     has moved on by the time the kick arrives.
+  - **A push holds only within 1 tile** (2026-11-02, after 5-minute prod runs where jumps of 3+ tiles came 300 ms after
+    the player's last push): a push held off the server for as long as the player kept touching the ball, so anything
+    only the server saw, such as a bounce off another body, stayed unseen until the ball had to snap across the gap.
+    Ending the hold on another player's kick didn't help (14 jumps against 6), since most came with no such kick.
   - **The vacuum kicks it** (owner): a vacuum driving into the ball knocks it off at 2.5 tiles/s or more. The vacuum
     itself doesn't react.
   - **Bots never touch it,** for the same reason they never bump the vacuum.
@@ -824,6 +828,24 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
       2075427884 / on 2005369998);
     - with 8 lighters per lamp pose, a frame takes 2.23 ms, against 1.85 ms for the same glows without lighters
       (2.39 ms before the review moved the cone test ahead of the rest of `glowLight`).
+
+### D33 — The ball is a puppy
+- *Resolved 2026-11-02* ([spec](superpowers/specs/2026-11-02-living-ball-design.md)): left alone, the ball wakes up and
+  behaves like a curious puppy (owner), and it is still a ball to play with.
+  - **A kick always wins** (owner): a person's kick sleeps it at once, and it wakes 10 s after the last one. Pushes and
+    touches are fine. The vacuum only startles it.
+  - **A state machine, on the server** (owner's pick over clients also predicting its steering, and over a brain on
+    clients only): `packages/shared/src/objects/ball/mind.ts` runs before `stepBall` in `Lobby.stepBalls`. It only sets a
+    velocity, at or below 2 tiles/s (owner, after playing it), once a push or bounce has slowed to that. Clients keep their position prediction.
+  - **Frights** (owner: the portal is enough for now): rolling through a portal with nobody in sight scares it; kicked
+    through asleep, it wakes up scared. Giving up on a chase ignores that person for 15 s (owner).
+  - **Sound:** one to five FM sounds per emotion (owner); only on state changes, with a 3 s cooldown, under voices. The
+    owner left the sounds themselves to the builder (`objects/ball/cries.ts`).
+  - **Corrections over 0.6 tiles accepted** (owner, 2026-11-02): the spec's bar for an awake ball failed. In 20 simulated
+    five-minute runs there were 240 with the mind on and 23 with it off, the largest 0.78 and 0.88 tiles. Nearly all are a
+    walker bumping a ball playing at their feet, which looks like a shove at 4 to 5 tiles/s (inferred from the numbers).
+  - **Playing is real movement** (owner, after playing a drawn wiggle: "not moving like it is shaking"): it dashes to
+    spots around its person. **No jumps for now** (owner). A scared ball's tremble is a drawn offset, never in its physics.
 
 ## Resolved
 _(none yet)_

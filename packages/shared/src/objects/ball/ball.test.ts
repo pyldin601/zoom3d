@@ -9,6 +9,7 @@ import {
   BALL_RADIUS,
   type Ball,
   type BallBody,
+  type BallTouch,
   ballInfo,
   createBall,
   kickBall,
@@ -238,8 +239,62 @@ describe('implausible bodies (review: bunched poses)', () => {
   });
 });
 
+describe('what a step reports', () => {
+  const noTouch = (): BallTouch => ({ pushed: false, knocked: false, crossedPortal: false });
+
+  test('a person walking into it pushes it', () => {
+    const touch = noTouch();
+    stepBall(ROOM, createBall('b', 2, 2), DT, [person(1.7, 2, 3, 0)], null, touch);
+    expect(touch.pushed).toBe(true);
+    expect(touch.knocked).toBe(false);
+  });
+
+  test('rolling into a still person is not a push', () => {
+    const touch = noTouch();
+    stepBall(ROOM, moving(2, 2, -3, 0), DT, [person(1.6, 2)], null, touch);
+    expect(touch.pushed).toBe(false);
+  });
+
+  test('a vacuum driving into it knocks it, and is not a push', () => {
+    const touch = noTouch();
+    stepBall(ROOM, createBall('b', 2, 2), DT, [vacuum(1.6, 2, 0.6, 0)], null, touch);
+    expect(touch.knocked).toBe(true);
+    expect(touch.pushed).toBe(false);
+  });
+
+  test('a report stays set until the caller clears it', () => {
+    const touch = noTouch();
+    stepBall(ROOM, createBall('b', 2, 2), DT, [person(1.7, 2, 3, 0)], null, touch);
+    stepBall(ROOM, createBall('b', 8, 4), DT, [], null, touch);
+    expect(touch.pushed).toBe(true);
+  });
+
+  test('passing a report changes nothing about the roll', () => {
+    const reported = createBall('b', 2, 2);
+    const plain = createBall('b', 2, 2);
+    expect(stepBall(ROOM, reported, DT, [person(1.7, 2, 3, 0)], null, noTouch())).toBe(
+      stepBall(ROOM, plain, DT, [person(1.7, 2, 3, 0)])
+    );
+    expect(reported).toEqual(plain);
+  });
+});
+
 describe('through portals', () => {
   const { map, portals } = twoDoorways();
+
+  test('rolling through a portal is reported, and rolling short of one is not', () => {
+    const crossing: BallTouch = { pushed: false, knocked: false, crossedPortal: false };
+    const crosser = { ...createBall('b', 2.5, 3.2), vy: 3, heading: Math.PI / 2 };
+    for (let i = 0; i < 20; i++) {
+      stepBall(map, crosser, DT, [], portals, crossing);
+    }
+    expect(crossing.crossedPortal).toBe(true);
+
+    const staying: BallTouch = { pushed: false, knocked: false, crossedPortal: false };
+    const stayer = { ...createBall('b', 2.5, 2.0), vx: 0.5, heading: 0 };
+    stepBall(map, stayer, DT, [], portals, staying);
+    expect(staying.crossedPortal).toBe(false);
+  });
 
   test('a ball rolling south through A comes out of B rolling north', () => {
     const ball = { ...createBall('b', 2.5, 3.2), vy: 3, heading: Math.PI / 2 };

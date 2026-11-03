@@ -9,6 +9,7 @@ import {
   type Ball,
   type BallBody,
   type BallEvent,
+  type BallMood,
   ballMoving,
   createBall,
   type GameMap,
@@ -21,6 +22,11 @@ import {
 
 /** After the local player's last touch, server states are ignored this long: they can't include the touch yet. */
 const HOLD_MS = 300;
+/**
+ * More than a push's latency can explain: someone else's kick, or a bounce off a body only the server has, has moved
+ * the ball. Holding on would leave it to snap across the gap when the player finally stops touching it.
+ */
+const PUSH_DRIFT_TILES = 1;
 /** A kick holds until the server answers, however slow the link; this is for an answer that never comes. */
 const ANSWER_WAIT_MS = 1000;
 /** A server state is about this old when it arrives, so it is advanced this far before comparing. */
@@ -38,6 +44,10 @@ const NO_BODIES: readonly BallBody[] = [];
 export interface BallPrediction {
   /** The ball as drawn, or null before a welcome with one. The same object from frame to frame. */
   readonly ball: Ball | null;
+  /** The mood to show, as of the last step: the server's, except that a local kick sleeps it until it is answered. */
+  readonly mood: BallMood;
+  /** Dev only: shows this mood whatever the server says, until lifted with null. */
+  forceMood(mood: BallMood | null): void;
   /** A welcome's ball (or none): adopts it outright, dropping any other id. */
   reset(info: ObjectInfo | null): void;
   /** A server state for the ball; `selfId` recognises the local player's own kick echo. */
@@ -67,6 +77,9 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
   let lastKickAt = Number.NEGATIVE_INFINITY;
   /** The local kick whose echo hasn't come back yet. */
   let unechoed: number | null = null;
+  let serverMood: BallMood = 'asleep';
+  let shownMood: BallMood = 'asleep';
+  let forcedMood: BallMood | null = null;
 
   /** Where `from` appears from the ball, turned into the ball's frame (the identity without portals). */
   const seenFromBall = (wiring: Portals | null, from: { x: number; y: number }): Apparent => {
@@ -102,6 +115,9 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
     Math.hypot(self.vx, self.vy) > STILL_SPEED &&
     Math.hypot(ball.x - self.x, ball.y - self.y) < self.radius + BALL_RADIUS + 1e-6;
 
+  const pushDriftedFrom = (b: Ball, s: Ball) =>
+    unechoed === null && Math.hypot(s.x - b.x, s.y - b.y) > PUSH_DRIFT_TILES;
+
   const easeOntoServer = (b: Ball, s: Ball, dt: number) => {
     const error = Math.hypot(s.x - b.x, s.y - b.y);
     const atRest = !ballMoving(b) && !ballMoving(s);
@@ -122,6 +138,14 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
       return ball;
     },
 
+    get mood() {
+      return forcedMood ?? shownMood;
+    },
+
+    forceMood(mood) {
+      forcedMood = mood;
+    },
+
     reset(info) {
       ball = info && {
         ...createBall(info.id, info.x, info.y),
@@ -133,6 +157,8 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
       server = ball && { ...ball };
       holdUntil = Number.NEGATIVE_INFINITY;
       unechoed = null;
+      serverMood = info?.mood ?? 'asleep';
+      shownMood = serverMood;
     },
 
     server(m, selfId, now) {
@@ -142,6 +168,7 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
       server ??= createBall(m.id, m.x, m.y);
       Object.assign(server, { x: m.x, y: m.y, vx: m.vx ?? 0, vy: m.vy ?? 0, heading: m.angle });
       stepBall(map, server, LATENCY_S, NO_BODIES, portals());
+      serverMood = m.mood ?? 'asleep';
       if (m.event === 'kick' && m.by === selfId && unechoed !== null && (m.k ?? -1) >= unechoed) {
         unechoed = null;
         holdUntil = now;
@@ -156,6 +183,7 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
     },
 
     step(dt, now, self) {
+      shownMood = unechoed !== null && now < holdUntil ? 'asleep' : serverMood;
       if (!ball) {
         return null;
       }
@@ -166,7 +194,7 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
       }
       if (server) {
         stepBall(map, server, dt, NO_BODIES, wiring);
-        if (now >= holdUntil) {
+        if (now >= holdUntil || pushDriftedFrom(ball, server)) {
           easeOntoServer(ball, server, dt);
         }
       }
@@ -186,6 +214,7 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
         return null;
       }
       lastKickAt = now;
+      shownMood = 'asleep';
       kicks++;
       unechoed = kicks;
       holdUntil = now + ANSWER_WAIT_MS;
