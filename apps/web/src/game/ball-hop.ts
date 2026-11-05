@@ -2,12 +2,12 @@
 // hop can't fight the physics and costs nothing on the wire. Allocates nothing.
 import type { BallMood } from '@zoom3d/shared';
 
-/** Low, for a floaty hop that reads clearly at the game's frame size. */
-const GRAVITY_TILES_PER_S2 = 3;
+/** The owner found 3 moon-like. */
+const GRAVITY_TILES_PER_S2 = 14;
 /** The highest it goes: its top stays under the lamps at 0.85, which the shadows' geometry relies on. */
 export const KICK_HOP_TILES = 0.35;
 export const PLAY_HOP_TILES = 0.15;
-export const PLAY_HOP_GAP_S = 0.3;
+export const PLAY_HOP_GAP_S = 0.15;
 
 export interface BallHop {
   liftTiles: number;

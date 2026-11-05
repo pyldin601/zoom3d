@@ -865,8 +865,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Drawn only** (owner's pick over real height in the physics): the height lives in the client (`game/ball-hop.ts`),
     with no server, protocol or `stepBall` change. A ball in mid-air collides as on the floor, and players' hops aren't
     quite in step.
-  - **Values, for the owner to tune by playing:** kick 0.35 tiles, playing 0.15 tiles with 0.3 s between hops, gravity 3
-    tiles/s². A launch aims at an apex rather than adding speed, so repeated kicks can't lift the ball's top past the 0.85
+  - **Values, for the owner to tune by playing:** kick 0.35 tiles, playing 0.15 tiles with 0.15 s between hops, gravity 14
+    tiles/s² (owner: 3 was "like on the moon"). A launch aims at an apex rather than adding speed, so repeated kicks can't lift the ball's top past the 0.85
     lamps.
   - **The vacuum's knock hops it too** (builder): it arrives as a `kick` event like any other.
   - **Any voxel object can be lifted:** `VoxelInstance.lift` moves its faces, floor image, lighting and lamp shadow.

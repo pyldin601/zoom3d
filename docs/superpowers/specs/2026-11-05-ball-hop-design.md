@@ -54,9 +54,9 @@ The ball is a puppy, and a jump shows how it feels in a way rolling can't. Kicki
 | | Height | Gap |
 |---|---|---|
 | Kick | 0.35 tiles | one hop |
-| Playing | 0.15 tiles | 0.3 s between hops |
+| Playing | 0.15 tiles | 0.15 s between hops |
 
-Gravity sets how long a hop lasts: about 3 tiles/s² gives roughly 1 s for a kick and 0.6 s for a play hop. A bottom face
+Gravity sets how long a hop lasts: about 14 tiles/s² gives roughly 0.45 s for a kick and 0.3 s for a play hop (3 looked like the moon). A bottom face
 shows only once it is above the eye at 0.5, so the ball's underside shows just near the top of a kick hop. The bottom faces
 already exist for the mirror.
 

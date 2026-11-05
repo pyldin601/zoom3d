@@ -57,6 +57,13 @@ describe('a kick', () => {
     expect(hop.liftTiles).toBe(0);
   });
 
+  test('is quick: back on the floor within half a second', () => {
+    const hop = createBallHop();
+    kickBallHop(hop);
+    run(hop, 0.5, 'asleep');
+    expect(hop.liftTiles).toBe(0);
+  });
+
   test('again and again in mid-air never rises past the apex', () => {
     const hop = createBallHop();
     let highest = 0;
@@ -85,6 +92,10 @@ describe('playing', () => {
     for (const { apex } of hops) {
       expect(apex).toBeCloseTo(PLAY_HOP_TILES, 1);
     }
+  });
+
+  test('hops at a puppy’s pace: at least two a second', () => {
+    expect(hopsWhilePlaying(3).length).toBeGreaterThanOrEqual(6);
   });
 
   test('waits the gap on the floor between hops', () => {
