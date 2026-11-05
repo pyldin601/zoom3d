@@ -12,7 +12,7 @@
     "@mediapipe/tasks-vision": "1.1.1",
     "@sentry/browser": "11.8.0",
     "@zoom3d/shared": "workspace:*",
-    "livekit-client": "2.22.4"
+    "livekit-client": "2.23.0"
   },
   "devDependencies": {
     "happy-dom": "21.0.1"
