@@ -3,8 +3,10 @@ import { describe, expect, test } from 'vitest';
 import {
   type BallHop,
   createBallHop,
+  dropBallHop,
   KICK_HOP_TILES,
   kickBallHop,
+  knockBallHop,
   PLAY_HOP_GAP_S,
   PLAY_HOP_TILES,
   REBOUND_HEIGHT_SHARE,
@@ -64,7 +66,7 @@ describe('a kick', () => {
     kickBallHop(hop);
     expect(run(hop, 2, 'asleep')).toBeCloseTo(KICK_HOP_TILES, 1);
     expect(hop.liftTiles).toBe(0);
-    expect(hop.upSpeed).toBe(0);
+    expect(hop.upTilesPerS).toBe(0);
   });
 
   test('is quick: its first landing comes within half a second', () => {
@@ -89,9 +91,53 @@ describe('a kick', () => {
     const hop = createBallHop();
     hop.liftTiles = KICK_HOP_TILES;
     kickBallHop(hop);
-    expect(hop.upSpeed).toBe(0);
+    expect(hop.upTilesPerS).toBe(0);
     run(hop, 2, 'asleep');
     expect(hop.liftTiles).toBe(0);
+  });
+});
+
+describe('the vacuum’s knock', () => {
+  test('hops a resting ball', () => {
+    const hop = createBallHop();
+    knockBallHop(hop);
+    expect(run(hop, 1, 'asleep')).toBeCloseTo(KICK_HOP_TILES, 1);
+  });
+
+  test('knocking every tick lets it come down between hops instead of hovering', () => {
+    const hop = createBallHop();
+    let launchesFromRest = 0;
+    let framesDown = 0;
+    for (let frame = 0; frame < 180; frame++) {
+      if (frame % 4 === 0) {
+        const resting = hop.liftTiles === 0 && hop.upTilesPerS === 0;
+        knockBallHop(hop);
+        launchesFromRest += resting && hop.upTilesPerS > 0 ? 1 : 0;
+      }
+      stepBallHop(hop, DT, 'asleep');
+      framesDown += hop.liftTiles === 0 ? 1 : 0;
+    }
+    expect(launchesFromRest).toBeGreaterThanOrEqual(2);
+    expect(launchesFromRest).toBeLessThanOrEqual(3);
+    expect(framesDown).toBeGreaterThan(0);
+  });
+});
+
+describe('a dropped hop', () => {
+  test('stops rising, falls and rebounds no higher than where it was dropped', () => {
+    const hop = createBallHop();
+    kickBallHop(hop);
+    run(hop, 0.05, 'asleep');
+    const droppedAt = hop.liftTiles;
+    dropBallHop(hop);
+    expect(run(hop, 2, 'asleep')).toBeLessThanOrEqual(droppedAt);
+    expect(hop.liftTiles).toBe(0);
+  });
+
+  test('leaves a resting ball resting', () => {
+    const hop = createBallHop();
+    dropBallHop(hop);
+    expect(run(hop, 1, 'asleep')).toBe(0);
   });
 });
 
@@ -128,7 +174,7 @@ describe('the spring', () => {
       stepBallHop(hop, 30, 'asleep');
       expect(hop.liftTiles).toBe(0);
     }
-    expect(hop.upSpeed).toBe(0);
+    expect(hop.upTilesPerS).toBe(0);
   });
 });
 

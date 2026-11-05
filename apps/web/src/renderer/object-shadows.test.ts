@@ -10,7 +10,7 @@ import {
   type Lighting,
   REFLECTION_LAMPS,
 } from './lighting';
-import { objectSeenShare, shadeFloor, shadowReach } from './object-shadows';
+import { objectSeenShare, shadeFloor, shadowBounds, shadowReach } from './object-shadows';
 import { portalHall } from './test-portals';
 import { buildModel, type VoxelInstance } from './voxels';
 
@@ -33,6 +33,37 @@ describe('objectSeenShare', () => {
     test('its shadow falls further from it', () => {
       expect(objectSeenShare(block, lamp, 7.6, 5)).toBe(1);
       expect(objectSeenShare(lifted, lamp, 7.6, 5)).toBeLessThan(1);
+    });
+
+    test('its shadow lies within its bounds, even close under the lamp', () => {
+      const bounds = { left: 0, right: 0, top: 0, bottom: 0 };
+      for (const away of [0.05, 0.2, 0.4, 1, 2]) {
+        for (const lift of [0.1, 0.25, 0.35]) {
+          const v: VoxelInstance = { ...block, x: lamp.x + away, lift };
+          shadowBounds(v, lamp, bounds);
+          for (let y = v.y - 3; y <= v.y + 3; y += 0.05) {
+            for (let x = v.x - 3; x <= v.x + 3; x += 0.05) {
+              const inside = x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom;
+              if (!inside) {
+                expect(objectSeenShare(v, lamp, x, y), `${away} ${lift} at ${x}, ${y}`).toBe(1);
+              }
+            }
+          }
+        }
+      }
+    });
+
+    test('an empty model blocks nothing at any lift', () => {
+      const empty: VoxelInstance = {
+        model: buildModel({ x: 8, y: 8, z: 8 }, 0.05, () => 0),
+        x: 6,
+        y: 5,
+        angle: 0,
+        lift: 0,
+      };
+      for (let lift = 0.001; lift < 0.4; lift += 0.001) {
+        expect(objectSeenShare({ ...empty, lift }, lamp, 6.05, 5.02), `${lift}`).toBe(1);
+      }
     });
 
     test('its reach stays finite at the highest hop', () => {

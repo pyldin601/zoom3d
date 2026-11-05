@@ -870,7 +870,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     lamps.
   - **It springs** (owner, 2026-11-05, over squash and stretch): each landing rebounds to half the height, until a
     rebound would be under 0.02 tiles. A playing ball waits its 0.15 s gap once settled.
-  - **The vacuum's knock hops it too** (builder): it arrives as a `kick` event like any other.
+  - **The vacuum's knock hops it too** (builder), but only from rest: it arrives as a `kick` event on every tick the
+    vacuum keeps shoving the ball, which would otherwise hold it hovering. A kick the server refuses stops its hop rising.
   - **Any voxel object can be lifted:** `VoxelInstance.lift` moves its faces, floor image, lighting and lamp shadow.
     A lift of 0 draws as before, pixel for pixel. No hop sound yet (builder).
 

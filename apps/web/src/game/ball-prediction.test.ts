@@ -440,6 +440,28 @@ describe('the hop', () => {
     expect(stepFor(p, 5)).toBe(0);
   });
 
+  test('the vacuum knocking it every tick does not keep it in the air', () => {
+    const p = predicted();
+    let landed = false;
+    for (let tick = 0; tick < 45; tick++) {
+      p.server(state(3, 3.5, { event: 'kick' }), 'me', 0);
+      for (let i = 0; i < 4; i++) {
+        p.step(DT, 0, null);
+        landed ||= p.lift === 0;
+      }
+    }
+    expect(landed).toBe(true);
+  });
+
+  test('a refused kick stops the hop rising', () => {
+    const p = predicted();
+    const k = p.kick({ x: 2.6, y: 3.5 }, 0, 0);
+    stepFor(p, 3);
+    const refusedAt = p.lift;
+    p.refused(k ?? 0, 50);
+    expect(stepFor(p, 120)).toBeLessThanOrEqual(refusedAt);
+  });
+
   test('a playing ball hops', () => {
     const p = predicted();
     p.server(state(3, 3.5, { mood: 'playing' }), 'me', 0);

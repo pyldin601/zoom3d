@@ -19,7 +19,7 @@ import {
   type Portals,
   stepBall,
 } from '@zoom3d/shared';
-import { createBallHop, kickBallHop, stepBallHop } from './ball-hop';
+import { createBallHop, dropBallHop, kickBallHop, knockBallHop, stepBallHop } from './ball-hop';
 
 /** After the local player's last touch, server states are ignored this long: they can't include the touch yet. */
 const HOLD_MS = 300;
@@ -84,6 +84,7 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
   let shownMood: BallMood = 'asleep';
   let forcedMood: BallMood | null = null;
   let hop = createBallHop();
+  const moodShown = () => forcedMood ?? shownMood;
 
   /** Where `from` appears from the ball, turned into the ball's frame (the identity without portals). */
   const seenFromBall = (wiring: Portals | null, from: { x: number; y: number }): Apparent => {
@@ -143,7 +144,7 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
     },
 
     get mood() {
-      return forcedMood ?? shownMood;
+      return moodShown();
     },
 
     get lift() {
@@ -178,8 +179,10 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
       Object.assign(server, { x: m.x, y: m.y, vx: m.vx ?? 0, vy: m.vy ?? 0, heading: m.angle });
       stepBall(map, server, LATENCY_S, NO_BODIES, portals());
       serverMood = m.mood ?? 'asleep';
-      // The local player's own kick already hopped when it was made. The vacuum's knock has no `by`.
-      if (m.event === 'kick' && (m.by === undefined || m.by !== selfId)) {
+      // The vacuum's knock has no `by`. The local player's own kick already hopped when it was made.
+      if (m.event === 'kick' && m.by === undefined) {
+        knockBallHop(hop);
+      } else if (m.event === 'kick' && m.by !== selfId) {
         kickBallHop(hop);
       }
       if (m.event === 'kick' && m.by === selfId && unechoed !== null && (m.k ?? -1) >= unechoed) {
@@ -192,6 +195,7 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
       if (unechoed !== null && k >= unechoed) {
         unechoed = null;
         holdUntil = now;
+        dropBallHop(hop);
       }
     },
 
@@ -200,7 +204,7 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
       if (!ball) {
         return null;
       }
-      stepBallHop(hop, dt, forcedMood ?? shownMood);
+      stepBallHop(hop, dt, moodShown());
       const wiring = portals();
       const body = self && bodySeenFromBall(wiring, self);
       if (body && pushing(body)) {

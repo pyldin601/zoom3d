@@ -1,16 +1,7 @@
 // The other people and the world objects as the room frame shows them: their interpolated positions, for the audio
 // and the interest rule, and the discs, name labels and voxel models the renderer draws. Each peer keeps one record
 // from frame to frame, so a full room allocates nothing per frame (AGENTS.md: never block the render loop).
-import {
-  type Apparent,
-  type Ball,
-  type BallMood,
-  INTERP_DELAY_MS,
-  isDrink,
-  type PlayerState,
-  type Point,
-  type Portals,
-} from '@zoom3d/shared';
+import { type Apparent, INTERP_DELAY_MS, isDrink, type PlayerState, type Point, type Portals } from '@zoom3d/shared';
 import { nearTier } from '../net/peer-delay';
 import { objectKey, type RemotePeer, type Session } from '../net/session';
 import { type Bob, createBob } from '../renderer/bob';
@@ -20,6 +11,7 @@ import { VACUUM_MODEL } from '../renderer/models/vacuum';
 import { gesturePose } from '../renderer/sip';
 import { ringRgb, type Sprite } from '../renderer/sprites';
 import type { VoxelInstance } from '../renderer/voxels';
+import type { BallPrediction } from './ball-prediction';
 import { ballShake } from './ball-shake';
 
 /** A peer's name label and automap dot. */
@@ -60,15 +52,7 @@ export interface RemoteWorld {
    * one object not drawn from its buffer: it is where the client's prediction has it, in the present (ball spec §3.3).
    * `portals` (the room's wiring while they are on) decides, as on the server, which peers are near.
    */
-  sample(
-    session: Session,
-    player: Point,
-    now: number,
-    ball?: Ball | null,
-    portals?: Portals | null,
-    ballMood?: BallMood,
-    ballLift?: number
-  ): void;
+  sample(session: Session, player: Point, now: number, ball?: ShownBall | null, portals?: Portals | null): void;
   /**
    * Builds this frame's sprites, labels and voxels from the last sample; `dt` (seconds) walks the bobs. `apparent`
    * places the labels; a person it doesn't list is labelled where they are.
@@ -84,9 +68,17 @@ interface PeerRecord {
   lighter: { key: string; x: number; y: number };
 }
 
+/** The ball as this client shows it: where it is predicted, its mood and how high it is drawn (BallPrediction). */
+export type ShownBall = Pick<BallPrediction, 'ball' | 'mood' | 'lift'>;
+
+/** An object's pose to draw, with how high above the floor (only the ball's hop lifts one). */
+interface ObjectPose extends PlayerState {
+  lift: number;
+}
+
 export function createRemoteWorld(): RemoteWorld {
   const positions = new Map<string, Point>();
-  const objectPoses = new Map<string, PlayerState>();
+  const objectPoses = new Map<string, ObjectPose>();
   /** Each object's objectKey, made once rather than every frame. */
   const objectKeys = new Map<string, string>();
   const records = new Map<string, PeerRecord>();
@@ -95,6 +87,7 @@ export function createRemoteWorld(): RemoteWorld {
   const lighters: LighterSource[] = [];
   const voxels: VoxelInstance[] = [];
   const at = { x: 0, y: 0, angle: 0 };
+  let atLift = 0;
 
   /** Drops the positions of objects and peers the session no longer has. */
   const forgetGone = (s: Session) => {
@@ -112,8 +105,8 @@ export function createRemoteWorld(): RemoteWorld {
   };
 
   const shake = { x: 0, y: 0 };
-  let ballLift = 0;
-  const sampleObjects = (s: Session, now: number, ball: Ball | null, ballMood: BallMood) => {
+  const sampleObjects = (s: Session, now: number, shown: ShownBall | null) => {
+    const ball = shown?.ball ?? null;
     // Objects come every tick; each peer is drawn as late as its updates need (6d spec §2.3).
     const drawnAt = now - INTERP_DELAY_MS;
     for (const obj of s.objects.values()) {
@@ -123,11 +116,14 @@ export function createRemoteWorld(): RemoteWorld {
           continue;
         }
         // Its pattern rolls in world axes (models/ball.ts), so the model itself never turns.
-        ballShake(ballMood, now, shake);
+        ballShake(shown?.mood ?? 'asleep', now, shake);
         at.x = ball.x + shake.x;
         at.y = ball.y + shake.y;
         at.angle = 0;
-      } else if (!obj.buffer.sample(drawnAt, at)) {
+        atLift = shown?.lift ?? 0;
+      } else if (obj.buffer.sample(drawnAt, at)) {
+        atLift = 0;
+      } else {
         continue;
       }
       let key = objectKeys.get(id);
@@ -140,8 +136,9 @@ export function createRemoteWorld(): RemoteWorld {
         pose.x = at.x;
         pose.y = at.y;
         pose.angle = at.angle;
+        pose.lift = atLift;
       } else {
-        const fresh = { x: at.x, y: at.y, angle: at.angle };
+        const fresh = { x: at.x, y: at.y, angle: at.angle, lift: atLift };
         objectPoses.set(key, fresh);
         positions.set(key, fresh);
       }
@@ -230,7 +227,7 @@ export function createRemoteWorld(): RemoteWorld {
       v.x = pose.x;
       v.y = pose.y;
       v.angle = pose.angle;
-      v.lift = obj.info.kind === 'ball' ? ballLift : 0;
+      v.lift = pose.lift;
       voxels[n++] = v;
     }
     voxels.length = n;
@@ -243,10 +240,9 @@ export function createRemoteWorld(): RemoteWorld {
     labels,
     voxels,
     lighters,
-    sample(s, player, now, ball = null, portals = null, ballMood = 'asleep', lift = 0) {
-      ballLift = lift;
+    sample(s, player, now, ball = null, portals = null) {
       forgetGone(s);
-      sampleObjects(s, now, ball, ballMood);
+      sampleObjects(s, now, ball);
       samplePeers(s, player, now, portals);
     },
     collect(s, media, now, dt, apparent) {

@@ -195,8 +195,8 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   were. It sees people where they appear from it (one portal deep), and its steering slides along walls, never into them.
   A kick goes through `kickBallMind` and always wins. A scared ball's tremble is drawn (`game/ball-shake.ts`), never
   added to its position; playing is real dashes. Hops (D34) are drawn too (`game/ball-hop.ts`): anything that projects a
-  voxel object or tests sight past it honours `VoxelInstance.lift`. Its cries are data (`objects/ball/cries.ts`); the server picks one and everyone plays it. Dev:
-  `__game.ballCry('yip', 0)` and `__game.forceBallMood('scared')`.
+  voxel object or tests sight past it honours `VoxelInstance.lift`. Its cries are data (`objects/ball/cries.ts`); the
+  server picks one and everyone plays it. Dev: `__game.ballCry('yip', 0)` and `__game.forceBallMood('scared')`.
 - Lighter (D31, spec `docs/superpowers/specs/2026-10-31-lighter-design.md`):
   - **Item:** key 9 holds it. It is a `HeldItem` with no gestures, so `isDrink` guards every sip and cheers.
   - **Light:** a glow all round the holder with its own `reach`, plus a pooled shadow table refilled only per floor
