@@ -71,7 +71,7 @@
       #ui .lobby .picture-menu button, #ui .lobby .device-menu button { display: block; width: 100%; background: none; border: 0; border-radius: 0; color: inherit; text-align: left; padding: 0.35em 0.8em; overflow: hidden; text-overflow: ellipsis; }
       /* A fixed check column keeps every device name aligned, ticked or not. */
       #ui .lobby .device-menu button::before { content: ''; display: inline-block; width: 1.3em; }
-      #ui .lobby .device-menu [aria-checked="true"]::before { content: '✓'; }
+      #ui .lobby .device-menu [aria-checked="true"]::before { content: '✓'; content: '✓' / ''; }
       #ui .lobby .devices { display: flex; gap: 0.4em; justify-content: center; margin-bottom: 0.7em; }
       #ui .lobby .split { position: relative; display: flex; }
       #ui .lobby .split > button { padding: 0.25em 0.4em; display: grid; place-items: center; }
