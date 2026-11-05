@@ -43,7 +43,7 @@ export function footprintRadius(model: VoxelModel): number {
  */
 export function shadowReach(v: VoxelInstance, l: Light): number {
   const r = footprintRadius(v.model);
-  const h = v.model.height;
+  const h = v.model.height + v.lift;
   const d = Math.sqrt((v.x - l.x) * (v.x - l.x) + (v.y - l.y) * (v.y - l.y));
   return Math.min(r + ((d + r) * h) / (l.z - h), l.radius * REFLECTION_CUT_REACH + r);
 }
@@ -72,10 +72,12 @@ export function objectSeenShare(v: VoxelInstance, l: Light, px: number, py: numb
 /**
  * Whether the sight line from the floor at (px, py) up to (sx, sy, sz) passes under the top of one of `v`'s voxel
  * columns. It rises as it goes, so in each column it crosses it is lowest where it enters: walked column by column
- * through the model's grid (Amanatides–Woo), only while it is still below the model's height.
+ * through the model's grid (Amanatides–Woo), only from where it reaches the lifted model's underside (it passes clear
+ * below that) until it is over the model's top. Each column counts as solid from the lift up to its top.
  */
 function blocked(v: VoxelInstance, px: number, py: number, sx: number, sy: number, sz: number): boolean {
   const { voxel, sizeX, sizeY, tops, height } = v.model;
+  const { lift } = v;
   const cos = Math.cos(v.angle);
   const sin = Math.sin(v.angle);
   // Into the model's grid: relative to its centre, turned by −angle, in voxels, with columns from 0.
@@ -88,8 +90,8 @@ function blocked(v: VoxelInstance, px: number, py: number, sx: number, sy: numbe
   const dx = (bx * cos + by * sin) / voxel + sizeX / 2 - x0;
   const dy = (-bx * sin + by * cos) / voxel + sizeY / 2 - y0;
   // The line's height is sz · t; past `last` it is over every column.
-  let first = 0;
-  let last = height / sz;
+  let first = lift / sz;
+  let last = (height + lift) / sz;
   // Clipped to the grid's box, x then y. Written out: a loop over [start, step, size] tuples allocates per call.
   if (dx === 0) {
     if (x0 < 0 || x0 >= sizeX) {
@@ -120,7 +122,7 @@ function blocked(v: VoxelInstance, px: number, py: number, sx: number, sy: numbe
   let nextY = dy === 0 ? Number.POSITIVE_INFINITY : ((dy > 0 ? cy + 1 : cy) - y0) / dy;
   let t = first;
   while (t <= last && cx >= 0 && cy >= 0 && cx < sizeX && cy < sizeY) {
-    if (sz * t < (tops[cy * sizeX + cx] as number)) {
+    if (sz * t < lift + (tops[cy * sizeX + cx] as number)) {
       return true;
     }
     if (nextX < nextY) {
@@ -226,7 +228,7 @@ function shadeBox(
   inView: (x: number, y: number, reach: number) => boolean
 ): void {
   const r = footprintRadius(v.model);
-  const h = v.model.height;
+  const h = v.model.height + v.lift;
   const reach = shadowReach(v, l);
   const awayX = v.x - l.x;
   const awayY = v.y - l.y;

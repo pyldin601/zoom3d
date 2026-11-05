@@ -22,6 +22,24 @@ const BLOCK = buildModel({ x: 8, y: 8, z: 8 }, 0.05, () => GREY);
 const block: VoxelInstance = { model: BLOCK, x: 6, y: 5, angle: 0, lift: 0 };
 
 describe('objectSeenShare', () => {
+  describe('of a lifted object', () => {
+    const lifted: VoxelInstance = { ...block, lift: 0.35 };
+
+    test('a floor point just behind it sees past under it', () => {
+      expect(objectSeenShare(block, lamp, 6.21, 5)).toBe(0);
+      expect(objectSeenShare(lifted, lamp, 6.21, 5)).toBe(1);
+    });
+
+    test('its shadow falls further from it', () => {
+      expect(objectSeenShare(block, lamp, 7.6, 5)).toBe(1);
+      expect(objectSeenShare(lifted, lamp, 7.6, 5)).toBeLessThan(1);
+    });
+
+    test('its reach stays finite at the highest hop', () => {
+      expect(Number.isFinite(shadowReach(lifted, lamp))).toBe(true);
+    });
+  });
+
   test('a point on the lamp’s side sees all of it', () => {
     expect(objectSeenShare(block, lamp, 5.5, 5)).toBe(1);
   });
