@@ -223,7 +223,7 @@ export function createRemoteWorld(): RemoteWorld {
       if (!pose) {
         continue;
       }
-      const v = voxels.at(n) ?? { model: VACUUM_MODEL, x: 0, y: 0, angle: 0 };
+      const v = voxels.at(n) ?? { model: VACUUM_MODEL, x: 0, y: 0, angle: 0, lift: 0 };
       v.model = obj.info.kind === 'ball' ? BALL_MODEL : VACUUM_MODEL;
       v.x = pose.x;
       v.y = pose.y;

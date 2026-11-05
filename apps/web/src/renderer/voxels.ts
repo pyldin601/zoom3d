@@ -57,6 +57,8 @@ export interface VoxelInstance {
   y: number;
   /** Radians, like a player's: the model's +x faces (cos, sin). */
   angle: number;
+  /** Tiles above the floor. */
+  lift: number;
 }
 
 /** A model's size in voxels along its x (front), y and z (up). */
@@ -80,7 +82,7 @@ const SHADE_BOTTOM = 0.5;
 
 /**
  * The six faces a voxel can show: normal, shade and corners on the unit cube. Their order is lighting.ts's DIR_* (top,
- * front, back, right, left, bottom). The eye-height camera never sees a bottom; the floor's mirror does.
+ * front, back, right, left, bottom). The eye sees a bottom only when lifted above it; the floor's mirror always does.
  */
 const FACES: readonly { normal: readonly [number, number, number]; shade: number; corners: readonly number[] }[] = [
   { normal: [0, 0, 1], shade: SHADE_TOP, corners: [0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1] },
@@ -216,7 +218,7 @@ export function renderVoxel(
  * (the lighters'), then the ambient share of each face's shade.
  */
 function lightDirections(lighting: Lighting, v: VoxelInstance, glows: readonly Glow[]): void {
-  const z = v.model.height / 2;
+  const z = v.model.height / 2 + v.lift;
   directLight(lighting, v.x, v.y, z, v.angle, directionLight);
   for (const g of glows) {
     addGlowLight(g, v, z);
@@ -262,11 +264,12 @@ function addGlowOnFace(g: Glow, dir: number, k: number): void {
 /**
  * Projects the faces turned towards the eye and wholly in front of it: their corners into `screenCorners`, their mean
  * depths into `faceDepths`, and the faces themselves into `faceOrder`, far to near. 'mirrored' is the object's image
- * in the floor: upside down under it, every height and normal negated.
+ * in the floor: upside down under it, every height (lift included) and normal negated.
  */
 function projectFaces(view: View, v: VoxelInstance, side: 'upright' | 'mirrored'): void {
   const { dirX, dirY, planeX, planeY, invDet, proj, halfWidth, half } = view;
   const { corners, normals, faceCount } = v.model;
+  const { lift } = v;
   const cos = Math.cos(v.angle);
   const sin = Math.sin(v.angle);
   const up = side === 'upright' ? 1 : -1;
@@ -281,7 +284,7 @@ function projectFaces(view: View, v: VoxelInstance, side: 'upright' | 'mirrored'
     const nz = (normals[f * 3 + 2] as number) * up;
     const toEyeX = view.x - (v.x + firstX * cos - firstY * sin);
     const toEyeY = view.y - (v.y + firstX * sin + firstY * cos);
-    const toEyeZ = EYE_HEIGHT - (corners[c + 2] as number) * up;
+    const toEyeZ = EYE_HEIGHT - ((corners[c + 2] as number) + lift) * up;
     const turnedAway = (nx * cos - ny * sin) * toEyeX + (nx * sin + ny * cos) * toEyeY + nz * toEyeZ <= 0;
     if (turnedAway) {
       continue;
@@ -300,7 +303,8 @@ function projectFaces(view: View, v: VoxelInstance, side: 'upright' | 'mirrored'
         break;
       }
       screenCorners[f * 8 + k * 2] = halfWidth * (1 + lateral / depth);
-      screenCorners[f * 8 + k * 2 + 1] = half + (proj * (EYE_HEIGHT - (corners[c + k * 3 + 2] as number) * up)) / depth;
+      screenCorners[f * 8 + k * 2 + 1] =
+        half + (proj * (EYE_HEIGHT - ((corners[c + k * 3 + 2] as number) + lift) * up)) / depth;
       depthSum += depth;
     }
     if (tooNear) {

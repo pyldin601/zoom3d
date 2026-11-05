@@ -95,9 +95,12 @@ describe('playing', () => {
 });
 
 describe('other moods', () => {
-  test.each(['asleep', 'wandering', 'approaching', 'following', 'scared'] as const)('%s does not hop by itself', (mood) => {
-    expect(run(createBallHop(), 2, mood)).toBe(0);
-  });
+  test.each(['asleep', 'wandering', 'approaching', 'following', 'scared'] as const)(
+    '%s does not hop by itself',
+    (mood) => {
+      expect(run(createBallHop(), 2, mood)).toBe(0);
+    }
+  );
 
   test('a hop finishes after the mood changes', () => {
     const hop = createBallHop();

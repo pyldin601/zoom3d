@@ -19,7 +19,7 @@ const GREY = rgb(0x70, 0x70, 0x70);
 const lamp: Light = { x: 5, y: 5, z: 0.85, radius: 4.5, r: 1, g: 1, b: 1 };
 /** 8 × 8 × 8 voxels of 0.05: 0.4 tiles on a side, as tall as the ball. */
 const BLOCK = buildModel({ x: 8, y: 8, z: 8 }, 0.05, () => GREY);
-const block: VoxelInstance = { model: BLOCK, x: 6, y: 5, angle: 0 };
+const block: VoxelInstance = { model: BLOCK, x: 6, y: 5, angle: 0, lift: 0 };
 
 describe('objectSeenShare', () => {
   test('a point on the lamp’s side sees all of it', () => {
@@ -59,8 +59,8 @@ describe('objectSeenShare', () => {
   test('turning the object turns its shadow', () => {
     // 0.1 deep, 0.5 wide, 0.5 tall: across the lamp's light at angle 0, along it at a quarter turn.
     const slab = buildModel({ x: 2, y: 10, z: 10 }, 0.05, () => GREY);
-    const across = objectSeenShare({ model: slab, x: 6, y: 5, angle: 0 }, lamp, 6.4, 5.2);
-    const along = objectSeenShare({ model: slab, x: 6, y: 5, angle: Math.PI / 2 }, lamp, 6.4, 5.2);
+    const across = objectSeenShare({ model: slab, x: 6, y: 5, angle: 0, lift: 0 }, lamp, 6.4, 5.2);
+    const along = objectSeenShare({ model: slab, x: 6, y: 5, angle: Math.PI / 2, lift: 0 }, lamp, 6.4, 5.2);
     expect(across).toBe(0);
     expect(along).toBeGreaterThan(0.5);
   });
@@ -126,7 +126,7 @@ describe('shadeFloor', () => {
   };
 
   test('a shadow cuts the floor’s reflection of the lamp wherever the lamp lights the floor, however faintly', () => {
-    const ball: VoxelInstance = { model: BLOCK, x: 12.6, y: 2.5, angle: 0 };
+    const ball: VoxelInstance = { model: BLOCK, x: 12.6, y: 2.5, angle: 0, lift: 0 };
     const { floorLampSeen } = shade(ball);
     let cut = 0;
     for (const { x, y, slot } of cells()) {
@@ -140,7 +140,7 @@ describe('shadeFloor', () => {
   });
 
   test('past the lamp’s light the cut fades out smoothly, never stopping at an edge', () => {
-    const ball: VoxelInstance = { model: BLOCK, x: 12.0, y: 2.5, angle: 0 };
+    const ball: VoxelInstance = { model: BLOCK, x: 12.0, y: 2.5, angle: 0, lift: 0 };
     const { floorLampSeen } = shade(ball);
     // Along the shadow's middle, its cut share of the reflection, from the ball outwards.
     const along = cells()
@@ -170,7 +170,7 @@ describe('shadeFloor', () => {
     const long = litHall(4.5);
     const shadeHall = (lit: Lighting, x: number, y: number) => {
       const tables = { floor: lit.floor.slice(), floorLampSeen: lit.floorLampSeen.slice(), touch: () => {} };
-      shadeFloor(lit, [{ model: BLOCK, x, y, angle: 0 }], GREY, tables, () => true);
+      shadeFloor(lit, [{ model: BLOCK, x, y, angle: 0, lift: 0 }], GREY, tables, () => true);
       return tables.floor;
     };
     /** How many floor cells over tiles [x0, x1) × [y0, y1) are darker than `long` baked them. */

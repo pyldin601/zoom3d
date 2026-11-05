@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { createView, setView } from './camera';
 import { createFramebuffer, rgb, scaleRgb } from './framebuffer';
 import { createLighterGlows } from './lighter';
-import { bakeLighting, type Light } from './lighting';
+import { bakeLighting, DIR_BOTTOM, type Light } from './lighting';
 import { createFloorMirror } from './mirror';
 import { BALL_MODEL } from './models/ball';
 import { VACUUM_MODEL } from './models/vacuum';
@@ -40,7 +40,7 @@ const disc = (x: number): Sprite => ({
   held: null,
   boombox: false,
 });
-const robot = (x: number, angle = 0): VoxelInstance => ({ model: VACUUM_MODEL, x, y: 4.5, angle });
+const robot = (x: number, angle = 0): VoxelInstance => ({ model: VACUUM_MODEL, x, y: 4.5, angle, lift: 0 });
 
 describe('buildModel', () => {
   test('exposes only faces with an empty neighbour, the bottom included', () => {
@@ -68,7 +68,7 @@ describe('buildModel', () => {
   test('the eye never sees a bottom face', () => {
     const fb = blank();
     const cube = buildModel({ x: 1, y: 1, z: 1 }, 0.2, () => RED);
-    renderVoxel(fb, view, { model: cube, x: 3.5, y: 4.5, angle: 0.3 });
+    renderVoxel(fb, view, { model: cube, x: 3.5, y: 4.5, angle: 0.3, lift: 0 });
     expect(fb.pixels.includes(scaled(RED, 0.5))).toBe(false);
     expect(fb.pixels.includes(RED)).toBe(true);
   });
@@ -170,6 +170,34 @@ describe('renderVoxel', () => {
     expect(a.pixels).not.toEqual(b.pixels);
   });
 
+  const lowestRow = (lift: number) => {
+    const fb = blank();
+    renderVoxel(fb, view, { ...robot(3.5), lift });
+    let lowest = -1;
+    fb.pixels.forEach((px, i) => {
+      if (px !== 0) {
+        lowest = Math.max(lowest, Math.floor(i / fb.width));
+      }
+    });
+    return lowest;
+  };
+
+  test('a lifted object is drawn higher on the screen', () => {
+    expect(lowestRow(0.2)).toBeLessThan(lowestRow(0));
+  });
+
+  test('only an object above the eye shows its underside', () => {
+    const cube = buildModel({ x: 4, y: 4, z: 4 }, 0.05, () => RED);
+    const bottom = cube.colors[cube.dirs.indexOf(DIR_BOTTOM)];
+    const showsBottom = (lift: number) => {
+      const fb = blank();
+      renderVoxel(fb, view, { model: cube, x: 3.5, y: 4.5, angle: 0, lift });
+      return fb.pixels.includes(bottom as number);
+    };
+    expect(showsBottom(0)).toBe(false);
+    expect(showsBottom(0.6)).toBe(true);
+  });
+
   test('draws nothing for a robot behind the camera', () => {
     const fb = blank();
     renderVoxel(fb, view, robot(0.5));
@@ -213,7 +241,7 @@ describe('renderSprites with voxels', () => {
     };
     // One voxel in the corner of a 4 × 4 footprint: most of the floor under the footprint shows.
     const corner = buildModel({ x: 4, y: 4, z: 1 }, 0.1, (x, y) => (x === 0 && y === 0 ? RED : 0));
-    const object = { model: corner, x: 3.0, y: 4.5, angle: 0 };
+    const object = { model: corner, x: 3.0, y: 4.5, angle: 0, lift: 0 };
     const sprites = grey();
     renderSprites(sprites, { eye: player, people: [], objects: [object], lighting: null });
     const alone = grey();
@@ -243,7 +271,7 @@ describe('renderVoxel with lighting', () => {
 1111111
 `);
   const cube = buildModel({ x: 1, y: 1, z: 1 }, 0.2, () => RED);
-  const box: VoxelInstance = { model: cube, x: 3.5, y: 4.5, angle: Math.PI };
+  const box: VoxelInstance = { model: cube, x: 3.5, y: 4.5, angle: Math.PI, lift: 0 };
   const drawn = (fb: ReturnType<typeof blank>) => new Set([...fb.pixels].filter((px) => px !== 0));
   const lamp: Light = { x: 3.5, y: 4.5, z: 0.85, radius: 4, r: 1, g: 1, b: 1 };
 
@@ -366,7 +394,7 @@ describe('renderVoxelMirror', () => {
   test('a lighter beside the object lights its image in the floor too', () => {
     const room = parseMap('1111111\n1S....1\n1.....1\n1.....1\n1.....1\n1.....1\n1111111');
     const dark = bakeLighting(room, [], 0.3, RED, RED);
-    const ball: VoxelInstance = { model: BALL_MODEL, x: 3.0, y: 4.5, angle: 0 };
+    const ball: VoxelInstance = { model: BALL_MODEL, x: 3.0, y: 4.5, angle: 0, lift: 0 };
     const plotted = (glows: Parameters<typeof renderVoxelMirror>[6]) => {
       const fb = blank();
       const mirror = createFloorMirror();
@@ -385,6 +413,27 @@ describe('renderVoxelMirror', () => {
     expect(plotted(lighter)).toBeGreaterThan(plotted([]));
   });
 
+  test('a lifted object’s floor image drops away', () => {
+    const room = parseMap('1111111\n1S....1\n1.....1\n1.....1\n1.....1\n1.....1\n1111111');
+    const dark = bakeLighting(room, [], 0.3, RED, RED);
+    const topmostRow = (lift: number) => {
+      const fb = blank();
+      const mirror = createFloorMirror();
+      mirror.fit(fb.width, fb.height);
+      mirror.clear();
+      renderVoxelMirror(fb, view, { model: BALL_MODEL, x: 3.0, y: 4.5, angle: 0, lift }, dark, mirror);
+      for (let y = 0; y < fb.height; y++) {
+        for (let x = 0; x < fb.width; x++) {
+          if (mirror.shownAt(x, y)) {
+            return y;
+          }
+        }
+      }
+      return fb.height;
+    };
+    expect(topmostRow(0.2)).toBeGreaterThan(topmostRow(0));
+  });
+
   test('the ball’s underside shows: its mirror has no holes', () => {
     const fb = blank();
     const room = parseMap('1111111\n1S....1\n1.....1\n1.....1\n1.....1\n1.....1\n1111111');
@@ -394,7 +443,7 @@ describe('renderVoxelMirror', () => {
     renderVoxelMirror(
       fb,
       view,
-      { model: BALL_MODEL, x: 3.0, y: 4.5, angle: 0 },
+      { model: BALL_MODEL, x: 3.0, y: 4.5, angle: 0, lift: 0 },
       bakeLighting(room, [], 0.3, RED, RED),
       mirror
     );

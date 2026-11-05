@@ -140,7 +140,7 @@ test('the portrait camera is used for frames taller than wide', () => {
 
 const landscape = () => createFramebuffer();
 const portrait = () => createFramebuffer(296, 640, fovForAspect(296 / 640));
-const PARKED = { model: VACUUM_MODEL, ...LANDING_PARK };
+const PARKED = { model: VACUUM_MODEL, ...LANDING_PARK, lift: 0 };
 
 // Eight full renders compared pixel by pixel: under a second here, but CI runners have hit the default 5 s.
 test('the parked vacuum is out of sight of both cameras', { timeout: 30_000 }, () => {
@@ -159,7 +159,7 @@ test('a vacuum in the corridor is drawn', () => {
   const without = landscape();
   renderLandingScene(without);
   const drawn = landscape();
-  renderLandingScene(drawn, { vacuum: { model: VACUUM_MODEL, x: 6, y: 4.5, angle: 0 } });
+  renderLandingScene(drawn, { vacuum: { model: VACUUM_MODEL, x: 6, y: 4.5, angle: 0, lift: 0 } });
   let changed = 0;
   for (let i = 0; i < drawn.pixels.length; i++) {
     if (drawn.pixels[i] !== without.pixels[i]) {

@@ -117,7 +117,7 @@ const doorwayScenes: Scene[] = portals.list.slice(0, 8).map((p, i) => {
     x: x + p.nx * (2 + j * 0.8) + p.ny * (j % 2 === 0 ? 0.4 : -0.4),
     y: y + p.ny * (2 + j * 0.8) - p.nx * (j % 2 === 0 ? 0.4 : -0.4),
   }));
-  const voxels = [{ model: VACUUM_MODEL, x: x + p.nx * 3, y: y + p.ny * 3, angle: 0 }];
+  const voxels = [{ model: VACUUM_MODEL, x: x + p.nx * 3, y: y + p.ny * 3, angle: 0, lift: 0 }];
   return { x, y, angle: Math.atan2(p.ny, p.nx), sprites, voxels, glows: [] };
 });
 const doorwayHashes = { off: 0, on: 0 };
@@ -302,11 +302,13 @@ function scenesNearLamps(): Scene[] {
       }
       glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null, shadow: null, reach: GLOW_RADIUS });
       const spot = ahead(0.6);
-      const voxels = open(spot.x, spot.y) ? [{ model: VACUUM_MODEL, x: spot.x, y: spot.y, angle: rand() * 7 }] : [];
+      const voxels = open(spot.x, spot.y)
+        ? [{ model: VACUUM_MODEL, x: spot.x, y: spot.y, angle: rand() * 7, lift: 0 }]
+        : [];
       // Straight ahead, so the seeded poses (and the hash of everything else) stay as they were.
       const kick = { x: x + Math.cos(angle) * 1.2, y: y + Math.sin(angle) * 1.2 };
       if (open(kick.x, kick.y)) {
-        voxels.push({ model: BALL_MODEL, x: kick.x, y: kick.y, angle: 0 });
+        voxels.push({ model: BALL_MODEL, x: kick.x, y: kick.y, angle: 0, lift: 0 });
       }
       out.push({ x, y, angle, sprites, voxels, glows });
     }
