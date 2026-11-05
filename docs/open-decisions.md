@@ -868,6 +868,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Values, for the owner to tune by playing:** kick 0.35 tiles, playing 0.15 tiles with 0.15 s between hops, gravity 14
     tiles/s² (owner: 3 was "like on the moon"). A launch aims at an apex rather than adding speed, so repeated kicks can't lift the ball's top past the 0.85
     lamps.
+  - **It springs** (owner, 2026-11-05, over squash and stretch): each landing rebounds to half the height, until a
+    rebound would be under 0.02 tiles. A playing ball waits its 0.15 s gap once settled.
   - **The vacuum's knock hops it too** (builder): it arrives as a `kick` event like any other.
   - **Any voxel object can be lifted:** `VoxelInstance.lift` moves its faces, floor image, lighting and lamp shadow.
     A lift of 0 draws as before, pixel for pixel. No hop sound yet (builder).

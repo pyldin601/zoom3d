@@ -39,6 +39,9 @@ The ball is a puppy, and a jump shows how it feels in a way rolling can't. Kicki
 - **The hop (`game/ball-hop.ts`, pure, test first):** a height and upward speed under gravity, stepped each frame. A kick
   sets the upward speed. While the mood is `playing` and the ball is on the floor, it leaves again after a short gap. Being
   a simulation, nothing snaps: a kick in mid-air just throws it up again, and a mood change lets it land first.
+- **The spring (owner, after playing it):** each landing rebounds to half the height it fell from, at once, until a
+  rebound would be under 0.02 tiles, and then it settles. A playing ball's next jump waits the gap after it settles. The
+  rebound comes from the height, not the speed, so a long frame can't throw it higher.
 - **Triggers:** the local kick in `room.ts`, and the `kick` event from the server for other people's, skipping the local
   player's own echo as `object-sounds.ts` does. Mood is already on the wire.
 - **Drawing:** `VoxelInstance` gains `lift` (tiles, required, so its shape stays one). `projectFaces` adds it to each
