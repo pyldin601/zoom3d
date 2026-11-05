@@ -1,6 +1,6 @@
 // The room's touch controls (mobile spec §5): the move pad bottom-left, and bottom-right above the self-view a kick
 // button while the ball is in reach (ball spec §7), a drink button (tap to sip, hold to cheers) and a ⋯ button whose
-// tray holds the occasional actions. DOM only: main.ts
+// tray holds the occasional actions. DOM only: game/room-controls.ts
 // wires the handlers, and input/touch.ts reads the pad.
 import { type HeldItem, isDrink } from '@zoom3d/shared';
 import { touchIcon } from './icons';
@@ -36,7 +36,7 @@ export interface TouchControls {
   remove(): void;
 }
 
-const DRINKS: readonly { item: HeldItem | null; label: string }[] = [
+const HELD_CHOICES: readonly { item: HeldItem | null; label: string }[] = [
   { item: 'beer', label: 'Beer' },
   { item: 'coffee', label: 'Coffee' },
   { item: 'wine', label: 'Wine' },
@@ -144,7 +144,7 @@ function createDrinkButton(opts: TouchControlsOptions) {
   };
 }
 
-/** The ⋯ button and the tray it opens: the drinks, the boombox, the map and the lighting. */
+/** The ⋯ button and the tray it opens: what to hold, the boombox, the map and the lighting. */
 function createTray(opts: TouchControlsOptions) {
   const tray = el('div', { className: 'tray', hidden: true });
   const more = iconButton('more', 'More', touchIcon('more'));
@@ -163,7 +163,7 @@ function createTray(opts: TouchControlsOptions) {
     return button;
   };
 
-  const drinkButtons = DRINKS.map(({ item, label }) => ({
+  const heldButtons = HELD_CHOICES.map(({ item, label }) => ({
     item,
     button: choice(iconButton('', label, touchIcon(item ?? 'none'), label), () => opts.onPick(item)),
   }));
@@ -179,7 +179,7 @@ function createTray(opts: TouchControlsOptions) {
   lighting.append(lightingLabel);
   lighting.dataset.action = 'lighting';
   lighting.addEventListener('click', opts.onLighting);
-  tray.append(...drinkButtons.map((d) => d.button), boombox, map, lighting);
+  tray.append(...heldButtons.map((d) => d.button), boombox, map, lighting);
 
   // A tap anywhere but the tray or ⋯ closes it.
   const outside = (e: Event) => {
@@ -193,7 +193,7 @@ function createTray(opts: TouchControlsOptions) {
     tray,
     more,
     update(s: TouchControlsState) {
-      for (const { item, button } of drinkButtons) {
+      for (const { item, button } of heldButtons) {
         button.setAttribute('aria-pressed', String(item === s.held));
       }
       const music = s.boombox ? 'Stop music' : 'Boombox';

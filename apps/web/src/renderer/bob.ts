@@ -6,7 +6,7 @@ import { MOVE_SPEED } from '@zoom3d/shared';
 const STEPS_PER_SECOND = 3;
 /** Tiles walked per step: the lift goes 0 → 1 → 0 over one stride (1 tile). */
 export const BOB_STRIDE = MOVE_SPEED / STEPS_PER_SECOND;
-/** The drink trails the avatar by this much phase (radians), so it swings behind the step. */
+/** The held item trails the avatar by this much phase (radians), so it swings behind the step. */
 const ITEM_LAG = 0.9;
 /** How long the bob takes to settle after stopping. */
 const SETTLE_S = 0.15;
@@ -16,7 +16,7 @@ const MAX_STEP_TILES = 1;
 export interface Bob {
   /** 0..1: how far up the avatar is in its step. */
   readonly lift: number;
-  /** 0..1: the same for the drink, half a step behind. */
+  /** 0..1: the same for the held item, half a step behind. */
   readonly itemLift: number;
   /** −1..1: side to side, one way per step (left foot, right foot). */
   readonly sway: number;

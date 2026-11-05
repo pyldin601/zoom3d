@@ -1,5 +1,5 @@
 // The held drink's key (held items spec §2.4): a quick press sips on release, one held for CHEERS_HOLD_MS raises a
-// cheers at that moment. Pure timing; main.ts feeds it key events and a timer.
+// cheers at that moment. Pure timing; input/drink-key.ts feeds it key events and a timer.
 
 export const CHEERS_HOLD_MS = 500;
 

@@ -221,7 +221,7 @@ let frameTables:
 
 /**
  * Draws `room` into `fb` and fills its z-buffer. A lit room's walls, floor and ceiling show the lamps' reflections on
- * the surfaces `room.reflections` picks, and the avatars' `glows`.
+ * the surfaces `room.reflections` picks, and the light of `glows`.
  */
 export function renderWalls(
   fb: Framebuffer,
@@ -784,7 +784,7 @@ function putBackFrameTables(lm: Lighting): NonNullable<typeof frameTables> {
 /**
  * Each glow in view lights the cells within its reach, √(reach² − ½²) of its disc. Glows add up, and a cell
  * takes their sum where it's brighter than its light, shadows included (see withGlow). The cost is the cells near
- * avatars in view, not the pixels showing them.
+ * glows in view, not the pixels showing them.
  *
  * The disc sits at eye height, half way between floor and ceiling, so the ceiling above a cell gets exactly the glow
  * its floor does: it is worked out once.

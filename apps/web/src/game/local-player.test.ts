@@ -9,19 +9,19 @@ const STILL = { forward: 0, strafe: 0, turn: 0 };
 
 test('taking a drink says whether it changed; putting it down ends the gesture', () => {
   const localPlayer = createLocalPlayer(MAP, () => 0.5);
-  expect(localPlayer.takeDrink('beer')).toBe(true);
-  expect(localPlayer.takeDrink('beer')).toBe(false);
+  expect(localPlayer.hold('beer')).toBe(true);
+  expect(localPlayer.hold('beer')).toBe(false);
   localPlayer.gesture.start('cheers', 0);
-  expect(localPlayer.takeDrink(null)).toBe(true);
+  expect(localPlayer.hold(null)).toBe(true);
   expect(localPlayer.gesture.kind(1)).toBeNull();
-  expect(localPlayer.drink).toBeNull();
+  expect(localPlayer.held).toBeNull();
 });
 
 test('taking the lighter ends a gesture under way: it has none', () => {
   const localPlayer = createLocalPlayer(MAP, () => 0.5);
-  localPlayer.takeDrink('beer');
+  localPlayer.hold('beer');
   localPlayer.gesture.start('cheers', 0);
-  localPlayer.takeDrink('lighter');
+  localPlayer.hold('lighter');
   expect(localPlayer.gesture.kind(1)).toBeNull();
 });
 
@@ -61,7 +61,7 @@ test('the own disc: none without a ring colour, else at the pose with the camera
   });
   const face = new Uint32Array(4);
   localPlayer.useCameraFace({ on: () => true, texels: () => face });
-  localPlayer.takeDrink('beer');
+  localPlayer.hold('beer');
   localPlayer.boombox = true;
   localPlayer.gesture.start('sip', 0);
   const disc = localPlayer.avatar(500, '#ff0000', true);
@@ -73,9 +73,9 @@ test('the own disc: none without a ring colour, else at the pose with the camera
 test('the own lighter: none with a drink or nothing in hand, else where the player stands', () => {
   const localPlayer = createLocalPlayer(MAP, () => 0.5);
   expect(localPlayer.lighter()).toBeNull();
-  localPlayer.takeDrink('beer');
+  localPlayer.hold('beer');
   expect(localPlayer.lighter()).toBeNull();
-  localPlayer.takeDrink('lighter');
+  localPlayer.hold('lighter');
   expect(localPlayer.lighter()).toEqual({
     key: OWN_SPRITE_KEY,
     x: localPlayer.pose.x,
@@ -170,11 +170,11 @@ test('turning the camera off while the own disc is hidden shows the fallback, no
 
 test('first person shows the drink and boombox in hand, mid-gesture', () => {
   const localPlayer = createLocalPlayer(MAP, () => 0.5);
-  localPlayer.takeDrink('wine');
+  localPlayer.hold('wine');
   localPlayer.boombox = true;
   localPlayer.gesture.start('sip', 0);
   expect(localPlayer.firstPerson(700)).toMatchObject({
-    drink: 'wine',
+    held: 'wine',
     boombox: true,
     step: localPlayer.step,
     gesture: { sip: 1 },

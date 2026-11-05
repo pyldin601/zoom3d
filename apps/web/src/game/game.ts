@@ -82,7 +82,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     localPlayer,
     drinkKey,
     room: () => room,
-    chooseDrink,
+    chooseHeld,
     toggleConsole: () => backtickConsole.toggle(),
     renderMode: () => renderSettings.mode,
     setRenderMode,
@@ -186,7 +186,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     saveName(pageStorage(), name);
     saveAvatar(pageStorage(), avatar);
     clearScreen(page.ui);
-    localPlayer.takeDrink(loadHeld(pageStorage()));
+    localPlayer.hold(loadHeld(pageStorage()));
     // From the builder peers use, never given a video: the own disc with the camera off is the face they see.
     localPlayer.useFallbackFace((color) => createFace({ name, color, avatar, document }));
     room = joinRoom({
@@ -199,7 +199,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
       player: localPlayer.pose,
       mediaContainer: page.media,
       localMediaContainer: page.localMedia,
-      drink: localPlayer.drink,
+      held: localPlayer.held,
       boomboxVolume: loadBoomboxVolume(pageStorage()),
       onBoomboxChange(on) {
         localPlayer.boombox = on;
@@ -237,10 +237,10 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     saveRenderSettings(pageStorage(), renderSettings);
   }
 
-  /** The one path for changing the drink in hand, from a number key or the touch tray. */
-  function chooseDrink(item: HeldItem | null): void {
-    const before = localPlayer.drink;
-    if (!localPlayer.takeDrink(item)) {
+  /** The one path for changing what is in hand, from a number key or the touch tray. */
+  function chooseHeld(item: HeldItem | null): void {
+    const before = localPlayer.held;
+    if (!localPlayer.hold(item)) {
       return;
     }
     room?.lighterSounds.own(before, item);

@@ -1,5 +1,5 @@
 // The player's own boombox in first person, peeking in at the bottom-right: the right hand, opposite
-// the drink at the bottom-left (boombox spec §2.2). The sprite is symmetric, so it isn't mirrored.
+// the held item at the bottom-left (boombox spec §2.2). The sprite is symmetric, so it isn't mirrored.
 import { BOOMBOX_SPRITE } from './boombox';
 import type { Framebuffer } from './framebuffer';
 import { blitHeldSprite, OVER_EVERYTHING } from './held-items';
@@ -10,7 +10,7 @@ export const OWN_BOOMBOX_RIGHT = 0.84;
 /** Fraction of the sprite's height hidden below the bottom edge: the fist, handle and body top show. */
 export const OWN_BOOMBOX_CROP = 0.5;
 
-/** Draws over the scene, moved by the step: it sways the other way from the drink. */
+/** Draws over the scene, moved by the step: it sways the other way from the held item. */
 export function renderOwnBoombox(fb: Framebuffer, on: boolean, step: HeldStep): void {
   if (!on) {
     return;

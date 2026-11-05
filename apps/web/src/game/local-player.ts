@@ -1,4 +1,4 @@
-// The local player: where they stand and how they step, the drink and boombox in their hands, their sip or cheers,
+// The local player: where they stand and how they step, what they hold and their boombox, their sip or cheers,
 // and their face's glow. The camera is the local player, so they're drawn only as their glow and what they hold, and
 // as their own disc where a portal's window looks back at them.
 import {
@@ -39,10 +39,10 @@ export interface LocalPlayer {
   readonly step: Bob;
   /** The sip or cheers, on the performance.now() clock (held items spec §2.3–2.4). */
   readonly gesture: GestureClock;
-  readonly drink: HeldItem | null;
+  readonly held: HeldItem | null;
   boombox: boolean;
-  /** Null puts the drink down and the lighter takes its place, both ending any gesture. False when already in hand. */
-  takeDrink(item: HeldItem | null): boolean;
+  /** Takes `item` in hand, or empties it with null; anything but a drink ends any gesture. False if already held. */
+  hold(item: HeldItem | null): boolean;
   /** With `portals` (the room's, while on) a step through a doorway comes out of its destination, turned with it. */
   walk(map: GameMap, move: MoveInput, turnRad: number, dt: number, portals?: Portals | null): void;
   /** The camera picture's average colour at `now`, or null while the camera is off. */
@@ -52,7 +52,7 @@ export interface LocalPlayer {
   useFallbackFace(faceFor: (ringColour: string) => FallbackFace): void;
   /** In the camera's colour, else the ring's; null until the room gives the player a ring colour. */
   glow(now: number, ringColour: string | null): GlowSource | null;
-  /** The lighter in hand as a light, where the player stands and faces; null while they hold anything else. */
+  /** The lighter in hand as a light, where the player stands; null while they hold anything else. */
   lighter(): LighterSource | null;
   /**
    * The own disc as others see it, with the fallback face while the camera is off; null until the room gives a ring
@@ -67,7 +67,7 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
   const pose = spawnPoint(map, random);
   const step = createBob();
   const gesture = createGestureClock();
-  let drink: HeldItem | null = null;
+  let heldItem: HeldItem | null = null;
   let cameraColour: (now: number) => number | null = () => null;
   let camera: OwnCamera = { on: () => false, texels: () => null };
   let fallbackFor: (ringColour: string) => FallbackFace | null = () => null;
@@ -77,21 +77,21 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
   const lighterSource = { key: OWN_SPRITE_KEY, x: 0, y: 0 };
   // The room measures no level of the own mic, so the own ring never brightens: `speaking` stays 0.
   const ownDisc = blankSprite(OWN_SPRITE_KEY);
-  const held: FirstPerson = { drink: null, boombox: false, step, gesture: gesture.pose(0) };
+  const firstPersonView: FirstPerson = { held: null, boombox: false, step, gesture: gesture.pose(0) };
 
   const localPlayer: LocalPlayer = {
     pose,
     step,
     gesture,
-    get drink() {
-      return drink;
+    get held() {
+      return heldItem;
     },
     boombox: false,
-    takeDrink(item) {
-      if (item === drink) {
+    hold(item) {
+      if (item === heldItem) {
         return false;
       }
-      drink = item;
+      heldItem = item;
       if (!isDrink(item)) {
         gesture.cancel();
       }
@@ -122,7 +122,7 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       return glowSource;
     },
     lighter() {
-      if (drink !== 'lighter') {
+      if (heldItem !== 'lighter') {
         return null;
       }
       lighterSource.x = pose.x;
@@ -156,15 +156,15 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       ownDisc.sip = sip;
       ownDisc.cheers = cheers;
       ownDisc.wobble = wobble;
-      ownDisc.held = drink;
+      ownDisc.held = heldItem;
       ownDisc.boombox = localPlayer.boombox;
       return ownDisc;
     },
     firstPerson(now) {
-      held.drink = drink;
-      held.boombox = localPlayer.boombox;
-      held.gesture = gesture.pose(now);
-      return held;
+      firstPersonView.held = heldItem;
+      firstPersonView.boombox = localPlayer.boombox;
+      firstPersonView.gesture = gesture.pose(now);
+      return firstPersonView;
     },
   };
   return localPlayer;
