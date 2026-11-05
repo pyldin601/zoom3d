@@ -846,6 +846,14 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     walker bumping a ball playing at their feet, which looks like a shove at 4 to 5 tiles/s (inferred from the numbers).
   - **Playing is real movement** (owner, after playing a drawn wiggle: "not moving like it is shaking"): it dashes to
     spots around its person. **No jumps for now** (owner). A scared ball's tremble is a drawn offset, never in its physics.
+  - **Livelier alone** (owner, 2026-11-05: it looked asleep with nobody around): it moved 20% of the time, with stills of
+    up to 26 s and 18% of its spots inside walls. Pauses went from 1–4 s to 0.5–2 s, a missed spot no longer costs a new
+    pause, and its steering slides along walls instead of pressing into them, which also ends a stream of bounce events.
+    Now 40%, with stills of at most about 2 s (simulated). Only a kick puts it to sleep, as before.
+  - **It understands portals enough to follow** (owner, 2026-11-05: it pushed walls, and tucked itself into a portal when
+    following): this replaces the first design's ignoring them. It sees people where they appear, one portal deep, and
+    follows them through; it doesn't wander through one. It gives up on reaching a last seen spot with nobody there,
+    and a scared ball rolls clear of the doorway. Steering round a door jamb takes the near way round its corner.
 
 ## Resolved
 _(none yet)_

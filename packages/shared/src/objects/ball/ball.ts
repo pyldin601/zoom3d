@@ -199,7 +199,7 @@ function collide(
 
 /** Moves by its velocity over h, reflecting each axis a wall blocks. */
 function roll(map: GameMap, ball: Ball, h: number, note: (e: BallEvent) => void): void {
-  if (blocked(map, ball.x + ball.vx * h, ball.y)) {
+  if (ballBlockedAt(map, ball.x + ball.vx * h, ball.y)) {
     if (Math.abs(ball.vx) > BOUNCE_EVENT_SPEED) {
       note('bounce');
     }
@@ -207,7 +207,7 @@ function roll(map: GameMap, ball: Ball, h: number, note: (e: BallEvent) => void)
   } else {
     ball.x += ball.vx * h;
   }
-  if (blocked(map, ball.x, ball.y + ball.vy * h)) {
+  if (ballBlockedAt(map, ball.x, ball.y + ball.vy * h)) {
     if (Math.abs(ball.vy) > BOUNCE_EVENT_SPEED) {
       note('bounce');
     }
@@ -231,10 +231,10 @@ function carryBall(portals: Portals, ball: Ball, fromX: number, fromY: number): 
 
 /** Moves without bouncing, as far as the walls allow on each axis: how a body shoves it out of the way. */
 function slide(map: GameMap, ball: Ball, dx: number, dy: number): void {
-  if (!blocked(map, ball.x + dx, ball.y)) {
+  if (!ballBlockedAt(map, ball.x + dx, ball.y)) {
     ball.x += dx;
   }
-  if (!blocked(map, ball.x, ball.y + dy)) {
+  if (!ballBlockedAt(map, ball.x, ball.y + dy)) {
     ball.y += dy;
   }
 }
@@ -254,7 +254,8 @@ function slow(ball: Ball, h: number): void {
   ball.vy *= slowed / speed;
 }
 
-function blocked(map: GameMap, x: number, y: number): boolean {
+/** Whether a wall leaves the ball no room at this spot. */
+export function ballBlockedAt(map: GameMap, x: number, y: number): boolean {
   const r = BALL_RADIUS;
   return (
     isWallAt(map, x - r, y - r) ||
@@ -270,7 +271,7 @@ export function saveBall(map: GameMap, ball: Ball): BallSave {
 
 /** A saved ball at rest under a new id, or null if it was saved on another map or would sit in a wall. */
 export function restoreBall(map: GameMap, save: BallSave, id: string): Ball | null {
-  if (save.map !== mapFingerprint(map) || blocked(map, save.x, save.y)) {
+  if (save.map !== mapFingerprint(map) || ballBlockedAt(map, save.x, save.y)) {
     return null;
   }
   return createBall(id, save.x, save.y);

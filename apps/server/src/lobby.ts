@@ -923,7 +923,7 @@ export class Lobby {
           minded.mind,
           ball,
           dt,
-          { people, touch: minded.touch },
+          { people, touch: minded.touch, portals },
           this.opts.rng
         );
         cry = minded.pendingCry ?? stepped;

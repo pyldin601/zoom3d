@@ -26,7 +26,8 @@ leave and is scared when it ends up somewhere strange alone.
 
 - **Jumps (owner: "no jumps for now").** The ball stays on the floor with no height.
 - Other frights, such as the room going dark (owner: the portal is enough for now).
-- Understanding portals: it can roll through one by accident, but doesn't aim for or through them **(my call)**.
+- Pathfinding through portals: it doesn't wander through them, but it sees someone through one, one portal deep, and
+  follows them through it (owner, after playing it: it tucked itself into the portal when following).
 - Pathfinding: it only heads for places it can see in a straight line **(my call)**.
 - A face or other visual expression, and telemetry for its moods.
 - Bots affecting it, as with the ball today **(my call)**.
@@ -49,11 +50,11 @@ on the name)**. All values are starting points, tuned by playing **(my call)**.
 | State | Behaviour | Leaves when → to (sound) |
 |---|---|---|
 | `asleep` | No steering, silent; its timer runs | 10 s after the last kick → `wandering` (yawn), or `scared` (whimper) if it crossed a portal since falling asleep and sees nobody |
-| `wandering` | Rolls to a random visible spot within about 3 tiles, pauses 1–4 s, repeats | Sees a person → `approaching` (happy) |
+| `wandering` | Rolls to a random visible spot within about 3 tiles that it fits in, sliding along walls rather than hitting them, pauses 0.5–2 s, repeats (first 1–4 s, with spots inside walls: alone it moved 20% of the time and looked asleep; now 40%, and rests at most about 2 s) | Sees a person → `approaching` (happy) |
 | `approaching` | Rolls towards its person | Reaches their feet → `playing`; loses them → `following`; chase over → `wandering` (sad) |
 | `playing` | Dashes to spots around its person, resting 0.2–0.8 s between dashes (owner, after playing it: real moves, not a shake) | They move a tile past touching → `following` |
-| `following` | Rolls towards its person, or their last seen spot if out of sight | Reaches them → `playing`; chase over → `wandering` (sad) |
-| `scared` | Rests; the trembling is drawn (§4) | Sees a person → `approaching` (relieved); after about 6 s → `wandering` |
+| `following` | Rolls towards its person, or their last seen spot if out of sight | Reaches them → `playing`; nobody at the last seen spot, or chase over → `wandering` (sad) |
+| `scared` | Rolls clear of the doorway, then rests; the trembling is drawn (§4) | Sees a person → `approaching` (relieved); after about 6 s → `wandering` |
 
 **Giving up (owner):** a chase lasts about 6 s in total across `approaching` and `following`, however often it switches
 between them, and restarts only on reaching the person. When it ends, the ball ignores that person for **15 s**, unless they
@@ -75,8 +76,8 @@ during a chase. So someone pacing around at most draws one sad note every 20 s o
 
 ### Senses
 
-- **Seeing a person:** the nearest connected person (never bots) within **6 tiles** with `hasLineOfSight`, straight through
-  the map and ignoring portals **(my call)**. A chosen person stays its person until it leaves them, so it doesn't flip
+- **Seeing a person:** the nearest connected person (never bots) within **6 tiles** with a line of sight, straight or through
+  one portal, where they appear from the ball (`apparentPosition`), or anyone it touches. A chosen person stays its person until it leaves them, so it doesn't flip
   between two people standing close together **(my call)**.
 - **Empty room:** nothing steps while nobody is connected, as today.
 

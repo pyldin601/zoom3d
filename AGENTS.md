@@ -192,7 +192,8 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   glow light must honour both (through `glowLight`).
 - Living ball (D33, spec `docs/superpowers/specs/2026-11-02-living-ball-design.md`): `objects/ball/mind.ts` only runs on the
   server and only sets the ball's velocity, at or below `BALL_OWN_SPEED`, so `stepBall` and kicks stay the physics they
-  were. A kick goes through `kickBallMind` and always wins. A scared ball's tremble is drawn (`game/ball-shake.ts`), never
+  were. It sees people where they appear from it (one portal deep), and its steering slides along walls, never into them.
+  A kick goes through `kickBallMind` and always wins. A scared ball's tremble is drawn (`game/ball-shake.ts`), never
   added to its position; playing is real dashes. Its cries are data (`objects/ball/cries.ts`); the server picks one and everyone plays it. Dev:
   `__game.ballCry('yip', 0)` and `__game.forceBallMood('scared')`.
 - Lighter (D31, spec `docs/superpowers/specs/2026-10-31-lighter-design.md`):

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 import { PLAYER_RADIUS } from '../../geometry/movement';
-import { parseMap } from '../../map/map';
+import { type GameMap, parseMap } from '../../map/map';
+import { twoDoorways } from '../../portals/test-doorways';
 import { BALL_KICK_REACH, BALL_RADIUS, type Ball, type BallTouch, createBall, stepBall } from './ball';
 import { BALL_CRIES } from './cries';
 import {
@@ -34,6 +35,21 @@ const ROOM = parseMap(
     }).join('')
   ).join('\n')
 );
+
+/** A wall column at x = 5 with one doorway, at row 5. */
+const DOORWAY = parseMap(
+  Array.from({ length: 11 }, (_, y) =>
+    Array.from({ length: 11 }, (_, x) => {
+      if (x === 0 || y === 0 || x === 10 || y === 10 || (x === 5 && y !== 5)) {
+        return '1';
+      }
+      return x === 1 && y === 1 ? 'S' : '.';
+    }).join('')
+  ).join('\n')
+);
+
+/** A corridor one tile wide, where nearly every direction is a wall. */
+const CORRIDOR = parseMap(['111111111111', '1S.........1', '111111111111'].join('\n'));
 
 interface Person {
   id: string;
@@ -73,6 +89,23 @@ function tick(): void {
   touch.knocked = false;
   touch.crossedPortal = false;
   stepBall(ROOM, ball, DT, []);
+}
+
+/** Runs like `tick` on any map, counting the bounces and the longest time the ball sat still. */
+function runOn(map: GameMap, seconds: number): { bounces: number; longestS: number } {
+  let bounces = 0;
+  let stillS = 0;
+  let longestS = 0;
+  for (let i = 0; i < Math.round(seconds / DT); i++) {
+    const { x, y } = ball;
+    stepBallMind(map, mind, ball, DT, { people, touch }, rng);
+    if (stepBall(map, ball, DT, []) === 'bounce') {
+      bounces++;
+    }
+    stillS = ball.x === x && ball.y === y ? stillS + DT : 0;
+    longestS = Math.max(longestS, stillS);
+  }
+  return { bounces, longestS };
 }
 
 function run(seconds: number): void {
@@ -340,6 +373,14 @@ describe('seeing people', () => {
 });
 
 describe('going to someone', () => {
+  test('reaching the last spot it saw someone, it gives up there instead of waiting', () => {
+    const p = following();
+    p.x = 1000;
+    run(4);
+    expect(mind.mood).toBe('wandering');
+    expect(said()).toContain('sad');
+  });
+
   test('stops at its stopping distance, not touching and within kick reach', () => {
     expect(BALL_STOP_TILES).toBeGreaterThan(TOUCHING);
     expect(BALL_STOP_TILES).toBeLessThan(BALL_KICK_REACH);
@@ -408,6 +449,98 @@ describe('going to someone', () => {
       tick();
     }
     expect(mind.mood).toBe('following');
+  });
+});
+
+describe('steering around walls', () => {
+  test('clipping a door jamb, it slides into line and goes through at its own pace', () => {
+    Object.assign(ball, { x: 4, y: 5.95 });
+    wake();
+    people = [{ id: 'a', x: 9, y: 5.85 }];
+    runOn(DOORWAY, 3.5);
+    expect(mind.mood).toBe('playing');
+  });
+
+  test('heading past a wall corner, it slides round the corner and arrives without a bounce', () => {
+    Object.assign(ball, { x: 24.5, y: 10.25 });
+    wake();
+    people = [{ id: 'a', x: 25.9, y: 9.2 }];
+    const { bounces } = runOn(ROOM, 2);
+    expect(bounces).toBe(0);
+    expect(mind.mood).toBe('playing');
+  });
+
+  test('someone touching it round a door jamb counts as seen, though no straight line reaches them', () => {
+    Object.assign(ball, { x: 4.75, y: 4.75 });
+    wake();
+    people = [{ id: 'a', x: 5.2, y: 5.05 }];
+    stepBallMind(DOORWAY, mind, ball, DT, { people, touch }, rng);
+    expect(mind.mood).toBe('approaching');
+  });
+
+  test('playing beside someone at a wall, its dashes never hit the wall', () => {
+    Object.assign(ball, { x: 3, y: 15 });
+    wake();
+    people = [{ id: 'a', x: 1.4, y: 15 }];
+    run(1);
+    expect(mind.mood).toBe('playing');
+    expect(runOn(ROOM, 60).bounces).toBe(0);
+  });
+});
+
+describe('with portals', () => {
+  // A: its front faces north and it comes out of B's front, so north of both, the hall folds over on itself.
+  const { map, portals } = twoDoorways(8);
+
+  /** One tick on the portal map, as the server runs it. Returns whether it crossed a portal. */
+  function tickThroughPortals(): boolean {
+    touch.pushed = false;
+    touch.knocked = false;
+    const crossedBefore = touch.crossedPortal;
+    stepBallMind(map, mind, ball, DT, { people, touch, portals }, rng);
+    touch.crossedPortal = false;
+    stepBall(map, ball, DT, [], portals, touch);
+    return crossedBefore;
+  }
+
+  test('it sees someone through a portal, follows them through and reaches them', () => {
+    Object.assign(ball, { x: 2.5, y: 2.7 });
+    wake();
+    people = [{ id: 'a', x: 8.5, y: 1.5 }];
+    let crossed = false;
+    for (let i = 0; i < Math.round(3 / DT); i++) {
+      crossed = tickThroughPortals() || crossed;
+    }
+    expect(crossed).toBe(true);
+    expect(mind.mood).toBe('playing');
+    expect(distanceTo(people.at(0) as Person)).toBeLessThanOrEqual(PLAY_LIMIT);
+  });
+
+  test('it does not see someone behind a portal in a straight line', () => {
+    Object.assign(ball, { x: 2.5, y: 2.5 });
+    wake();
+    people = [{ id: 'a', x: 2.5, y: 5 }];
+    tickThroughPortals();
+    expect(mind.mood).toBe('wandering');
+  });
+
+  test('wandering, it never picks a spot through a portal', () => {
+    Object.assign(ball, { x: 2.5, y: 2.5 });
+    wake();
+    for (let i = 0; i < Math.round(120 / DT); i++) {
+      expect(tickThroughPortals()).toBe(false);
+    }
+  });
+
+  test('coming through with nobody there, it rolls clear of the doorway instead of stopping in it', () => {
+    wake();
+    Object.assign(ball, { x: 2.5, y: 3.45, vx: 0, vy: 1 });
+    for (let i = 0; i < Math.round(3 / DT); i++) {
+      tickThroughPortals();
+    }
+    expect(mind.mood).toBe('scared');
+    expect(ball.x).toBeCloseTo(8.5, 0);
+    expect(Math.hypot(ball.x - 8.5, ball.y - 3.5)).toBeGreaterThan(0.7);
   });
 });
 
@@ -561,7 +694,8 @@ describe('giving up', () => {
   });
 
   test('someone gone mid-chase is chased to their last seen spot, and given up on', () => {
-    const p = approaching(4);
+    // Far enough for the 3 s since its happy cry to pass, so its sad one isn't held back.
+    const p = approaching(5.8);
     const lastSeen = { x: p.x, y: p.y };
     people = [];
     run(0.1);
@@ -575,6 +709,21 @@ describe('giving up', () => {
 });
 
 describe('wandering', () => {
+  test('alone in a corridor, it never rests for long or runs into a wall', () => {
+    Object.assign(ball, { x: 5.5, y: 1.5 });
+    wake();
+    const { bounces, longestS } = runOn(CORRIDOR, 300);
+    expect(bounces).toBe(0);
+    // A 2 s pause, then the few ticks it can take to find a spot there.
+    expect(longestS).toBeLessThanOrEqual(3);
+  });
+
+  test('alone in a room, it never runs into a wall', () => {
+    Object.assign(ball, { x: 1.5, y: 1.5 });
+    wake();
+    expect(runOn(ROOM, 300).bounces).toBe(0);
+  });
+
   test('it moves about and pauses', () => {
     wake();
     const from = { x: ball.x, y: ball.y };
