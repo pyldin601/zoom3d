@@ -68,7 +68,7 @@ export function createScreen(page: PageElements, flags: PageFlags): Screen {
   /** Its own small loop, not the room loop, and no input reaches it. */
   const startLandingShow = (title: Extract<Showing, { kind: 'title' }>) => {
     const show = createLandingShow();
-    const vacuum: VoxelInstance = { model: VACUUM_MODEL, ...LANDING_PARK };
+    const vacuum: VoxelInstance = { model: VACUUM_MODEL, ...LANDING_PARK, lift: 0 };
     title.vacuum = vacuum;
     let drawnInto: Framebuffer | null = null;
     title.stopShow = startLoop((dt) => {

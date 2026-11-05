@@ -69,7 +69,7 @@ describe('renderView without portals', () => {
       person('b', sx - 1.2, sy + 1.1, rgb(40, 200, 90)),
       person('c', sx + 0.3, sy - 1.7, rgb(60, 80, 230)),
     ],
-    objects: [{ model: VACUUM_MODEL, x: sx + 1.1, y: sy - 0.6, angle: 0.7 }],
+    objects: [{ model: VACUUM_MODEL, x: sx + 1.1, y: sy - 0.6, angle: 0.7, lift: 0 }],
     labels: [],
     ownGlow: { x: sx, y: sy, face: null, color: rgb(250, 220, 120) },
     lighters: [],
@@ -135,7 +135,7 @@ describe('renderView with a lighter', () => {
 
   test('a lighter lights the vacuum near it', () => {
     const eye = { x: 1.5, y: 1.5, angle: EAST };
-    const vacuum = [{ model: VACUUM_MODEL, x: 4, y: 1.5, angle: 0 }];
+    const vacuum = [{ model: VACUUM_MODEL, x: 4, y: 1.5, angle: 0, lift: 0 }];
     const draw = (lighters: RoomScene['lighters']) => {
       const fb = createFramebuffer();
       renderView(fb, { ...portalScene(map, null, eye, [], dark), lighters, objects: vacuum });

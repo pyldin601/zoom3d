@@ -79,11 +79,11 @@ test('renderWalls + 7 face avatars + the robot vacuum', async ({ bench }) => {
     boombox: true,
   }));
   const facts = new Map();
-  const voxels = [{ model: VACUUM_MODEL, x: cx + 1.2, y: cy, angle: 0 }];
+  const voxels = [{ model: VACUUM_MODEL, x: cx + 1.2, y: cy, angle: 0, lift: 0 }];
   await bench('walls+7 sprites+vacuum', () => {
     angle += 0.05;
     const p = { x: cx, y: cy, angle };
-    voxels[0] = { model: VACUUM_MODEL, x: cx + 1.2, y: cy, angle: angle * 0.3 };
+    voxels[0] = { model: VACUUM_MODEL, x: cx + 1.2, y: cy, angle: angle * 0.3, lift: 0 };
     renderWalls(fb, { map, eye: p, textures, lighting: null });
     renderSprites(fb, { eye: p, people: sprites, objects: voxels, lighting: null }, facts);
   }).run();

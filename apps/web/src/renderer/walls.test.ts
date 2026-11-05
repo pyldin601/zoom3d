@@ -788,7 +788,7 @@ describe('renderWalls voxel shadows', () => {
   const matte = { ...lit, floorLamp: new Int16Array(lit.floorLamp.length).fill(-1) };
   /** The floor where no lamp reaches: ambient light only. */
   const ambientOnly = bakeLighting(corridor, [], 0.3, FLOOR, CEILING).floor[2 * 8 * lit.stride + 16] as number;
-  const ball = (x: number, y = 2.5): VoxelInstance => ({ model: BALL_MODEL, x, y, angle: 0 });
+  const ball = (x: number, y = 2.5): VoxelInstance => ({ model: BALL_MODEL, x, y, angle: 0, lift: 0 });
   // Looking west from the corridor's east end, at the lamp past the ball: the shadow lies between the eye and the ball.
   const west = { x: 11.5, y: 2.5, angle: Math.PI };
   type Options = Partial<Parameters<typeof renderWalls>[1]> & { glows?: Glow[] };
@@ -951,7 +951,7 @@ describe('renderWalls voxel mirror', () => {
   const corridor = parseMap('11111111111111\n1S...........1\n1............1\n1............1\n11111111111111');
   // No lamps: no shadows, so whatever an object changes in a frame is its mirror.
   const dark = bakeLighting(corridor, [], 0.3, FLOOR, CEILING);
-  const ball = (x: number, y = 2.5): VoxelInstance => ({ model: BALL_MODEL, x, y, angle: 0 });
+  const ball = (x: number, y = 2.5): VoxelInstance => ({ model: BALL_MODEL, x, y, angle: 0, lift: 0 });
   const east = { x: 1.5, y: 2.5, angle: 0 };
   type Options = Partial<Parameters<typeof renderWalls>[1]>;
   const render = (objects: VoxelInstance[], o: Options = {}) => {

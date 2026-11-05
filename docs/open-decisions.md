@@ -849,7 +849,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     five-minute runs there were 240 with the mind on and 23 with it off, the largest 0.78 and 0.88 tiles. Nearly all are a
     walker bumping a ball playing at their feet, which looks like a shove at 4 to 5 tiles/s (inferred from the numbers).
   - **Playing is real movement** (owner, after playing a drawn wiggle: "not moving like it is shaking"): it dashes to
-    spots around its person. **No jumps for now** (owner). A scared ball's tremble is a drawn offset, never in its physics.
+    spots around its person. **No jumps for now** (owner; D34 has since added drawn hops). A scared ball's tremble is a drawn offset, never in its physics.
   - **Livelier alone** (owner, 2026-11-05: it looked asleep with nobody around): it moved 20% of the time, with stills of
     up to 26 s and 18% of its spots inside walls. Pauses went from 1–4 s to 0.5–2 s, a missed spot no longer costs a new
     pause, and its steering slides along walls instead of pressing into them, which also ends a stream of bounce events.
@@ -858,6 +858,22 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     following): this replaces the first design's ignoring them. It sees people where they appear, one portal deep, and
     follows them through; it doesn't wander through one. It gives up on reaching a last seen spot with nobody there,
     and a scared ball rolls clear of the doorway. Steering round a door jamb takes the near way round its corner.
+
+### D34 — The ball hops, drawn only
+- *Resolved 2026-11-05* ([spec](superpowers/specs/2026-11-05-ball-hop-design.md)): a kicked ball hops once and a playing
+  ball hops again and again (owner). A scared ball only trembles (owner).
+  - **Drawn only** (owner's pick over real height in the physics): the height lives in the client (`game/ball-hop.ts`),
+    with no server, protocol or `stepBall` change. A ball in mid-air collides as on the floor, and players' hops aren't
+    quite in step.
+  - **Values, for the owner to tune by playing:** kick 0.35 tiles, playing 0.15 tiles with 0.15 s between hops, gravity 14
+    tiles/s² (owner: 3 was "like on the moon"). A launch aims at an apex rather than adding speed, so repeated kicks can't lift the ball's top past the 0.85
+    lamps.
+  - **It springs** (owner, 2026-11-05, over squash and stretch): each landing rebounds to half the height, until a
+    rebound would be under 0.02 tiles. A playing ball waits its 0.15 s gap once settled.
+  - **The vacuum's knock hops it too** (builder), but only from rest: it arrives as a `kick` event on every tick the
+    vacuum keeps shoving the ball, which would otherwise hold it hovering. A kick the server refuses stops its hop rising.
+  - **Any voxel object can be lifted:** `VoxelInstance.lift` moves its faces, floor image, lighting and lamp shadow.
+    A lift of 0 draws as before, pixel for pixel. No hop sound yet (builder).
 
 ## Resolved
 _(none yet)_

@@ -1,4 +1,6 @@
 import {
+  type Ball,
+  type BallMood,
   createBall,
   INTERP_DELAY_MS,
   LEVEL1,
@@ -14,10 +16,11 @@ import { objectKey, type RemoteObject, type RemotePeer, type Session } from '../
 import { BALL_MODEL } from '../renderer/models/ball';
 import { VACUUM_MODEL } from '../renderer/models/vacuum';
 import { hexToRgb } from '../renderer/sprites';
-import { createRemoteWorld, type PeerMedia } from './remote-world';
+import { createRemoteWorld, type PeerMedia, type ShownBall } from './remote-world';
 
 const NOW = 10_000;
 const player = { x: 0, y: 0 };
+const shown = (ball: Ball, mood: BallMood = 'asleep', lift = 0): ShownBall => ({ ball, mood, lift });
 const FACE = new Uint32Array(4);
 const media: PeerMedia = { faceOf: (id) => (id === 'ada' ? FACE : null), speaking: (id) => (id === 'ada' ? 0.5 : 0) };
 
@@ -71,7 +74,7 @@ describe('sample', () => {
     room.addObject('v1', 4, 5, 1);
     world.sample(room.session, player, NOW);
     expect(world.positions.get('ada')).toEqual({ x: 2, y: 3 });
-    expect(world.positions.get(objectKey('v1'))).toEqual({ x: 4, y: 5, angle: 1 });
+    expect(world.positions.get(objectKey('v1'))).toEqual({ x: 4, y: 5, angle: 1, lift: 0 });
     expect(world.objectPoses.get(objectKey('v1'))).toBe(world.positions.get(objectKey('v1')));
   });
 
@@ -227,10 +230,20 @@ describe('collect', () => {
   test('the ball is drawn where the prediction says, not where its buffer is', () => {
     const world = createRemoteWorld();
     room.addObject('b1', 4, 5, 0, 'ball');
-    world.sample(room.session, player, NOW, { ...createBall('b1', 6, 7), heading: 2 });
+    world.sample(room.session, player, NOW, shown({ ...createBall('b1', 6, 7), heading: 2 }));
     world.collect(room.session, media, NOW, 0);
     expect(world.voxels.at(0)).toMatchObject({ model: BALL_MODEL, x: 6, y: 7, angle: 0 });
     expect(world.positions.get(objectKey('b1'))).toMatchObject({ x: 6, y: 7 });
+  });
+
+  test('the ball is drawn at its lift, the vacuum on the floor', () => {
+    const world = createRemoteWorld();
+    room.addObject('b1', 4, 5, 0, 'ball');
+    room.addObject('v1', 2, 3, 0, 'vacuum');
+    world.sample(room.session, player, NOW, shown(createBall('b1', 6, 7), 'asleep', 0.2));
+    world.collect(room.session, media, NOW, 0);
+    expect(world.voxels.find((v) => v.model === BALL_MODEL)?.lift).toBe(0.2);
+    expect(world.voxels.find((v) => v.model !== BALL_MODEL)?.lift).toBe(0);
   });
 
   test("the ball's mood shakes where it is drawn, and sleeping draws it where it is", () => {
@@ -239,13 +252,13 @@ describe('collect', () => {
     const ball = createBall('b1', 6, 7);
     const shaken = new Set<number>();
     for (let i = 0; i < 20; i++) {
-      world.sample(room.session, player, NOW + i * 13, ball, null, 'scared');
+      world.sample(room.session, player, NOW + i * 13, shown(ball, 'scared'));
       const y = world.objectPoses.get(objectKey('b1'))?.y ?? 0;
       shaken.add(y);
       expect(Math.abs(y - 7)).toBeLessThanOrEqual(0.03);
     }
     expect(shaken.size).toBeGreaterThan(1);
-    world.sample(room.session, player, NOW, ball, null, 'asleep');
+    world.sample(room.session, player, NOW, shown(ball));
     expect(world.objectPoses.get(objectKey('b1'))).toMatchObject({ x: 6, y: 7 });
     expect(ball).toMatchObject({ x: 6, y: 7 });
   });
@@ -254,7 +267,7 @@ describe('collect', () => {
     const world = createRemoteWorld();
     room.addObject('v1', 4, 5, 1);
     room.addObject('b1', 2, 2, 0, 'ball');
-    world.sample(room.session, player, NOW, createBall('b1', 2, 2));
+    world.sample(room.session, player, NOW, shown(createBall('b1', 2, 2)));
     world.collect(room.session, media, NOW, 0);
     expect(world.voxels.map((v) => v.model)).toEqual([VACUUM_MODEL, BALL_MODEL]);
   });

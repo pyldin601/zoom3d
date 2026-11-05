@@ -43,7 +43,7 @@ export function footprintRadius(model: VoxelModel): number {
  */
 export function shadowReach(v: VoxelInstance, l: Light): number {
   const r = footprintRadius(v.model);
-  const h = v.model.height;
+  const h = v.model.height + v.lift;
   const d = Math.sqrt((v.x - l.x) * (v.x - l.x) + (v.y - l.y) * (v.y - l.y));
   return Math.min(r + ((d + r) * h) / (l.z - h), l.radius * REFLECTION_CUT_REACH + r);
 }
@@ -72,10 +72,12 @@ export function objectSeenShare(v: VoxelInstance, l: Light, px: number, py: numb
 /**
  * Whether the sight line from the floor at (px, py) up to (sx, sy, sz) passes under the top of one of `v`'s voxel
  * columns. It rises as it goes, so in each column it crosses it is lowest where it enters: walked column by column
- * through the model's grid (Amanatides–Woo), only while it is still below the model's height.
+ * through the model's grid (Amanatides–Woo), only from where it reaches the lifted model's underside (it passes clear
+ * below that) until it is over the model's top. Each column counts as solid from the lift up to its top.
  */
 function blocked(v: VoxelInstance, px: number, py: number, sx: number, sy: number, sz: number): boolean {
   const { voxel, sizeX, sizeY, tops, height } = v.model;
+  const { lift } = v;
   const cos = Math.cos(v.angle);
   const sin = Math.sin(v.angle);
   // Into the model's grid: relative to its centre, turned by −angle, in voxels, with columns from 0.
@@ -88,8 +90,8 @@ function blocked(v: VoxelInstance, px: number, py: number, sx: number, sy: numbe
   const dx = (bx * cos + by * sin) / voxel + sizeX / 2 - x0;
   const dy = (-bx * sin + by * cos) / voxel + sizeY / 2 - y0;
   // The line's height is sz · t; past `last` it is over every column.
-  let first = 0;
-  let last = height / sz;
+  let first = lift / sz;
+  let last = (height + lift) / sz;
   // Clipped to the grid's box, x then y. Written out: a loop over [start, step, size] tuples allocates per call.
   if (dx === 0) {
     if (x0 < 0 || x0 >= sizeX) {
@@ -120,7 +122,9 @@ function blocked(v: VoxelInstance, px: number, py: number, sx: number, sy: numbe
   let nextY = dy === 0 ? Number.POSITIVE_INFINITY : ((dy > 0 ? cy + 1 : cy) - y0) / dy;
   let t = first;
   while (t <= last && cx >= 0 && cy >= 0 && cx < sizeX && cy < sizeY) {
-    if (sz * t < (tops[cy * sizeX + cx] as number)) {
+    // An empty column blocks nothing: at the walk's start, sz · t can round to just under the lift.
+    const top = tops[cy * sizeX + cx] as number;
+    if (top > 0 && sz * t < lift + top) {
       return true;
     }
     if (nextX < nextY) {
@@ -154,6 +158,37 @@ const UNSEEN_LOSS = 0.5;
 const REFLECTION_CUT_REACH = 1.5;
 /** How much of a lamp's light an object's shadow takes away: 1 is all of it. */
 export const OBJECT_SHADOW_DARKNESS = 1;
+
+export interface ShadowBounds {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+const bounds: ShadowBounds = { left: 0, right: 0, top: 0, bottom: 0 };
+
+/**
+ * A box round all of object `v`'s shadow from lamp `l`, into `out`. Seen from a disc lamp, each height of the object
+ * throws a disc of shadow, scaled about the lamp and blurred by its size, so the shadow lies between the discs its
+ * underside (at the lift) and its top throw. Clipped to its reach, where it has faded out.
+ */
+export function shadowBounds(v: VoxelInstance, l: Light, out: ShadowBounds): void {
+  const r = footprintRadius(v.model);
+  const reach = shadowReach(v, l);
+  const nearSpread = l.z / (l.z - v.lift);
+  const farSpread = l.z / (l.z - v.model.height - v.lift);
+  const nearRadius = r * nearSpread + LAMP_RADIUS * (nearSpread - 1);
+  const farRadius = r * farSpread + LAMP_RADIUS * (farSpread - 1);
+  const nearX = l.x + (v.x - l.x) * nearSpread;
+  const nearY = l.y + (v.y - l.y) * nearSpread;
+  const farX = l.x + (v.x - l.x) * farSpread;
+  const farY = l.y + (v.y - l.y) * farSpread;
+  out.left = Math.max(v.x - reach, Math.min(nearX - nearRadius, farX - farRadius));
+  out.right = Math.min(v.x + reach, Math.max(nearX + nearRadius, farX + farRadius));
+  out.top = Math.max(v.y - reach, Math.min(nearY - nearRadius, farY - farRadius));
+  out.bottom = Math.min(v.y + reach, Math.max(nearY + nearRadius, farY + farRadius));
+}
 
 /** Per floor cell, the lamp pass that last shaded it: each cell is shaded once per lamp, however many objects. */
 let shadedIn = new Uint32Array(0);
@@ -212,8 +247,8 @@ function reflectionCut(l: Light, distance: number): number {
 }
 
 /**
- * Shades the cells of the box round object `v`'s shadow from lamp `l` (index `li`) that this lamp's pass hasn't yet:
- * the box covers its footprint and its tip, where the shadow is widest (spread by the lamp's disc).
+ * Shades the cells of the box round object `v`'s shadow from lamp `l` (index `li`) that this lamp's pass hasn't yet
+ * (shadowBounds).
  */
 function shadeBox(
   lm: Lighting,
@@ -225,19 +260,8 @@ function shadeBox(
   tables: PatchedFloor,
   inView: (x: number, y: number, reach: number) => boolean
 ): void {
-  const r = footprintRadius(v.model);
-  const h = v.model.height;
-  const reach = shadowReach(v, l);
-  const awayX = v.x - l.x;
-  const awayY = v.y - l.y;
-  const away = Math.sqrt(awayX * awayX + awayY * awayY);
-  const tipX = away === 0 ? v.x : v.x + (awayX / away) * (reach - r);
-  const tipY = away === 0 ? v.y : v.y + (awayY / away) * (reach - r);
-  const tipRadius = ((r + LAMP_RADIUS) * l.z) / (l.z - h);
-  const left = Math.min(v.x - r, tipX - tipRadius);
-  const right = Math.max(v.x + r, tipX + tipRadius);
-  const top = Math.min(v.y - r, tipY - tipRadius);
-  const bottom = Math.max(v.y + r, tipY + tipRadius);
+  shadowBounds(v, l, bounds);
+  const { left, right, top, bottom } = bounds;
   const halfDiagonal = Math.sqrt((right - left) ** 2 + (bottom - top) ** 2) / 2;
   if (!inView((left + right) / 2, (top + bottom) / 2, halfDiagonal)) {
     return;
