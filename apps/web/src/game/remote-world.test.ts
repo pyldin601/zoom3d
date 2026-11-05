@@ -133,7 +133,7 @@ describe('collect', () => {
     ada.buffer.push({ t: 0, x: 2, y: 3, angle: 1.2 });
     world.sample(room.session, player, NOW);
     world.collect(room.session, media, NOW, 0);
-    expect(world.lighters).toEqual([{ key: 'ada', x: 2, y: 3, angle: 1.2 }]);
+    expect(world.lighters).toEqual([{ key: 'ada', x: 2, y: 3 }]);
     ada.info.held = null;
     world.collect(room.session, media, NOW, 0);
     expect(world.lighters).toEqual([]);

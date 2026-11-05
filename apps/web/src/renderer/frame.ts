@@ -33,7 +33,7 @@ export interface RoomScene extends PassScene {
   labels: readonly PersonLabel[];
   /** The local player's own face lights the room round them, as everyone's does; null until they have a colour. */
   ownGlow: GlowSource | null;
-  /** Everyone else holding a lighter: each throws its light ahead of them (lighter spec §3.2). */
+  /** Everyone else holding a lighter: each lights the room around them (lighter spec §3.2). */
   lighters: readonly LighterSource[];
   /** The local player's own lighter, when they hold one. */
   ownLighter: LighterSource | null;

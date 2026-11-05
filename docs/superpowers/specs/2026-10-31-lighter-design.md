@@ -5,13 +5,14 @@ avatar glow (D24 follow-ups, `renderer/glow.ts`).
 
 ## 1. Intent
 
-A player can hold a lit lighter. It throws a warm cone of light ahead of them, which walls block. Everyone in the room
+A player can hold a lit lighter. It throws a warm pool of light all round them, which walls block (a cone along their
+facing until 2026-11-05; the owner asked for all round, and the cone notes below are history). Everyone in the room
 sees the lighter in that player's hand and the light it throws. The user asked for the **cheapest** way to get this
 (2026-10-31), so it is built from parts that already exist: the held-item slot and the avatar glow.
 
 Goals:
 - Key `9` holds the lighter. Others see it on the holder's disc, and the holder sees it in first person.
-- The light is a cone along the holder's facing, lighting the floor, the ceiling, the walls and the voxel objects
+- The light falls on every side of the holder, lighting the floor, the ceiling, the walls and the voxel objects
   (the vacuum and the ball, and their images in the floor; added 2026-10-31 at the owner's request).
 - Walls cast shadows: the light does not pass through them or round corners.
 

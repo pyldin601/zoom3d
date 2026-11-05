@@ -53,7 +53,7 @@ export interface RemoteWorld {
   readonly sprites: readonly Sprite[];
   readonly labels: readonly PeerLabel[];
   readonly voxels: readonly VoxelInstance[];
-  /** This frame's lit lighters, from `collect`: everyone holding one, where they stand and face. Reused objects. */
+  /** This frame's lit lighters, from `collect`: everyone holding one and where they stand. Reused objects. */
   readonly lighters: readonly LighterSource[];
   /**
    * Samples every peer's and object's position at `now`: every frame, and from the hidden-tab ticker. The ball is the
@@ -80,7 +80,7 @@ interface PeerRecord {
   bob: Bob;
   sprite: Sprite;
   label: PeerLabel;
-  lighter: { key: string; x: number; y: number; angle: number };
+  lighter: { key: string; x: number; y: number };
 }
 
 export function createRemoteWorld(): RemoteWorld {
@@ -170,7 +170,7 @@ export function createRemoteWorld(): RemoteWorld {
         bob: createBob(),
         sprite: blankSprite(id),
         label: { x: 0, y: 0, shownX: 0, shownY: 0, color: '', name: '', mic: false },
-        lighter: { key: id, x: 0, y: 0, angle: 0 },
+        lighter: { key: id, x: 0, y: 0 },
       };
       records.set(id, record);
     }
@@ -202,7 +202,6 @@ export function createRemoteWorld(): RemoteWorld {
       if (peer.info.held === 'lighter') {
         lighter.x = pos.x;
         lighter.y = pos.y;
-        lighter.angle = pos.angle;
         lighters[lit++] = lighter;
       }
       fillSprite(sprite, peer, pos, bob, media, now);

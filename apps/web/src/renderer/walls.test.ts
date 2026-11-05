@@ -531,7 +531,6 @@ describe('renderWalls avatar glow', () => {
     cut: null,
     shadow: null,
     reach: GLOW_RADIUS,
-    cone: null,
   };
   const render = (glows: Glow[]) => {
     const fb = createFramebuffer();
@@ -761,7 +760,6 @@ describe('renderWalls ceiling reflections', () => {
       cut: null,
       shadow: null,
       reach: GLOW_RADIUS,
-      cone: null,
     };
     expect(brighterCeiling(dark).brighter).toBe(0);
     expect(brighterCeiling(dark, [glow]).brighter).toBe(0);
@@ -874,7 +872,6 @@ describe('renderWalls voxel shadows', () => {
       cut: null,
       shadow: null,
       reach: GLOW_RADIUS,
-      cone: null,
     };
     const bare = render([]);
     const shaded = render([ball(8.5)]);

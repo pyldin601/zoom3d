@@ -106,14 +106,14 @@ describe('renderView with a lighter', () => {
   const dark = bakeLighting(map, [], 0.08, FLOOR, CEILING);
   const EAST = 0;
   const WEST = Math.PI;
-  const holder = { key: 'h', x: 2.5, y: 1.5, angle: EAST };
+  const holder = { key: 'h', x: 2.5, y: 1.5 };
   const frameOf = (eye: PlayerState, lighters: RoomScene['lighters']) => {
     const fb = createFramebuffer();
     renderView(fb, { ...portalScene(map, null, eye, [], dark), lighters });
     return fb.pixels;
   };
 
-  test('the floor and walls ahead of someone holding a lighter are brighter', () => {
+  test('the floor and walls around someone holding a lighter are brighter', () => {
     const eye = { x: 1.5, y: 1.5, angle: EAST };
     const without = frameOf(eye, []);
     const lit = frameOf(eye, [holder]);
@@ -122,18 +122,18 @@ describe('renderView with a lighter', () => {
     expect(red(lit)).toBeGreaterThan(red(without));
   });
 
-  test('nothing behind its holder is lit', () => {
+  test('what lies behind its holder is lit too', () => {
     // Holder and eye back to back on one spot: all the eye sees lies behind the holder.
     const eye = { x: 5.5, y: 1.5, angle: WEST };
-    expect(firstDifference(frameOf(eye, []), frameOf(eye, [{ ...holder, x: 5.5 }]))).toBe(-1);
+    expect(firstDifference(frameOf(eye, []), frameOf(eye, [{ ...holder, x: 5.5 }]))).toBeGreaterThanOrEqual(0);
   });
 
-  test('nothing behind a wall in front of its holder is lit', () => {
+  test('nothing behind a wall is lit', () => {
     const eye = { x: 11.5, y: 1.5, angle: WEST };
     expect(firstDifference(frameOf(eye, []), frameOf(eye, [{ ...holder, x: 4.5 }]))).toBe(-1);
   });
 
-  test('a lighter lights the vacuum in front of it', () => {
+  test('a lighter lights the vacuum near it', () => {
     const eye = { x: 1.5, y: 1.5, angle: EAST };
     const vacuum = [{ model: VACUUM_MODEL, x: 4, y: 1.5, angle: 0 }];
     const draw = (lighters: RoomScene['lighters']) => {
