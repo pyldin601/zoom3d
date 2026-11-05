@@ -74,7 +74,7 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
   let fallback: FallbackFace | null = null;
   let fallbackColour: string | null = null;
   const glowSource = { x: 0, y: 0, face: null, color: 0 };
-  const lighterSource = { key: OWN_SPRITE_KEY, x: 0, y: 0, angle: 0 };
+  const lighterSource = { key: OWN_SPRITE_KEY, x: 0, y: 0 };
   // The room measures no level of the own mic, so the own ring never brightens: `speaking` stays 0.
   const ownDisc = blankSprite(OWN_SPRITE_KEY);
   const held: FirstPerson = { drink: null, boombox: false, step, gesture: gesture.pose(0) };
@@ -127,7 +127,6 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       }
       lighterSource.x = pose.x;
       lighterSource.y = pose.y;
-      lighterSource.angle = pose.angle;
       return lighterSource;
     },
     avatar(now, ringColour, faceShown) {

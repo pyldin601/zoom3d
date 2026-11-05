@@ -1,5 +1,6 @@
 import { parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
+import { glowLight } from './glow';
 import {
   createLighterGlows,
   LIGHTER_COLOUR,
@@ -26,7 +27,7 @@ const pillar = parseMap(`
 1.......1
 111111111
 `);
-const source = (x: number, y: number, angle = 0, key = 'a') => ({ key, x, y, angle });
+const source = (x: number, y: number, key = 'a') => ({ key, x, y });
 
 /** The shadow table's value for the floor cell holding (x, y). */
 function seenAt(glow: ReturnType<ReturnType<typeof createLighterGlows>['update']>[number], x: number, y: number) {
@@ -40,14 +41,12 @@ function seenAt(glow: ReturnType<ReturnType<typeof createLighterGlows>['update']
 }
 
 describe('createLighterGlows', () => {
-  test('one source gives one glow at it, reaching LIGHTER_REACH, shadowed, its cone along its angle', () => {
-    const glows = createLighterGlows().update([source(2.5, 2.5, Math.PI / 2)], open, null, 0);
+  test('one source gives one glow at it, reaching LIGHTER_REACH, shadowed', () => {
+    const glows = createLighterGlows().update([source(2.5, 2.5)], open, null, 0);
     expect(glows).toHaveLength(1);
     const g = glows.at(0);
     expect([g?.x, g?.y, g?.reach]).toEqual([2.5, 2.5, LIGHTER_REACH]);
     expect(g?.shadow).not.toBeNull();
-    expect(g?.cone?.dx).toBeCloseTo(0);
-    expect(g?.cone?.dy).toBeCloseTo(1);
   });
 
   test('its colour is the lighter colour times strength times the flicker', () => {
@@ -81,15 +80,19 @@ describe('createLighterGlows', () => {
     expect(seenAt(moved, 5.5, 2.5)).toBe(0);
   });
 
-  test('turning on the spot turns the cone at once, keeping the table', () => {
-    const lighters = createLighterGlows();
-    lighters.update([source(2.5, 2.5, 0)], open, null, 0);
-    const turned = lighters.update([source(2.5, 2.5, Math.PI)], pillar, null, 0).at(0);
-    if (!turned) {
+  test('its light falls on the floor all round the flame, equally on every side', () => {
+    const g = createLighterGlows()
+      .update([source(4.5, 2.5)], open, null, 0)
+      .at(0);
+    if (!g) {
       throw new Error('no glow');
     }
-    expect(turned.cone?.dx).toBeCloseTo(-1);
-    expect(seenAt(turned, 5.5, 2.5)).toBeGreaterThan(0);
+    const floorAt = (x: number, y: number) => glowLight(g, x, y, 0, 0, 0, 1);
+    const ahead = floorAt(5.5, 2.5);
+    expect(ahead).toBeGreaterThan(0);
+    expect(floorAt(3.5, 2.5)).toBeCloseTo(ahead);
+    expect(floorAt(4.5, 3.5)).toBeCloseTo(ahead);
+    expect(floorAt(4.5, 1.5)).toBeCloseTo(ahead);
   });
 
   test('portals switched while standing still refill the table', () => {
@@ -117,7 +120,7 @@ describe('createLighterGlows', () => {
 
   test('two sources give two glows, in the same list and glow objects from call to call', () => {
     const lighters = createLighterGlows();
-    const both = [source(2.5, 2.5, 0, 'a'), source(6.5, 2.5, 0, 'b')];
+    const both = [source(2.5, 2.5, 'a'), source(6.5, 2.5, 'b')];
     const first = lighters.update(both, open, null, 0);
     const glows = [...first];
     const second = lighters.update(both, open, null, 0.5);

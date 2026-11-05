@@ -177,8 +177,8 @@ console.log(`lighter shadow rebuild ${median(rebuildTimes).toFixed(3)} ms`);
 // 'both + glow' with a lighter in the eye's hand and in each nearby avatar's, every table already filled: what a frame
 // pays for the lighters' light once nobody changes cell. Kept out of MODES, so their pixel hash stays as it was.
 const lighterGlowsAt = poses.map((p) => {
-  const holders = p.glows.map((g, i) => ({ key: `h${i}`, x: g.x, y: g.y, angle: p.angle + i }));
-  holders.push({ key: 'eye', x: p.x, y: p.y, angle: p.angle });
+  const holders = p.glows.map((g, i) => ({ key: `h${i}`, x: g.x, y: g.y }));
+  holders.push({ key: 'eye', x: p.x, y: p.y });
   return [...p.glows, ...createLighterGlows().update(holders, map, null, 0)];
 });
 let lighterHash = 0;
@@ -270,11 +270,10 @@ function posesNearLamps(): Pose[] {
             cut: null,
             shadow: null,
             reach: GLOW_RADIUS,
-            cone: null,
           });
         }
       }
-      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null, shadow: null, reach: GLOW_RADIUS, cone: null });
+      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null, shadow: null, reach: GLOW_RADIUS });
       out.push({ x, y, angle: rand() * Math.PI * 2, glows });
     }
   }
@@ -302,7 +301,6 @@ function crowdGlows(): Glow[] {
         cut: null,
         shadow: null,
         reach: GLOW_RADIUS,
-        cone: null,
       });
     }
   }

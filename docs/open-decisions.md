@@ -794,6 +794,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 - *Resolved 2026-10-31* ([spec](superpowers/specs/2026-10-31-lighter-design.md)): key `9` (and a Lighter choice in the
   touch tray) puts a lighter in the drinks' hand. It throws a warm, flickering cone of light along its holder's facing,
   which walls block, and everyone sees it. The owner asked for the cheapest way to build it.
+  - **All round, not a cone** (the owner asked, 2026-11-05): the light now falls on every side of its holder, so it no
+    longer depends on which way they face. The cone is removed from `Glow`, and the notes below that mention it are
+    history. Reach, strength, colour and flicker are unchanged. With 8 lighters per lamp pose a frame takes 2.40 ms,
+    against 2.26 ms with cones (`pnpm bench:walls`), and the hashes of scenes with no lighter are unchanged.
   - **A held item and a glow, not a dynamic lamp.** `'lighter'` is a fourth `HeldItem`, so the protocol, storage and
     hand sprites carry it as they are, and `PROTOCOL_VERSION` stays 5. It has no gestures: `isDrink` guards the sip and
     cheers keys, the touch sip button and the server relay.

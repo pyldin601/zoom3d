@@ -1,8 +1,7 @@
-// A held lighter as a light (lighter spec §3.2): a warm glow that flickers, thrown in a cone along its holder's facing
-// and blocked by walls. Its shadow table is refilled only when the holder steps into another floor cell or the portals
-// switch, never on a turn: the table covers the whole disc around the flame, and the cone only picks from it.
+// A held lighter as a light (lighter spec §3.2): a warm glow that flickers, all round its holder and blocked by walls.
+// Its shadow table is refilled only when the holder steps into another floor cell or the portals switch.
 import type { GameMap, Portals } from '@zoom3d/shared';
-import type { Glow, GlowCone, GlowShadow } from './glow';
+import type { Glow, GlowShadow } from './glow';
 import { FLOOR_SUB, fillGlowSeen, newGlowShadow } from './lighting';
 
 /** How far a lighter's light reaches (tiles). */
@@ -14,15 +13,9 @@ export const LIGHTER_REACH = 4;
 export const LIGHTER_STRENGTH = 1.5;
 /** Linear colour of a lighter's flame. */
 export const LIGHTER_COLOUR = { r: 1, g: 0.55, b: 0.2 };
-/** Half the cone's width: past it, no light. */
-export const LIGHTER_CONE_HALF_RAD = (35 * Math.PI) / 180;
-/** The outermost part of the cone's half-width, over which its light fades out. */
-export const LIGHTER_CONE_FADE_RAD = (10 * Math.PI) / 180;
 /** The flicker moves the light up to this share either way. */
 export const LIGHTER_FLICKER = 0.1;
 
-const CONE_COS_EDGE = Math.cos(LIGHTER_CONE_HALF_RAD);
-const CONE_COS_FULL = Math.cos(LIGHTER_CONE_HALF_RAD - LIGHTER_CONE_FADE_RAD);
 /** Three sines at unrelated rates (Hz) never line up into a visible beat; their weights add up to 1. */
 const FLICKER_WAVES = [
   { hz: 5.3, weight: 0.5 },
@@ -30,12 +23,11 @@ const FLICKER_WAVES = [
   { hz: 11.7, weight: 0.2 },
 ] as const;
 
-/** Someone holding a lighter: who (to tell their flicker and table apart), where and which way they face. */
+/** Someone holding a lighter: who (to tell their flicker and table apart) and where. */
 export interface LighterSource {
   readonly key: string;
   readonly x: number;
   readonly y: number;
-  readonly angle: number;
 }
 
 /** A frame's lighter glows, in objects reused from frame to frame. */
@@ -46,7 +38,7 @@ export interface LighterGlows {
 
 /** One holder's glow and the floor cell and portals its shadow table was filled for. */
 interface Held {
-  glow: Glow & { cone: GlowCone; shadow: GlowShadow };
+  glow: Glow & { shadow: GlowShadow };
   phase: number;
   cellX: number;
   cellY: number;
@@ -62,9 +54,8 @@ export function createLighterGlows(): LighterGlows {
   const heldBy = (key: string): Held => {
     let entry = held.get(key);
     if (!entry) {
-      const cone = { dx: 1, dy: 0, cosEdge: CONE_COS_EDGE, cosFull: CONE_COS_FULL };
       const shadow = newGlowShadow(LIGHTER_REACH);
-      const glow = { x: 0, y: 0, r: 0, g: 0, b: 0, reach: LIGHTER_REACH, cut: null, shadow, cone };
+      const glow = { x: 0, y: 0, r: 0, g: 0, b: 0, reach: LIGHTER_REACH, cut: null, shadow };
       // A cell no one stands in, so the first update fills the table.
       entry = { glow, phase: phaseOf(key), cellX: -1, cellY: -1, portals: null, stamp: 0 };
       held.set(key, entry);
@@ -83,8 +74,6 @@ export function createLighterGlows(): LighterGlows {
         const { glow } = entry;
         glow.x = source.x;
         glow.y = source.y;
-        glow.cone.dx = Math.cos(source.angle);
-        glow.cone.dy = Math.sin(source.angle);
         const brightness = LIGHTER_STRENGTH * flicker(seconds, entry.phase);
         glow.r = LIGHTER_COLOUR.r * brightness;
         glow.g = LIGHTER_COLOUR.g * brightness;

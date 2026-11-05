@@ -70,7 +70,7 @@ test('the own disc: none without a ring colour, else at the pose with the camera
   expect(localPlayer.avatar(600, '#ff0000', true)).toBe(disc);
 });
 
-test('the own lighter: none with a drink or nothing in hand, else where the player stands and faces', () => {
+test('the own lighter: none with a drink or nothing in hand, else where the player stands', () => {
   const localPlayer = createLocalPlayer(MAP, () => 0.5);
   expect(localPlayer.lighter()).toBeNull();
   localPlayer.takeDrink('beer');
@@ -80,7 +80,6 @@ test('the own lighter: none with a drink or nothing in hand, else where the play
     key: OWN_SPRITE_KEY,
     x: localPlayer.pose.x,
     y: localPlayer.pose.y,
-    angle: localPlayer.pose.angle,
   });
 });
 

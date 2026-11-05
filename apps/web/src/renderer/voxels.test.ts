@@ -263,21 +263,16 @@ describe('renderVoxel with lighting', () => {
     expect(red(lit)).toBeGreaterThan(red(dark));
   });
 
-  test("a lighter aimed at the box lights the face turned to it; one aimed away doesn't", () => {
+  test('a lighter beside the box lights the face turned to it', () => {
     const dark = bakeLighting(room, [], 0.45, RED, RED);
     // Between the camera and the box: the box's face turned to the camera is turned to the lighter too.
-    const lighterAt = (angle: number) => [
-      ...createLighterGlows().update([{ key: 'h', x: 2, y: 4.5, angle }], room, null, 0),
-    ];
+    const lighter = [...createLighterGlows().update([{ key: 'h', x: 2, y: 4.5 }], room, null, 0)];
     const none = blank();
     renderVoxel(none, view, box, dark);
-    const aimed = blank();
-    renderVoxel(aimed, view, box, dark, undefined, lighterAt(0));
-    const away = blank();
-    renderVoxel(away, view, box, dark, undefined, lighterAt(Math.PI));
+    const lit = blank();
+    renderVoxel(lit, view, box, dark, undefined, lighter);
     const red = (fb: ReturnType<typeof blank>) => Math.max(...[...drawn(fb)].map((c) => c & 0xff));
-    expect(red(aimed)).toBeGreaterThan(red(none));
-    expect(firstDifference(away.pixels, none.pixels)).toBe(-1);
+    expect(red(lit)).toBeGreaterThan(red(none));
   });
 
   describe('glowing voxels shine like the ball (one emission rule for every model)', () => {
@@ -368,7 +363,7 @@ describe('renderVoxel with lighting', () => {
 });
 
 describe('renderVoxelMirror', () => {
-  test('a lighter aimed at the object lights its image in the floor too', () => {
+  test('a lighter beside the object lights its image in the floor too', () => {
     const room = parseMap('1111111\n1S....1\n1.....1\n1.....1\n1.....1\n1.....1\n1111111');
     const dark = bakeLighting(room, [], 0.3, RED, RED);
     const ball: VoxelInstance = { model: BALL_MODEL, x: 3.0, y: 4.5, angle: 0 };
@@ -386,7 +381,7 @@ describe('renderVoxelMirror', () => {
       renderVoxelMirror(fb, view, ball, dark, mirror, undefined, glows);
       return red;
     };
-    const lighter = [...createLighterGlows().update([{ key: 'h', x: 2, y: 4.5, angle: 0 }], room, null, 0)];
+    const lighter = [...createLighterGlows().update([{ key: 'h', x: 2, y: 4.5 }], room, null, 0)];
     expect(plotted(lighter)).toBeGreaterThan(plotted([]));
   });
 
