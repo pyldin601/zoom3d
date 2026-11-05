@@ -396,3 +396,74 @@ describe('its mood', () => {
     expect(ballOf(p).y).toBe(3.5);
   });
 });
+
+describe('the hop', () => {
+  const stepFor = (p: ReturnType<typeof createBallPrediction>, frames: number) => {
+    let highest = 0;
+    for (let i = 0; i < frames; i++) {
+      p.step(DT, i * DT * 1000, null);
+      highest = Math.max(highest, p.lift);
+    }
+    return highest;
+  };
+
+  test('a local kick lifts the ball', () => {
+    const p = predicted();
+    expect(p.kick({ x: 2.6, y: 3.5 }, 0, 0)).not.toBeNull();
+    expect(stepFor(p, 5)).toBeGreaterThan(0);
+  });
+
+  test('a kick out of reach does not', () => {
+    const p = predicted();
+    expect(p.kick({ x: 8, y: 3.5 }, 0, 0)).toBeNull();
+    expect(stepFor(p, 5)).toBe(0);
+  });
+
+  test('someone else’s kick lifts it', () => {
+    const p = predicted();
+    p.server(state(3, 3.5, { event: 'kick', by: 'other' }), 'me', 0);
+    expect(stepFor(p, 5)).toBeGreaterThan(0);
+  });
+
+  test('the vacuum’s knock lifts it', () => {
+    const p = predicted();
+    p.server(state(3, 3.5, { event: 'kick' }), 'me', 0);
+    expect(stepFor(p, 5)).toBeGreaterThan(0);
+  });
+
+  test('the local player’s own echo starts no second hop', () => {
+    const p = predicted();
+    const k = p.kick({ x: 2.6, y: 3.5 }, 0, 0);
+    stepFor(p, 120);
+    expect(p.lift).toBe(0);
+    p.server(state(3, 3.5, { event: 'kick', by: 'me', k: k ?? 0 }), 'me', 0);
+    expect(stepFor(p, 5)).toBe(0);
+  });
+
+  test('a playing ball hops', () => {
+    const p = predicted();
+    p.server(state(3, 3.5, { mood: 'playing' }), 'me', 0);
+    expect(stepFor(p, 60)).toBeGreaterThan(0);
+  });
+
+  test('a scared ball does not', () => {
+    const p = predicted();
+    p.server(state(3, 3.5, { mood: 'scared' }), 'me', 0);
+    expect(stepFor(p, 60)).toBe(0);
+  });
+
+  test('a forced mood hops like the real one', () => {
+    const p = predicted();
+    p.forceMood('playing');
+    expect(stepFor(p, 60)).toBeGreaterThan(0);
+  });
+
+  test('a new welcome starts on the floor', () => {
+    const p = predicted();
+    p.kick({ x: 2.6, y: 3.5 }, 0, 0);
+    stepFor(p, 5);
+    expect(p.lift).toBeGreaterThan(0);
+    p.reset(info('b', 3, 3.5));
+    expect(p.lift).toBe(0);
+  });
+});

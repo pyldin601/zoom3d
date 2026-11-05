@@ -66,7 +66,8 @@ export interface RemoteWorld {
     now: number,
     ball?: Ball | null,
     portals?: Portals | null,
-    ballMood?: BallMood
+    ballMood?: BallMood,
+    ballLift?: number
   ): void;
   /**
    * Builds this frame's sprites, labels and voxels from the last sample; `dt` (seconds) walks the bobs. `apparent`
@@ -111,6 +112,7 @@ export function createRemoteWorld(): RemoteWorld {
   };
 
   const shake = { x: 0, y: 0 };
+  let ballLift = 0;
   const sampleObjects = (s: Session, now: number, ball: Ball | null, ballMood: BallMood) => {
     // Objects come every tick; each peer is drawn as late as its updates need (6d spec §2.3).
     const drawnAt = now - INTERP_DELAY_MS;
@@ -228,6 +230,7 @@ export function createRemoteWorld(): RemoteWorld {
       v.x = pose.x;
       v.y = pose.y;
       v.angle = pose.angle;
+      v.lift = obj.info.kind === 'ball' ? ballLift : 0;
       voxels[n++] = v;
     }
     voxels.length = n;
@@ -240,7 +243,8 @@ export function createRemoteWorld(): RemoteWorld {
     labels,
     voxels,
     lighters,
-    sample(s, player, now, ball = null, portals = null, ballMood = 'asleep') {
+    sample(s, player, now, ball = null, portals = null, ballMood = 'asleep', lift = 0) {
+      ballLift = lift;
       forgetGone(s);
       sampleObjects(s, now, ball, ballMood);
       samplePeers(s, player, now, portals);

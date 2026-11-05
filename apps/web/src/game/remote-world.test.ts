@@ -233,6 +233,16 @@ describe('collect', () => {
     expect(world.positions.get(objectKey('b1'))).toMatchObject({ x: 6, y: 7 });
   });
 
+  test('the ball is drawn at its lift, the vacuum on the floor', () => {
+    const world = createRemoteWorld();
+    room.addObject('b1', 4, 5, 0, 'ball');
+    room.addObject('v1', 2, 3, 0, 'vacuum');
+    world.sample(room.session, player, NOW, createBall('b1', 6, 7), null, 'asleep', 0.2);
+    world.collect(room.session, media, NOW, 0);
+    expect(world.voxels.find((v) => v.model === BALL_MODEL)?.lift).toBe(0.2);
+    expect(world.voxels.find((v) => v.model !== BALL_MODEL)?.lift).toBe(0);
+  });
+
   test("the ball's mood shakes where it is drawn, and sleeping draws it where it is", () => {
     const world = createRemoteWorld();
     room.addObject('b1', 4, 5, 0, 'ball');
