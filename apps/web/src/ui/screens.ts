@@ -40,8 +40,9 @@ export function clearScreen(root: HTMLElement): void {
 const SHORT_COMMIT_LENGTH = 7;
 
 /**
- * The landing panel, in the lobby's style; main.ts draws the title picture behind it (landing-scene.ts). `release` is
- * the commit the bundle was built from, shown faintly under it; unset in dev and tests, so nothing shows there.
+ * The landing panel, in the lobby's style; game/screen.ts draws the title picture behind it (landing-scene.ts).
+ * `release` is the commit the bundle was built from, shown faintly under it; unset in dev and tests, so nothing shows
+ * there.
  */
 export function showLanding(root: HTMLElement, onCreate: () => void, release?: string): void {
   const create = el('button', { type: 'button', className: 'primary', textContent: 'Start a party' });

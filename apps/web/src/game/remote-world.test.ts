@@ -70,7 +70,7 @@ describe('sample', () => {
     room.addPeer('ada', 2, 3);
     room.addObject('v1', 4, 5, 1);
     world.sample(room.session, player, NOW);
-    expect(world.positions.get('ada')).toEqual({ x: 2, y: 3, angle: 0 });
+    expect(world.positions.get('ada')).toEqual({ x: 2, y: 3 });
     expect(world.positions.get(objectKey('v1'))).toEqual({ x: 4, y: 5, angle: 1 });
     expect(world.objectPoses.get(objectKey('v1'))).toBe(world.positions.get(objectKey('v1')));
   });
@@ -95,7 +95,7 @@ describe('sample', () => {
     room.peers.get('ada')?.buffer.push({ t: NOW, x: 6, y: 3, angle: 0 });
     world.sample(room.session, player, NOW + 1000);
     expect(world.positions.get('ada')).toBe(first);
-    expect(first).toEqual({ x: 6, y: 3, angle: 0 });
+    expect(first).toEqual({ x: 6, y: 3 });
   });
   test('draws a peer far on the map but near through a portal with the near delay, as the server sends it', () => {
     const portals = wirePortals(parseMap(LEVEL1), 'AAAAAAAAAAAAAAAAAAAAAA');

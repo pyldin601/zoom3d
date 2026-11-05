@@ -62,7 +62,7 @@ export interface JoinOptions {
   /** Where remote media plays (muted) and where the boombox's own element goes. */
   mediaContainer: HTMLElement;
   localMediaContainer: HTMLElement;
-  drink: HeldItem | null;
+  held: HeldItem | null;
   boomboxVolume: number;
   onBoomboxChange(on: boolean): void;
   /** Someone flipped the room's portals (not called for the welcome's flag). */
@@ -174,7 +174,7 @@ function connectSession(
       objectsReset: (objects) => ball.reset(objects.find((o) => o.kind === 'ball') ?? null),
     },
   });
-  session.setHeld(opts.drink);
+  session.setHeld(opts.held);
   session.setBoombox(false);
   return session;
 }

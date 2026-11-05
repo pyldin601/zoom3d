@@ -1,6 +1,6 @@
-// The player's own drink in first person, peeking in at the bottom-left. Others see it in the
+// What the player holds, in first person, peeking in at the bottom-left. Others see it in the
 // avatar's left hand, so here it is the in-game sprite mirrored: the hand and handle toward the
-// screen edge, the drink toward the centre (held items spec §2.1).
+// screen edge, the item toward the centre (held items spec §2.1).
 import type { HeldItem } from '@zoom3d/shared';
 import type { Bob } from './bob';
 import type { Framebuffer } from './framebuffer';

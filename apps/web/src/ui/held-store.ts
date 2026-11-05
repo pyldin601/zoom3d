@@ -1,4 +1,4 @@
-// The drink in hand, remembered per browser; storage may be missing or throw (private mode, blocked).
+// What is in hand, remembered per browser; storage may be missing or throw (private mode, blocked).
 import { type HeldItem, isDrink, isHeldItem } from '@zoom3d/shared';
 
 export const HELD_KEY = 'zoom3d.held';
@@ -46,8 +46,8 @@ export function heldForKey(code: string): HeldItem | null | undefined {
 }
 
 /**
- * A drink key sips or cheers the drink already in hand (by press length, held items spec §2.4); otherwise it picks
- * that drink (or nothing).
+ * A number key sips or cheers the drink already in hand (by press length, held items spec §2.4); otherwise it picks
+ * what the key stands for (or nothing).
  */
 export function heldKeyAction(keyItem: HeldItem | null, holding: HeldItem | null): 'sip' | 'pick' {
   return isDrink(keyItem) && keyItem === holding ? 'sip' : 'pick';

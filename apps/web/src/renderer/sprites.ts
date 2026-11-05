@@ -297,14 +297,14 @@ function orderVoxels(view: View, voxels: readonly VoxelInstance[]): void {
   voxelOrder.sort(voxelsFarFirst);
 }
 
-/** Each visible avatar's shadow, and those of the drink and boombox it carries. */
+/** Each visible avatar's shadow, and those of the item and boombox it carries. */
 function drawSpriteShadows(fb: Framebuffer, view: View, sprites: readonly Sprite[], pass: Pass): void {
   for (const i of visible) {
     const s = sprites[i] as Sprite;
     const { depth } = projections[i] as Projection;
     drawShadow(fb, view, shadowUnder(s.x, s.y, depth, SHADOW_RADIUS), pass);
-    if (s.held && drinkLift(s) < 1) {
-      drawShadow(fb, view, drinkShadow(view, s, s.held, depth), pass);
+    if (s.held && heldLift(s) < 1) {
+      drawShadow(fb, view, heldShadow(view, s, s.held, depth), pass);
     }
     if (s.boombox) {
       drawShadow(fb, view, shadowBeside(view, s, BOOMBOX_SHADOW_OFFSET, BOOMBOX_SHADOW_RADIUS, depth), pass);
@@ -312,15 +312,15 @@ function drawSpriteShadows(fb: Framebuffer, view: View, sprites: readonly Sprite
   }
 }
 
-/** How far the drink is raised, 0..1: to the mouth in a sip, over the head in a cheers. */
-const drinkLift = (pose: HeldPose) => Math.max(pose.sip, pose.cheers);
+/** How far the held item is raised, 0..1: to the mouth in a sip, over the head in a cheers. */
+const heldLift = (pose: HeldPose) => Math.max(pose.sip, pose.cheers);
 
-/** Lifted to the mouth or over the head, the drink's shadow would sit on the disc's and double it, so it fades out. */
-function drinkShadow(view: View, s: Sprite, drink: HeldItem, depth: number): FloorShadow {
-  const radius = (HELD_TEXEL * HELD_SPRITES[drink].w * AVATAR_RADIUS) / 2;
-  const offset = drinkLeft(drink, s) * AVATAR_RADIUS + radius;
+/** Lifted to the mouth or over the head, the item's shadow would sit on the disc's and double it, so it fades out. */
+function heldShadow(view: View, s: Sprite, item: HeldItem, depth: number): FloorShadow {
+  const radius = (HELD_TEXEL * HELD_SPRITES[item].w * AVATAR_RADIUS) / 2;
+  const offset = heldLeft(item, s) * AVATAR_RADIUS + radius;
   const beside = shadowBeside(view, s, offset, radius, depth);
-  beside.strength = 1 - drinkLift(s);
+  beside.strength = 1 - heldLift(s);
   return beside;
 }
 
@@ -418,11 +418,11 @@ function drawVoxel(fb: Framebuffer, view: View, { objects, lighting }: PeopleAnd
   renderVoxel(fb, view, objects[voxelOrder[k] as number] as VoxelInstance, lighting, pass, objectGlows);
 }
 
-/** One avatar: its disc, then the drink and boombox it carries in front of it. */
+/** One avatar: its disc, then the item and boombox it carries in front of it. */
 function drawAvatar(fb: Framebuffer, s: Sprite, projection: Projection, pass: Pass): void {
   drawDisc(fb, s, projection, pass);
   if (s.held) {
-    drawDrink(fb, s, s.held, projection, pass);
+    drawHeld(fb, s, s.held, projection, pass);
   }
   if (s.boombox) {
     drawBoombox(fb, s, projection, pass);
@@ -525,18 +525,12 @@ function ringColour({ color, face, speaking }: Sprite): number {
 const faceTexel = (offsetPx: number, faceRadiusPx: number, faceSize: number) =>
   Math.min(faceSize - 1, Math.max(0, ((offsetPx / faceRadiusPx + 1) * 0.5 * faceSize) | 0));
 
-/** The drink in the hand on the viewer's right, part way to the mouth or raised as `s` says, bobbing with the step. */
-function drawDrink(
-  fb: Framebuffer,
-  s: Sprite,
-  drink: HeldItem,
-  { screenX, depth, size }: Projection,
-  pass: Pass
-): void {
+/** The item in the hand on the viewer's right, part way to the mouth or raised as `s` says, bobbing with the step. */
+function drawHeld(fb: Framebuffer, s: Sprite, item: HeldItem, { screenX, depth, size }: Projection, pass: Pass): void {
   const r = size / 2;
-  const left = screenX + drinkLeft(drink, s) * r;
-  const top = fb.height / 2 - (drinkTop(drink, s) + s.itemBob * BOB_HEIGHT) * r;
-  blitHeldSprite(fb, HELD_SPRITES[drink], left, top, HELD_TEXEL * r, depth, pass);
+  const left = screenX + heldLeft(item, s) * r;
+  const top = fb.height / 2 - (heldTop(item, s) + s.itemBob * BOB_HEIGHT) * r;
+  blitHeldSprite(fb, HELD_SPRITES[item], left, top, HELD_TEXEL * r, depth, pass);
 }
 
 /** The boombox in the hand on the viewer's left, bobbing with the step. */
@@ -546,9 +540,9 @@ function drawBoombox(fb: Framebuffer, s: Sprite, { screenX, depth, size }: Proje
   blitHeldSprite(fb, BOOMBOX_SPRITE, screenX + BOOMBOX_LEFT * r, top, HELD_TEXEL * r, depth, pass);
 }
 
-/** The drink's left edge in `pose`, in disc radii right of the disc's centre. */
-const drinkLeft = (drink: HeldItem, pose: HeldPose) =>
-  poseBlend(pose, HELD_LEFT, isDrink(drink) ? sipLeft(drink) : HELD_LEFT, CHEERS_LEFT) + CHEERS_WOBBLE * pose.wobble;
-/** The drink's top in `pose`, in disc radii above the eye line; the lighter is never sipped, so it stays at rest. */
-const drinkTop = (drink: HeldItem, pose: HeldPose) =>
-  poseBlend(pose, HELD_TOP, isDrink(drink) ? sipTop(drink) : HELD_TOP, CHEERS_TOP);
+/** The held item's left edge in `pose`, in disc radii right of the disc's centre. */
+const heldLeft = (item: HeldItem, pose: HeldPose) =>
+  poseBlend(pose, HELD_LEFT, isDrink(item) ? sipLeft(item) : HELD_LEFT, CHEERS_LEFT) + CHEERS_WOBBLE * pose.wobble;
+/** The item's top in `pose`, in disc radii above the eye line; the lighter is never sipped, so it stays at rest. */
+const heldTop = (item: HeldItem, pose: HeldPose) =>
+  poseBlend(pose, HELD_TOP, isDrink(item) ? sipTop(item) : HELD_TOP, CHEERS_TOP);

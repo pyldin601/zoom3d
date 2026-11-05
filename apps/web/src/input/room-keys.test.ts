@@ -18,8 +18,8 @@ describe('in the room', () => {
     expect(roomKey(press('Backquote'), IN_ROOM)).toEqual({ kind: 'console' });
     expect(roomKey(press('Tab'), IN_ROOM)).toEqual({ kind: 'map', repeat: false });
     expect(roomKey(press('KeyB'), IN_ROOM)).toEqual({ kind: 'boombox' });
-    expect(roomKey(press('Digit2'), IN_ROOM)).toEqual({ kind: 'drink', item: 'coffee', code: 'Digit2' });
-    expect(roomKey(press('Numpad0'), IN_ROOM)).toEqual({ kind: 'drink', item: null, code: 'Numpad0' });
+    expect(roomKey(press('Digit2'), IN_ROOM)).toEqual({ kind: 'held', item: 'coffee', code: 'Digit2' });
+    expect(roomKey(press('Numpad0'), IN_ROOM)).toEqual({ kind: 'held', item: null, code: 'Numpad0' });
     expect(roomKey(press('KeyM'), IN_ROOM)).toEqual({ kind: 'media', control: 'mic' });
     expect(roomKey(press('KeyC'), IN_ROOM)).toEqual({ kind: 'media', control: 'cam' });
     expect(roomKey(press('KeyY'), IN_ROOM)).toEqual({ kind: 'portals' });

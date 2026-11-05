@@ -17,7 +17,7 @@ export interface RoomControlsOptions {
   localPlayer: LocalPlayer;
   drinkKey: DrinkKey;
   room(): Room | null;
-  chooseDrink(item: HeldItem | null): void;
+  chooseHeld(item: HeldItem | null): void;
   toggleConsole(): void;
   renderMode(): RenderMode;
   setRenderMode(mode: RenderMode): void;
@@ -27,7 +27,7 @@ export interface RoomControls {
   readonly mapShown: boolean;
   /** From Join in touch mode; otherwise they come with the first touch in the room. */
   showTouchControls(): void;
-  /** The local player's drink, boombox, the map or the lighting changed. */
+  /** What the local player holds, their boombox, the map or the lighting changed. */
   refresh(): void;
   /** Whether the ball is within kick reach; the touch controls change only when it flips. */
   setKickInReach(inReach: boolean): void;
@@ -42,7 +42,7 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
 
   const refresh = () =>
     touchControls?.update({
-      held: localPlayer.drink,
+      held: localPlayer.held,
       boombox: localPlayer.boombox,
       map: mapShown,
       lighting: o.renderMode(),
@@ -82,11 +82,11 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
         e.preventDefault();
         toggleBoombox();
         break;
-      case 'drink':
-        // 1–3 pick a drink, 0 puts it down; the drink in hand's own key sips or cheers it.
+      case 'held':
+        // 1–3 pick a drink, 9 the lighter, 0 empties the hand; a drink in hand's own key sips or cheers it.
         e.preventDefault();
-        if (heldKeyAction(key.item, localPlayer.drink) === 'pick') {
-          o.chooseDrink(key.item);
+        if (heldKeyAction(key.item, localPlayer.held) === 'pick') {
+          o.chooseHeld(key.item);
         } else {
           drinkKey.down(e.timeStamp, key.code);
         }
@@ -112,14 +112,14 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
       return;
     }
     touchControls = showTouchControls(o.ui, {
-      held: localPlayer.drink,
+      held: localPlayer.held,
       boombox: localPlayer.boombox,
       map: mapShown,
       lighting: o.renderMode(),
       kick: kickInReach,
       onPick(item) {
         if (inRoom()) {
-          o.chooseDrink(item);
+          o.chooseHeld(item);
         }
       },
       onDrinkDown: (t) => {

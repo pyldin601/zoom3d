@@ -53,7 +53,7 @@ export interface RoomScene extends PassScene {
 export type PersonLabel = AutomapPeer & NameLabel;
 
 export interface FirstPerson {
-  drink: HeldItem | null;
+  held: HeldItem | null;
   boombox: boolean;
   step: HeldStep;
   gesture: HeldPose;
@@ -359,5 +359,5 @@ function drawPeopleAndObjects(fb: Framebuffer, scene: PassScene, seen: Map<strin
 function drawFirstPerson(fb: Framebuffer, hands: FirstPerson): void {
   // The boombox first: a sip swings the drink across it, and the drink must stay in front.
   renderOwnBoombox(fb, hands.boombox, hands.step);
-  renderOwnHeld(fb, hands.drink, hands.step, hands.gesture);
+  renderOwnHeld(fb, hands.held, hands.step, hands.gesture);
 }

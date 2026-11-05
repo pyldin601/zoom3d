@@ -46,7 +46,7 @@ export interface PeerMedia {
 
 export interface RemoteWorld {
   /** Where each peer (by id) and each world object (by objectKey) is now; the same objects from frame to frame. */
-  readonly positions: ReadonlyMap<string, PlayerState>;
+  readonly positions: ReadonlyMap<string, Point>;
   /** Each world object's pose now, by objectKey: the same objects as in `positions`. */
   readonly objectPoses: ReadonlyMap<string, PlayerState>;
   /** This frame's discs, labels and voxel models, from `collect`; reused objects, so read them before the next. */
@@ -84,7 +84,7 @@ interface PeerRecord {
 }
 
 export function createRemoteWorld(): RemoteWorld {
-  const positions = new Map<string, PlayerState>();
+  const positions = new Map<string, Point>();
   const objectPoses = new Map<string, PlayerState>();
   /** Each object's objectKey, made once rather than every frame. */
   const objectKeys = new Map<string, string>();
@@ -156,9 +156,8 @@ export function createRemoteWorld(): RemoteWorld {
       if (pos) {
         pos.x = at.x;
         pos.y = at.y;
-        pos.angle = at.angle;
       } else {
-        positions.set(peer.info.id, { x: at.x, y: at.y, angle: at.angle });
+        positions.set(peer.info.id, { x: at.x, y: at.y });
       }
     }
   };
