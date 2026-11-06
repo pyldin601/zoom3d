@@ -165,7 +165,7 @@ describe('who it bumps', () => {
     lobby = makeLobby();
     lobby.restore(snap);
     for (let i = 0; i < 4; i++) {
-      join(`C${i}`, { resumeToken: `r${i}` });
+      join(`C${i}`, { name: peer.name, resumeToken: `r${i}` });
     }
     step(100);
     expect(objectStates('C0').some((s) => s.event === 'bump')).toBe(true);
@@ -182,7 +182,7 @@ describe('restart survival', () => {
     const token = welcome('A').resumeToken;
     lobby = makeLobby();
     lobby.restore(snap);
-    join('A2', { resumeToken: token });
+    join('A2', { name: 'A', resumeToken: token });
     const [v] = welcome('A2').objects;
     expect(v).toEqual({ id: last?.id, kind: 'vacuum', x: last?.x, y: last?.y, angle: last?.angle });
   });
@@ -196,7 +196,7 @@ describe('restart survival', () => {
       const room = { ...defined(snap.rooms.at(0), 'room'), vacuum } as LobbySnapshot['rooms'][number];
       lobby = makeLobby();
       lobby.restore({ version: 1, rooms: [room] });
-      join('A2', { resumeToken: token });
+      join('A2', { name: 'A', resumeToken: token });
       const w = welcome('A2');
       expect(w.selfId).toBe(snap.rooms.at(0)?.peers.at(0)?.id);
       expect(w.objects).toHaveLength(1);

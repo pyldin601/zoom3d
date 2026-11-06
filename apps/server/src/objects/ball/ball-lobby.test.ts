@@ -108,7 +108,7 @@ function ballBeside(distance: number, opts?: LobbyTestOptions) {
   room.ball = { ...defined(room.ball, 'saved ball'), ...ball };
   lobby = makeLobby(opts);
   lobby.restore(snap);
-  join('A', { resumeToken: peer.resumeToken });
+  join('A', { name: 'S', resumeToken: peer.resumeToken });
   return { person: { x: peer.x, y: peer.y }, ball, side, id: peer.id };
 }
 
@@ -308,7 +308,7 @@ describe('the vacuum', () => {
       }
       lobby = makeLobby(opts);
       lobby.restore(copy);
-      join('A', { resumeToken: token });
+      join('A', { name: 'S', resumeToken: token });
     };
     replay(null);
     const vacuumId = defined(
@@ -349,7 +349,7 @@ describe('restart survival', () => {
     for (const ball of [undefined, { ...defined(room.ball, 'ball'), map: 'deadbeef' }]) {
       lobby = makeLobby();
       lobby.restore({ version: 1, rooms: [{ ...room, ball }] });
-      join('A', { resumeToken: token });
+      join('A', { name: 'S', resumeToken: token });
       expect(welcome('A').objects.filter((o) => o.kind === 'ball')).toHaveLength(1);
     }
   });
@@ -381,7 +381,7 @@ describe('through portals', () => {
     room.portals = portalsOn;
     lobby = makeLobby(opts);
     lobby.restore(snap);
-    join('A', { resumeToken: peer.resumeToken });
+    join('A', { name: 'S', resumeToken: peer.resumeToken });
     return peer.id;
   }
 
@@ -582,7 +582,7 @@ describe('its mind (living ball spec §3)', () => {
     const token = defined(snap.rooms.at(0)?.peers.at(0), 'peer').resumeToken;
     lobby = makeLobby(ALIVE);
     lobby.restore(JSON.parse(JSON.stringify(snap)) as LobbySnapshot);
-    join('A', { resumeToken: token });
+    join('A', { name: 'S', resumeToken: token });
     expect(ballInWelcome('A').mood).toBe('asleep');
   });
 
@@ -591,7 +591,7 @@ describe('its mind (living ball spec §3)', () => {
     const token = welcome('A').resumeToken;
     lobby.disconnect('A');
     step(WAKE_TICKS);
-    join('A', { resumeToken: token });
+    join('A', { name: 'S', resumeToken: token });
     expect(ballInWelcome('A').mood).toBe('asleep');
   });
 

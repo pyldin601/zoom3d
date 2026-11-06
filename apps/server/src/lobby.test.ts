@@ -182,13 +182,33 @@ describe('avatars', () => {
     expect(closed).toEqual([]);
   });
 
-  test('resume keeps the original avatar', () => {
+  test('resume keeps the avatar its join brings again', () => {
     join('A', 'A', { avatar: PIC });
     const token = welcome('A').resumeToken;
     lobby.disconnect('A');
-    lobby.join('A2', { type: 'join', v: PROTOCOL_VERSION, roomId: ROOM, name: 'A', resumeToken: token });
+    join('A2', 'A', { avatar: PIC, resumeToken: token });
     join('B');
+    expect(welcome('A2').selfId).toBe(welcome('A').selfId);
     expect(welcome('B').peers[0]?.avatar).toBe(PIC_ID);
+  });
+
+  test('a resume with another picture, or none, leaves the old place for a new one', () => {
+    join('A', 'A', { avatar: PIC });
+    join('B', 'B', { avatar: PIC });
+    const first = welcome('B');
+    lobby.disconnect('B');
+    join('B2', 'B', { resumeToken: first.resumeToken });
+    expect(welcome('B2').selfId).not.toBe(first.selfId);
+    expect(to('A')).toContainEqual({ type: 'peer_left', id: first.selfId });
+    expect(lobby.peerCount(ROOM)).toBe(2);
+  });
+
+  test('an invalid avatar brought again on a resume still resumes', () => {
+    join('A', 'A', { avatar: 'javascript:alert(1)' });
+    const token = welcome('A').resumeToken;
+    lobby.disconnect('A');
+    join('A2', 'A', { avatar: 'javascript:alert(1)', resumeToken: token });
+    expect(welcome('A2').selfId).toBe(welcome('A').selfId);
   });
 
   test('a picture is served while anyone in any room uses it, and gone after the last one leaves', () => {
@@ -450,6 +470,59 @@ describe('disconnect and resume', () => {
     time += RESUME_GRACE_MS + 1;
     lobby.tick();
     expect(lobby.peerCount(ROOM)).toBe(2);
+  });
+
+  test('a resume under another name (changed in the lobby after a reload) leaves the old place for a new one', () => {
+    join('A');
+    join('B');
+    const first = welcome('B');
+    lobby.disconnect('B');
+    time += 1000;
+    join('B2', 'Robert', { resumeToken: first.resumeToken });
+    const renamed = welcome('B2');
+    expect(renamed.selfId).not.toBe(first.selfId);
+    expect(renamed.peers.map((p) => p.name)).toEqual(['A']);
+    expect(to('A').filter((m) => m.type === 'peer_left' || m.type === 'peer_joined')).toEqual([
+      expect.objectContaining({ type: 'peer_joined', peer: expect.objectContaining({ name: 'B' }) }),
+      { type: 'peer_left', id: first.selfId },
+      expect.objectContaining({ type: 'peer_joined', peer: expect.objectContaining({ name: 'Robert' }) }),
+    ]);
+    expect(lobby.peerCount(ROOM)).toBe(2);
+  });
+
+  test('a renamed resume closes the old connection if it is still bound', () => {
+    join('A');
+    join('B');
+    const first = welcome('B');
+    join('B2', 'Robert', { resumeToken: first.resumeToken });
+    expect(closed).toContainEqual({ conn: 'B', code: 4003 });
+    expect(lobby.peerCount(ROOM)).toBe(2);
+    lobby.state('B', { type: 'state', x: 1, y: 1, angle: 0, seq: 1 });
+    expect(to('B').some((m) => m.type === 'correction')).toBe(false);
+  });
+
+  test('a renamed resume by the only person keeps the room, its vacuum and ball', () => {
+    join('A');
+    const first = welcome('A');
+    const objectsBefore = first.objects.map((o) => o.id);
+    lobby.disconnect('A');
+    join('A2', 'Ada', { resumeToken: first.resumeToken });
+    const renamed = welcome('A2');
+    expect(renamed.selfId).not.toBe(first.selfId);
+    expect(renamed.objects.map((o) => o.id)).toEqual(objectsBefore);
+    expect(events.filter((e) => e.type === 'room_opened')).toHaveLength(1);
+    expect(events.some((e) => e.type === 'room_closed')).toBe(false);
+  });
+
+  test('a renamed resume into a full room takes the place it gives up', () => {
+    for (let i = 0; i < MAX_PEERS; i++) {
+      join(`P${i}`);
+    }
+    const first = welcome('P0');
+    lobby.disconnect('P0');
+    join('P0b', 'Someone', { resumeToken: first.resumeToken });
+    expect(to('P0b').at(0)?.type).toBe('welcome');
+    expect(lobby.peerCount(ROOM)).toBe(MAX_PEERS);
   });
 
   test('a resumed peer keeps sending state through its new connection', () => {

@@ -215,6 +215,10 @@ function hasConnection(room: Room): boolean {
 }
 
 /** The peer as everyone else sees it on the wire. */
+/** Whether a join shows the person as their place does: every reconnect brings the same name and picture. */
+const looksTheSame = (peer: Peer, name: string, avatar: string | undefined): boolean =>
+  peer.name === name && peer.picture === (isValidAvatar(avatar) ? avatar : null);
+
 const peerInfo = ({ id, slot, name, color, x, y, angle, cam, mic, avatar, held, boombox }: Peer): PeerInfo => ({
   id,
   slot,
@@ -320,7 +324,11 @@ export class Lobby {
 
   // Messages from a connection.
 
-  /** Takes a person back into their place if they bring its resume token, else admits them as someone new. */
+  /**
+   * Takes a person back into their place if they bring its resume token, else admits them as someone new. A token
+   * brought under another name or picture (changed in the lobby after a page reload) gives the old place up first:
+   * the others see them leave and arrive, as nothing else would tell them of the new name or picture.
+   */
   join(conn: string, msg: JoinMessage): void {
     if (this.conns.has(conn)) {
       return;
@@ -336,11 +344,13 @@ export class Lobby {
     this.advanceSequence(msg.roomId, room, this.opts.now());
     const resumable =
       msg.resumeToken === undefined ? undefined : peopleIn(room).find((p) => p.resumeToken === msg.resumeToken);
-    if (resumable) {
+    if (resumable && looksTheSame(resumable, name, msg.avatar)) {
       this.resume(conn, msg.roomId, room, resumable);
       return;
     }
-    if (countPeople(room) >= MAX_PEERS) {
+    if (resumable) {
+      this.giveUpPlace(msg.roomId, room, resumable);
+    } else if (countPeople(room) >= MAX_PEERS) {
       this.reject(conn, 'room_full', 'This room is full', CLOSE_ROOM_FULL);
       return;
     }
@@ -630,6 +640,15 @@ export class Lobby {
     this.emit({ type: 'joined', roomId, peerId: peer.id, resumed: true, replaced, peers: countPeople(room) });
   }
 
+  /** A person's place, left for a new one: its connection (if the server hadn't noticed it die) is closed. */
+  private giveUpPlace(roomId: string, room: Room, peer: Peer): void {
+    if (peer.conn !== null) {
+      this.conns.delete(peer.conn);
+      this.opts.out.close(peer.conn, CLOSE_REPLACED, 'replaced');
+    }
+    this.expire(roomId, room, peer);
+  }
+
   /** Adds someone new to the room (opening it if they are its first person) and tells everyone else. */
   private admit(conn: string, msg: JoinMessage, room: Room, name: string): void {
     const { roomId } = msg;
@@ -653,7 +672,8 @@ export class Lobby {
       disconnectedAt: null,
       ...freshTracking(now),
     };
-    if (room.size === 0) {
+    // Not `room.size`: a place given up by the room's only person leaves it empty, but still open.
+    if (!this.rooms.has(roomId)) {
       this.openRoom(roomId, room, msg.bots);
     }
     room.set(peer.id, peer);
