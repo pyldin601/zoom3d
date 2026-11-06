@@ -9,6 +9,36 @@ test('a name with movement letters can be typed on the join screen', async ({ pa
   await expect(field).toHaveValue('Wade Sam Q');
 });
 
+test('a device menu works from the keyboard alone', async ({ page }) => {
+  await page.goto('/r/AAAAAAAAAAAAAAAAAAAAAA');
+  const opener = page.getByRole('button', { name: 'Choose microphone' });
+  await expect(opener).toBeEnabled();
+  await expect(opener).toHaveAttribute('aria-expanded', 'false');
+
+  await opener.focus();
+  await page.keyboard.press('Enter');
+  const menu = page.getByRole('menu', { name: 'Choose microphone' });
+  await expect(menu).toBeVisible();
+  await expect(opener).toHaveAttribute('aria-expanded', 'true');
+  const items = menu.getByRole('menuitemradio');
+  await expect(menu.getByRole('menuitemradio', { checked: true })).toBeFocused();
+
+  await page.keyboard.press('End');
+  await expect(items.last()).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(items.first()).toBeFocused();
+
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await expect(opener).toBeFocused();
+
+  await page.keyboard.press('Enter');
+  await expect(menu).toBeVisible();
+  await page.keyboard.press('Tab');
+  await expect(menu).toBeHidden();
+  await expect(page.getByRole('textbox', { name: 'Your name' })).toBeFocused();
+});
+
 test('Tab moves focus on the landing page', async ({ page }) => {
   await page.goto('/');
   await page.keyboard.press('Tab');
