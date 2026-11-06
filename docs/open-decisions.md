@@ -885,7 +885,14 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     it, so a tab duplicated while the room is open carries none and can't take the place over. It is strictly
     necessary for a reload the player asked for, so it needs no consent (D20's storage-free rule is for analytics);
     `privacy.html` lists it.
-  - No server or protocol change: the server already resumed any join that brings a held place's token.
+  - No protocol change: the server already resumed any join that brings a held place's token.
+  - **A changed name or picture is a new arrival** (owner, 2026-11-06, after review): a resume used to ignore the
+    join's name and picture, harmless while only reconnects resumed (they always bring the same ones), but the lobby
+    after a reload can change them. A token brought under another name or picture now gives the old place up
+    (`peer_left`, its connection closed if still bound) and the person joins as someone new, with the doorbell.
+    Rejected: dropping the token on the client (the old place would stand in the room as a ghost for the grace) and
+    renaming in place (a new message for every client). Giving up the only person's place keeps the room, its vacuum
+    and ball: a room is opened only when it isn't open yet.
 
 ## Resolved
 _(none yet)_

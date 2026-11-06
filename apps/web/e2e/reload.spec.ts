@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { createAndJoin, joinAs } from './join';
+import { createAndJoin, joinAs, lookAt } from './join';
 
 type GameWindow = {
   __game: {
@@ -9,6 +9,7 @@ type GameWindow = {
       selfId(): string | null;
       peers: Map<string, { info: { id: string; name: string; x: number; y: number } }>;
     } | null;
+    call: { isLive(id: string): boolean; stats(id: string): Promise<{ bytesReceived: number } | null> } | null;
   };
 };
 
@@ -70,4 +71,59 @@ test('a new tab in the same browser joins as someone new', async ({ browser }) =
 
   expect(await selfId(second)).not.toBe(await selfId(first));
   await expect(first.getByTitle('2 people in the room')).toHaveText('2');
+});
+
+/** Whether `page` shows `id`'s live face, and how many bytes of it have arrived. */
+const faceFrom = (page: Page, id: string) =>
+  page.evaluate(async (peerId) => {
+    const call = (window as unknown as GameWindow).__game.call;
+    return { live: call?.isLive(peerId) ?? false, bytes: (await call?.stats(peerId))?.bytesReceived ?? 0 };
+  }, id);
+const voiceOf = (page: Page, id: string) => page.locator(`#media audio[data-peer="voice:${id}"]`);
+
+test('after a reload the others get the face and voice again, and the reloaded tab gets theirs', async ({
+  browser,
+}) => {
+  const ada = await (await browser.newContext()).newPage();
+  const bob = await (await browser.newContext()).newPage();
+  const url = await createAndJoin(ada, 'Ada');
+  await bob.goto(url);
+  await joinAs(bob, 'Bob');
+  const adaId = (await selfId(ada)) as string;
+  const bobId = (await selfId(bob)) as string;
+  await lookAt(ada, 'Bob');
+  await expect.poll(async () => (await faceFrom(ada, bobId)).live, { timeout: 15_000 }).toBe(true);
+  await expect(voiceOf(ada, bobId)).toHaveCount(1);
+
+  await bob.reload();
+  await joinAs(bob, 'Bob');
+  expect(await selfId(bob)).toBe(bobId);
+
+  const before = (await faceFrom(ada, bobId)).bytes;
+  await expect
+    .poll(async () => (await faceFrom(ada, bobId)).bytes - before, { timeout: 15_000 })
+    .toBeGreaterThan(20_000);
+  expect((await faceFrom(ada, bobId)).live).toBe(true);
+  await expect(voiceOf(ada, bobId)).toHaveCount(1);
+  await lookAt(bob, 'Ada');
+  await expect.poll(async () => (await faceFrom(bob, adaId)).live, { timeout: 15_000 }).toBe(true);
+  await expect(voiceOf(bob, adaId)).toHaveCount(1);
+});
+
+test('a reload that changes the name in the lobby joins as someone new, and the old place leaves', async ({
+  browser,
+}) => {
+  const ada = await (await browser.newContext()).newPage();
+  const bob = await (await browser.newContext()).newPage();
+  const url = await createAndJoin(ada, 'Ada');
+  await bob.goto(url);
+  await joinAs(bob, 'Bob');
+  const bobId = await selfId(bob);
+
+  await bob.reload();
+  await joinAs(bob, 'Robert');
+
+  expect(await selfId(bob)).not.toBe(bobId);
+  await expect.poll(async () => (await peers(ada)).map((p) => p.name)).toEqual(['Robert']);
+  await expect(ada.getByTitle('2 people in the room')).toHaveText('2');
 });
