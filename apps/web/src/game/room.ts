@@ -54,6 +54,8 @@ export interface JoinOptions {
   roomId: string;
   name: string;
   avatar: string | null;
+  /** The place this tab held before a reload (`resume-store.ts`). */
+  resumeToken: string | null;
   /** The lobby's camera, mic and AudioContext, handed over on Join (lobby spec §4.5). */
   local: LocalMediaController;
   audioCtx: AudioContext;
@@ -150,6 +152,7 @@ function connectSession(
     roomId: opts.roomId,
     name: opts.name,
     avatar: opts.avatar,
+    resumeToken: opts.resumeToken,
     bots: botsParam(location.search),
     player: opts.player,
     map: opts.map,

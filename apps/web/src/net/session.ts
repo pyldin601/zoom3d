@@ -92,6 +92,8 @@ export interface Session {
   sendPortals(): void;
   selfId(): string | null;
   selfColor(): string | null;
+  /** What takes this place back after a page reload; null until a welcome has given one. */
+  resumeToken(): string | null;
   /** The name the others are told. */
   selfName(): string;
   /** Whether the others are told the own mic is on. */
@@ -105,6 +107,8 @@ export interface SessionOptions {
   url: string;
   roomId: string;
   name: string;
+  /** The place this tab held before a reload, brought to the first join. */
+  resumeToken?: string | null;
   /** Avatar picture (validated JPEG data URL) shown to others while the camera is off. */
   avatar?: string | null;
   /** Wandering bots to ask for if this join creates the room (`?bots=N`). */
@@ -131,7 +135,7 @@ export function createSession(opts: SessionOptions): Session {
   const objects = new Map<string, RemoteObject>();
   let selfId: string | null = null;
   let color: string | null = null;
-  let resumeToken: string | undefined;
+  let resumeToken = opts.resumeToken ?? undefined;
   let status: ConnStatus = 'connecting';
   let error: ErrorCode | null = null;
   let seq = 0;
@@ -442,6 +446,7 @@ export function createSession(opts: SessionOptions): Session {
     sendPortals: () => sendWhileOpen({ type: 'portals' }),
     selfId: () => selfId,
     selfColor: () => color,
+    resumeToken: () => resumeToken ?? null,
     selfName: () => opts.name,
     selfMic: () => media?.mic ?? false,
     status: () => status,

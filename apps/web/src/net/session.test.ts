@@ -95,6 +95,40 @@ test('a welcome after reconnect keeps the player but replaces the peer list', ()
   expect([...session.peers.keys()]).toEqual(['b']);
 });
 
+test('a session started with a resume token (a reloaded page) brings it to its first join', () => {
+  const session = createSession({
+    url: 'ws://t/ws',
+    roomId: ROOM,
+    name: 'Ada',
+    resumeToken: 'kept',
+    player,
+    now: Date.now,
+    WebSocketImpl: asWebSocket,
+  });
+  const ws = FakeWebSocket.latest();
+  ws.open();
+  expect(ws.sent[0]).toMatchObject({ type: 'join', resumeToken: 'kept' });
+  ws.receive({ ...welcome([], { x: 9.5, y: 2.5, angle: 2 }), resumeToken: 'kept' });
+  expect(player).toEqual({ x: 9.5, y: 2.5, angle: 2 });
+  expect(session.resumeToken()).toBe('kept');
+});
+
+test('without one brought from a reload, the resume token is null until the first welcome', () => {
+  const session = createSession({
+    url: 'ws://t/ws',
+    roomId: ROOM,
+    name: 'Ada',
+    player,
+    now: Date.now,
+    WebSocketImpl: asWebSocket,
+  });
+  expect(session.resumeToken()).toBeNull();
+  const ws = FakeWebSocket.latest();
+  ws.open();
+  ws.receive(welcome());
+  expect(session.resumeToken()).toBe('tok');
+});
+
 test('a welcome with a new identity (slot expired or server restarted) applies the new spawn', () => {
   const { ws } = joinedSession();
   ws.serverClose(1006);
