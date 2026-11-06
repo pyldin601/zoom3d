@@ -9,6 +9,8 @@ import { createTouchInput } from '../input/touch';
 import { saveAvatar } from '../media/avatar';
 import { createFace } from '../media/faces';
 import { NO_FACES_SENT } from '../media/transport';
+import { saveResume, takeResume } from '../net/resume-store';
+import type { Session } from '../net/session';
 import { bakeRoomLightingOnce, roomLightingByRoom } from '../renderer/room-lighting';
 import type { Gesture } from '../renderer/sip';
 import { makeTextures } from '../renderer/textures';
@@ -26,7 +28,7 @@ import { clearScreen, showLanding, showNotice } from '../ui/screens';
 import { createFrameRateMeter } from './frame-rate';
 import { type LobbyJoin, openLobby } from './lobby-flow';
 import { createLocalPlayer } from './local-player';
-import { type PageElements, type PageFlags, pageStorage } from './page';
+import { type PageElements, type PageFlags, pageStorage, tabStorage } from './page';
 import { isConnected, joinRoom, type Room } from './room';
 import { createRoomControls } from './room-controls';
 import { createRoomLoop } from './room-loop';
@@ -175,13 +177,15 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
 
   function showLobbyFor(roomId: string, entry: 'host' | 'invite'): void {
     screen.showLobbyPicture();
-    openLobby({ page, localPlayer, entry, onJoin: (join) => enterRoom(roomId, join) });
+    // Taken at once, so a tab duplicated from this one while it is in the room has no token to take its place with.
+    const resumeToken = takeResume(tabStorage(), roomId);
+    openLobby({ page, localPlayer, entry, onJoin: (join) => enterRoom(roomId, resumeToken, join) });
     // Baked in an idle moment now: in the Join click, the two tables (about 0.4 s) would freeze the lobby and hold up
     // the connection.
     whenIdle(() => roomLightingFor(roomId));
   }
 
-  function enterRoom(roomId: string, { name, avatar, local, audioCtx }: LobbyJoin): void {
+  function enterRoom(roomId: string, resumeToken: string | null, { name, avatar, local, audioCtx }: LobbyJoin): void {
     screen.runRoom(roomLoop.frame);
     saveName(pageStorage(), name);
     saveAvatar(pageStorage(), avatar);
@@ -193,6 +197,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
       roomId,
       name,
       avatar,
+      resumeToken,
       local,
       audioCtx,
       map,
@@ -209,6 +214,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
       onPortalsChanged: (on) => showPortalNotice(page.ui, on),
       lighting: roomLightingFor,
     });
+    keepPlaceOnReload(roomId, room.session);
     showRoomScreen(page.ui, { call: room.call, local, name, avatar });
     if (flags.touch) {
       controls.showTouchControls();
@@ -216,6 +222,15 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     if (new URLSearchParams(location.search).has('debug')) {
       backtickConsole.toggle();
     }
+  }
+
+  function keepPlaceOnReload(roomId: string, session: Session): void {
+    window.addEventListener('pagehide', () => {
+      const token = session.resumeToken();
+      if (token !== null) {
+        saveResume(tabStorage(), roomId, token);
+      }
+    });
   }
 
   /** Safari has no requestIdleCallback. */

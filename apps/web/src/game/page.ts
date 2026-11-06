@@ -57,6 +57,15 @@ export function pageStorage(): Storage | null {
   }
 }
 
+/** This tab's own storage: it survives a reload and goes with the tab. */
+export function tabStorage(): Storage | null {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
 function element<T extends HTMLElement>(doc: Document, id: string, type: { new (): T; prototype: T }): T {
   const el = doc.getElementById(id);
   if (!(el instanceof type)) {

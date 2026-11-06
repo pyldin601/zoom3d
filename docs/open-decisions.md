@@ -875,5 +875,17 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Any voxel object can be lifted:** `VoxelInstance.lift` moves its faces, floor image, lighting and lamp shadow.
     A lift of 0 draws as before, pixel for pixel. No hop sound yet (builder).
 
+### D35 — A reloaded tab takes back its place
+- *Resolved 2026-11-06:* a player who reloads the page while their place is still held (the 30 s resume grace) comes
+  back to it, as after a reconnect: the same id, colour, slot and pose, and the others see no one leave or arrive.
+  - **Through the lobby** (owner, over going straight back into the room): the lobby shows as on any visit, and Join
+    brings the resume token. A lobby left open past the grace joins as someone new, as before.
+  - **The token is in sessionStorage** (`zoom3d.resume`, `net/resume-store.ts`; owner, over localStorage): per tab,
+    so a new tab of the same room is a new person. It is written on `pagehide` and removed as soon as the page reads
+    it, so a tab duplicated while the room is open carries none and can't take the place over. It is strictly
+    necessary for a reload the player asked for, so it needs no consent (D20's storage-free rule is for analytics);
+    `privacy.html` lists it.
+  - No server or protocol change: the server already resumed any join that brings a held place's token.
+
 ## Resolved
 _(none yet)_
