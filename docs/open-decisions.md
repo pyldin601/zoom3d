@@ -244,8 +244,12 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
         slot). A hidden tab receives no video at all, at once; audio is unchanged.
     - **Three sizes as separate tracks, not simulcast.** The 6c spike (Chrome, LiveKit 1.13.9) found
       `livekit-client` turns simulcast off below 480 px, and Chrome won't split a 256² source into VP9 SVC layers. So
-      the framer draws three canvases, each published as its own track; the receiver picks by on-screen size (≥ 128 px
-      → 256, ≥ 48 px → 128, else 64; kept until 20% below the threshold):
+      the framer draws three canvases, each published as its own track; the receiver picks by distance and on-screen
+      size (within 2 tiles → 256, else ≥ 48 px → 128, else 64; kept until 20% past the threshold). *Amended
+      2026-11-06:* 256 was any face drawn at ≥ 128 px, about 2.7 tiles on desktop (a disc projects to ~345 px ÷
+      distance); it is now only for faces within 2 tiles (kept out to 2.5), very close, so faces between 2.5 and 3.4
+      tiles cost 128's 120 kbps instead of 350. Distance, not pixels, because the frame's size and FOV differ between desktop
+      and touch:
 
       | Track | Size | Frame rate | Bitrate cap |
       |---|---|---|---|

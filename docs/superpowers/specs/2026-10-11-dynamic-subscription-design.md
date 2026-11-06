@@ -69,8 +69,9 @@ per peer `{ video: 'off' | 64 | 128 | 256, audio: boolean }`.
     on each side, and in line of sight (`hasLineOfSight`, the audio occlusion test). Inside the real field of view
     look-ahead only covers peers the renderer hasn't reported yet: once a frame has drawn none of a peer there, they
     are hidden (behind someone nearer) and get no video.
-- **Size**, from `projectedSize` (framebuffer px), with 20% hysteresis around each threshold:
-  - ≥ 128 px → 256; ≥ 48 px → 128; otherwise → 64 (also for look-ahead peers not drawn yet).
+- **Size**, with 20% hysteresis around each threshold:
+  - within `FACE_256_MAX_TILES = 2` tiles → 256 (kept out to 2.5); otherwise from `projectedSize` (framebuffer px):
+    ≥ 48 px → 128, else 64 (also for look-ahead peers not drawn yet). *Amended 2026-11-06:* 256 was ≥ 128 px.
 - **Delays:** going up (off → on, or a bigger size) happens at once; going down (smaller, or off) only after the
   lower value has been wanted continuously for `HOLD_MS = 1000`.
 - **Audio wanted** while within `max + 2` tiles; dropped beyond `max + 4` (hysteresis). Mic and boombox follow it.

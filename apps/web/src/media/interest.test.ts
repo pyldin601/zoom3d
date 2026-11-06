@@ -45,18 +45,24 @@ function input(peers: Peer[], facts: Record<string, PeerFacts> = {}, over: Parti
 
 const drawn = (projectedSize: number): PeerFacts => ({ drawnColumns: 10, projectedSize });
 const NEAR: Peer = { id: 'a', x: 5.5, y: 4.5 };
+const CLOSE: Peer = { id: 'a', x: 4, y: 4.5 };
+const at = (tiles: number): Peer => ({ id: 'a', x: PLAYER.x + tiles, y: PLAYER.y });
 
-describe('video for drawn peers follows their on-screen size', () => {
+describe('video for drawn peers: 256 up close, else by on-screen size', () => {
   test.each([
-    [200, 256],
-    [128, 256],
-    [127, 128],
+    [200, 128],
+    [128, 128],
     [48, 128],
     [47, 64],
     [5, 64],
-  ])('%i px → %s', (size, want) => {
+  ])('%i px beyond 2 tiles → %s', (size, want) => {
     const wants = createInterest().update(input([NEAR], { a: drawn(size) }));
     expect(wants.get('a')?.video).toBe(want);
+  });
+
+  test.each([1.5, 2])('within %s tiles → 256', (tiles) => {
+    const wants = createInterest().update(input([at(tiles)], { a: drawn(200) }));
+    expect(wants.get('a')?.video).toBe(256);
   });
 
   test('a peer with no drawn columns and out of sight is off', () => {
@@ -66,13 +72,13 @@ describe('video for drawn peers follows their on-screen size', () => {
   });
 });
 
-describe('size hysteresis (20% below each threshold)', () => {
-  test('256 is kept down to 80% of 128 px, then drops (after the hold)', () => {
+describe('size hysteresis (20% past each threshold)', () => {
+  test('256 is kept out to 2.5 tiles, then drops (after the hold)', () => {
     const rule = createInterest();
-    rule.update(input([NEAR], { a: drawn(130) }, { now: 0 }));
-    expect(rule.update(input([NEAR], { a: drawn(103) }, { now: 5000 })).get('a')?.video).toBe(256);
-    rule.update(input([NEAR], { a: drawn(100) }, { now: 6000 }));
-    expect(rule.update(input([NEAR], { a: drawn(100) }, { now: 6000 + HOLD_MS })).get('a')?.video).toBe(128);
+    rule.update(input([at(2)], { a: drawn(200) }, { now: 0 }));
+    expect(rule.update(input([at(2.5)], { a: drawn(150) }, { now: 5000 })).get('a')?.video).toBe(256);
+    rule.update(input([at(2.6)], { a: drawn(150) }, { now: 6000 }));
+    expect(rule.update(input([at(2.6)], { a: drawn(150) }, { now: 6000 + HOLD_MS })).get('a')?.video).toBe(128);
   });
 
   test('128 is kept down to 80% of 48 px', () => {
@@ -87,8 +93,8 @@ describe('size hysteresis (20% below each threshold)', () => {
     const rule = createInterest();
     const seen = new Set<unknown>();
     for (let t = 0; t < 10_000; t += 250) {
-      const size = t % 500 === 0 ? 130 : 110;
-      seen.add(rule.update(input([NEAR], { a: drawn(size) }, { now: t })).get('a')?.video);
+      const tiles = t % 500 === 0 ? 1.9 : 2.3;
+      seen.add(rule.update(input([at(tiles)], { a: drawn(200) }, { now: t })).get('a')?.video);
     }
     expect([...seen]).toEqual([256]);
   });
@@ -98,12 +104,12 @@ describe('holds: up at once, down only after HOLD_MS', () => {
   test('an upgrade is immediate', () => {
     const rule = createInterest();
     rule.update(input([NEAR], { a: drawn(20) }, { now: 0 }));
-    expect(rule.update(input([NEAR], { a: drawn(200) }, { now: 10 })).get('a')?.video).toBe(256);
+    expect(rule.update(input([CLOSE], { a: drawn(200) }, { now: 10 })).get('a')?.video).toBe(256);
   });
 
   test('a downgrade waits HOLD_MS of continuously wanting less', () => {
     const rule = createInterest();
-    rule.update(input([NEAR], { a: drawn(200) }, { now: 0 }));
+    rule.update(input([CLOSE], { a: drawn(200) }, { now: 0 }));
     expect(rule.update(input([NEAR], { a: drawn(20) }, { now: 100 })).get('a')?.video).toBe(256);
     expect(rule.update(input([NEAR], { a: drawn(20) }, { now: 100 + HOLD_MS - 1 })).get('a')?.video).toBe(256);
     expect(rule.update(input([NEAR], { a: drawn(20) }, { now: 100 + HOLD_MS })).get('a')?.video).toBe(64);
@@ -112,16 +118,16 @@ describe('holds: up at once, down only after HOLD_MS', () => {
   test('going off waits HOLD_MS too', () => {
     const rule = createInterest();
     const behind = { id: 'a', x: 1.5, y: 4.5 };
-    rule.update(input([NEAR], { a: drawn(200) }, { now: 0 }));
+    rule.update(input([CLOSE], { a: drawn(200) }, { now: 0 }));
     expect(rule.update(input([behind], {}, { now: 100 })).get('a')?.video).toBe(256);
     expect(rule.update(input([behind], {}, { now: 100 + HOLD_MS })).get('a')?.video).toBe('off');
   });
 
   test('wanting more again in between restarts the hold', () => {
     const rule = createInterest();
-    rule.update(input([NEAR], { a: drawn(200) }, { now: 0 }));
+    rule.update(input([CLOSE], { a: drawn(200) }, { now: 0 }));
     rule.update(input([NEAR], { a: drawn(20) }, { now: 100 }));
-    rule.update(input([NEAR], { a: drawn(200) }, { now: 600 }));
+    rule.update(input([CLOSE], { a: drawn(200) }, { now: 600 }));
     expect(rule.update(input([NEAR], { a: drawn(20) }, { now: 700 })).get('a')?.video).toBe(256);
     expect(rule.update(input([NEAR], { a: drawn(20) }, { now: 100 + HOLD_MS })).get('a')?.video).toBe(256);
     expect(rule.update(input([NEAR], { a: drawn(20) }, { now: 700 + HOLD_MS })).get('a')?.video).toBe(64);
@@ -206,15 +212,15 @@ describe('look-ahead for peers not drawn', () => {
 describe('a hidden tab', () => {
   test('turns every video off at once and keeps audio', () => {
     const rule = createInterest();
-    rule.update(input([NEAR], { a: drawn(200) }, { now: 0 }));
-    const wants = rule.update(input([NEAR], { a: drawn(200) }, { now: 10, hidden: true }));
+    rule.update(input([CLOSE], { a: drawn(200) }, { now: 0 }));
+    const wants = rule.update(input([CLOSE], { a: drawn(200) }, { now: 10, hidden: true }));
     expect(wants.get('a')).toEqual({ video: 'off', audio: true });
   });
 
   test('video comes back at once when visible again', () => {
     const rule = createInterest();
-    rule.update(input([NEAR], { a: drawn(200) }, { now: 0, hidden: true }));
-    expect(rule.update(input([NEAR], { a: drawn(200) }, { now: 10 })).get('a')?.video).toBe(256);
+    rule.update(input([CLOSE], { a: drawn(200) }, { now: 0, hidden: true }));
+    expect(rule.update(input([CLOSE], { a: drawn(200) }, { now: 10 })).get('a')?.video).toBe(256);
   });
 });
 
