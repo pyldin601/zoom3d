@@ -75,12 +75,29 @@ describe('steering', () => {
   });
 
   test('keys turn 60% as fast at full speed', () => {
-    const still = at(10);
-    stepRide(HALL, still, moving(0), input(0, 0, 1), DT, null);
     const fast = at(10);
     stepRide(HALL, fast, moving(RIDE_SPEED), input(0, 0, 1), DT, null);
-    expect(still.angle).toBeCloseTo(TURN_SPEED * DT);
-    expect(fast.angle / still.angle).toBeCloseTo(0.6);
+    expect(fast.angle).toBeCloseTo(0.6 * TURN_SPEED * DT);
+  });
+
+  test('backing up, the same key swings the nose the other way, as the front wheel steers', () => {
+    const forward = at(10);
+    stepRide(HALL, forward, moving(2), input(0, 1), DT, null);
+    const backward = at(10);
+    stepRide(HALL, backward, moving(-1), input(0, 1), DT, null);
+    expect(forward.angle).toBeGreaterThan(0);
+    expect(backward.angle).toBeLessThan(0);
+  });
+
+  test('at a standstill the keys do nothing, and turning fades in as it rolls', () => {
+    const still = at(10);
+    stepRide(HALL, still, moving(0), input(0, 1), DT, null);
+    const creeping = at(10);
+    stepRide(HALL, creeping, moving(0.25), input(0, 1), DT, null);
+    const rolling = at(10);
+    stepRide(HALL, rolling, moving(0.5), input(0, 1), DT, null);
+    expect(still.angle).toBe(0);
+    expect(creeping.angle / rolling.angle).toBeCloseTo(0.5, 1);
   });
 });
 

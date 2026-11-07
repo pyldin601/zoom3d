@@ -28,6 +28,8 @@ const REVERSE_SPEED = -1;
 const REVERSE = 3;
 /** At full speed the keys turn this much slower: the scooter can't take a corner sharply at speed. */
 const FULL_SPEED_TURN_LOSS = 0.4;
+/** A scooter turns only by rolling: the keys fade in over this speed (tiles/s), and at a standstill do nothing. */
+const TURN_FADE_IN_SPEED = 0.5;
 /** A step whose free share is under sin 20° hit the wall all but head-on. */
 const HEAD_ON_SHARE = Math.sin((20 * Math.PI) / 180);
 /** Riding along an axis leaves a rounding-error step on the other one, which never moves the pose: not a wall. */
@@ -53,8 +55,8 @@ function nextSpeed(speed: number, forward: number, dt: number): number {
 }
 
 /**
- * One step of the ride: keys (and A/D, which steer on a scooter) turn it, slower at speed; it moves along its heading,
- * then the input sets the speed, unless a wall decided it: a head-on one stops it dead, scraping one slows it at the
+ * One step of the ride: keys (and A/D, which steer on a scooter) turn it only while rolling, slower at
+ * speed and the other way backing up; it moves along its heading, then the input sets the speed, unless a wall decided it: a head-on one stops it dead, scraping one slows it at the
  * brake rate. The mouse turns `pose.angle` before this, freely, as on foot.
  */
 export function stepRide(
@@ -66,8 +68,11 @@ export function stepRide(
   portals: Portals | null
 ): void {
   const t = Math.min(Math.max(dt, 0), MAX_STEP_S);
-  const turnRate = TURN_SPEED * (1 - (FULL_SPEED_TURN_LOSS * Math.abs(ride.speed)) / RIDE_SPEED);
-  pose.angle += clamp(input.turn + input.strafe) * turnRate * t;
+  const rolling = Math.min(1, Math.abs(ride.speed) / TURN_FADE_IN_SPEED);
+  const turnRate = rolling * TURN_SPEED * (1 - (FULL_SPEED_TURN_LOSS * Math.abs(ride.speed)) / RIDE_SPEED);
+  // The front wheel steers, so backing up the nose swings the other way, as on a car in reverse.
+  const steering = ride.speed < 0 ? -1 : 1;
+  pose.angle += steering * clamp(input.turn + input.strafe) * turnRate * t;
 
   const dx = Math.cos(pose.angle) * ride.speed * t;
   const dy = Math.sin(pose.angle) * ride.speed * t;
