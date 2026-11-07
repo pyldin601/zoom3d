@@ -1,6 +1,6 @@
 // Stepping on and off kick scooters (kick scooter spec §4.3): E or the touch button asks the server, and only its
 // answer, the session's `riding`, puts the local player on one. Read every frame, so it allocates nothing.
-import { canMount, MOVE_SPEED, type Point, RIDE_SPEED } from '@zoom3d/shared';
+import { canMount, type Point } from '@zoom3d/shared';
 import { objectKey, type Session } from '../net/session';
 
 export type RideSession = Pick<Session, 'riding' | 'objects' | 'sendRide' | 'sendDismount'>;
@@ -16,7 +16,6 @@ export interface ScooterRide {
    * every frame with where everything appears to the local player.
    */
   inReach(player: Point, apparent?: ReadonlyMap<string, Point>): boolean;
-  forwardSpeed(): number;
   /** The server answered the local player's ask. */
   settled(): void;
 }
@@ -77,7 +76,6 @@ export function createScooterRide(session: RideSession, now: () => number): Scoo
       lastApparent = apparent;
       return session.riding === null && !pending() && nearest(player, apparent) !== null;
     },
-    forwardSpeed: () => (session.riding === null ? MOVE_SPEED : RIDE_SPEED),
     settled() {
       askedAt = Number.NEGATIVE_INFINITY;
     },

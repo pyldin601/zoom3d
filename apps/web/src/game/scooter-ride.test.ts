@@ -1,4 +1,4 @@
-import { MOVE_SPEED, type ObjectInfo, RIDE_SPEED, SnapshotBuffer } from '@zoom3d/shared';
+import { type ObjectInfo, SnapshotBuffer } from '@zoom3d/shared';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { objectKey, type RemoteObject } from '../net/session';
 import { createScooterRide, type RideSession } from './scooter-ride';
@@ -76,14 +76,6 @@ describe('toggle', () => {
 });
 
 describe('speed and reach', () => {
-  test('forward speed is walking on foot and ride speed riding, whatever is pending', () => {
-    const r = ride();
-    r.toggle(player);
-    expect(r.forwardSpeed()).toBe(MOVE_SPEED);
-    session.riding = 'near';
-    expect(r.forwardSpeed()).toBe(RIDE_SPEED);
-  });
-
   test('a scooter is in reach only on foot, with nothing pending', () => {
     const r = ride();
     expect(r.inReach(player)).toBe(true);

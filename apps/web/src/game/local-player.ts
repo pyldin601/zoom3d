@@ -5,7 +5,6 @@ import {
   type GameMap,
   type HeldItem,
   isDrink,
-  MOVE_SPEED,
   type MoveInput,
   type PlayerState,
   type Portals,
@@ -21,6 +20,7 @@ import { createGestureClock, type GestureClock } from '../renderer/sip';
 import { ringRgb, type Sprite } from '../renderer/sprites';
 import type { VoxelInstance } from '../renderer/voxels';
 import { blankSprite } from './remote-world';
+import { createRideState, type RideState, stepRide } from './scooter-physics';
 
 /** The own disc's key: no peer has it, so it never reaches the facts dynamic subscription reads. */
 export const OWN_SPRITE_KEY = 'self';
@@ -44,22 +44,17 @@ export interface LocalPlayer {
   readonly gesture: GestureClock;
   readonly held: HeldItem | null;
   boombox: boolean;
-  /** On a scooter, as the session says: the room loop sets it every frame. */
+  /** On a scooter, as the session says: the room loop sets it every frame. Stepping on starts the ride at rest. */
   riding: boolean;
+  /** The scooter's motion while riding (scooter-physics.ts). */
+  readonly ride: RideState;
   /** Takes `item` in hand, or empties it with null; anything but a drink ends any gesture. False if already held. */
   hold(item: HeldItem | null): boolean;
   /**
    * With `portals` (the room's, while on) a step through a doorway comes out of its destination, turned with it.
-   * `forwardSpeed` is a scooter's while riding one.
+   * Riding, the scooter's physics moves the player instead of their feet.
    */
-  walk(
-    map: GameMap,
-    move: MoveInput,
-    turnRad: number,
-    dt: number,
-    portals?: Portals | null,
-    forwardSpeed?: number
-  ): void;
+  walk(map: GameMap, move: MoveInput, turnRad: number, dt: number, portals?: Portals | null): void;
   /** The camera picture's average colour at `now`, or null while the camera is off. */
   useCameraColour(colourAt: (now: number) => number | null): void;
   useCameraFace(camera: OwnCamera): void;
@@ -94,6 +89,8 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
   const lighterSource = { key: OWN_SPRITE_KEY, x: 0, y: 0 };
   // The room measures no level of the own mic, so the own ring never brightens: `speaking` stays 0.
   const ownDisc = blankSprite(OWN_SPRITE_KEY);
+  let riding = false;
+  const ride = createRideState();
   const ownScooter: VoxelInstance = { model: SCOOTER_MODEL, x: 0, y: 0, angle: 0, lift: 0 };
   const firstPersonView: FirstPerson = { held: null, boombox: false, step, gesture: gesture.pose(0) };
 
@@ -105,7 +102,16 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       return heldItem;
     },
     boombox: false,
-    riding: false,
+    get riding() {
+      return riding;
+    },
+    set riding(on) {
+      if (on && !riding) {
+        ride.speed = 0;
+      }
+      riding = on;
+    },
+    ride,
     hold(item) {
       if (item === heldItem) {
         return false;
@@ -116,9 +122,13 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       }
       return true;
     },
-    walk(map, move, turnRad, dt, portals = null, forwardSpeed = MOVE_SPEED) {
+    walk(map, move, turnRad, dt, portals = null) {
       pose.angle += turnRad;
-      stepPlayer(map, pose, move, dt, pose, portals, forwardSpeed);
+      if (riding) {
+        stepRide(map, pose, ride, move, dt, portals);
+      } else {
+        stepPlayer(map, pose, move, dt, pose, portals);
+      }
       step.update(pose.x, pose.y, dt);
     },
     useCameraColour(colourAt) {

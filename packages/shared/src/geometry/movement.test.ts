@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest';
 import { isWallAt, parseMap } from '../map/map';
-import { RIDE_SPEED } from '../objects/scooter/scooter';
 import { MAX_STEP_S, MOVE_SPEED, type MoveInput, PLAYER_RADIUS, type PlayerState, stepPlayer } from './movement';
 
 const ROOM = parseMap('11111\n1...1\n1.S.1\n1...1\n11111');
@@ -22,18 +21,6 @@ describe('stepPlayer', () => {
     const p = stepPlayer(ROOM, player(2.5, 2.5), input(1), 0.1, player(0, 0));
     expect(p.x).toBeCloseTo(2.8);
     expect(p.y).toBeCloseTo(2.5);
-  });
-
-  test('rides forward at a given forward speed', () => {
-    const p = stepPlayer(ROOM, player(1.5, 2.5), input(1), 0.1, player(0, 0), null, RIDE_SPEED);
-    expect(p.x).toBeCloseTo(2.1);
-  });
-
-  test('rides backward and sideways at walking speed', () => {
-    const back = stepPlayer(ROOM, player(2.5, 2.5), input(-1), 0.1, player(0, 0), null, RIDE_SPEED);
-    expect(back.x).toBeCloseTo(2.2);
-    const side = stepPlayer(ROOM, player(2.5, 2.5), input(0, 1), 0.1, player(0, 0), null, RIDE_SPEED);
-    expect(side.y).toBeCloseTo(2.8);
   });
 
   test('stops at the wall', () => {

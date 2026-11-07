@@ -166,9 +166,10 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   const stepLocalPlayer = (dt: number) => {
     // Consumed outside the room too, so a turn made before it doesn't land on the first frame in it.
     const turn = o.input.consumeMouseTurn();
-    if (isConnected(o.room())) {
-      const room = o.room();
-      localPlayer.walk(o.map, o.input.state(), turn, dt, room?.portals(), room?.ride.forwardSpeed());
+    const room = o.room();
+    localPlayer.riding = isConnected(room) && room?.session.riding !== null;
+    if (isConnected(room)) {
+      localPlayer.walk(o.map, o.input.state(), turn, dt, room?.portals());
     }
   };
 
@@ -226,7 +227,6 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     // Held only in the room: the lobby shows no hands.
     scene.ownLighter = isConnected(room) ? localPlayer.lighter() : null;
     // Only windows draw the own disc, and reading its face back stalls on the GPU: read it only while one shows it.
-    localPlayer.riding = isConnected(room) && room?.session.riding !== null;
     scene.self = scene.portals && isConnected(room) ? localPlayer.avatar(now, ringColour, ownAvatarShown()) : null;
     scene.ownScooter = scene.self ? localPlayer.scooter() : null;
     scene.ownLabel = labelOwnImage(room);

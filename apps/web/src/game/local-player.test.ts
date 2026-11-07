@@ -227,3 +227,15 @@ test('riding, the own disc glides a deck up with no step, and the own scooter st
   expect(localPlayer.avatar(0, '#ff0000', true)?.ride).toBe(0);
   expect(localPlayer.scooter()).toBeNull();
 });
+
+test('stepping on starts a ride at rest, and riding walks by the ride', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  localPlayer.riding = true;
+  localPlayer.ride.speed = 2;
+  localPlayer.riding = false;
+  localPlayer.riding = true;
+  expect(localPlayer.ride.speed).toBe(0);
+  localPlayer.pose.angle = 0;
+  localPlayer.walk(MAP, { forward: 1, strafe: 0, turn: 0 }, 0, 0.1);
+  expect(localPlayer.ride.speed).toBeCloseTo(0.4);
+});
