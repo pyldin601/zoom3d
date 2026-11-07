@@ -13,7 +13,7 @@ function snapshotPeer(v: unknown): SnapshotPeer | null {
     return null;
   }
   // Saved pictures are data URLs (the wire's avatar ids mean nothing to the next process).
-  const { slot: _, ...saved } = info;
+  const { slot: _, riding: __, ...saved } = info;
   const avatar = isValidAvatar(v.avatar) ? v.avatar : null;
   return { ...saved, avatar, resumeToken: v.resumeToken, lastAcceptedAt: v.lastAcceptedAt as number };
 }

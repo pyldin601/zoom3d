@@ -172,7 +172,7 @@ interface PortalMode {
  * A peer as written to the restart snapshot: no connection, gesture timing or slot (restore hands out new ones), and
  * `avatar` is the picture's data URL, not its id.
  */
-export interface SnapshotPeer extends Omit<PeerInfo, 'slot'> {
+export interface SnapshotPeer extends Omit<PeerInfo, 'slot' | 'riding'> {
   resumeToken: string;
   lastAcceptedAt: number;
 }
@@ -219,7 +219,7 @@ function hasConnection(room: Room): boolean {
 const looksTheSame = (peer: Peer, name: string, avatar: string | undefined): boolean =>
   peer.name === name && peer.picture === (isValidAvatar(avatar) ? avatar : null);
 
-const peerInfo = ({ id, slot, name, color, x, y, angle, cam, mic, avatar, held, boombox }: Peer): PeerInfo => ({
+const peerInfo = ({ id, slot, name, color, x, y, angle, cam, mic, avatar, held, boombox, riding }: Peer): PeerInfo => ({
   id,
   slot,
   name,
@@ -232,11 +232,13 @@ const peerInfo = ({ id, slot, name, color, x, y, angle, cam, mic, avatar, held, 
   avatar,
   held,
   boombox,
+  riding,
 });
 
 /** A person as saved: the picture itself, as before 6d, since avatar ids mean nothing to the next process. */
 function savePeer(p: Peer): SnapshotPeer {
-  const { slot: _, ...saved } = peerInfo(p);
+  // A restart parks every scooter: its rider comes back on foot.
+  const { slot: _, riding: __, ...saved } = peerInfo(p);
   return { ...saved, avatar: p.picture, resumeToken: p.resumeToken, lastAcceptedAt: p.lastAcceptedAt };
 }
 
@@ -574,6 +576,7 @@ export class Lobby {
           ...saved,
           ...this.picture(saved.avatar),
           slot: this.takeSlot(id),
+          riding: null,
           conn: null,
           disconnectedAt: now,
           ...freshTracking(now),
@@ -666,6 +669,7 @@ export class Lobby {
       ...this.picture(isValidAvatar(msg.avatar) ? msg.avatar : null),
       held: null,
       boombox: false,
+      riding: null,
       resumeToken: this.opts.newToken(),
       conn,
       lastAcceptedAt: now,
@@ -755,6 +759,7 @@ export class Lobby {
       ],
       portals: this.portalModes.get(roomId)?.on === true,
       ...(sequence ? { sequence: { kind: sequence.kind, age: now - sequence.startedAt } } : {}),
+      riding: self.riding,
     });
   }
 
@@ -781,6 +786,7 @@ export class Lobby {
         picture: null,
         held: null,
         boombox: false,
+        riding: null,
         resumeToken: newToken(),
         conn: null,
         lastAcceptedAt: now(),

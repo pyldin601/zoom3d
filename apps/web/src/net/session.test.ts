@@ -20,6 +20,7 @@ const peer = (id: string, x = 2, slot = slots++): PeerInfo => ({
   avatar: null,
   held: null,
   boombox: false,
+  riding: null,
 });
 const welcome = (peers: PeerInfo[] = [], spawn = { x: 5.5, y: 6.5, angle: 1 }) => ({
   type: 'welcome',

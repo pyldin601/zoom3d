@@ -5,7 +5,7 @@ import type { SequenceKind } from '../portals/sequence';
 /** People per room (bots don't count). To revisit after the 100-person load test (D21). */
 export const MAX_PEERS = 128;
 /** Sent in every join; a join without it, or with an older one, comes from a tab opened before an update. */
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 /** Bots a room may be created with (opt-in via the room link's `?bots=N`), outside MAX_PEERS. */
 export const MAX_BOTS = 100;
 export const NAME_MAX_CHARS = 24;
@@ -59,13 +59,15 @@ export interface PeerInfo {
   held: HeldItem | null;
   /** Whether the peer is playing its boombox (boombox spec §6). */
   boombox: boolean;
+  /** The id of the scooter the peer rides; a ridden scooter is no object (kick scooter spec §4.1). */
+  riding: string | null;
 }
 
-/** A server-driven thing in the room that isn't a person: the robot vacuum and the ball (robot vacuum spec §4). */
-export type ObjectKind = 'vacuum' | 'ball';
+/** A server-driven thing in the room that isn't a person: the robot vacuum, the ball, a parked scooter. */
+export type ObjectKind = 'vacuum' | 'ball' | 'scooter';
 /** Something an object did on one step, for its sound (robot vacuum spec §5.2, ball spec §4). */
 export type ObjectEvent = 'bump' | 'lost' | 'kick' | 'bounce';
-const OBJECT_KINDS: readonly ObjectKind[] = ['vacuum', 'ball'];
+const OBJECT_KINDS: readonly ObjectKind[] = ['vacuum', 'ball', 'scooter'];
 const OBJECT_EVENTS: readonly ObjectEvent[] = ['bump', 'lost', 'kick', 'bounce'];
 /** What the ball's mind is doing (living ball spec §2). */
 export type BallMood = 'asleep' | 'wandering' | 'approaching' | 'playing' | 'following' | 'scared';
@@ -124,6 +126,9 @@ export type BoomboxMessage = { type: 'boombox'; on: boolean };
 export type KickMessage = { type: 'kick'; angle: number; k: number };
 /** Asks to flip the room's portal mode. */
 export type PortalsMessage = { type: 'portals' };
+/** Asks to step on parked scooter `id`. */
+export type RideMessage = { type: 'ride'; id: string };
+export type DismountMessage = { type: 'dismount' };
 export type ClientMessage =
   | JoinMessage
   | StateMessage
@@ -133,7 +138,9 @@ export type ClientMessage =
   | CheersMessage
   | BoomboxMessage
   | KickMessage
-  | PortalsMessage;
+  | PortalsMessage
+  | RideMessage
+  | DismountMessage;
 
 export type ErrorCode = 'room_full' | 'invalid_room' | 'invalid_name' | 'not_joined' | 'outdated';
 const ERROR_CODES: readonly ErrorCode[] = ['room_full', 'invalid_room', 'invalid_name', 'not_joined', 'outdated'];
@@ -163,6 +170,8 @@ export type ServerMessage =
       portals: boolean;
       /** Present while a portal switch is running; `age` is ms since its press. */
       sequence?: PortalSequence;
+      /** The scooter the joiner rides: set when a reload resumes a ride. */
+      riding: string | null;
     }
   | { type: 'peer_joined'; peer: PeerInfo }
   | { type: 'peer_media'; id: string; cam: boolean; mic: boolean }
@@ -171,6 +180,9 @@ export type ServerMessage =
   | { type: 'peer_cheers'; id: string }
   | { type: 'peer_boombox'; id: string; on: boolean }
   | { type: 'peer_left'; id: string }
+  /** Peer `id` stepped on `scooter` (no longer an object), or off it, leaving it `parked`. */
+  | { type: 'peer_ride'; id: string; scooter: string }
+  | { type: 'peer_ride'; id: string; scooter: null; parked: ObjectInfo }
   | { type: 'peers'; s: PeerEntry[] }
   | { type: 'portals'; on: boolean }
   | ({ type: 'portals_sequence' } & PortalSequence)
@@ -198,6 +210,7 @@ export type ServerMessage =
   | { type: 'kick_refused'; k: number }
   | { type: 'error'; code: ErrorCode; message: string };
 export type ObjectStateMessage = Extract<ServerMessage, { type: 'object_state' }>;
+export type PeerRideMessage = Extract<ServerMessage, { type: 'peer_ride' }>;
 
 const ROOM_ID = /^[A-Za-z0-9_-]{22}$/;
 const B64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -380,6 +393,12 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   if (m.type === 'kick') {
     return isNum(m.angle) && isSeq(m.k) ? { type: 'kick', angle: m.angle, k: m.k } : null;
   }
+  if (m.type === 'ride') {
+    return isStr(m.id) ? { type: 'ride', id: m.id } : null;
+  }
+  if (m.type === 'dismount') {
+    return { type: 'dismount' };
+  }
   return null;
 }
 
@@ -401,8 +420,22 @@ export function parsePeerInfo(v: unknown): PeerInfo | null {
   const held = isHeldItem(v.held) ? v.held : null;
   // Missing (older server) or malformed reads as off: it only decides whether a sprite is drawn.
   const boombox = v.boombox === true;
+  // Missing (older server) or malformed reads as on foot.
+  const riding = isStr(v.riding) ? v.riding : null;
   return (
-    p && { id: v.id, slot: v.slot, name: v.name, color: v.color, ...p, cam: v.cam, mic: v.mic, avatar, held, boombox }
+    p && {
+      id: v.id,
+      slot: v.slot,
+      name: v.name,
+      color: v.color,
+      ...p,
+      cam: v.cam,
+      mic: v.mic,
+      avatar,
+      held,
+      boombox,
+      riding,
+    }
   );
 }
 
@@ -472,6 +505,7 @@ export function parseServerMessage(raw: string): ServerMessage | null {
         // Missing from an older server: the portals are off.
         portals: m.portals === true,
         ...(sequence ? { sequence } : {}),
+        riding: isStr(m.riding) ? m.riding : null,
       };
     }
     case 'peer_joined': {
@@ -492,6 +526,18 @@ export function parseServerMessage(raw: string): ServerMessage | null {
       return isStr(m.id) ? { type: 'peer_boombox', id: m.id, on: m.on === true } : null;
     case 'peer_left':
       return isStr(m.id) ? { type: 'peer_left', id: m.id } : null;
+    case 'peer_ride': {
+      if (!isStr(m.id)) {
+        return null;
+      }
+      if (isStr(m.scooter)) {
+        return { type: 'peer_ride', id: m.id, scooter: m.scooter };
+      }
+      const parked = parseObjectInfo(m.parked);
+      return m.scooter === null && parked?.kind === 'scooter'
+        ? { type: 'peer_ride', id: m.id, scooter: null, parked }
+        : null;
+    }
     case 'peers':
       // A bad entry costs only that peer one update: keep the rest.
       return Array.isArray(m.s) ? { type: 'peers', s: m.s.filter(isPeerEntry) } : null;

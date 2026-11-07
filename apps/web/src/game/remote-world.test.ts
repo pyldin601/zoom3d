@@ -37,6 +37,7 @@ const info = (id: string, x: number, y: number): PeerInfo => ({
   avatar: null,
   held: 'beer',
   boombox: false,
+  riding: null,
 });
 
 /** A session whose peers and objects stand still where given. */
