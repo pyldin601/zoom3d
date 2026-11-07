@@ -1,7 +1,7 @@
 import { type ObjectInfo, SnapshotBuffer } from '@zoom3d/shared';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { objectKey, type RemoteObject } from '../net/session';
-import { createScooterRide, type RideSession } from './scooter-ride';
+import { createScooterRide, type RideSession, ridesNow } from './scooter-ride';
 
 const scooter = (id: string, x: number): RemoteObject => ({
   info: { id, kind: 'scooter', x, y: 0, angle: 0 } satisfies ObjectInfo,
@@ -85,5 +85,14 @@ describe('speed and reach', () => {
     session.riding = 'near';
     r.settled();
     expect(r.inReach(player)).toBe(false);
+  });
+});
+
+describe('ridesNow', () => {
+  test('a rider stays riding through a reconnect: only the server stepping them off ends a ride', () => {
+    expect(ridesNow({ riding: 's1', status: () => 'reconnecting' })).toBe(true);
+    expect(ridesNow({ riding: 's1', status: () => 'open' })).toBe(true);
+    expect(ridesNow({ riding: null, status: () => 'open' })).toBe(false);
+    expect(ridesNow(null)).toBe(false);
   });
 });

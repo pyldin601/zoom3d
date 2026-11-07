@@ -20,6 +20,7 @@ import { portalPulse } from './portal-pulse';
 import type { SequenceCues } from './portal-sequence';
 import { createRemoteWorld, type PeerMedia } from './remote-world';
 import { isConnected, type Room } from './room';
+import { ridesNow } from './scooter-ride';
 import type { Screen } from './screen';
 
 export interface RoomLoopOptions {
@@ -168,7 +169,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     // Consumed outside the room too, so a turn made before it doesn't land on the first frame in it.
     const turn = o.input.consumeMouseTurn();
     const room = o.room();
-    localPlayer.riding = isConnected(room) && room?.session.riding !== null;
+    localPlayer.riding = ridesNow(room?.session ?? null);
     if (isConnected(room)) {
       localPlayer.walk(o.map, o.input.state(), turn, dt, room?.portals());
     }

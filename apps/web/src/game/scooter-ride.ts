@@ -81,3 +81,11 @@ export function createScooterRide(session: RideSession, now: () => number): Scoo
     },
   };
 }
+
+/**
+ * Whether the local player rides, as the room loop tells their ride: by the server's word alone. A dropped connection
+ * is no stepping off: treating it as one would turn the scooter to where the head looked when it came back.
+ */
+export function ridesNow(session: Pick<Session, 'riding' | 'status'> | null): boolean {
+  return (session?.riding ?? null) !== null;
+}

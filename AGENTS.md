@@ -209,7 +209,10 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   the ball's body push stays capped at walking × 1.5. E rides, so Q/E don't turn. The state file keeps every scooter
   parked; riders come back on foot after a restart. They are electric: `stepRide` (`game/scooter-physics.ts`) runs only
   on the rider's screen; others' motor whine comes from their drawn positions; riders' items are hidden on every
-  screen, never sent as `held: null`.
+  screen, never sent as `held: null`. Riding, the mouse turns only the head (`LocalPlayer.head`, ±90°): `pose.angle`
+  is the scooter's heading (what is sent, parked and drawn under the rider), and anything about where the player looks
+  (camera, listener, labels, subscription, hums, kicks) reads `localPlayer.eye()`. A dropped connection is no stepping
+  off (`ridesNow`).
 - Telemetry privacy: logs, metrics labels, Sentry and Amplitude never get names, resume tokens or IPs, nor raw room
   ids: a room link is the room's only key. Server logs use `roomRef()` (a short hash), and the browser Sentry
   `beforeSend` scrubs `/r/<id>`.
