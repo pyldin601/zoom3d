@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { createAndJoin, joinAs } from './join';
 
-// Kick scooter spec: a rack along the entry corridor; E steps on and off, riding is twice walking speed, and the scooter stays
+// Kick scooter spec: a rack in the hall south of the spawn; E steps on and off, riding is twice walking speed, and the scooter stays
 // where it was left. Everyone sees it.
 type Scooter = { info: { id: string; kind: string; x: number; y: number } };
 type GameWindow = {
@@ -63,25 +63,25 @@ test('a scooter is ridden from the rack, speeds up, rolls on, and is left where 
   await expect.poll(() => parked(b)).toHaveLength(6);
 
   const rack = await parked(a);
-  // The southernmost, the nearest to the spawn.
-  const first = [...rack].sort((p, q) => q.y - p.y).at(0);
+  // The one in front of the corridor's opening, at the corridor's west column.
+  const first = rack.find((s) => s.x === 33.5);
   if (!first) {
     throw new Error('no rack');
   }
-  // The spawn is random near S, where a straight line to the corridor clips wall corners: out along S's row, then
-  // north up the corridor's middle to stand beside the nearest scooter.
+  // The spawn is random near S, where a straight line to the hall clips wall corners: out along S's row, then south
+  // down the corridor's middle to stand beside the scooter, north of it.
   const spawnX = await a.evaluate(() => (window as unknown as GameWindow).__game.player.x);
   await walkTo(a, spawnX, 50.5);
   await walkTo(a, 34.5, 50.5);
-  await walkTo(a, 34.5, first.y);
-  await walkTo(a, first.x + 0.8, first.y);
+  await walkTo(a, 34.5, 54.5);
+  await walkTo(a, first.x, first.y - 0.8);
   await expect(a.locator('.ride-hint')).toBeVisible();
   await a.keyboard.press('e');
   await expect.poll(() => riding(a)).not.toBeNull();
   await expect.poll(() => peerRiding(b, 'Ada')).not.toBeNull();
   await expect.poll(() => parked(b)).toHaveLength(5);
 
-  // North, up the corridor and into the hall.
+  // North, out of the hall and up the corridor.
   await a.evaluate(() => {
     (window as unknown as GameWindow).__game.player.angle = -Math.PI / 2;
   });

@@ -900,7 +900,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
 
 ### D36 — Kick scooters, then electric
 - *Resolved 2026-11-07* ([spec](superpowers/specs/2026-11-07-kick-scooter-design.md)): every room has a rack of 4
-  scooters beside the spawn (6 along the entry corridor since the same day, below). E steps on the nearest one within a tile and off again (a Scooter button in touch mode).
+  scooters beside the spawn (6 in the hall south of the spawn room since the same day, below). E steps on the nearest one within a tile and off again (a Scooter button in touch mode).
   Their top speed is 6 tiles/s, twice walking.
   - **Parked in the room, left where dropped** (owner, over a personal scooter on a key and over returning to the rack).
     Leaving the room, or a restart, parks it where its rider stood; a reload within the grace comes back riding.
@@ -938,9 +938,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
         sharper than 25 tiles/s², which braking never reaches) come from their drawn motion, so there is no protocol
         change. The rider hears their own unplaced, from the throttle and the ride's head-on stop.
     - **A glowing headlight** on the stem and a battery under the deck; looks only.
-  - **Six along the entry corridor** (owner, 2026-11-07, after the steering fix): the rack moved from the open hall east
-    of the spawn to the west side of the corridor running north from the spawn room, at x 33.5, y 42.5 to 32.5, two
-    tiles apart, handlebars north; the corridor's other two tiles stay free to walk. `SCOOTER_COUNT` is 6. Rooms saved
+  - **Six in the hall south of the spawn room** (owner, 2026-11-07, after the steering fix): the rack moved from the open
+    hall east of the spawn to the south wall of the hall just south of the spawn room, side by side at y 55.5, x 29.5 to
+    39.5, two tiles apart and centred on the corridor's opening, handlebars north (builder's call: facing into the hall,
+    a rider rolls straight off, where facing the wall would mean backing up first). `SCOOTER_COUNT` is 6. Rooms saved
     in the state file keep their parked scooters; only new rooms get the new rack.
     - **Steering only while rolling, and the other way backing up** (owner, 2026-11-07, PR 143): the keys' turn fades
       in over the first 0.5 tiles/s, as the front wheel steers.

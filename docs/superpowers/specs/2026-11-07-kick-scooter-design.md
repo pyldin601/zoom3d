@@ -57,8 +57,8 @@ left, so over a party the scooters scatter around the map, the way they would in
 
 - `RIDE_SPEED = 6` (tiles/s), which is 2 × `MOVE_SPEED`.
 - `MOUNT_REACH = 1` (tiles, from the rider's centre to the scooter's).
-- `SCOOTER_COUNT = 4`. *Amended 2026-11-07 (owner):* 6, along the west side of the entry corridor north of the spawn
-  room (x 33.5, y 42.5 to 32.5, two tiles apart, handlebars north).
+- `SCOOTER_COUNT = 4`. *Amended 2026-11-07 (owner):* 6, side by side against the south wall of the hall just
+  south of the spawn room (y 55.5, x 29.5 to 39.5, two tiles apart, handlebars north).
 - `rackSpots(map)` returns the scooters' starting poses. Start with a fixed list of floor tiles beside the level's
   spawn, all facing the same way. A test checks that every spot is floor and not the spawn tile itself.
 - `canMount(rider, scooter)` checks distance only: within `MOUNT_REACH`.

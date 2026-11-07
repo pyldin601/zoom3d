@@ -27,11 +27,10 @@ export interface ScooterSave {
 }
 
 /**
- * Along the west side of LEVEL1's entry corridor, the one running north from the spawn room to the big hall, two tiles
- * apart and handlebars to the north (owner, 2026-11-07): the nearest is the first thing seen on the way out, and the
- * corridor's other two tiles stay free to walk.
+ * Side by side against the south wall of the hall just south of LEVEL1's spawn room, two tiles apart and centred on
+ * the corridor's opening, handlebars to the north (owner, 2026-11-07): facing into the hall, a rider rolls straight off.
  */
-const RACK: readonly Point[] = [42.5, 40.5, 38.5, 36.5, 34.5, 32.5].map((y) => ({ x: 33.5, y }));
+const RACK: readonly Point[] = [29.5, 31.5, 33.5, 35.5, 37.5, 39.5].map((x) => ({ x, y: 55.5 }));
 const RACK_ANGLE = -Math.PI / 2;
 
 export function rackSpots(map: GameMap): { x: number; y: number; angle: number }[] {
