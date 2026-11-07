@@ -1,6 +1,7 @@
 import { parseMap } from '@zoom3d/shared';
-import { expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import { twoDoorways } from '../../../../packages/shared/src/portals/test-doorways';
+import { SCOOTER_DECK_TILES, SCOOTER_MODEL } from '../renderer/models/scooter';
 import { hexToRgb } from '../renderer/sprites';
 import { createLocalPlayer, OWN_SPRITE_KEY } from './local-player';
 
@@ -202,4 +203,161 @@ test('the same walk without portals stays south of A', () => {
   }
   expect(localPlayer.pose.x).toBeCloseTo(2.5);
   expect(localPlayer.pose.y).toBeGreaterThan(3.5);
+});
+
+test('riding, the own disc glides a deck up with no step, and the own scooter stands under it', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  expect(localPlayer.scooter()).toBeNull();
+  localPlayer.riding = true;
+  localPlayer.pose.angle = 0;
+  localPlayer.walk(MAP, { forward: 1, strafe: 0, turn: 0 }, 0, 0.1);
+  localPlayer.pose.angle = 0.7;
+  const disc = localPlayer.avatar(0, '#ff0000', true);
+  expect(disc).toMatchObject({ bob: 0, itemBob: 0, ride: SCOOTER_DECK_TILES });
+  const scooter = localPlayer.scooter();
+  expect(scooter).toMatchObject({
+    model: SCOOTER_MODEL,
+    x: localPlayer.pose.x,
+    y: localPlayer.pose.y,
+    angle: 0.7,
+    lift: 0,
+  });
+  expect(localPlayer.scooter()).toBe(scooter);
+  localPlayer.riding = false;
+  expect(localPlayer.avatar(0, '#ff0000', true)?.ride).toBe(0);
+  expect(localPlayer.scooter()).toBeNull();
+});
+
+test('stepping on starts a ride at rest, and riding walks by the ride', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  localPlayer.riding = true;
+  localPlayer.ride.speed = 2;
+  localPlayer.riding = false;
+  localPlayer.riding = true;
+  expect(localPlayer.ride.speed).toBe(0);
+  localPlayer.pose.angle = 0;
+  localPlayer.walk(MAP, { forward: 1, strafe: 0, turn: 0 }, 0, 0.1);
+  expect(localPlayer.ride.speed).toBeCloseTo(0.4);
+});
+
+test('riding hides the own drink, boombox and lighter but keeps the choice', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  localPlayer.hold('beer');
+  localPlayer.boombox = true;
+  localPlayer.riding = true;
+  expect(localPlayer.avatar(0, '#ff0000', true)).toMatchObject({ held: null, boombox: false });
+  expect(localPlayer.firstPerson(0)).toMatchObject({ riding: true, held: null, boombox: false });
+  expect(localPlayer.held).toBe('beer');
+  localPlayer.hold('lighter');
+  expect(localPlayer.lighter()).toBeNull();
+  localPlayer.riding = false;
+  expect(localPlayer.lighter()).not.toBeNull();
+  expect(localPlayer.firstPerson(0)).toMatchObject({ riding: false, held: 'lighter', boombox: true });
+});
+
+test('stepping on cancels a sip under way', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  localPlayer.hold('beer');
+  localPlayer.gesture.start('sip', 0);
+  localPlayer.riding = true;
+  expect(localPlayer.gesture.kind(1)).toBeNull();
+});
+
+test('riding, the handlebar eases toward the steering and rests on foot', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  localPlayer.riding = true;
+  localPlayer.walk(MAP, { forward: 0, strafe: 1, turn: 0 }, 0, 0.1);
+  const steer = localPlayer.firstPerson(0).steer;
+  expect(steer).toBeCloseTo(1 - Math.exp(-1), 2);
+  localPlayer.riding = false;
+  localPlayer.walk(MAP, { forward: 0, strafe: 1, turn: 0 }, 0, 0.1);
+  expect(localPlayer.firstPerson(0).steer).toBe(0);
+});
+
+test('hands are free on foot, and on the handlebar while riding: no sip or cheers may start', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  expect(localPlayer.handsFree).toBe(true);
+  localPlayer.riding = true;
+  expect(localPlayer.handsFree).toBe(false);
+});
+
+describe('the head while riding', () => {
+  const riding = () => {
+    const localPlayer = createLocalPlayer(MAP, () => 0.5);
+    localPlayer.riding = true;
+    return localPlayer;
+  };
+
+  test('the mouse turns the head and not the scooter', () => {
+    const localPlayer = riding();
+    const heading = localPlayer.pose.angle;
+    localPlayer.walk(MAP, STILL, 0.5, 0.016);
+    expect(localPlayer.pose.angle).toBe(heading);
+    expect(localPlayer.head).toBeCloseTo(0.5);
+    expect(localPlayer.eye().angle).toBeCloseTo(heading + 0.5);
+  });
+
+  test('the head stops at 90° each way', () => {
+    const localPlayer = riding();
+    localPlayer.walk(MAP, STILL, 2, 0.016);
+    expect(localPlayer.head).toBeCloseTo(Math.PI / 2);
+    localPlayer.walk(MAP, STILL, -5, 0.016);
+    expect(localPlayer.head).toBeCloseTo(-Math.PI / 2);
+  });
+
+  test('the head stays where it is left', () => {
+    const localPlayer = riding();
+    localPlayer.walk(MAP, STILL, 0.4, 0.016);
+    for (let i = 0; i < 30; i++) {
+      localPlayer.walk(MAP, STILL, 0, 0.016);
+    }
+    expect(localPlayer.head).toBeCloseTo(0.4);
+  });
+
+  test('stepping off faces where the head looked; stepping on starts it straight', () => {
+    const localPlayer = riding();
+    localPlayer.pose.angle = 1;
+    localPlayer.walk(MAP, STILL, 0.5, 0.016);
+    localPlayer.riding = false;
+    expect(localPlayer.pose.angle).toBeCloseTo(1.5);
+    expect(localPlayer.head).toBe(0);
+    localPlayer.riding = true;
+    expect(localPlayer.head).toBe(0);
+  });
+
+  test('on foot the mouse turns the body, and the eye is the pose', () => {
+    const localPlayer = createLocalPlayer(MAP, () => 0.5);
+    const heading = localPlayer.pose.angle;
+    localPlayer.walk(MAP, STILL, 0.5, 0.016);
+    expect(localPlayer.pose.angle).toBeCloseTo(heading + 0.5);
+    expect(localPlayer.eye()).toEqual(localPlayer.pose);
+  });
+
+  test('the eye follows a correction and keeps the head', () => {
+    const localPlayer = riding();
+    localPlayer.walk(MAP, STILL, 0.3, 0.016);
+    localPlayer.pose.x = 3.25;
+    expect(localPlayer.eye().x).toBe(3.25);
+    expect(localPlayer.eye().angle).toBeCloseTo(localPlayer.pose.angle + 0.3);
+  });
+
+  test('a portal carries the heading and keeps the head', () => {
+    const { map, portals } = twoDoorways();
+    const localPlayer = createLocalPlayer(map, () => 0.5);
+    localPlayer.riding = true;
+    Object.assign(localPlayer.pose, { x: 2.5, y: 3.4, angle: Math.PI / 2 });
+    localPlayer.walk(map, { forward: 0, strafe: 0, turn: 0 }, 0.3, 0.016, portals);
+    localPlayer.ride.speed = 4;
+    for (let i = 0; i < 10; i++) {
+      localPlayer.walk(map, { forward: 0, strafe: 0, turn: 0 }, 0, 0.05, portals);
+    }
+    expect(localPlayer.head).toBeCloseTo(0.3);
+    expect(Math.sin(localPlayer.pose.angle)).toBeLessThan(-0.99);
+  });
+
+  test('first person carries the head', () => {
+    const localPlayer = riding();
+    localPlayer.walk(MAP, STILL, -0.7, 0.016);
+    expect(localPlayer.firstPerson(0).head).toBeCloseTo(-0.7);
+  });
 });

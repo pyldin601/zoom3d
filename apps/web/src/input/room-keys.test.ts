@@ -33,6 +33,13 @@ describe('in the room', () => {
     expect(roomKey(press('KeyY'), RECONNECTING)).toBeNull();
   });
 
+  test('E steps on or off a scooter once per press, never as a browser shortcut or while reconnecting', () => {
+    expect(roomKey(press('KeyE'), IN_ROOM)).toEqual({ kind: 'ride' });
+    expect(roomKey(press('KeyE', { repeat: true }), IN_ROOM)).toBeNull();
+    expect(roomKey(press('KeyE', { ctrlKey: true }), IN_ROOM)).toBeNull();
+    expect(roomKey(press('KeyE'), RECONNECTING)).toBeNull();
+  });
+
   test('a held key acts once; a held Tab is still the map, so it never moves the focus', () => {
     for (const code of ['Backquote', 'KeyB', 'Digit1', 'KeyM']) {
       expect(roomKey(press(code, { repeat: true }), IN_ROOM)).toBeNull();

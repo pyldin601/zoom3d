@@ -44,6 +44,8 @@ export interface ServerOptions {
   /** Every new room gets a ball; on unless set to false. */
   ball?: boolean;
   ballMind?: boolean;
+  /** A rack of kick scooters in every room; on unless set to false. */
+  scooters?: boolean;
 }
 
 export interface RunningServer {
@@ -149,6 +151,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     vacuum: opts.vacuum ?? true,
     ball: opts.ball ?? true,
     ballMind: opts.ballMind ?? true,
+    scooters: opts.scooters ?? true,
     vacuumNearlyDone: opts.vacuumNearlyDone,
   });
   const restored = opts.stateFile ? loadSnapshot(opts.stateFile, log) : null;
@@ -238,6 +241,10 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         lobby.kick(conn, msg);
       } else if (msg.type === 'portals') {
         lobby.portals(conn);
+      } else if (msg.type === 'ride') {
+        lobby.ride(conn, msg);
+      } else if (msg.type === 'dismount') {
+        lobby.dismount(conn);
       }
     });
     // The close reason is client-chosen text, so only the code is logged.

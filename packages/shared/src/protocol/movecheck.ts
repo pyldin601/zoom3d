@@ -15,12 +15,13 @@ export function isPlausibleMove(
   from: { x: number; y: number },
   to: { x: number; y: number },
   elapsedMs: number,
-  portals: Portals | null = null
+  portals: Portals | null = null,
+  speed = MOVE_SPEED
 ): boolean {
   if (isWallAt(map, to.x, to.y)) {
     return false;
   }
-  const limit = MOVE_SPEED * (Math.max(elapsedMs, 0) / 1000) * SPEED_TOLERANCE + SLACK_TILES;
+  const limit = speed * (Math.max(elapsedMs, 0) / 1000) * SPEED_TOLERANCE + SLACK_TILES;
   if (portals === null) {
     return Math.hypot(to.x - from.x, to.y - from.y) <= limit;
   }

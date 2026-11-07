@@ -200,6 +200,7 @@ const peer: PeerInfo = {
   avatar: null,
   held: null,
   boombox: false,
+  riding: null,
 };
 
 describe('parseServerMessage', () => {
@@ -214,6 +215,7 @@ describe('parseServerMessage', () => {
       livekit: { url: 'wss://lk.example', token: 'jwt' },
       objects: [{ id: 'v', kind: 'vacuum', x: 3, y: 4, angle: 1 }],
       portals: false,
+      riding: null,
     },
     { type: 'object_state', id: 'v', x: 1, y: 2, angle: 3, seq: 4, event: 'lost' },
     { type: 'peer_media', id: 'p1', cam: false, mic: true },
@@ -445,6 +447,7 @@ describe('world objects', () => {
     peers: [],
     livekit: { url: 'wss://lk.example', token: 'jwt' },
     portals: false,
+    riding: null,
   };
   const vacuum = { id: 'v', kind: 'vacuum', x: 1, y: 2, angle: 0 };
 
@@ -541,6 +544,7 @@ describe('the ball (ball spec §4)', () => {
       peers: [],
       livekit: { url: 'wss://lk.example', token: 'jwt' },
       portals: false,
+      riding: null,
     };
     const moving = { id: 'b', kind: 'ball', x: 1, y: 2, angle: 0, vx: 3, vy: 0 };
     const resting = { id: 'c', kind: 'ball', x: 1, y: 2, angle: 0 };
@@ -557,7 +561,7 @@ describe('server fan-out (6d)', () => {
     expect(NEAR_TILES).toBe(16);
     expect(FAR_INTERVAL_MS).toBe(500);
     expect(MAX_PEERS).toBe(128);
-    expect(PROTOCOL_VERSION).toBe(5);
+    expect(PROTOCOL_VERSION).toBe(6);
     expect(INTERP_DELAY_MS).toBe(150);
   });
 
@@ -684,5 +688,61 @@ describe('portal sequence messages', () => {
     expect(parseServerMessage(JSON.stringify(running))).toMatchObject({ sequence: { kind: 'off', age: 300 } });
     const bad = { ...welcome, sequence: { kind: 'spin', age: 300 } };
     expect(parseServerMessage(JSON.stringify(bad))).not.toHaveProperty('sequence');
+  });
+});
+
+describe('scooters', () => {
+  const scooter = { id: 's1', kind: 'scooter', x: 38.5, y: 50.5, angle: -1.5 } as const;
+
+  test('client ride needs a scooter id; dismount parses bare', () => {
+    expect(parseClientMessage(json({ type: 'ride', id: 's1', extra: 1 }))).toEqual({ type: 'ride', id: 's1' });
+    expect(parseClientMessage(json({ type: 'ride' }))).toBeNull();
+    expect(parseClientMessage(json({ type: 'ride', id: 3 }))).toBeNull();
+    expect(parseClientMessage(json({ type: 'dismount', extra: 1 }))).toEqual({ type: 'dismount' });
+  });
+
+  test('a peer without riding (older server) or with a malformed one rides nothing', () => {
+    const { riding: _, ...older } = peer;
+    expect(parseServerMessage(json({ type: 'peer_joined', peer: older }))).toEqual({ type: 'peer_joined', peer });
+    expect(parseServerMessage(json({ type: 'peer_joined', peer: { ...peer, riding: 5 } }))).toEqual({
+      type: 'peer_joined',
+      peer,
+    });
+  });
+
+  test('a riding peer keeps its scooter', () => {
+    const msg = { type: 'peer_joined', peer: { ...peer, riding: 's1' } };
+    expect(parseServerMessage(json(msg))).toEqual(msg);
+  });
+
+  test('peer_ride onto a scooter, and off it with where it was parked', () => {
+    const on: ServerMessage = { type: 'peer_ride', id: 'p1', scooter: 's1' };
+    const off: ServerMessage = { type: 'peer_ride', id: 'p1', scooter: null, parked: scooter };
+    expect(parseServerMessage(json(on))).toEqual(on);
+    expect(parseServerMessage(json(off))).toEqual(off);
+  });
+
+  test('peer_ride off a scooter without a valid parked scooter is rejected', () => {
+    expect(parseServerMessage(json({ type: 'peer_ride', id: 'p1', scooter: null }))).toBeNull();
+    expect(
+      parseServerMessage(json({ type: 'peer_ride', id: 'p1', scooter: null, parked: { ...scooter, kind: 'ball' } }))
+    ).toBeNull();
+    expect(parseServerMessage(json({ type: 'peer_ride', scooter: 's1' }))).toBeNull();
+  });
+
+  test('a welcome lists parked scooters and says what the joiner rides', () => {
+    const welcome = {
+      type: 'welcome',
+      selfId: 'p2',
+      resumeToken: 't',
+      color: '#3cb44b',
+      spawn: { x: 1, y: 2, angle: 0 },
+      peers: [],
+      livekit: { url: 'wss://lk.example', token: 'jwt' },
+      objects: [scooter],
+      portals: false,
+    };
+    expect(parseServerMessage(json(welcome))).toEqual({ ...welcome, riding: null });
+    expect(parseServerMessage(json({ ...welcome, riding: 's2' }))).toEqual({ ...welcome, riding: 's2' });
   });
 });

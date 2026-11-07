@@ -8,6 +8,7 @@ import { createLighterSounds, type LighterSounds } from '../audio/lighter-sounds
 import { createObjectSounds, type ObjectSounds } from '../audio/object-sounds';
 import { createPortalHums, type PortalHums } from '../audio/portal-hum';
 import { createPortalSwitchSounds, type PortalSwitchSounds } from '../audio/portal-switch-sound';
+import { createScooterSounds, type ScooterSounds } from '../audio/scooter-sounds';
 import { type Boombox, createBoombox } from '../media/boombox';
 import { type Call, createCall } from '../media/call';
 import { createFace } from '../media/faces';
@@ -22,6 +23,7 @@ import { createRoomTracker, type RoomTracker, withRoomTracker } from '../telemet
 import { botsParam } from '../ui/route';
 import { type BallPrediction, createBallPrediction } from './ball-prediction';
 import { createPortalSequence, type PortalSequencePlayer } from './portal-sequence';
+import { createScooterRide, type ScooterRide } from './scooter-ride';
 
 export interface Room {
   readonly session: Session;
@@ -32,6 +34,8 @@ export interface Room {
   readonly lighterSounds: LighterSounds;
   /** A hum from each portal doorway while `portals()` isn't null. */
   readonly hums: PortalHums;
+  /** The riders' motor whines, the local player's own among them. */
+  readonly scooterSounds: ScooterSounds;
   readonly boombox: Boombox;
   readonly tracker: RoomTracker;
   readonly ball: BallPrediction;
@@ -48,6 +52,8 @@ export interface Room {
   lighting(dark: boolean): Lighting | null;
   /** Kicks the ball the way the local player faces, if it is in reach: at once here, and on to the server. */
   kick(): void;
+  /** Stepping on and off kick scooters, and the local player's speed on one. */
+  readonly ride: ScooterRide;
 }
 
 export interface JoinOptions {
@@ -61,6 +67,8 @@ export interface JoinOptions {
   audioCtx: AudioContext;
   map: GameMap;
   player: PlayerState;
+  /** Where the eye looks (radians): a kick goes that way, which is the head's way while riding. */
+  aim(): number;
   /** Where remote media plays (muted) and where the boombox's own element goes. */
   mediaContainer: HTMLElement;
   localMediaContainer: HTMLElement;
@@ -81,19 +89,34 @@ export function joinRoom(opts: JoinOptions): Room {
   const objectSounds = createObjectSounds(opts.audioCtx, audio, () => session?.selfId() ?? null);
   const hums = createPortalHums(opts.audioCtx, audio);
   const lighterSounds = createLighterSounds(opts.audioCtx, audio);
+  const scooterSounds = createScooterSounds(opts.audioCtx, audio);
   const call = createRoomCall(opts, audio);
   const tracker = createRoomTracker(track, () => performance.now());
   const ball = createBallPrediction(opts.map, () => portals());
-  const joined = connectSession(opts, call, tracker, objectSounds, lighterSounds, ball, () => portals());
+  // The session's listener settles a ride the session itself answers, so the ride is made once the session is.
+  let ride: ScooterRide | null = null;
+  const joined = connectSession(
+    opts,
+    call,
+    tracker,
+    objectSounds,
+    lighterSounds,
+    scooterSounds,
+    ball,
+    () => portals(),
+    () => ride?.settled()
+  );
   session = joined;
+  ride = createScooterRide(joined, () => performance.now());
   call.attach(joined);
   const boombox = createOwnBoombox(opts, call, joined);
   const kick = () => {
     const { player } = opts;
-    const k = ball.kick(player, player.angle, performance.now());
+    const angle = opts.aim();
+    const k = ball.kick(player, angle, performance.now());
     const kicked = ball.ball;
     if (k !== null && kicked) {
-      joined.sendKick(player.angle, k);
+      joined.sendKick(angle, k);
       objectSounds.localEvent(kicked.id, 'kick');
     }
   };
@@ -109,6 +132,7 @@ export function joinRoom(opts: JoinOptions): Room {
     audio,
     objectSounds,
     lighterSounds,
+    scooterSounds,
     hums,
     boombox,
     tracker,
@@ -118,6 +142,7 @@ export function joinRoom(opts: JoinOptions): Room {
     switchSounds,
     lighting,
     kick,
+    ride,
   };
 }
 
@@ -143,8 +168,10 @@ function connectSession(
   tracker: RoomTracker,
   sounds: ObjectSounds,
   lighterSounds: LighterSounds,
+  scooterSounds: ScooterSounds,
   ball: BallPrediction,
-  portals: () => Portals | null
+  portals: () => Portals | null,
+  ownRideSettled: () => void
 ): Session {
   const people = withRoomTracker(withDoorbell(call.listener, createDoorbell(opts.audioCtx)), tracker, () => session);
   const session: Session = createSession({
@@ -163,6 +190,7 @@ function connectSession(
       peerLeft(id) {
         people.peerLeft?.(id);
         lighterSounds.peerLeft(id);
+        scooterSounds.peerLeft(id);
       },
       peerHeld: (id, before, after) => lighterSounds.peerHeld(id, before, after),
       portalsChanged: (on) => opts.onPortalsChanged(on),
@@ -174,6 +202,11 @@ function connectSession(
         }
       },
       kickRefused: (k) => ball.refused(k, performance.now()),
+      peerRide: (id) => {
+        if (id === session.selfId()) {
+          ownRideSettled();
+        }
+      },
       objectsReset: (objects) => ball.reset(objects.find((o) => o.kind === 'ball') ?? null),
     },
   });

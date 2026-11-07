@@ -59,7 +59,11 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     surfaceWidth: () => page.game.clientWidth,
   });
   const input = createInput(window, document, touch);
-  const drinkKey = createDrinkKey({ gesture: localPlayer.gesture, canGesture: inRoom, onGesture: sendGesture });
+  const drinkKey = createDrinkKey({
+    gesture: localPlayer.gesture,
+    canGesture: () => inRoom() && localPlayer.handsFree,
+    onGesture: sendGesture,
+  });
 
   let room: Room | null = null;
   const backtickConsole = createBacktickConsole(page.ui, {
@@ -104,6 +108,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     roomLighting,
     showMap: () => controls.mapShown,
     ballInReach: (inReach) => controls.setKickInReach(inReach),
+    scooterState: (inReach, riding) => controls.setScooterState(inReach, riding),
   });
   // rAF stops while the tab is hidden: keep voices (and newcomers) audible from a timer meanwhile.
   startHiddenTicker(roomLoop.whileHidden, () => document.hidden);
@@ -202,6 +207,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
       audioCtx,
       map,
       player: localPlayer.pose,
+      aim: () => localPlayer.eye().angle,
       mediaContainer: page.media,
       localMediaContainer: page.localMedia,
       held: localPlayer.held,

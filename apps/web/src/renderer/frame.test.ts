@@ -17,6 +17,7 @@ import type { PeerFacts } from '../media/interest';
 import { ownAvatarShown, type RoomScene, renderView } from './frame';
 import { createFramebuffer, type Framebuffer, rgb } from './framebuffer';
 import { bakeLighting, corridorLights, type Lighting } from './lighting';
+import { SCOOTER_MODEL } from './models/scooter';
 import { VACUUM_MODEL } from './models/vacuum';
 import { shimmerAndRim, toSketchPx, windowRipple } from './portal-window';
 import { createRoomLighting } from './room-lighting';
@@ -37,6 +38,7 @@ function person(key: string, x: number, y: number, color: number): Sprite {
     speaking: 0.4,
     bob: 0.3,
     itemBob: 0.3,
+    ride: 0,
     sip: 0,
     cheers: 0,
     wobble: 0,
@@ -76,6 +78,7 @@ describe('renderView without portals', () => {
     ownLighter: null,
     lighterSeconds: 0,
     self: null,
+    ownScooter: null,
     ownLabel: null,
     portalPulse: 1,
     portalTime: 0,
@@ -187,6 +190,7 @@ function portalScene(
     ownLighter: null,
     lighterSeconds: 0,
     self: null,
+    ownScooter: null,
     ownLabel: null,
     portalPulse: 1,
     portalTime: 0,
@@ -528,6 +532,28 @@ describe('the own avatar', () => {
     expect(differences(shown, plain)).toEqual([]);
   });
 
+  const ownScooter = (at: { x: number; y: number }) => ({ model: SCOOTER_MODEL, ...at, angle: 0, lift: 0 });
+
+  test('the own scooter shows through a window that looks back at the eye, and only there', () => {
+    const shown = createFramebuffer();
+    renderView(shown, { ...portalScene(loop.map, loop.portals, eye), ownScooter: ownScooter(eye) });
+    const plain = createFramebuffer();
+    renderView(plain, portalScene(loop.map, loop.portals, eye));
+    const inWindow = new Set(windowColumns(shown));
+    const changed = differences(shown, plain);
+    expect(changed.length).toBeGreaterThan(0);
+    expect(changed.every(([col]) => inWindow.has(col))).toBe(true);
+  });
+
+  test('the main pass never draws the own scooter', () => {
+    const north: PlayerState = { x: 2.5, y: 9.5, angle: -SOUTH };
+    const shown = createFramebuffer();
+    renderView(shown, { ...portalScene(loop.map, loop.portals, north), ownScooter: ownScooter({ x: 2.5, y: 8.5 }) });
+    const plain = createFramebuffer();
+    renderView(plain, portalScene(loop.map, loop.portals, north));
+    expect(differences(shown, plain)).toEqual([]);
+  });
+
   test('seen never counts the local player', () => {
     const seen = new Map<string, PeerFacts>();
     renderView(createFramebuffer(), { ...portalScene(loop.map, loop.portals, eye), self: ownAvatar(eye) }, seen);
@@ -565,5 +591,32 @@ describe('the own avatar', () => {
     expect(changed.length).toBeGreaterThan(0);
     expect(changed.every(([col]) => inWindow.has(col))).toBe(true);
     expect(changed.some(([col, row]) => looksGreen(pixelAt(shown, col, row)))).toBe(true);
+  });
+});
+
+describe('first person', () => {
+  const map = parseMap(LEVEL1);
+  const eye = { x: map.spawn.x + 0.5, y: map.spawn.y + 0.5, angle: 0 };
+  const hands = (riding: boolean) => ({
+    held: null,
+    boombox: false,
+    riding,
+    steer: 0,
+    head: 0,
+    step: { itemLift: 0, sway: 0 },
+    gesture: { sip: 0, cheers: 0, wobble: 0 },
+  });
+
+  test('the handlebar is drawn only while riding', () => {
+    const on = createFramebuffer();
+    renderView(on, { ...portalScene(map, null, eye), firstPerson: hands(true) });
+    const off = createFramebuffer();
+    renderView(off, { ...portalScene(map, null, eye), firstPerson: hands(false) });
+    const plain = createFramebuffer();
+    renderView(plain, portalScene(map, null, eye));
+    expect(differences(off, plain)).toEqual([]);
+    const changed = differences(on, plain);
+    expect(changed.length).toBeGreaterThan(0);
+    expect(changed.every(([, row]) => row > on.height / 2)).toBe(true);
   });
 });

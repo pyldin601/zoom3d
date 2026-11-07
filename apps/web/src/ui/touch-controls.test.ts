@@ -23,6 +23,8 @@ function options(overrides: Partial<TouchControlsOptions> = {}): TouchControlsOp
     onLighting: vi.fn(),
     kick: false,
     onKick: vi.fn(),
+    scooter: false,
+    onScooter: vi.fn(),
     ...overrides,
   };
 }
@@ -70,7 +72,14 @@ test('Lighter picks the lighter', () => {
 
 test('the drink button stays hidden while holding the lighter: it has no sip', () => {
   const controls = showTouchControls(root, options());
-  controls.update({ held: 'lighter', boombox: false, map: false, lighting: 'reflections', kick: false });
+  controls.update({
+    held: 'lighter',
+    boombox: false,
+    map: false,
+    lighting: 'reflections',
+    kick: false,
+    scooter: false,
+  });
   expect($('.drink').hidden).toBe(true);
 });
 
@@ -94,7 +103,7 @@ test('a tap inside the tray does not close it before the click lands', () => {
 test('the drink button shows only while holding, with the drink in its name', () => {
   const controls = showTouchControls(root, options());
   expect($('.drink').hidden).toBe(true);
-  controls.update({ held: 'beer', boombox: false, map: false, lighting: 'reflections', kick: false });
+  controls.update({ held: 'beer', boombox: false, map: false, lighting: 'reflections', kick: false, scooter: false });
   expect($('.drink').hidden).toBe(false);
   expect($('.drink').getAttribute('aria-label')).toBe('Sip beer (hold to cheers)');
 });
@@ -133,10 +142,10 @@ test('boombox and map buttons call their handlers, close the tray and reflect st
   $('.more').click();
   $('[data-action="map"]').click();
   expect(opts.onMap).toHaveBeenCalledTimes(1);
-  controls.update({ held: null, boombox: true, map: true, lighting: 'reflections', kick: false });
+  controls.update({ held: null, boombox: true, map: true, lighting: 'reflections', kick: false, scooter: false });
   expect($('[data-action="boombox"]').getAttribute('aria-label')).toBe('Stop music');
   expect($('[data-action="map"]').getAttribute('aria-pressed')).toBe('true');
-  controls.update({ held: null, boombox: false, map: false, lighting: 'reflections', kick: false });
+  controls.update({ held: null, boombox: false, map: false, lighting: 'reflections', kick: false, scooter: false });
   expect($('[data-action="boombox"]').getAttribute('aria-label')).toBe('Boombox');
   expect($('[data-action="map"]').getAttribute('aria-pressed')).toBe('false');
 });
@@ -149,7 +158,14 @@ test('the Lighting button steps the mode, keeps the tray open and names the mode
   expect(opts.onLighting).toHaveBeenCalledTimes(1);
   expect(tray().hidden).toBe(false);
   expect($('[data-action="lighting"]').textContent).toContain('Shadows and reflections');
-  controls.update({ held: null, boombox: false, map: false, lighting: 'reflections-only', kick: false });
+  controls.update({
+    held: null,
+    boombox: false,
+    map: false,
+    lighting: 'reflections-only',
+    kick: false,
+    scooter: false,
+  });
   expect($('[data-action="lighting"]').textContent).toContain('Reflections only');
 });
 
@@ -180,7 +196,7 @@ test('remove takes every control away', () => {
 test('the kick button shows only while the ball is in reach', () => {
   const controls = showTouchControls(root, options());
   expect($('.kick').hidden).toBe(true);
-  controls.update({ held: null, boombox: false, map: false, lighting: 'reflections', kick: true });
+  controls.update({ held: null, boombox: false, map: false, lighting: 'reflections', kick: true, scooter: false });
   expect($('.kick').hidden).toBe(false);
   expect($('.kick').getAttribute('aria-label')).toBe('Kick the ball');
 });
@@ -190,4 +206,19 @@ test('tapping the kick button kicks', () => {
   showTouchControls(root, opts);
   pointer($('.kick'), 'pointerdown');
   expect(opts.onKick).toHaveBeenCalledTimes(1);
+});
+
+test('the scooter button shows only while a scooter is in reach or ridden', () => {
+  const controls = showTouchControls(root, options());
+  expect($('.scooter').hidden).toBe(true);
+  controls.update({ held: null, boombox: false, map: false, lighting: 'reflections', kick: false, scooter: true });
+  expect($('.scooter').hidden).toBe(false);
+  expect($('.scooter').getAttribute('aria-label')).toBe('Ride a scooter');
+});
+
+test('tapping the scooter button steps on or off', () => {
+  const opts = options({ scooter: true });
+  showTouchControls(root, opts);
+  pointer($('.scooter'), 'pointerdown');
+  expect(opts.onScooter).toHaveBeenCalledTimes(1);
 });

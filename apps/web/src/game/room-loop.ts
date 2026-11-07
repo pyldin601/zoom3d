@@ -2,6 +2,7 @@
 // placed and heard, the view and the HUD are drawn, then the subscription picks whose media to receive. While the tab is hidden rAF stops, so a timer
 // keeps the sound and the subscription going instead.
 import { type Apparent, BALL_KICK_REACH, type BallBody, type GameMap, JUMP_TILES, PLAYER_RADIUS } from '@zoom3d/shared';
+import { ownLoad } from '../audio/scooter-sounds';
 import { HIDDEN_TICK_MS } from '../audio/ticker';
 import type { Input } from '../input/keyboard';
 import { createSubscription } from '../media/subscription';
@@ -19,6 +20,7 @@ import { portalPulse } from './portal-pulse';
 import type { SequenceCues } from './portal-sequence';
 import { createRemoteWorld, type PeerMedia } from './remote-world';
 import { isConnected, type Room } from './room';
+import { ridesNow } from './scooter-ride';
 import type { Screen } from './screen';
 
 export interface RoomLoopOptions {
@@ -38,6 +40,8 @@ export interface RoomLoopOptions {
   showMap(): boolean;
   /** Every frame: whether the local player can kick the ball (for the touch kick button). */
   ballInReach(inReach: boolean): void;
+  /** Every frame: whether a parked scooter is in reach on foot, and whether the local player rides one. */
+  scooterState(inReach: boolean, riding: boolean): void;
 }
 
 export interface RoomLoop {
@@ -62,7 +66,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   const scene: RoomScene = {
     map: o.map,
     textures: o.textures,
-    eye: localPlayer.pose,
+    eye: localPlayer.eye(),
     lighting: null,
     reflections: 'none',
     people: world.sprites,
@@ -73,6 +77,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     ownLighter: null,
     lighterSeconds: 0,
     self: null,
+    ownScooter: null,
     ownLabel: null,
     portalPulse: 1,
     portalTime: 0,
@@ -86,7 +91,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     if (
       scene.self === null ||
       room === null ||
-      !placeOwnLabel(o.map, scene.portals ?? null, localPlayer.pose, ownLabel)
+      !placeOwnLabel(o.map, scene.portals ?? null, localPlayer.eye(), ownLabel)
     ) {
       return null;
     }
@@ -163,8 +168,10 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   const stepLocalPlayer = (dt: number) => {
     // Consumed outside the room too, so a turn made before it doesn't land on the first frame in it.
     const turn = o.input.consumeMouseTurn();
-    if (isConnected(o.room())) {
-      localPlayer.walk(o.map, o.input.state(), turn, dt, o.room()?.portals());
+    const room = o.room();
+    localPlayer.riding = ridesNow(room?.session ?? null);
+    if (isConnected(room)) {
+      localPlayer.walk(o.map, o.input.state(), turn, dt, room?.portals());
     }
   };
 
@@ -191,7 +198,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       placeThing(n++, id, pos);
     }
     things.length = n;
-    apparent = apparentWorld.update(o.map, room.portals(), localPlayer.pose, things);
+    apparent = apparentWorld.update(o.map, room.portals(), localPlayer.eye(), things);
   };
 
   const placeEveryoneElse = (room: Room, now: number, dt: number) => {
@@ -200,14 +207,19 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     placeApparently(room);
     world.collect(session, peerMedia, now, dt, apparent);
     room.objectSounds.sync(session.objects, world.objectPoses, dt);
+    room.scooterSounds.sync(session.peers, world.positions, dt, now);
+    const { speed, bump } = localPlayer.ride;
+    room.scooterSounds.own(speed, ownLoad(o.input.state().forward, speed), bump, localPlayer.riding, dt);
     // Bots count too: the client can't tell them from people.
     const people = session.status() === 'open' ? session.peers.size + 1 : null;
     o.statusLine.show(statusText(session.status(), session.error()), people);
-    room.audio.update(now, localPlayer.pose, apparent);
+    room.audio.update(now, localPlayer.eye(), apparent);
   };
 
   const describeScene = (now: number) => {
     // The console's lighting mode; flat is drawn unlit, as with `?lights=off`.
+    // The pooled eye pose the scene holds, refilled: the head may have turned since the last frame.
+    localPlayer.eye();
     const reflections = litReflections(o.renderMode());
     scene.reflections = reflections ?? 'none';
     const room = o.room();
@@ -223,6 +235,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     scene.ownLighter = isConnected(room) ? localPlayer.lighter() : null;
     // Only windows draw the own disc, and reading its face back stalls on the GPU: read it only while one shows it.
     scene.self = scene.portals && isConnected(room) ? localPlayer.avatar(now, ringColour, ownAvatarShown()) : null;
+    scene.ownScooter = scene.self ? localPlayer.scooter() : null;
     scene.ownLabel = labelOwnImage(room);
     scene.firstPerson = isConnected(room) ? localPlayer.firstPerson(now) : null;
     return scene;
@@ -233,7 +246,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       call: room.call,
       people: room.session.peers,
       positions: apparent,
-      player: localPlayer.pose,
+      player: localPlayer.eye(),
       fov: screen.fb.fov,
       map: o.map,
       maxDistance: room.audio.settings().max,
@@ -251,13 +264,18 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
         followSequence(room, now);
         stepBall(room, now, dt);
         placeEveryoneElse(room, now, dt);
+        const connected = isConnected(room);
+        o.scooterState(
+          connected && room.ride.inReach(localPlayer.pose, apparent),
+          connected && room.session.riding !== null
+        );
       } else {
         showCountdown(o.ui, null);
       }
       const drawStart = performance.now();
       const shown = describeScene(drawStart);
       // The hum swells with the very pulse this frame's glow is drawn with.
-      room?.hums.sync(room.portals(), shown.portalPulse, localPlayer.pose, apparent);
+      room?.hums.sync(room.portals(), shown.portalPulse, localPlayer.eye(), apparent);
       renderView(screen.fb, shown, subscription.seen);
       screen.present();
       renderHud(o.hud, screen.fb, shown, o.showMap());
@@ -279,8 +297,11 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       world.sample(room.session, localPlayer.pose, now, room.ball, room.portals());
       placeApparently(room);
       room.objectSounds.sync(room.session.objects, world.objectPoses, HIDDEN_TICK_MS / 1000);
-      room.hums.sync(room.portals(), portalPulse(now / 1000), localPlayer.pose, apparent);
-      room.audio.update(now, localPlayer.pose, apparent);
+      room.scooterSounds.sync(room.session.peers, world.positions, HIDDEN_TICK_MS / 1000, now);
+      // Hidden, the local player stands still, so their own motor is quiet.
+      room.scooterSounds.own(0, 'coasting', 0, localPlayer.riding, HIDDEN_TICK_MS / 1000);
+      room.hums.sync(room.portals(), portalPulse(now / 1000), localPlayer.eye(), apparent);
+      room.audio.update(now, localPlayer.eye(), apparent);
       chooseWhatToReceive(room, now, true);
     },
   };

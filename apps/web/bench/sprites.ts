@@ -12,6 +12,7 @@ import { createFramebuffer, rgb } from '../src/renderer/framebuffer';
 import { GLOW_RADIUS, type Glow } from '../src/renderer/glow';
 import { bakeLighting, bakePortalLighting, corridorLights } from '../src/renderer/lighting';
 import { BALL_MODEL } from '../src/renderer/models/ball';
+import { SCOOTER_DECK_TILES, SCOOTER_MODEL } from '../src/renderer/models/scooter';
 import { VACUUM_MODEL } from '../src/renderer/models/vacuum';
 import { type PeopleAndObjects, renderSprites, type Sprite } from '../src/renderer/sprites';
 import { averageColour, makeTextures } from '../src/renderer/textures';
@@ -98,6 +99,7 @@ console.log(
 );
 console.log(`and ${vacuums} vacuums and ${balls} balls, 640×360`);
 console.log(`sprite hash ${hash}`);
+console.log(`scooter hash ${scooterHash()}`);
 for (const mode of MODES) {
   console.log(`${mode.padEnd(6)} ${(median(times.get(mode) ?? []) * 1000).toFixed(1)} µs/frame (renderSprites only)`);
 }
@@ -166,6 +168,7 @@ function drawWholeFrame(state: 'off' | 'on', s: Scene): void {
     ownLighter: null,
     lighterSeconds: 0,
     self: null,
+    ownScooter: null,
     ownLabel: null,
     portalPulse: 1,
     portalTime: 0,
@@ -241,6 +244,39 @@ function faceTexture(seed: number): Uint32Array {
  * Up to 4 seeded poses within 2.5 tiles of each lamp, each with AVATARS avatars and the vacuum on open floor in front
  * (some hidden by walls, some overlapping), and every avatar's glow plus yours for the lit walls.
  */
+/**
+ * Kick scooters (kick scooter spec): the same poses, with each scene's first person riding one and another parked
+ * between the eye and them. Hashed on its own, so the sprite hash above stays what it was.
+ */
+function scooterHash(): number {
+  let h = 0;
+  for (const mode of MODES) {
+    for (const scene of scenes) {
+      const rider = scene.sprites.at(0);
+      if (!rider) {
+        continue;
+      }
+      const riding: Sprite = { ...rider, bob: 0, itemBob: 0, ride: SCOOTER_DECK_TILES };
+      const parked = { x: (scene.x + rider.x) / 2, y: (scene.y + rider.y) / 2 };
+      const withScooters: Scene = {
+        ...scene,
+        sprites: [riding, ...scene.sprites.slice(1)],
+        voxels: [
+          ...scene.voxels,
+          { model: SCOOTER_MODEL, x: rider.x, y: rider.y, angle: scene.angle + 1, lift: 0 },
+          { model: SCOOTER_MODEL, ...parked, angle: scene.angle - 0.5, lift: 0 },
+        ],
+      };
+      drawWalls(mode, withScooters);
+      drawSprites(mode, withScooters);
+      for (const c of fb.pixels) {
+        h = (Math.imul(h, 31) + c) | 0;
+      }
+    }
+  }
+  return h;
+}
+
 function scenesNearLamps(): Scene[] {
   let seed = 11;
   const rand = () => {
@@ -283,6 +319,7 @@ function scenesNearLamps(): Scene[] {
           speaking: j % 2 === 0 ? rand() : 0,
           bob: rand(),
           itemBob: rand(),
+          ride: 0,
           sip: raised ? 0 : lift,
           cheers: raised ? lift : 0,
           wobble: raised ? (rand() - 0.5) * 2 * lift : 0,

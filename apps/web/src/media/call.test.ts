@@ -22,6 +22,7 @@ const info = (id: string, cam = true): PeerInfo => ({
   avatar: null,
   held: null,
   boombox: false,
+  riding: null,
 });
 
 let transports: {

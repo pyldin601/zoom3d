@@ -21,6 +21,7 @@ import {
 } from './held-items';
 import { SIDE_SHADE } from './lighting';
 import { createFloorMirror } from './mirror';
+import { SCOOTER_DECK_TILES, SCOOTER_MODEL } from './models/scooter';
 import {
   AVATAR_RADIUS,
   BOB_HEIGHT,
@@ -82,6 +83,7 @@ describe('renderSprites', () => {
         speaking: 0,
         bob: 0,
         itemBob: 0,
+        ride: 0,
         sip: 0,
         cheers: 0,
         wobble: 0,
@@ -112,6 +114,7 @@ describe('renderSprites', () => {
         speaking: 0,
         bob: 0,
         itemBob: 0,
+        ride: 0,
         sip: 0,
         cheers: 0,
         wobble: 0,
@@ -136,6 +139,7 @@ describe('renderSprites', () => {
         speaking: 0,
         bob: 0,
         itemBob: 0,
+        ride: 0,
         sip: 0,
         cheers: 0,
         wobble: 0,
@@ -172,6 +176,7 @@ describe('renderSprites', () => {
         speaking: 0,
         bob: 0,
         itemBob: 0,
+        ride: 0,
         sip: 0,
         cheers: 0,
         wobble: 0,
@@ -194,6 +199,7 @@ describe('renderSprites', () => {
         speaking: 0,
         bob: 0,
         itemBob: 0,
+        ride: 0,
         sip: 0,
         cheers: 0,
         wobble: 0,
@@ -209,6 +215,7 @@ describe('renderSprites', () => {
         speaking: 0,
         bob: 0,
         itemBob: 0,
+        ride: 0,
         sip: 0,
         cheers: 0,
         wobble: 0,
@@ -217,6 +224,41 @@ describe('renderSprites', () => {
       },
     ]);
     expect(px(fb, 320, 180)).toBe(RED);
+  });
+});
+
+describe('an object at a person’s own spot', () => {
+  test('is drawn under the person: a ridden scooter never covers its rider’s disc', () => {
+    const rider: Sprite = {
+      x: 3.5,
+      y: 4.5,
+      key: 'r',
+      color: RED,
+      face: null,
+      speaking: 0,
+      bob: 0,
+      itemBob: 0,
+      ride: SCOOTER_DECK_TILES,
+      sip: 0,
+      cheers: 0,
+      wobble: 0,
+      held: null,
+      boombox: false,
+    };
+    const scooter = { model: SCOOTER_MODEL, x: 3.5, y: 4.5, angle: -Math.PI / 2, lift: 0 };
+    const walls = frame();
+    const discOnly = frame();
+    drawPeople(discOnly, [rider]);
+    const both = frame();
+    renderSprites(both, { eye: player, people: [rider], objects: [scooter], lighting: null });
+    // The disc itself, not its shadow on the floor, which the scooter rightly stands on.
+    const isDisc = (c: number | undefined) => c === RED || c === shade(RED);
+    const discPixels = [...discOnly.pixels.keys()].filter(
+      (i) => discOnly.pixels[i] !== walls.pixels[i] && isDisc(discOnly.pixels[i])
+    );
+    expect(discPixels.length).toBeGreaterThan(0);
+    expect(discPixels.filter((i) => both.pixels[i] !== discOnly.pixels[i])).toEqual([]);
+    expect([...both.pixels.keys()].some((i) => both.pixels[i] !== discOnly.pixels[i])).toBe(true);
   });
 });
 
@@ -230,6 +272,7 @@ describe('facts for dynamic subscription', () => {
     speaking: 0,
     bob: 0,
     itemBob: 0,
+    ride: 0,
     sip: 0,
     cheers: 0,
     wobble: 0,
@@ -375,6 +418,7 @@ describe('face sprites', () => {
         speaking: 0,
         bob: 0,
         itemBob: 0,
+        ride: 0,
         sip: 0,
         cheers: 0,
         wobble: 0,
@@ -399,6 +443,7 @@ describe('face sprites', () => {
         speaking: 0,
         bob: 0,
         itemBob: 0,
+        ride: 0,
         sip: 0,
         cheers: 0,
         wobble: 0,
@@ -422,6 +467,7 @@ describe('face sprites', () => {
         speaking: 0,
         bob: 0,
         itemBob: 0,
+        ride: 0,
         sip: 0,
         cheers: 0,
         wobble: 0,
@@ -454,6 +500,7 @@ describe('speaking ring', () => {
         speaking: 0,
         bob: 0,
         itemBob: 0,
+        ride: 0,
         sip: 0,
         cheers: 0,
         wobble: 0,
@@ -473,6 +520,7 @@ describe('speaking ring', () => {
         speaking: 1,
         bob: 0,
         itemBob: 0,
+        ride: 0,
         sip: 0,
         cheers: 0,
         wobble: 0,
@@ -497,6 +545,7 @@ describe('floor shadows', () => {
     speaking: 0,
     bob: 0,
     itemBob: 0,
+    ride: 0,
     sip: 0,
     cheers: 0,
     wobble: 0,
@@ -611,6 +660,7 @@ describe('held items', () => {
     speaking: 0,
     bob: 0,
     itemBob: 0,
+    ride: 0,
     sip: 0,
     cheers: 0,
     wobble: 0,
@@ -786,6 +836,7 @@ describe('held item shadows', () => {
     speaking: 0,
     bob: 0,
     itemBob: 0,
+    ride: 0,
     sip: 0,
     cheers: 0,
     wobble: 0,
@@ -903,6 +954,7 @@ describe('boombox', () => {
     speaking: 0,
     bob: 0,
     itemBob: 0,
+    ride: 0,
     sip: 0,
     cheers: 0,
     wobble: 0,
@@ -1009,6 +1061,7 @@ describe('mirrorDisc', () => {
     speaking: 0,
     bob: 0,
     itemBob: 0,
+    ride: 0,
     sip: 0,
     cheers: 0,
     wobble: 0,
@@ -1076,6 +1129,7 @@ describe('renderSprites in a pass', () => {
     speaking: 0,
     bob: 0,
     itemBob: 0,
+    ride: 0,
     sip: 0,
     cheers: 0,
     wobble: 0,

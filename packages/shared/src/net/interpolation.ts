@@ -13,6 +13,9 @@ export interface Snapshot {
 export const JUMP_TILES = 2;
 
 const TWO_PI = Math.PI * 2;
+/** speedBetween's two ends, reused. */
+const from = { x: 0, y: 0, angle: 0 };
+const to = { x: 0, y: 0, angle: 0 };
 
 export class SnapshotBuffer {
   private readonly items: Snapshot[] = [];
@@ -43,6 +46,33 @@ export class SnapshotBuffer {
       this.items[this.start] = { ...s };
       this.start = (this.start + 1) % this.capacity;
     }
+  }
+
+  /**
+   * The average speed (tiles per second) along the path drawn between `t0` and `t1` (ms). A step into a jump snapshot
+   * went through a portal, so it counts as no travel. Allocation-free.
+   */
+  speedBetween(t0: number, t1: number): number {
+    if (t1 <= t0 || !this.sample(t0, from)) {
+      return 0;
+    }
+    let path = 0;
+    let x = from.x;
+    let y = from.y;
+    for (let i = 0; i < this.items.length; i++) {
+      const s = this.at(i);
+      if (s.t <= t0 || s.t >= t1) {
+        continue;
+      }
+      if (!s.jump) {
+        path += Math.hypot(s.x - x, s.y - y);
+      }
+      x = s.x;
+      y = s.y;
+    }
+    this.sample(t1, to);
+    path += Math.hypot(to.x - x, to.y - y);
+    return path / ((t1 - t0) / 1000);
   }
 
   sample(t: number, out: { x: number; y: number; angle: number }): boolean {

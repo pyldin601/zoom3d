@@ -1,6 +1,14 @@
 // The lobby written on shutdown and read back on the next start, so a deploy doesn't drop the rooms.
 import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { type BallSave, isValidAvatar, isValidRoomId, MAX_PEERS, parsePeerInfo, type VacuumSave } from '@zoom3d/shared';
+import {
+  type BallSave,
+  isValidAvatar,
+  isValidRoomId,
+  MAX_PEERS,
+  parsePeerInfo,
+  type ScooterSave,
+  type VacuumSave,
+} from '@zoom3d/shared';
 import type { LobbySnapshot, SnapshotPeer } from './lobby';
 import type { Logger } from './log';
 
@@ -13,7 +21,7 @@ function snapshotPeer(v: unknown): SnapshotPeer | null {
     return null;
   }
   // Saved pictures are data URLs (the wire's avatar ids mean nothing to the next process).
-  const { slot: _, ...saved } = info;
+  const { slot: _, riding: __, ...saved } = info;
   const avatar = isValidAvatar(v.avatar) ? v.avatar : null;
   return { ...saved, avatar, resumeToken: v.resumeToken, lastAcceptedAt: v.lastAcceptedAt as number };
 }
@@ -64,11 +72,14 @@ export function parseSnapshot(raw: string): LobbySnapshot | null {
     if (peers.length > 0 && peers.length <= MAX_PEERS) {
       const vacuum = snapshotVacuum(r.vacuum);
       const ball = snapshotBall(r.ball);
+      // The lobby checks every pose (restoreScooters); only the shape is checked here.
+      const scooters = isObj(r.scooters) && typeof r.scooters.map === 'string' && Array.isArray(r.scooters.scooters);
       rooms.push({
         id: r.id,
         peers,
         ...(vacuum ? { vacuum } : {}),
         ...(ball ? { ball } : {}),
+        ...(scooters ? { scooters: r.scooters as unknown as ScooterSave } : {}),
         ...(r.portals === true ? { portals: true } : {}),
         ...(r.portalsEverOn === true ? { portalsEverOn: true as const } : {}),
       });

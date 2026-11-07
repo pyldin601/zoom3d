@@ -34,6 +34,7 @@ const disc = (x: number): Sprite => ({
   speaking: 0,
   bob: 0,
   itemBob: 0,
+  ride: 0,
   sip: 0,
   cheers: 0,
   wobble: 0,

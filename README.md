@@ -28,7 +28,7 @@ pnpm e2e        # Playwright (uses the installed Google Chrome)
 
 To try it: open http://localhost:5173, click **Start a party**, enter a name, then open the same
 room link in a second window (or a second browser) with another name. Controls: WASD/arrows
-to move, Q/E or arrows to turn, click the view for mouse look, M or Tab for the automap,
+to move, arrows to turn, click the view for mouse look, E to step on or off a kick scooter, M or Tab for the automap,
 `` ` `` for the audio tuning panel (or add `?debug` to the room URL).
 The browser asks for camera and microphone on Join. They only work on `localhost` or HTTPS, so
 testing from another device on the LAN needs HTTPS (planned for M6).

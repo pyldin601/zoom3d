@@ -23,9 +23,7 @@ const BINDINGS: Record<string, Action> = {
   KeyA: 'left',
   KeyD: 'right',
   ArrowLeft: 'turnLeft',
-  KeyQ: 'turnLeft',
   ArrowRight: 'turnRight',
-  KeyE: 'turnRight',
 };
 
 export interface Input {
