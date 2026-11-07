@@ -1,71 +1,103 @@
 import { RIDE_SPEED } from '@zoom3d/shared';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { asAudioContext, FakeAudioContext, type FakeNode, type FakeParam } from './fake-audio';
-import { createScooterSound, SCOOTER_GAIN, whineLevel, whinePitchHz } from './scooter-sound';
+import { createScooterSound, motorLevel, motorToneHz, pwmLevel, SCOOTER_MASTER, wheelLevel } from './scooter-sound';
 
-// Electric scooter spec §4.4: a whine whose pitch follows speed, louder while speeding up, silent at rest.
+// Scooter sound spec §4: the owner's tuned PWM whiss, motor tone, wheels and bumps.
 let ctx: FakeAudioContext;
 beforeEach(() => {
   ctx = new FakeAudioContext();
 });
-type FakeOscillator = FakeNode & { type: string; frequency: FakeParam };
-const saws = () => (ctx.byKind('oscillator') as unknown as FakeOscillator[]).filter((o) => o.type === 'sawtooth');
+type Osc = FakeNode & { type: string; frequency: FakeParam; stoppedAt: number | null };
+type Filter = FakeNode & { frequency: FakeParam };
+type Gain = FakeNode & { gain: FakeParam };
+const oscillators = () => ctx.byKind('oscillator') as unknown as Osc[];
+const filtersAt = (hz: number) => (ctx.byKind('biquad') as unknown as Filter[]).filter((f) => f.frequency.value === hz);
 
-describe('the whine', () => {
-  test('pitch climbs from 180 Hz to 720 Hz with speed, and no further', () => {
-    expect(whinePitchHz(0)).toBe(180);
-    expect(whinePitchHz(RIDE_SPEED / 2)).toBe(450);
-    expect(whinePitchHz(RIDE_SPEED)).toBe(720);
-    expect(whinePitchHz(9)).toBe(720);
-    expect(whinePitchHz(-1)).toBe(whinePitchHz(1));
+describe('levels by load', () => {
+  test('the whiss: loud speeding up, softer holding speed, almost gone coasting', () => {
+    expect(pwmLevel('pulling', 3)).toBe(0.35);
+    expect(pwmLevel('cruising', RIDE_SPEED)).toBe(0.18);
+    expect(pwmLevel('coasting', 1)).toBe(0.02);
+    expect(pwmLevel('coasting', 0.15)).toBeCloseTo(0.01);
+    expect(pwmLevel('coasting', 0)).toBe(0);
   });
 
-  test('silent below 0.3 tiles/s', () => {
-    expect(whineLevel(0.29, true)).toBe(0);
-    expect(whineLevel(0.3, false)).toBeGreaterThan(0);
+  test('the motor tone climbs to 157 Hz at full speed and never drops under 30 Hz', () => {
+    expect(motorToneHz(RIDE_SPEED)).toBe(157);
+    expect(motorToneHz(3)).toBe(78.5);
+    expect(motorToneHz(0)).toBe(30);
   });
 
-  test('louder while speeding up, never past full', () => {
-    expect(whineLevel(3, true)).toBeCloseTo(1.3 * whineLevel(3, false));
-    expect(whineLevel(RIDE_SPEED, true)).toBe(1);
+  test('the motor tone is quiet: 0.03, 0.02, 0.01', () => {
+    expect(motorLevel('pulling', 3)).toBe(0.03);
+    expect(motorLevel('cruising', RIDE_SPEED)).toBe(0.02);
+    expect(motorLevel('coasting', 1)).toBe(0.01);
   });
 
-  test('SCOOTER_GAIN sits at least 12 dB under a voice', () => {
-    expect(20 * Math.log10(SCOOTER_GAIN)).toBeLessThanOrEqual(-12);
+  test('the wheels are barely there and follow speed', () => {
+    expect(wheelLevel(RIDE_SPEED)).toBeCloseTo(0.12);
+    expect(wheelLevel(3)).toBeCloseTo(0.12 * 0.5 ** 1.2);
+    expect(wheelLevel(0)).toBe(0);
+  });
+
+  test('the loudest layer sits at least 12 dB under a voice', () => {
+    expect(20 * Math.log10(SCOOTER_MASTER * 0.35)).toBeLessThanOrEqual(-12);
   });
 });
 
 describe('createScooterSound', () => {
-  test('two detuned sawtooths start silent, at the crawl pitch', () => {
+  test('the whiss stays at 7800 Hz whatever the speed', () => {
     const s = createScooterSound(asAudioContext(ctx));
-    expect(saws()).toHaveLength(2);
-    expect(saws().at(0)?.frequency.value).toBe(180);
-    expect(saws().at(1)?.frequency.value).not.toBe(180);
-    expect((s.output as unknown as { gain: FakeParam }).gain.value).toBe(SCOOTER_GAIN);
+    s.set(1, 'pulling', 1 / 60);
+    s.set(6, 'cruising', 1 / 60);
+    const whiss = oscillators().find((o) => o.frequency.value === 7800);
+    expect(whiss).toBeDefined();
+    expect(whiss?.frequency.targets.every(([hz]) => hz === 7800)).toBe(true);
   });
 
-  test('set glides pitch and level there with a 0.1 s time constant', () => {
-    const s = createScooterSound(asAudioContext(ctx));
-    s.set(RIDE_SPEED, false);
-    const [hz, , tau] = saws().at(0)?.frequency.targets.at(-1) ?? [];
-    expect(hz).toBe(720);
-    expect(tau).toBe(0.1);
-    const levels = (ctx.byKind('gain') as unknown as (FakeNode & { gain: FakeParam })[]).filter(
-      (g) => g.gain.targets.length > 0
-    );
-    expect(levels.at(-1)?.gain.targets.at(-1)).toEqual([1, ctx.currentTime, 0.1]);
+  test('the motor tone glides to its pitch for the speed', () => {
+    createScooterSound(asAudioContext(ctx)).set(RIDE_SPEED, 'pulling', 1 / 60);
+    const triangle = oscillators().find((o) => o.type === 'triangle');
+    expect(triangle?.frequency.targets.at(-1)?.[0]).toBe(157);
   });
 
-  test('stopping a whine fades it out before the oscillators stop, so it never clicks', () => {
+  test('a floor seam ticks once per tile travelled', () => {
     const s = createScooterSound(asAudioContext(ctx));
-    s.set(6, false);
+    for (let i = 0; i < 62; i++) {
+      s.set(3, 'coasting', 1 / 60);
+    }
+    expect(filtersAt(3200)).toHaveLength(3);
+  });
+
+  test('no seam ticks below 0.3 tiles/s', () => {
+    const s = createScooterSound(asAudioContext(ctx));
+    for (let i = 0; i < 600; i++) {
+      s.set(0.2, 'coasting', 1 / 60);
+    }
+    expect(filtersAt(3200)).toHaveLength(0);
+  });
+
+  test('a bump is a thud sweeping 136 to 85 Hz and a rattle at 1500 Hz, with no ring', () => {
+    const s = createScooterSound(asAudioContext(ctx));
+    const before = oscillators().length;
+    s.bump(1);
+    const added = oscillators().slice(before);
+    expect(added).toHaveLength(1);
+    const events = added.at(0)?.frequency.events ?? [];
+    expect(events.at(0)?.slice(0, 2)).toEqual(['set', 136]);
+    expect(events.at(-1)?.slice(0, 2)).toEqual(['exponential', 85]);
+    expect(filtersAt(1500)).toHaveLength(1);
+  });
+
+  test('stopping fades every layer out before the oscillators stop', () => {
+    const s = createScooterSound(asAudioContext(ctx));
+    s.set(RIDE_SPEED, 'pulling', 1 / 60);
     s.dispose();
-    const level = (ctx.byKind('gain') as unknown as (FakeNode & { gain: FakeParam })[]).find(
-      (g) => g.gain.targets.length > 0
-    );
-    expect(level?.gain.targets.at(-1)?.[0]).toBe(0);
-    const saws = ctx.byKind('oscillator') as unknown as { stoppedAt: number | null }[];
-    for (const o of saws) {
+    const layers = (ctx.byKind('gain') as unknown as Gain[]).filter((g) => g.gain.targets.length > 0);
+    const faded = layers.filter((g) => g.gain.targets.at(-1)?.[0] === 0);
+    expect(faded.length).toBeGreaterThanOrEqual(3);
+    for (const o of oscillators()) {
       expect(o.stoppedAt).toBeGreaterThan(ctx.currentTime);
     }
   });

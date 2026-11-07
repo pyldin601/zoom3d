@@ -2,6 +2,7 @@
 // placed and heard, the view and the HUD are drawn, then the subscription picks whose media to receive. While the tab is hidden rAF stops, so a timer
 // keeps the sound and the subscription going instead.
 import { type Apparent, BALL_KICK_REACH, type BallBody, type GameMap, JUMP_TILES, PLAYER_RADIUS } from '@zoom3d/shared';
+import { ownLoad } from '../audio/scooter-sounds';
 import { HIDDEN_TICK_MS } from '../audio/ticker';
 import type { Input } from '../input/keyboard';
 import { createSubscription } from '../media/subscription';
@@ -20,9 +21,6 @@ import type { SequenceCues } from './portal-sequence';
 import { createRemoteWorld, type PeerMedia } from './remote-world';
 import { isConnected, type Room } from './room';
 import type { Screen } from './screen';
-
-/** The own motor counts as pulling while the ride speeds up faster than this (tiles/s²), as others' do. */
-const OWN_SPEEDING_UP = 0.5;
 
 export interface RoomLoopOptions {
   map: GameMap;
@@ -202,8 +200,6 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     apparent = apparentWorld.update(o.map, room.portals(), localPlayer.pose, things);
   };
 
-  /** The ride's speed last frame, to tell the throttle pulling from coasting. */
-  let lastOwnSpeed = 0;
   const placeEveryoneElse = (room: Room, now: number, dt: number) => {
     const { session } = room;
     world.sample(session, localPlayer.pose, now, room.ball, room.portals());
@@ -211,9 +207,8 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     world.collect(session, peerMedia, now, dt, apparent);
     room.objectSounds.sync(session.objects, world.objectPoses, dt);
     room.scooterSounds.sync(session.peers, world.positions, dt);
-    const ownSpeed = localPlayer.ride.speed;
-    room.scooterSounds.own(ownSpeed, ownSpeed - lastOwnSpeed > OWN_SPEEDING_UP * dt, localPlayer.riding);
-    lastOwnSpeed = ownSpeed;
+    const { speed, bump } = localPlayer.ride;
+    room.scooterSounds.own(speed, ownLoad(o.input.state().forward, speed), bump, localPlayer.riding, dt);
     // Bots count too: the client can't tell them from people.
     const people = session.status() === 'open' ? session.peers.size + 1 : null;
     o.statusLine.show(statusText(session.status(), session.error()), people);
@@ -301,7 +296,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       room.objectSounds.sync(room.session.objects, world.objectPoses, HIDDEN_TICK_MS / 1000);
       room.scooterSounds.sync(room.session.peers, world.positions, HIDDEN_TICK_MS / 1000);
       // Hidden, the local player stands still, so their own motor is quiet.
-      room.scooterSounds.own(0, false, localPlayer.riding);
+      room.scooterSounds.own(0, 'coasting', 0, localPlayer.riding, HIDDEN_TICK_MS / 1000);
       room.hums.sync(room.portals(), portalPulse(now / 1000), localPlayer.pose, apparent);
       room.audio.update(now, localPlayer.pose, apparent);
       chooseWhatToReceive(room, now, true);
