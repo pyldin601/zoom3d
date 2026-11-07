@@ -206,7 +206,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     placeApparently(room);
     world.collect(session, peerMedia, now, dt, apparent);
     room.objectSounds.sync(session.objects, world.objectPoses, dt);
-    room.scooterSounds.sync(session.peers, world.positions, dt);
+    room.scooterSounds.sync(session.peers, world.positions, dt, now);
     const { speed, bump } = localPlayer.ride;
     room.scooterSounds.own(speed, ownLoad(o.input.state().forward, speed), bump, localPlayer.riding, dt);
     // Bots count too: the client can't tell them from people.
@@ -296,7 +296,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       world.sample(room.session, localPlayer.pose, now, room.ball, room.portals());
       placeApparently(room);
       room.objectSounds.sync(room.session.objects, world.objectPoses, HIDDEN_TICK_MS / 1000);
-      room.scooterSounds.sync(room.session.peers, world.positions, HIDDEN_TICK_MS / 1000);
+      room.scooterSounds.sync(room.session.peers, world.positions, HIDDEN_TICK_MS / 1000, now);
       // Hidden, the local player stands still, so their own motor is quiet.
       room.scooterSounds.own(0, 'coasting', 0, localPlayer.riding, HIDDEN_TICK_MS / 1000);
       room.hums.sync(room.portals(), portalPulse(now / 1000), localPlayer.eye(), apparent);

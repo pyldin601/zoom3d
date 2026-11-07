@@ -71,9 +71,13 @@ export interface ScooterSound {
   output: AudioNode;
   /** Every frame: the speed (tiles/s), the load, and the frame's length, which carries the scooter over floor seams. */
   set(speed: number, load: ScooterLoad, dtSeconds: number): void;
-  /** A wall hit; `impact` 0..1 is the speed it hit at, as a share of full speed. */
-  bump(impact: number): void;
-  dispose(): void;
+  /**
+   * A wall hit; `impact` 0..1 is the speed it hit at, as a share of full speed. `inSeconds` from now: another rider's
+   * stop is heard when it is drawn.
+   */
+  bump(impact: number, inSeconds?: number): void;
+  /** Fades out, then stops; `whenSilent` runs once the fade is over (to let go of the output). */
+  dispose(whenSilent?: () => void): void;
 }
 
 /** Two seconds of white noise, looped by the caller. */
@@ -188,8 +192,8 @@ export function createScooterSound(ctx: BaseAudioContext): ScooterSound {
         seamTick(speed);
       }
     },
-    bump(impact) {
-      const t = ctx.currentTime;
+    bump(impact, inSeconds = 0) {
+      const t = ctx.currentTime + inSeconds;
       const level = BUMP_LEVEL * impact;
       const thud = ctx.createOscillator();
       thud.frequency.setValueAtTime(THUD_HZ * THUD_SWEEP, t);
@@ -211,12 +215,15 @@ export function createScooterSound(ctx: BaseAudioContext): ScooterSound {
       rattle.start(t, Math.random());
       rattle.stop(t + 10 * RATTLE_DECAY_TAU_S);
     },
-    dispose() {
+    dispose(whenSilent) {
       const t = ctx.currentTime;
       for (const gain of layers) {
         gain.gain.setTargetAtTime(0, t, GLIDE_S);
       }
-      pwmTone.onended = () => master.disconnect();
+      pwmTone.onended = () => {
+        master.disconnect();
+        whenSilent?.();
+      };
       for (const s of sources) {
         s.stop(t + FADE_GLIDES * GLIDE_S);
       }

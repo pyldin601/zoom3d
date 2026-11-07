@@ -88,3 +88,32 @@ describe('SnapshotBuffer', () => {
     expect(o.x).toBe(10);
   });
 });
+
+describe('speedBetween', () => {
+  const walking = (speed: number, jumpAt = -1) => {
+    const b = new SnapshotBuffer();
+    for (let i = 0; i <= 20; i++) {
+      const x = (jumpAt >= 0 && i >= jumpAt ? 100 : 0) + (speed * i * 66) / 1000;
+      b.push(i === jumpAt ? { t: i * 66, x, y: 0, angle: 0, jump: true } : { t: i * 66, x, y: 0, angle: 0 });
+    }
+    return b;
+  };
+
+  test('is the path drawn over the window divided by its length', () => {
+    expect(walking(6).speedBetween(330, 990)).toBeCloseTo(6);
+  });
+
+  test('a window ending between snapshots counts the part drawn so far', () => {
+    expect(walking(6).speedBetween(100, 700)).toBeCloseTo(6);
+  });
+
+  test('a jump through a portal is no travel', () => {
+    expect(walking(6, 10).speedBetween(330, 990)).toBeLessThan(6);
+    expect(walking(6, 10).speedBetween(330, 990)).toBeGreaterThan(4);
+  });
+
+  test('an empty or backwards window is no speed', () => {
+    expect(new SnapshotBuffer().speedBetween(0, 100)).toBe(0);
+    expect(walking(6).speedBetween(500, 400)).toBe(0);
+  });
+});

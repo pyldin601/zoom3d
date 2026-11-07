@@ -38,9 +38,16 @@ The load decides how loud the motor layers are:
 
 | Load | When | Own screen | Others' screens |
 |---|---|---|---|
-| speeding up | throttle held, below top speed | from the input | smoothed speed rising by over 0.5 tiles/s² |
-| holding speed | throttle held at top speed | from the input | moving with the speed steady (within ±0.5 tiles/s²) |
-| coasting | everything else | from the input | everything else |
+| speeding up | throttle held, below top speed | from the input | speed over the last window up over 0.6 tiles/s on the window before |
+| holding speed | throttle held at top speed | from the input | neither, and moving (≥ 0.3 tiles/s) |
+| coasting | everything else | from the input | speed down over 0.35 tiles/s, or nearly still |
+
+*Amended after review (2026-11-07):* others' motion is read from the poses the server sent of them (their snapshot
+buffer), not from where they are drawn frame by frame. Drawn positions freeze just before a portal jump, slow down
+while the draw delay changes tier, and wobble with the 66 ms tick grid. All three read as false bumps and a load
+that flickered.
+- Speeds are averaged over windows of 350 ms, or two update intervals for far riders.
+- A load is heard only once it has held 300 ms, except stopping, which is immediate.
 
 Layers:
 
@@ -70,11 +77,17 @@ Layers:
 
 - **Own:** `stepRide` reports a head-on stop (the existing wall rule, speed → 0) as `ride.bump`, the speed before
   the stop, for that one step. Scraping makes no sound.
+- **Own:** the bump plays only if the ride stopped from at least 1.5 tiles/s, and at most once per 0.3 s. Throttling
+  into a wall rocks at a crawl, which would otherwise thud about 26 times a second.
 - **Others:**
-  - a sudden stop in their drawn motion: unsmoothed speed falling by over 1.5 tiles/s at more than 25 tiles/s²;
-  - braking peaks at 10 tiles/s², so it never counts;
-  - a jump over `JUMP_TILES` (a portal or correction) never counts;
-  - one bump at most per 0.3 s per rider.
+  - The server sends nothing while a rider stands still, so a stop shows as updates ceasing (1.8 update intervals
+    with none).
+  - It is a bump if the last stretch before it ran at 1.5 tiles/s or more. Braking ends slower than that.
+  - A jump snapshot never counts.
+  - At most one bump per 0.3 s.
+  - The thud is scheduled for when the stop is drawn: the last snapshot's time plus the rider's draw delay.
+- **Stepping off or leaving:** a rider's sound fades out before it is let go of. Its engine key is per ride, so a
+  rider stepping straight back on gets a new sound that the old fade never touches.
 
 ## 5. Tests
 
