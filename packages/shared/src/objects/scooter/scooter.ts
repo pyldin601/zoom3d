@@ -9,7 +9,7 @@ import { mapFingerprint, type Point } from '../vacuum/nav';
 export const RIDE_SPEED = 6;
 /** How far from a scooter's centre its rider can stand and still step on. */
 export const MOUNT_REACH = 1;
-export const SCOOTER_COUNT = 4;
+export const SCOOTER_COUNT = 6;
 /** After stepping off, ride-speed poses still in flight are let through for this long. */
 export const RIDE_GRACE_MS = 1000;
 
@@ -26,13 +26,11 @@ export interface ScooterSave {
   scooters: ScooterPose[];
 }
 
-/** Side by side in the open hall east of LEVEL1's spawn, handlebars to the north. */
-const RACK: readonly Point[] = [
-  { x: 37.5, y: 50.5 },
-  { x: 38.5, y: 50.5 },
-  { x: 39.5, y: 50.5 },
-  { x: 40.5, y: 50.5 },
-];
+/**
+ * Side by side against the south wall of the hall just south of LEVEL1's spawn room, two tiles apart and centred on
+ * the corridor's opening, handlebars to the north (owner, 2026-11-07): facing into the hall, a rider rolls straight off.
+ */
+const RACK: readonly Point[] = [29.5, 31.5, 33.5, 35.5, 37.5, 39.5].map((x) => ({ x, y: 55.5 }));
 const RACK_ANGLE = -Math.PI / 2;
 
 export function rackSpots(map: GameMap): { x: number; y: number; angle: number }[] {

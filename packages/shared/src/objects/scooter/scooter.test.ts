@@ -6,12 +6,22 @@ import { canMount, rackSpots, restoreScooters, SCOOTER_COUNT, saveScooters } fro
 const MAP = parseMap(LEVEL1);
 
 describe('rackSpots', () => {
-  test('puts every scooter on a floor tile beside the spawn, never on it', () => {
+  test('puts every scooter on a floor tile, never on the spawn', () => {
     const spots = rackSpots(MAP);
     expect(spots).toHaveLength(SCOOTER_COUNT);
     for (const s of spots) {
       expect(tileAt(MAP, Math.floor(s.x), Math.floor(s.y))).toBe(0);
       expect(Math.floor(s.x) === MAP.spawn.x && Math.floor(s.y) === MAP.spawn.y).toBe(false);
+    }
+  });
+
+  test('stand against the south wall of the hall south of the spawn room, two tiles apart, handlebars north', () => {
+    expect(SCOOTER_COUNT).toBe(6);
+    expect(rackSpots(MAP)).toEqual(
+      [29.5, 31.5, 33.5, 35.5, 37.5, 39.5].map((x) => ({ x, y: 55.5, angle: -Math.PI / 2 }))
+    );
+    for (const s of rackSpots(MAP)) {
+      expect(tileAt(MAP, Math.floor(s.x), Math.floor(s.y) + 1)).not.toBe(0);
     }
   });
 
