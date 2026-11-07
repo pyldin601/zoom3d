@@ -3,10 +3,10 @@ import { createFramebuffer, type Framebuffer } from './framebuffer';
 import { renderOwnHandlebar } from './own-handlebar';
 import { ownTexel } from './own-held';
 
-function drawn(steer: number): { fb: Framebuffer; cols: number[]; rows: number[] } {
+function drawn(steer: number, head = 0): { fb: Framebuffer; cols: number[]; rows: number[] } {
   const fb = createFramebuffer();
   fb.pixels.fill(0);
-  renderOwnHandlebar(fb, steer);
+  renderOwnHandlebar(fb, steer, head);
   const cols: number[] = [];
   const rows: number[] = [];
   fb.pixels.forEach((c, i) => {
@@ -65,5 +65,16 @@ describe('renderOwnHandlebar', () => {
     const w = right.fb.width;
     expect(Math.min(...left.cols)).toBeCloseTo(w - 1 - Math.max(...right.cols), -1);
     expect(gripBottom(left, 'left')).toBe(gripBottom(right, 'right'));
+  });
+});
+
+describe('the handlebar stays with the scooter while the head turns', () => {
+  test('looking right slides the bar left', () => {
+    expect(Math.max(...drawn(0, 0.3).cols)).toBeLessThan(Math.max(...drawn(0).cols));
+  });
+
+  test('at 90° the bar is out of view', () => {
+    expect(drawn(0, Math.PI / 2).cols).toEqual([]);
+    expect(drawn(0, -Math.PI / 2).cols).toEqual([]);
   });
 });

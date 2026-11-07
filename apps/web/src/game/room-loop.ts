@@ -65,7 +65,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   const scene: RoomScene = {
     map: o.map,
     textures: o.textures,
-    eye: localPlayer.pose,
+    eye: localPlayer.eye(),
     lighting: null,
     reflections: 'none',
     people: world.sprites,
@@ -90,7 +90,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     if (
       scene.self === null ||
       room === null ||
-      !placeOwnLabel(o.map, scene.portals ?? null, localPlayer.pose, ownLabel)
+      !placeOwnLabel(o.map, scene.portals ?? null, localPlayer.eye(), ownLabel)
     ) {
       return null;
     }
@@ -197,7 +197,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       placeThing(n++, id, pos);
     }
     things.length = n;
-    apparent = apparentWorld.update(o.map, room.portals(), localPlayer.pose, things);
+    apparent = apparentWorld.update(o.map, room.portals(), localPlayer.eye(), things);
   };
 
   const placeEveryoneElse = (room: Room, now: number, dt: number) => {
@@ -212,11 +212,13 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     // Bots count too: the client can't tell them from people.
     const people = session.status() === 'open' ? session.peers.size + 1 : null;
     o.statusLine.show(statusText(session.status(), session.error()), people);
-    room.audio.update(now, localPlayer.pose, apparent);
+    room.audio.update(now, localPlayer.eye(), apparent);
   };
 
   const describeScene = (now: number) => {
     // The console's lighting mode; flat is drawn unlit, as with `?lights=off`.
+    // The pooled eye pose the scene holds, refilled: the head may have turned since the last frame.
+    localPlayer.eye();
     const reflections = litReflections(o.renderMode());
     scene.reflections = reflections ?? 'none';
     const room = o.room();
@@ -243,7 +245,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       call: room.call,
       people: room.session.peers,
       positions: apparent,
-      player: localPlayer.pose,
+      player: localPlayer.eye(),
       fov: screen.fb.fov,
       map: o.map,
       maxDistance: room.audio.settings().max,
@@ -272,7 +274,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       const drawStart = performance.now();
       const shown = describeScene(drawStart);
       // The hum swells with the very pulse this frame's glow is drawn with.
-      room?.hums.sync(room.portals(), shown.portalPulse, localPlayer.pose, apparent);
+      room?.hums.sync(room.portals(), shown.portalPulse, localPlayer.eye(), apparent);
       renderView(screen.fb, shown, subscription.seen);
       screen.present();
       renderHud(o.hud, screen.fb, shown, o.showMap());
@@ -297,8 +299,8 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       room.scooterSounds.sync(room.session.peers, world.positions, HIDDEN_TICK_MS / 1000);
       // Hidden, the local player stands still, so their own motor is quiet.
       room.scooterSounds.own(0, 'coasting', 0, localPlayer.riding, HIDDEN_TICK_MS / 1000);
-      room.hums.sync(room.portals(), portalPulse(now / 1000), localPlayer.pose, apparent);
-      room.audio.update(now, localPlayer.pose, apparent);
+      room.hums.sync(room.portals(), portalPulse(now / 1000), localPlayer.eye(), apparent);
+      room.audio.update(now, localPlayer.eye(), apparent);
       chooseWhatToReceive(room, now, true);
     },
   };

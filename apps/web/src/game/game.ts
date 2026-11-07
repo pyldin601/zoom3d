@@ -207,6 +207,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
       audioCtx,
       map,
       player: localPlayer.pose,
+      aim: () => localPlayer.eye().angle,
       mediaContainer: page.media,
       localMediaContainer: page.localMedia,
       held: localPlayer.held,

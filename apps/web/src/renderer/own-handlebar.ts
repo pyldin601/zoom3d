@@ -9,6 +9,11 @@ import { ownTexel } from './own-held';
 export const HANDLEBAR_TILT_TEXELS = 3;
 /** How far the whole bar shifts toward the turn at full steer, as a fraction of the width. */
 export const HANDLEBAR_SHIFT = 0.02;
+/**
+ * Turned this far past the edge of the view, the head no longer sees the bar at all, which is about half the screen
+ * wide.
+ */
+const OUT_OF_VIEW_RAD = 0.6;
 /** The bar's top, this many texels above the bottom edge. */
 const BAR_RISE_TEXELS = 4.5;
 
@@ -26,11 +31,18 @@ const BAR_COLUMNS: readonly HeldSprite[] = Array.from({ length: BAR_WIDTH }, (_,
 /** Taller than any bar ever rises: the bottom edge crops it. */
 const STEM: HeldSprite = toHeldSprite(['mM', 'mM', 'mM', 'mM', 'mM', 'mM', 'mM'], PALETTE);
 
-/** `steer` −1..1: left to right. */
-export function renderOwnHandlebar(fb: Framebuffer, steer: number): void {
+/**
+ * `steer` −1..1: left to right. `head`: radians the head is turned from the scooter's heading. The bar stays with the
+ * scooter, so it sits where straight ahead projects on screen.
+ */
+export function renderOwnHandlebar(fb: Framebuffer, steer: number, head = 0): void {
+  if (Math.abs(head) >= fb.fov / 2 + OUT_OF_VIEW_RAD) {
+    return;
+  }
   const { width: w, height: h } = fb;
   const t = ownTexel(fb);
-  const centre = w / 2 + steer * HANDLEBAR_SHIFT * w;
+  const straightAhead = w / 2 - (Math.tan(head) / Math.tan(fb.fov / 2)) * (w / 2);
+  const centre = straightAhead + steer * HANDLEBAR_SHIFT * w;
   const barTop = h - BAR_RISE_TEXELS * t;
   // The bar's middle rows sit on the stem's top.
   blitHeldSprite(fb, STEM, centre - t, barTop + t, t, OVER_EVERYTHING);

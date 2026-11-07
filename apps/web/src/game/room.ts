@@ -67,6 +67,8 @@ export interface JoinOptions {
   audioCtx: AudioContext;
   map: GameMap;
   player: PlayerState;
+  /** Where the eye looks (radians): a kick goes that way, which is the head's way while riding. */
+  aim(): number;
   /** Where remote media plays (muted) and where the boombox's own element goes. */
   mediaContainer: HTMLElement;
   localMediaContainer: HTMLElement;
@@ -110,10 +112,11 @@ export function joinRoom(opts: JoinOptions): Room {
   const boombox = createOwnBoombox(opts, call, joined);
   const kick = () => {
     const { player } = opts;
-    const k = ball.kick(player, player.angle, performance.now());
+    const angle = opts.aim();
+    const k = ball.kick(player, angle, performance.now());
     const kicked = ball.ball;
     if (k !== null && kicked) {
-      joined.sendKick(player.angle, k);
+      joined.sendKick(angle, k);
       objectSounds.localEvent(kicked.id, 'kick');
     }
   };

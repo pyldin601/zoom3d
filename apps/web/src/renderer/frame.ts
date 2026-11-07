@@ -382,7 +382,7 @@ function drawPeopleAndObjects(fb: Framebuffer, scene: PassScene, seen: Map<strin
 
 function drawFirstPerson(fb: Framebuffer, hands: FirstPerson): void {
   if (hands.riding) {
-    renderOwnHandlebar(fb, hands.steer);
+    renderOwnHandlebar(fb, hands.steer, hands.head);
     return;
   }
   // The boombox first: a sip swings the drink across it, and the drink must stay in front.
