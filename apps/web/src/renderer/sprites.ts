@@ -397,12 +397,15 @@ function lateralOf(view: View, x: number, y: number): number {
  */
 const shadowTexelCentre = (offset: number) => (Math.floor(offset * SHADOW_TEXELS_PER_TILE) + 0.5) * SHADOW_TEXEL;
 
-/** The visible avatars far to near, each object drawn just before the first avatar nearer than it. */
+/**
+ * The visible avatars far to near, each object drawn just before the first avatar nearer than it, or as near: one at
+ * the avatar's own spot (a ridden scooter) is under them.
+ */
 function drawFarToNear(fb: Framebuffer, view: View, scene: PeopleAndObjects, pass: Pass): void {
   let nextVoxel = 0;
   for (const i of visible) {
     const projection = projections[i] as Projection;
-    while (nextVoxel < voxelOrder.length && depthOfVoxel(nextVoxel) > projection.depth) {
+    while (nextVoxel < voxelOrder.length && depthOfVoxel(nextVoxel) >= projection.depth) {
       drawVoxel(fb, view, scene, nextVoxel++, pass);
     }
     drawAvatar(fb, scene.people[i] as Sprite, projection, pass);
