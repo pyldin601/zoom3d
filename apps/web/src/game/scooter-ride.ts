@@ -27,6 +27,16 @@ const RIDE_PENDING_MS = 1000;
 export function createScooterRide(session: RideSession, now: () => number): ScooterRide {
   let askedAt = Number.NEGATIVE_INFINITY;
   let lastApparent: ReadonlyMap<string, Point> | undefined;
+  /** Each scooter's objectKey, made once rather than every frame. */
+  const keys = new Map<string, string>();
+  const keyOf = (id: string) => {
+    let key = keys.get(id);
+    if (key === undefined) {
+      key = objectKey(id);
+      keys.set(id, key);
+    }
+    return key;
+  };
   const pending = () => now() - askedAt < RIDE_PENDING_MS;
 
   /** The id of the nearest parked scooter within reach, by where it appears to the local player; null if none. */
@@ -37,7 +47,7 @@ export function createScooterRide(session: RideSession, now: () => number): Scoo
       if (info.kind !== 'scooter') {
         continue;
       }
-      const at = apparent?.get(objectKey(info.id)) ?? info;
+      const at = apparent?.get(keyOf(info.id)) ?? info;
       const distance = Math.hypot(at.x - player.x, at.y - player.y);
       if (distance < bestDistance && canMount(player, at)) {
         best = info.id;
