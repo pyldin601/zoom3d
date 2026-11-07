@@ -45,10 +45,10 @@ export const INTEREST_MS = 250;
 export const HOLD_MS = 1000;
 export const LOOKAHEAD_TILES = 20;
 export const LOOKAHEAD_DEG = 15;
-/** The smallest drawn face (framebuffer px) received at 256, and at 128; smaller ones get 64. */
-export const FACE_256_MIN_PX = 128;
+/** Drawn faces this close (tiles) are received at 256; farther ones at 128 down to this size (framebuffer px), else 64. */
+export const FACE_256_MAX_TILES = 2;
 export const FACE_128_MIN_PX = 48;
-/** A size is kept until the face shrinks this far below its threshold. */
+/** A size is kept until the face moves 20% past its threshold: 1/0.8 the distance, or 0.8 the size. */
 const HYSTERESIS = 0.8;
 export const AUDIO_ON_MARGIN_TILES = 2;
 export const AUDIO_OFF_MARGIN_TILES = 4;
@@ -79,13 +79,12 @@ function angleDiff(a: number, b: number): number {
   return d > Math.PI ? d - Math.PI * 2 : d < -Math.PI ? d + Math.PI * 2 : d;
 }
 
-function sizeFor(projected: number, current: VideoWant): VideoWant {
-  const keep = (size: VideoWant, threshold: number) =>
-    RANK[current] >= RANK[size] && projected >= threshold * HYSTERESIS;
-  if (projected >= FACE_256_MIN_PX || keep(256, FACE_256_MIN_PX)) {
+function sizeFor(distance: number, projected: number, current: VideoWant): VideoWant {
+  const has = (size: VideoWant) => RANK[current] >= RANK[size];
+  if (distance <= FACE_256_MAX_TILES || (has(256) && distance <= FACE_256_MAX_TILES / HYSTERESIS)) {
     return 256;
   }
-  if (projected >= FACE_128_MIN_PX || keep(128, FACE_128_MIN_PX)) {
+  if (projected >= FACE_128_MIN_PX || (has(128) && projected >= FACE_128_MIN_PX * HYSTERESIS)) {
     return 128;
   }
   return 64;
@@ -100,7 +99,7 @@ export function createInterest(): { update(input: InterestInput): ReadonlyMap<st
     }
     const facts = input.facts(peer.id);
     if (facts && facts.drawnColumns > 0) {
-      return sizeFor(facts.projectedSize, s.video);
+      return sizeFor(distance, facts.projectedSize, s.video);
     }
     const { player } = input;
     if (distance > LOOKAHEAD_TILES) {
