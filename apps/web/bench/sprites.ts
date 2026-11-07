@@ -334,10 +334,11 @@ function scenesNearLamps(): Scene[] {
           b: rand() * 0.6,
           cut: null,
           shadow: null,
+          cone: null,
           reach: GLOW_RADIUS,
         });
       }
-      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null, shadow: null, reach: GLOW_RADIUS });
+      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null, shadow: null, reach: GLOW_RADIUS, cone: null });
       const spot = ahead(0.6);
       const voxels = open(spot.x, spot.y)
         ? [{ model: VACUUM_MODEL, x: spot.x, y: spot.y, angle: rand() * 7, lift: 0 }]

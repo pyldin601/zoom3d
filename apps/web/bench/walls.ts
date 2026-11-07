@@ -269,11 +269,12 @@ function posesNearLamps(): Pose[] {
             b: rand() * 0.6,
             cut: null,
             shadow: null,
+            cone: null,
             reach: GLOW_RADIUS,
           });
         }
       }
-      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null, shadow: null, reach: GLOW_RADIUS });
+      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null, shadow: null, reach: GLOW_RADIUS, cone: null });
       out.push({ x, y, angle: rand() * Math.PI * 2, glows });
     }
   }
@@ -300,6 +301,7 @@ function crowdGlows(): Glow[] {
         b: rand() * 0.6,
         cut: null,
         shadow: null,
+        cone: null,
         reach: GLOW_RADIUS,
       });
     }
