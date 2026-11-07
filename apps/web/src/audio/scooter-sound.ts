@@ -1,7 +1,6 @@
 // An electric scooter's sound (scooter sound spec §4), tuned by the owner by ear on a listening page: the controller's
-// PWM whiss at one fixed pitch, a low motor tone climbing with the wheel, the wheels barely heard with a tick at each
-// floor seam, and a thud with a rattle on a bump. The load (speeding up, holding speed, coasting) sets how loud the
-// motor layers are. Synthesised like the vacuum's hum.
+// PWM whiss at one fixed pitch, the wheels barely heard with a tick at each floor seam, and a thud with a rattle on a
+// bump. The load (speeding up, holding speed, coasting) sets how loud the whiss is. Synthesised like the vacuum's hum.
 import { RIDE_SPEED } from '@zoom3d/shared';
 
 export type ScooterLoad = 'pulling' | 'cruising' | 'coasting';
@@ -12,16 +11,9 @@ export const SCOOTER_MASTER = 0.6;
 const PWM_HZ = 7800;
 const PWM_LEVEL: Record<ScooterLoad, number> = { pulling: 0.35, cruising: 0.18, coasting: 0.02 };
 const PWM_TONE_GAIN = 0.65;
-const PWM_HISS_GAIN = 3;
+/** 80% of the bench's 3 (owner, 2026-11-07). */
+const PWM_HISS_GAIN = 2.4;
 const PWM_HISS_Q = 12;
-const MOTOR_HZ_AT_TOP = 157;
-/** A crawl stays a low growl rather than going subsonic. */
-const MOTOR_MIN_HZ = 30;
-const MOTOR_LEVEL: Record<ScooterLoad, number> = { pulling: 0.03, cruising: 0.02, coasting: 0.01 };
-const MOTOR_FUNDAMENTAL_GAIN = 0.825;
-const MOTOR_HARMONIC_GAIN = 0.35;
-const MOTOR_BUZZ_GAIN = 0.06;
-const MOTOR_BUZZ_LOWPASS_HZ = 1200;
 const WHEEL_HZ = 1800;
 const WHEEL_Q = 0.8;
 const WHEEL_LEVEL = 0.12;
@@ -52,14 +44,6 @@ const moving = (speed: number) => Math.min(1, Math.abs(speed) / MOVING_TILES_PER
 
 export function pwmLevel(load: ScooterLoad, speed: number): number {
   return load === 'coasting' ? PWM_LEVEL.coasting * moving(speed) : PWM_LEVEL[load];
-}
-
-export function motorToneHz(speed: number): number {
-  return Math.max(MOTOR_MIN_HZ, MOTOR_HZ_AT_TOP * speedShare(speed));
-}
-
-export function motorLevel(load: ScooterLoad, speed: number): number {
-  return load === 'coasting' ? MOTOR_LEVEL.coasting * moving(speed) : MOTOR_LEVEL[load];
 }
 
 export function wheelLevel(speed: number): number {
@@ -127,34 +111,17 @@ export function createScooterSound(ctx: BaseAudioContext): ScooterSound {
   const pwmHiss = loopedNoise();
   pwmHiss.connect(bandPass(PWM_HZ, PWM_HISS_Q)).connect(gainOf(PWM_HISS_GAIN)).connect(pwm);
 
-  // The motor tone: a triangle, its second harmonic, and a low-passed square buzz.
-  const motor = layer();
-  const fundamental = ctx.createOscillator();
-  fundamental.type = 'triangle';
-  fundamental.frequency.value = MOTOR_MIN_HZ;
-  fundamental.connect(gainOf(MOTOR_FUNDAMENTAL_GAIN)).connect(motor);
-  const harmonic = ctx.createOscillator();
-  harmonic.frequency.value = 2 * MOTOR_MIN_HZ;
-  harmonic.connect(gainOf(MOTOR_HARMONIC_GAIN)).connect(motor);
-  const buzz = ctx.createOscillator();
-  buzz.type = 'square';
-  buzz.frequency.value = MOTOR_MIN_HZ;
-  const buzzTone = ctx.createBiquadFilter();
-  buzzTone.type = 'lowpass';
-  buzzTone.frequency.value = MOTOR_BUZZ_LOWPASS_HZ;
-  buzz.connect(buzzTone).connect(gainOf(MOTOR_BUZZ_GAIN)).connect(motor);
-
   // The wheels: rolling noise in a soft band.
   const wheels = layer();
   const roll = loopedNoise();
   const rollBand = bandPass(WHEEL_HZ * 0.7, WHEEL_Q);
   roll.connect(rollBand).connect(wheels);
 
-  const sources = [pwmTone, pwmHiss, fundamental, harmonic, buzz, roll];
+  const sources = [pwmTone, pwmHiss, roll];
   for (const s of sources) {
     s.start(ctx.currentTime);
   }
-  const layers = [pwm, motor, wheels];
+  const layers = [pwm, wheels];
   let travelled = 0;
 
   const glide = (param: AudioParam, value: number) => param.setTargetAtTime(value, ctx.currentTime, GLIDE_S);
@@ -175,12 +142,7 @@ export function createScooterSound(ctx: BaseAudioContext): ScooterSound {
   return {
     output: master,
     set(speed, load, dtSeconds) {
-      const fundamentalHz = motorToneHz(speed);
-      glide(fundamental.frequency, fundamentalHz);
-      glide(harmonic.frequency, 2 * fundamentalHz);
-      glide(buzz.frequency, fundamentalHz);
       glide(pwm.gain, pwmLevel(load, speed));
-      glide(motor.gain, motorLevel(load, speed));
       glide(rollBand.frequency, WHEEL_HZ * (0.7 + 0.3 * speedShare(speed)));
       glide(wheels.gain, wheelLevel(speed));
       if (Math.abs(speed) <= MOVING_TILES_PER_S) {

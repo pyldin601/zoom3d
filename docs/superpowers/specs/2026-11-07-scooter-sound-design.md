@@ -53,11 +53,10 @@ Layers:
 
 - **PWM whiss:** fixed at 7800 Hz whatever the speed.
   - A sine at gain 0.65 (1 − 0.5 × 0.7), plus noise through a band-pass at 7800 Hz, Q 12, gain 3.0 (0.5 × 6).
+    *Amended 2026-11-07 (owner):* the hiss's gain is 2.4, 80% of that.
   - Level 0.35 speeding up, 0.18 holding speed, and 0.02 × `min(1, speed / 0.3)` coasting.
-- **Motor tone:** frequency `max(30, 157 × speed / 6)` Hz.
-  - A triangle at gain 0.825 (1 − 0.35 × 0.5), a sine at 2× that frequency at gain 0.35, and a square through a
-    low-pass at 1200 Hz at gain 0.06 (0.15 × 0.4).
-  - Level 0.03 speeding up, 0.02 holding speed, 0.01 × moving coasting.
+- **Motor tone:** *removed 2026-11-07 (owner).* It was a triangle, its second harmonic and a low-passed square at
+  `max(30, 157 × speed / 6)` Hz, at levels 0.03, 0.02 and 0.01.
 - **Wheels:**
   - Rolling noise through a band-pass at `1800 × (0.7 + 0.3 × speed / 6)` Hz, Q 0.8, level `0.12 × (speed / 6)^1.2`.
   - Seam ticks: one per tile travelled while moving over 0.3 tiles/s. Each is a 50 ms burst of noise through a
@@ -93,7 +92,7 @@ Layers:
 
 - **The synth:**
   - the whiss's pitch never changes with speed;
-  - the motor tone's pitch is 157 Hz at full speed and 30 Hz at rest;
+  - there is no motor tone: the whiss is the only oscillator running;
   - the levels for each load match the table;
   - wheel level and pitch follow speed;
   - one seam tick per tile;

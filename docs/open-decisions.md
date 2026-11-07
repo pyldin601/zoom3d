@@ -929,7 +929,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
       [spec](superpowers/specs/2026-11-07-scooter-sound-design.md)). It replaced a first speed-pitched whine.
       - The controller's PWM whiss is fixed at 7800 Hz (owner: "a PWM motor has no pitch"). It plays 0.35 speeding
         up, 0.18 holding speed and 0.02 coasting.
-      - A quiet motor tone climbs to 157 Hz at full speed (the owner added a pitched tone back and lowered it).
+      - A quiet motor tone climbed to 157 Hz at full speed (the owner added a pitched tone back and lowered it). The
+        owner removed it later the same day, and lowered the whiss's hiss to 80% (its band's gain 3 → 2.4).
       - The wheels are barely heard, with a tick at each tile's seam.
       - A bump is a thud (136 → 85 Hz) and a rattle (1500 Hz); the owner dropped the metal ring. Scraping a wall makes
         no sound (owner).
