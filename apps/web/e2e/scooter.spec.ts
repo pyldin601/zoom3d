@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { createAndJoin, joinAs } from './join';
 
-// Kick scooter spec: a rack by the spawn; E steps on and off, riding is twice walking speed, and the scooter stays
+// Kick scooter spec: a rack along the entry corridor; E steps on and off, riding is twice walking speed, and the scooter stays
 // where it was left. Everyone sees it.
 type Scooter = { info: { id: string; kind: string; x: number; y: number } };
 type GameWindow = {
@@ -60,45 +60,49 @@ test('a scooter is ridden from the rack, speeds up, rolls on, and is left where 
   const url = await createAndJoin(a, 'Ada');
   await b.goto(url);
   await joinAs(b, 'Bob');
-  await expect.poll(() => parked(b)).toHaveLength(4);
+  await expect.poll(() => parked(b)).toHaveLength(6);
 
   const rack = await parked(a);
-  const first = rack.at(0);
+  // The southernmost, the nearest to the spawn.
+  const first = [...rack].sort((p, q) => q.y - p.y).at(0);
   if (!first) {
     throw new Error('no rack');
   }
-  // The spawn is random near S, where a straight line to the rack can clip a wall corner: reach the rack's row first.
+  // The spawn is random near S, where a straight line to the corridor clips wall corners: out along S's row, then
+  // north up the corridor's middle to stand beside the nearest scooter.
   const spawnX = await a.evaluate(() => (window as unknown as GameWindow).__game.player.x);
-  await walkTo(a, spawnX, first.y);
-  await walkTo(a, first.x - 0.7, first.y);
+  await walkTo(a, spawnX, 50.5);
+  await walkTo(a, 34.5, 50.5);
+  await walkTo(a, 34.5, first.y);
+  await walkTo(a, first.x + 0.8, first.y);
   await expect(a.locator('.ride-hint')).toBeVisible();
   await a.keyboard.press('e');
   await expect.poll(() => riding(a)).not.toBeNull();
   await expect.poll(() => peerRiding(b, 'Ada')).not.toBeNull();
-  await expect.poll(() => parked(b)).toHaveLength(3);
+  await expect.poll(() => parked(b)).toHaveLength(5);
 
-  // West, down the open hall.
+  // North, up the corridor and into the hall.
   await a.evaluate(() => {
-    (window as unknown as GameWindow).__game.player.angle = Math.PI;
+    (window as unknown as GameWindow).__game.player.angle = -Math.PI / 2;
   });
-  const playerX = () => a.evaluate(() => (window as unknown as GameWindow).__game.player.x);
-  const startX = await playerX();
+  const playerY = () => a.evaluate(() => (window as unknown as GameWindow).__game.player.y);
+  const startY = await playerY();
   await a.keyboard.down('w');
   await a.waitForTimeout(1000);
   await a.keyboard.up('w');
-  const throttledX = await playerX();
+  const throttledY = await playerY();
   // Electric: the motor takes 1.5 s to reach 6 tiles/s, so a second of throttle covers about 2 tiles, and walking 3.
-  expect(startX - throttledX).toBeGreaterThan(1.5);
-  expect(startX - throttledX).toBeLessThan(6);
+  expect(startY - throttledY).toBeGreaterThan(1.5);
+  expect(startY - throttledY).toBeLessThan(6);
   // Let go, it rolls on.
   await a.waitForTimeout(500);
-  const coastedX = await playerX();
-  expect(throttledX - coastedX).toBeGreaterThan(0.3);
+  const coastedY = await playerY();
+  expect(throttledY - coastedY).toBeGreaterThan(0.3);
 
   await a.keyboard.press('e');
   await expect.poll(() => riding(a)).toBeNull();
-  await expect.poll(() => parked(b)).toHaveLength(4);
-  const stoppedX = await playerX();
-  const left = (await parked(b)).find((s) => Math.abs(s.x - stoppedX) < 0.5);
+  await expect.poll(() => parked(b)).toHaveLength(6);
+  const stopped = await a.evaluate(() => (window as unknown as GameWindow).__game.player);
+  const left = (await parked(b)).find((s) => Math.hypot(s.x - stopped.x, s.y - stopped.y) < 0.5);
   expect(left).toBeDefined();
 });
