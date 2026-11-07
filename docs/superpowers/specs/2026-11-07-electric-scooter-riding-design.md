@@ -20,7 +20,8 @@ The owner wants it to behave like a real e-scooter:
 - **Throttle:** W (or pad up) runs the motor, and the scooter speeds up smoothly to `RIDE_SPEED` (6 tiles/s).
   Releasing it coasts: the scooter rolls on and slows gently.
 - **S (pad down):** brakes hard while rolling forward. Once stopped, holding S rolls backward at a slow walk.
-- **Steering:** no strafing. A/D (pad left/right) steer like the arrows, and turning is wider at full speed.
+- **Steering:** no strafing. A/D (pad left/right) steer like the arrows, and turning is wider at full speed. It turns only
+  while rolling, and backing up swings the nose the other way (owner, 2026-11-07).
 - **Items:** a drink, the lighter or the boombox is put away while riding (both hands on the bar), and comes back on
   stepping off.
 - **First person:** the handlebar is at the bottom of the screen and tilts as the rider steers.
@@ -65,7 +66,8 @@ means backing up). All values are starting values, to be tuned by playing.
   | `forward < 0`, at or below 0 | backs up toward −1 tile/s at 3 tiles/s² |
 - **Steering:**
   - while riding, the input's `strafe` is added to `turn` (A/D steer), clamped to [−1, 1];
-  - the keyboard turn rate is `TURN_SPEED × (1 − 0.4 × |speed| / RIDE_SPEED)`, so 60% at full speed;
+  - the keyboard turn rate is `min(1, |speed| / 0.5) × TURN_SPEED × (1 − 0.4 × |speed| / RIDE_SPEED)`, so none at a
+    standstill and 60% at full speed, and its direction flips while backing up (front-wheel steering) (owner, 2026-11-07);
   - the mouse and touch drags turn the scooter instantly, as on foot (owner, 2026-11-07, over capping them at speed
     and over a separate look direction): the view and the scooter share one angle.
 - **Walls** (builder's call, after the builder check; frame-rate independent):
