@@ -940,6 +940,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
         sharper than 25 tiles/s², which braking never reaches) come from their drawn motion, so there is no protocol
         change. The rider hears their own unplaced, from the throttle and the ride's head-on stop.
     - **A glowing headlight** on the stem and a battery under the deck; looks only.
+    - **Parked scooters are silent.** Until 2026-11-07 every object that wasn't the ball got the vacuum's hum, so each
+      parked scooter hummed like a vacuum (the owner heard it); only the vacuum hums now.
   - **Six in the hall south of the spawn room** (owner, 2026-11-07, after the steering fix): the rack moved from the open
     hall east of the spawn to the south wall of the hall just south of the spawn room, side by side at y 55.5, x 29.5 to
     39.5, two tiles apart and centred on the corridor's opening, handlebars north (builder's call: facing into the hall,

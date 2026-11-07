@@ -1,6 +1,6 @@
 // The world objects' sounds: one hum per robot vacuum (robot vacuum spec §5.4), started when it appears and stopped
 // when it goes (a server restart brings a new id), its motion read from the interpolated poses; and the ball's kicks
-// and bounces (ball spec §6). Events play as they arrive.
+// and bounces (ball spec §6). Events play as they arrive. Parked scooters make no sound.
 import { BALL_CRIES, type BallCry, type ObjectEvent, type PlayerState } from '@zoom3d/shared';
 import { objectKey, type RemoteObject } from '../net/session';
 import { type BallSound, createBallSound } from './ball-sound';
@@ -27,10 +27,17 @@ export function createObjectSounds(
 ): ObjectSounds {
   const sounds = new Map<string, Entry>();
 
-  const create = (obj: RemoteObject): Entry =>
-    obj.info.kind === 'ball'
-      ? { kind: 'ball', sound: createBallSound(ctx) }
-      : { kind: 'vacuum', sound: createVacuumSound(ctx), last: null };
+  /** A parked scooter is silent: a scooter only sounds while ridden, from its rider (scooter-sounds.ts). */
+  const create = (obj: RemoteObject): Entry | null => {
+    switch (obj.info.kind) {
+      case 'vacuum':
+        return { kind: 'vacuum', sound: createVacuumSound(ctx), last: null };
+      case 'ball':
+        return { kind: 'ball', sound: createBallSound(ctx) };
+      case 'scooter':
+        return null;
+    }
+  };
 
   const playBall = (sound: BallSound, e: ObjectEvent) => {
     if (e === 'kick') {
@@ -52,7 +59,11 @@ export function createObjectSounds(
       for (const [id, obj] of objects) {
         let entry = sounds.get(id);
         if (!entry) {
-          entry = create(obj);
+          const created = create(obj);
+          if (!created) {
+            continue;
+          }
+          entry = created;
           sounds.set(id, entry);
           engine.attachNode(objectKey(id), entry.sound.output);
         }

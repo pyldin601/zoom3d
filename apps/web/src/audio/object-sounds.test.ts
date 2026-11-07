@@ -84,6 +84,14 @@ test('a ball gets no hum', () => {
   expect(motors()).toHaveLength(0);
 });
 
+test('a parked scooter makes no sound at all: no hum, nothing attached', () => {
+  const { sounds } = setup();
+  const scooter: RemoteObject = { ...object('s'), info: { id: 's', kind: 'scooter', x: 2.5, y: 2.5, angle: 0 } };
+  sounds.sync(new Map([['s', scooter]]), new Map([[objectKey('s'), { x: 2.5, y: 2.5, angle: 0 }]]), 0.016);
+  expect(ctx.byKind('oscillator')).toHaveLength(0);
+  expect(ctx.byKind('panner')).toHaveLength(0);
+});
+
 test("someone else's kick and the vacuum's play the ball's thump", () => {
   const sounds = ballSetup();
   sounds.event('b', 'kick', 'other');
