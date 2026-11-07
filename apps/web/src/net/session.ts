@@ -14,6 +14,7 @@ import {
   type ObjectInfo,
   type ObjectStateMessage,
   type PeerInfo,
+  type PeerRideMessage,
   type PlayerState,
   type Point,
   type Portals,
@@ -65,6 +66,8 @@ export interface SessionListener {
   kickRefused?(k: number): void;
   /** The room's objects as a welcome lists them, after the session has taken them. */
   objectsReset?(objects: readonly ObjectInfo[]): void;
+  /** A peer (the local player included) stepped on `scooter`, or off one when it is null. */
+  peerRide?(id: string, scooter: string | null): void;
   /** The room's portals were flipped (by anyone, the local player included); not called for a welcome's flag. */
   portalsChanged?(on: boolean): void;
   /** A new connection status. Timer and socket driven, so it keeps coming while the tab is hidden. */
@@ -76,6 +79,8 @@ export interface Session {
   objects: Map<string, RemoteObject>;
   /** Whether the room's portals are on: from the welcome, then from each flip. */
   portals: boolean;
+  /** The scooter the local player rides, as the server last said; null on foot. */
+  readonly riding: string | null;
   /** The room's running portal switch, its start on the local clock; null when none runs (or since the last welcome). */
   sequence: { kind: SequenceKind; startedAt: number } | null;
   setMedia(cam: boolean, mic: boolean): void;
@@ -90,6 +95,9 @@ export interface Session {
   sendKick(angle: number, k: number): void;
   /** Asks the server to flip the room's portals; it answers everyone, this client included. */
   sendPortals(): void;
+  /** Asks to step on parked scooter `id`; only the server's `peer_ride` puts the local player on it. */
+  sendRide(id: string): void;
+  sendDismount(): void;
   selfId(): string | null;
   selfColor(): string | null;
   /** What takes this place back after a page reload; null until a welcome has given one. */
@@ -146,6 +154,7 @@ export function createSession(opts: SessionOptions): Session {
   let boombox: boolean | undefined;
   let portals = false;
   let sequence: Session['sequence'] = null;
+  let riding: string | null = null;
   let lastSent: SentPose | null = null;
   const listener = opts.listener ?? {};
 
@@ -210,6 +219,9 @@ export function createSession(opts: SessionOptions): Session {
       case 'peer_held':
         applyPeerHeld(m.id, m.item);
         break;
+      case 'peer_ride':
+        applyPeerRide(m);
+        break;
       case 'peers':
         applyPeerPoses(m.s);
         break;
@@ -245,6 +257,7 @@ export function createSession(opts: SessionOptions): Session {
     color = m.color;
     resumeToken = m.resumeToken;
     portals = m.portals;
+    riding = m.riding;
     // No clock syncing: the start is the arrival less the server's age, so the link's one-way delay shifts it late.
     sequence = m.sequence ? { kind: m.sequence.kind, startedAt: now() - m.sequence.age } : null;
     peers.clear();
@@ -263,6 +276,23 @@ export function createSession(opts: SessionOptions): Session {
     lastSent = null;
     resendOwnState();
     listener.welcome?.(m.selfId, m.livekit, identityChanged);
+  };
+
+  const applyPeerRide = (m: PeerRideMessage) => {
+    if (m.scooter === null) {
+      addObject(m.parked);
+    } else {
+      objects.delete(m.scooter);
+    }
+    if (m.id === selfId) {
+      riding = m.scooter;
+    } else {
+      const peer = peers.get(m.id);
+      if (peer) {
+        peer.info.riding = m.scooter;
+      }
+    }
+    listener.peerRide?.(m.id, m.scooter);
   };
 
   /** The server forgets these on a fresh identity; resending them on a resume is harmless. */
@@ -428,6 +458,9 @@ export function createSession(opts: SessionOptions): Session {
     get sequence() {
       return sequence;
     },
+    get riding() {
+      return riding;
+    },
     setMedia(cam, mic) {
       media = { cam, mic };
       sendWhileOpen({ type: 'media', cam, mic });
@@ -444,6 +477,8 @@ export function createSession(opts: SessionOptions): Session {
     sendCheers: () => sendWhileOpen({ type: 'cheers' }),
     sendKick: (angle, k) => sendWhileOpen({ type: 'kick', angle, k }),
     sendPortals: () => sendWhileOpen({ type: 'portals' }),
+    sendRide: (id) => sendWhileOpen({ type: 'ride', id }),
+    sendDismount: () => sendWhileOpen({ type: 'dismount' }),
     selfId: () => selfId,
     selfColor: () => color,
     resumeToken: () => resumeToken ?? null,

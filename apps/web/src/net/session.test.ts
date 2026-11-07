@@ -1,6 +1,6 @@
 import type { GameMap, PeerInfo, PlayerState, Portals } from '@zoom3d/shared';
 import { LEVEL1, PROTOCOL_VERSION, parseMap, wirePortals } from '@zoom3d/shared';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { asWebSocket, FakeWebSocket } from './fake-websocket';
 import { tierInterval } from './peer-delay';
 import { createSession, type Session, type SessionListener } from './session';
@@ -798,4 +798,51 @@ test('a welcome mid-sequence stamps it; one without clears it', () => {
   expect(session.sequence).toEqual({ kind: 'off', startedAt: arrival - 300 });
   ws.receive(welcome());
   expect(session.sequence).toBeNull();
+});
+
+describe('scooters', () => {
+  const scooter = (id: string, x = 4.5) => ({ id, kind: 'scooter', x, y: 5.5, angle: 0 });
+
+  test('a welcome says which scooter the local player rides', () => {
+    const { session } = joinedSession();
+    expect(session.riding).toBeNull();
+    const ws = FakeWebSocket.latest();
+    ws.receive({ ...welcome(), riding: 's1' });
+    expect(session.riding).toBe('s1');
+  });
+
+  test('a peer stepping on takes the scooter out of the objects', () => {
+    const { session, ws } = joinedSession([peer('a')]);
+    ws.receive({ ...welcome([peer('a')]), objects: [scooter('s1'), scooter('s2')] });
+    ws.receive({ type: 'peer_ride', id: 'a', scooter: 's2' });
+    expect([...session.objects.keys()]).toEqual(['s1']);
+    expect(session.peers.get('a')?.info.riding).toBe('s2');
+  });
+
+  test('a peer stepping off leaves the scooter parked where it says', () => {
+    const { session, ws } = joinedSession([{ ...peer('a'), riding: 's2' }]);
+    ws.receive({ type: 'peer_ride', id: 'a', scooter: null, parked: scooter('s2', 9.5) });
+    expect(session.objects.get('s2')?.info).toEqual(scooter('s2', 9.5));
+    expect(session.peers.get('a')?.info.riding).toBeNull();
+  });
+
+  test('the local player’s own ride sets and clears riding, and the listener hears of it', () => {
+    const peerRide = vi.fn();
+    const { session, ws } = joinedSession([], { peerRide });
+    ws.receive({ type: 'peer_ride', id: 'me', scooter: 's1' });
+    expect(session.riding).toBe('s1');
+    ws.receive({ type: 'peer_ride', id: 'me', scooter: null, parked: scooter('s1') });
+    expect(session.riding).toBeNull();
+    expect(peerRide.mock.calls).toEqual([
+      ['me', 's1'],
+      ['me', null],
+    ]);
+  });
+
+  test('ride and dismount go to the server', () => {
+    const { session, ws } = joinedSession();
+    session.sendRide('s1');
+    session.sendDismount();
+    expect(ws.sent.slice(-2)).toEqual([{ type: 'ride', id: 's1' }, { type: 'dismount' }]);
+  });
 });
