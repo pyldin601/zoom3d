@@ -122,3 +122,29 @@ test('speed carries through a portal', () => {
   expect(pose.x).toBeCloseTo(4.5);
   expect(state.speed).toBeGreaterThan(3);
 });
+
+describe('bumps', () => {
+  test('a head-on stop reports the speed it hit at, once', () => {
+    const pose = at(58.4);
+    const state = moving(RIDE_SPEED);
+    let hit = 0;
+    let steps = 0;
+    while (state.speed > 0 && steps < 60) {
+      stepRide(HALL, pose, state, COAST, DT, null);
+      steps++;
+      hit = state.bump;
+    }
+    expect(hit).toBeGreaterThan(5.5);
+    stepRide(HALL, pose, state, COAST, DT, null);
+    expect(state.bump).toBe(0);
+  });
+
+  test('scraping reports no bump', () => {
+    const pose = at(10, 3.74, Math.PI / 4);
+    const state = moving(RIDE_SPEED);
+    for (let i = 0; i < 18; i++) {
+      stepRide(HALL, pose, state, COAST, DT, null);
+      expect(state.bump).toBe(0);
+    }
+  });
+});

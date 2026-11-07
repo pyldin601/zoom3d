@@ -16,6 +16,8 @@ import {
 export interface RideState {
   /** Tiles/s along the heading; negative while backing up. */
   speed: number;
+  /** The speed this step hit a wall head-on at, for the bump's sound; 0 on every other step. */
+  bump: number;
 }
 
 /** Starting values for the owner to tune by riding. Tiles/s² unless named otherwise. */
@@ -31,7 +33,7 @@ const HEAD_ON_SHARE = Math.sin((20 * Math.PI) / 180);
 /** Riding along an axis leaves a rounding-error step on the other one, which never moves the pose: not a wall. */
 const NO_STEP = 1e-9;
 
-export const createRideState = (): RideState => ({ speed: 0 });
+export const createRideState = (): RideState => ({ speed: 0, bump: 0 });
 
 /** Moves `value` toward `target` by at most `by`. */
 const toward = (value: number, target: number, by: number) =>
@@ -78,10 +80,16 @@ export function stepRide(
   pose.y = moved.y;
   carryThroughPortal(portals, startX, startY, pose);
 
+  ride.bump = 0;
   if (blockedX || blockedY) {
     const step = Math.hypot(dx, dy);
     const free = blockedX ? (blockedY ? 0 : Math.abs(dy)) : Math.abs(dx);
-    ride.speed = free / step < HEAD_ON_SHARE ? 0 : toward(ride.speed, 0, BRAKE * t);
+    if (free / step < HEAD_ON_SHARE) {
+      ride.bump = Math.abs(ride.speed);
+      ride.speed = 0;
+    } else {
+      ride.speed = toward(ride.speed, 0, BRAKE * t);
+    }
   } else {
     ride.speed = nextSpeed(ride.speed, input.forward, t);
   }
