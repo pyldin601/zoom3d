@@ -103,7 +103,12 @@ means backing up). All values are starting values, to be tuned by playing.
   to 2% of the width toward the turn, following the turn input with a short ease (about 0.1 s).
 - It never bobs.
 
-### 4.4 The motor's whine (`apps/web/src/audio/scooter-sound.ts`, plus a per-rider manager)
+### 4.4 The motor's whine (replaced)
+
+Replaced on 2026-11-07 by the owner's tuned sound: see the [scooter sound spec](2026-11-07-scooter-sound-design.md).
+What follows is the first version, kept as history.
+
+#### The first version (`apps/web/src/audio/scooter-sound.ts`, plus a per-rider manager)
 
 - **Synthesis:** two slightly detuned oscillators (sawtooth, a few cents apart) through a band-pass filter,
   synthesised like the vacuum. (A faint high harmonic was dropped in building: the two sawtooths carry enough.)

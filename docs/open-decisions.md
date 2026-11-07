@@ -925,9 +925,18 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
       `held: null`; the choice comes back on stepping off, the music keeps playing, and sip keys do nothing.
     - **A handlebar in first person**, tilting and shifting with the steering keys. Riders never bob (the owner chose
       motion over a flag for showing kicks; then the scooters went electric and kicks went).
-    - **A motor whine** (owner: only while moving, subtle): two detuned sawtooths, 180 Hz at a crawl to 720 Hz at full
-      speed, silent below 0.3 tiles/s, 30% louder while speeding up, at the vacuum's level. Others hear it from the
-      rider, worked out from their drawn motion (no protocol change); the rider hears their own unplaced.
+    - **The sound, tuned by the owner by ear** (2026-11-07, on a listening page;
+      [spec](superpowers/specs/2026-11-07-scooter-sound-design.md)). It replaced a first speed-pitched whine.
+      - The controller's PWM whiss is fixed at 7800 Hz (owner: "a PWM motor has no pitch"). It plays 0.35 speeding
+        up, 0.18 holding speed and 0.02 coasting.
+      - A quiet motor tone climbs to 157 Hz at full speed (the owner added a pitched tone back and lowered it).
+      - The wheels are barely heard, with a tick at each tile's seam.
+      - A bump is a thud (136 → 85 Hz) and a rattle (1500 Hz); the owner dropped the metal ring. Scraping a wall makes
+        no sound (owner).
+      - Master 0.6: the loudest layer peaks about 13.5 dB under unity.
+      - Others hear a rider from their spot. Their load (speeding up, holding speed, coasting) and their bumps (a stop
+        sharper than 25 tiles/s², which braking never reaches) come from their drawn motion, so there is no protocol
+        change. The rider hears their own unplaced, from the throttle and the ride's head-on stop.
     - **A glowing headlight** on the stem and a battery under the deck; looks only.
     - Starting values, for the owner to tune by riding. Not heard in the game by the builder.
   - **Left out:** chirps or an idle hum, a headlight that lights the room, the battery running out, scooters on the
