@@ -17,6 +17,7 @@ import type { PeerFacts } from '../media/interest';
 import { ownAvatarShown, type RoomScene, renderView } from './frame';
 import { createFramebuffer, type Framebuffer, rgb } from './framebuffer';
 import { bakeLighting, corridorLights, type Lighting } from './lighting';
+import { SCOOTER_MODEL } from './models/scooter';
 import { VACUUM_MODEL } from './models/vacuum';
 import { shimmerAndRim, toSketchPx, windowRipple } from './portal-window';
 import { createRoomLighting } from './room-lighting';
@@ -37,6 +38,7 @@ function person(key: string, x: number, y: number, color: number): Sprite {
     speaking: 0.4,
     bob: 0.3,
     itemBob: 0.3,
+    ride: 0,
     sip: 0,
     cheers: 0,
     wobble: 0,
@@ -76,6 +78,7 @@ describe('renderView without portals', () => {
     ownLighter: null,
     lighterSeconds: 0,
     self: null,
+    ownScooter: null,
     ownLabel: null,
     portalPulse: 1,
     portalTime: 0,
@@ -187,6 +190,7 @@ function portalScene(
     ownLighter: null,
     lighterSeconds: 0,
     self: null,
+    ownScooter: null,
     ownLabel: null,
     portalPulse: 1,
     portalTime: 0,
@@ -525,6 +529,28 @@ describe('the own avatar', () => {
 
   test('with portals off the frame is the same as today', () => {
     const { shown, plain } = withAndWithout(loop.map, null, eye, ownAvatar({ x: 2.5, y: 10.5 }));
+    expect(differences(shown, plain)).toEqual([]);
+  });
+
+  const ownScooter = (at: { x: number; y: number }) => ({ model: SCOOTER_MODEL, ...at, angle: 0, lift: 0 });
+
+  test('the own scooter shows through a window that looks back at the eye, and only there', () => {
+    const shown = createFramebuffer();
+    renderView(shown, { ...portalScene(loop.map, loop.portals, eye), ownScooter: ownScooter(eye) });
+    const plain = createFramebuffer();
+    renderView(plain, portalScene(loop.map, loop.portals, eye));
+    const inWindow = new Set(windowColumns(shown));
+    const changed = differences(shown, plain);
+    expect(changed.length).toBeGreaterThan(0);
+    expect(changed.every(([col]) => inWindow.has(col))).toBe(true);
+  });
+
+  test('the main pass never draws the own scooter', () => {
+    const north: PlayerState = { x: 2.5, y: 9.5, angle: -SOUTH };
+    const shown = createFramebuffer();
+    renderView(shown, { ...portalScene(loop.map, loop.portals, north), ownScooter: ownScooter({ x: 2.5, y: 8.5 }) });
+    const plain = createFramebuffer();
+    renderView(plain, portalScene(loop.map, loop.portals, north));
     expect(differences(shown, plain)).toEqual([]);
   });
 

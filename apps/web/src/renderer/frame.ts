@@ -14,6 +14,7 @@ import { type HeldStep, renderOwnHeld } from './own-held';
 import { nextRippleDown, openingEdge, shimmerAndRim, startRippleDown, toSketchPx } from './portal-window';
 import type { HeldPose } from './sip';
 import { type PeopleAndObjects, renderSprites, type Sprite } from './sprites';
+import type { VoxelInstance } from './voxels';
 import { type Room, renderWalls, rowsCovered } from './walls';
 
 /** What one pass draws: the room, its people and objects, from one eye, on the pass's columns. */
@@ -44,6 +45,8 @@ export interface RoomScene extends PassScene {
    * off or out of the room.
    */
   self: Sprite | null;
+  /** The scooter under the own disc while the local player rides one; drawn, like `self`, only by windows. */
+  ownScooter: VoxelInstance | null;
   /** The own name label where a portal shows the own spot; null when none does, and always with `self` null. */
   ownLabel: NameLabel | null;
   /** What the local player holds; null while they aren't in the room (reconnecting). */
@@ -82,6 +85,8 @@ const windowLevels: WindowLevel[] = [];
 const seenThroughWindows = new Map<string, PeerFacts>();
 /** The people every window draws: the scene's, then the local player's own disc. */
 const windowPeople: Sprite[] = [];
+/** The objects every window draws: the scene's, then the local player's own scooter. */
+const windowObjects: VoxelInstance[] = [];
 let ownAvatarDrawn = false;
 /** The own label, as the one-entry list drawLabels takes. */
 const ownLabels: NameLabel[] = [];
@@ -94,6 +99,7 @@ export function renderView(fb: Framebuffer, scene: RoomScene, seen?: Map<string,
     fitWindowLevels(fb);
     seenThroughWindows.forEach(zeroFacts);
     listWindowPeople(scene.people, scene.self);
+    listWindowObjects(scene.objects, scene.ownScooter);
   }
   drawPass(fb, scene, glows, seen, 0);
   const windowsCounted = scene.portals !== null && seen !== undefined;
@@ -123,6 +129,17 @@ function listWindowPeople(people: readonly Sprite[], self: Sprite | null): void 
     windowPeople[count++] = self;
   }
   windowPeople.length = count;
+}
+
+function listWindowObjects(objects: readonly VoxelInstance[], own: VoxelInstance | null): void {
+  let count = 0;
+  for (const object of objects) {
+    windowObjects[count++] = object;
+  }
+  if (own) {
+    windowObjects[count++] = own;
+  }
+  windowObjects.length = count;
 }
 
 /**
@@ -236,7 +253,7 @@ function drawWindow(
   beyond.lighting = scene.lighting;
   beyond.reflections = scene.reflections;
   beyond.people = windowPeople;
-  beyond.objects = scene.objects;
+  beyond.objects = windowObjects;
   beyond.portals = scene.portals;
   beyond.portalPulse = scene.portalPulse;
   beyond.portalTime = scene.portalTime;

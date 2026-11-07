@@ -62,6 +62,8 @@ export interface Sprite {
   bob: number;
   /** 0..1: walking bob of the held item, which trails the disc's. */
   itemBob: number;
+  /** Tiles the person stands above the floor: a scooter's deck while they ride one, else 0. */
+  ride: number;
   /** 0..1: sip progress, from resting in front of the body (0) to at the mouth (1). */
   sip: number;
   /** 0..1: cheers lift, from resting (0) to raised over the head (1); never above 0 together with `sip`. */
@@ -442,7 +444,7 @@ function drawDisc(fb: Framebuffer, s: Sprite, { screenX, depth, size }: Projecti
   const near = pass.nearDepth;
   const firstCol = Math.max(pass.fromCol, Math.floor(screenX - r));
   const lastCol = Math.min(w - 1, pass.toCol - 1, Math.ceil(screenX + r));
-  const centreY = h / 2 - s.bob * BOB_HEIGHT * r;
+  const centreY = h / 2 - discLift(s) * r;
   const firstRow = Math.max(0, Math.floor(centreY - r));
   const lastRow = Math.min(h - 1, Math.ceil(centreY + r));
   for (let col = firstCol; col <= lastCol; col++) {
@@ -491,7 +493,7 @@ export function mirrorDisc(fb: Framebuffer, view: View, s: Sprite, mirror: Floor
   const faceR = r * FACE_RADIUS;
   const near = pass.nearDepth;
   // The disc's centre is EYE_HEIGHT plus its bob over the floor; its image as far under it.
-  const centreY = h / 2 + (2 * EYE_HEIGHT * view.proj) / depth + s.bob * BOB_HEIGHT * r;
+  const centreY = h / 2 + (2 * EYE_HEIGHT * view.proj) / depth + discLift(s) * r;
   const firstCol = Math.max(pass.fromCol, Math.floor(screenX - r));
   const lastCol = Math.min(w - 1, pass.toCol - 1, Math.ceil(screenX + r));
   const firstRow = Math.max(0, Math.floor(centreY - r));
@@ -515,6 +517,11 @@ export function mirrorDisc(fb: Framebuffer, view: View, s: Sprite, mirror: Floor
   }
 }
 
+/** How far the disc floats over the eye line, in disc radii: its step, and a scooter's deck under it. */
+const discLift = (s: Sprite) => s.bob * BOB_HEIGHT + s.ride / AVATAR_RADIUS;
+/** The same for what the person carries, whose step trails the disc's. */
+const itemLift = (s: Sprite) => s.itemBob * BOB_HEIGHT + s.ride / AVATAR_RADIUS;
+
 /** The ring's colour: brightened while the person talks, and shaded on a flat disc. */
 function ringColour({ color, face, speaking }: Sprite): number {
   const lit = speaking > 0 ? mixWhite(color, Math.min(speaking, 1) * SPEAKING_GLOW) : color;
@@ -529,14 +536,14 @@ const faceTexel = (offsetPx: number, faceRadiusPx: number, faceSize: number) =>
 function drawHeld(fb: Framebuffer, s: Sprite, item: HeldItem, { screenX, depth, size }: Projection, pass: Pass): void {
   const r = size / 2;
   const left = screenX + heldLeft(item, s) * r;
-  const top = fb.height / 2 - (heldTop(item, s) + s.itemBob * BOB_HEIGHT) * r;
+  const top = fb.height / 2 - (heldTop(item, s) + itemLift(s)) * r;
   blitHeldSprite(fb, HELD_SPRITES[item], left, top, HELD_TEXEL * r, depth, pass);
 }
 
 /** The boombox in the hand on the viewer's left, bobbing with the step. */
 function drawBoombox(fb: Framebuffer, s: Sprite, { screenX, depth, size }: Projection, pass: Pass): void {
   const r = size / 2;
-  const top = fb.height / 2 - (BOOMBOX_TOP + s.itemBob * BOB_HEIGHT) * r;
+  const top = fb.height / 2 - (BOOMBOX_TOP + itemLift(s)) * r;
   blitHeldSprite(fb, BOOMBOX_SPRITE, screenX + BOOMBOX_LEFT * r, top, HELD_TEXEL * r, depth, pass);
 }
 

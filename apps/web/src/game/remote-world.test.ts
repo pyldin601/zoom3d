@@ -14,6 +14,7 @@ import { beforeEach, describe, expect, test } from 'vitest';
 import { FAR_DELAY_MS, PeerDelay } from '../net/peer-delay';
 import { objectKey, type RemoteObject, type RemotePeer, type Session } from '../net/session';
 import { BALL_MODEL } from '../renderer/models/ball';
+import { SCOOTER_DECK_TILES, SCOOTER_MODEL } from '../renderer/models/scooter';
 import { VACUUM_MODEL } from '../renderer/models/vacuum';
 import { hexToRgb } from '../renderer/sprites';
 import { createRemoteWorld, type PeerMedia, type ShownBall } from './remote-world';
@@ -279,5 +280,68 @@ describe('collect', () => {
     world.sample(room.session, player, NOW, null);
     world.collect(room.session, media, NOW, 0);
     expect(world.voxels).toHaveLength(0);
+  });
+});
+
+describe('scooters', () => {
+  /** A peer standing at (x, y) facing `angle`, riding scooter `scooter`. */
+  const addRider = (id: string, x: number, y: number, angle: number, scooter: string) => {
+    room.addPeer(id, x, y);
+    const peer = room.peers.get(id);
+    if (peer) {
+      peer.info.riding = scooter;
+      peer.buffer.push({ t: 1, x, y, angle });
+    }
+  };
+
+  test('a parked scooter is drawn with its own model', () => {
+    const world = createRemoteWorld();
+    room.addObject('s1', 4, 5, 1, 'scooter');
+    world.sample(room.session, player, NOW);
+    world.collect(room.session, media, NOW, 0);
+    expect(world.voxels.map((v) => v.model)).toEqual([SCOOTER_MODEL]);
+  });
+
+  test('a ridden scooter is drawn under its rider, the way they face, and the rider glides a deck higher', () => {
+    const world = createRemoteWorld();
+    addRider('ada', 2, 3, 1.5, 's1');
+    world.sample(room.session, player, NOW);
+    world.collect(room.session, media, NOW, 0.1);
+    expect(world.voxels).toHaveLength(1);
+    expect(world.voxels.at(0)).toMatchObject({ model: SCOOTER_MODEL, x: 2, y: 3, angle: 1.5, lift: 0 });
+    expect(world.sprites.at(0)).toMatchObject({ bob: 0, itemBob: 0, ride: SCOOTER_DECK_TILES });
+  });
+
+  test('a rider who moved does not bob', () => {
+    const world = createRemoteWorld();
+    addRider('ada', 2, 3, 0, 's1');
+    for (let i = 1; i <= 5; i++) {
+      room.peers.get('ada')?.buffer.push({ t: NOW + i * 100, x: 2 + i * 0.3, y: 3, angle: 0 });
+      world.sample(room.session, player, NOW + i * 100 + INTERP_DELAY_MS);
+      world.collect(room.session, media, NOW, 0.1);
+    }
+    expect(world.sprites.at(0)?.bob).toBe(0);
+  });
+
+  test('someone on foot is on the floor', () => {
+    const world = createRemoteWorld();
+    room.addPeer('ada', 2, 3);
+    world.sample(room.session, player, NOW);
+    world.collect(room.session, media, NOW, 0);
+    expect(world.sprites.at(0)?.ride).toBe(0);
+    expect(world.voxels).toEqual([]);
+  });
+
+  test('frames reuse the same scooter voxels', () => {
+    const world = createRemoteWorld();
+    addRider('ada', 2, 3, 0, 's1');
+    room.addObject('s2', 4, 5, 1, 'scooter');
+    world.sample(room.session, player, NOW);
+    world.collect(room.session, media, NOW, 0);
+    const first = [...world.voxels];
+    world.sample(room.session, player, NOW + 10);
+    world.collect(room.session, media, NOW + 10, 0);
+    expect(world.voxels.at(0)).toBe(first.at(0));
+    expect(world.voxels.at(1)).toBe(first.at(1));
   });
 });

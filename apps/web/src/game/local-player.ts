@@ -16,8 +16,10 @@ import { type Bob, createBob } from '../renderer/bob';
 import type { FirstPerson } from '../renderer/frame';
 import type { GlowSource } from '../renderer/glow';
 import type { LighterSource } from '../renderer/lighter';
+import { SCOOTER_DECK_TILES, SCOOTER_MODEL } from '../renderer/models/scooter';
 import { createGestureClock, type GestureClock } from '../renderer/sip';
 import { ringRgb, type Sprite } from '../renderer/sprites';
+import type { VoxelInstance } from '../renderer/voxels';
 import { blankSprite } from './remote-world';
 
 /** The own disc's key: no peer has it, so it never reaches the facts dynamic subscription reads. */
@@ -42,6 +44,8 @@ export interface LocalPlayer {
   readonly gesture: GestureClock;
   readonly held: HeldItem | null;
   boombox: boolean;
+  /** On a scooter, as the session says: the room loop sets it every frame. */
+  riding: boolean;
   /** Takes `item` in hand, or empties it with null; anything but a drink ends any gesture. False if already held. */
   hold(item: HeldItem | null): boolean;
   /**
@@ -71,6 +75,8 @@ export interface LocalPlayer {
    * one is kept.
    */
   avatar(now: number, ringColour: string | null, faceShown: boolean): Sprite | null;
+  /** The ridden scooter under the own disc, for the windows that draw it; null on foot. */
+  scooter(): VoxelInstance | null;
   firstPerson(now: number): FirstPerson;
 }
 
@@ -88,6 +94,7 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
   const lighterSource = { key: OWN_SPRITE_KEY, x: 0, y: 0 };
   // The room measures no level of the own mic, so the own ring never brightens: `speaking` stays 0.
   const ownDisc = blankSprite(OWN_SPRITE_KEY);
+  const ownScooter: VoxelInstance = { model: SCOOTER_MODEL, x: 0, y: 0, angle: 0, lift: 0 };
   const firstPersonView: FirstPerson = { held: null, boombox: false, step, gesture: gesture.pose(0) };
 
   const localPlayer: LocalPlayer = {
@@ -98,6 +105,7 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       return heldItem;
     },
     boombox: false,
+    riding: false,
     hold(item) {
       if (item === heldItem) {
         return false;
@@ -161,8 +169,9 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
         // Before the first read: a window's first frame of the disc comes before it is reported shown.
         ownDisc.face ??= fallbackTexels;
       }
-      ownDisc.bob = step.lift;
-      ownDisc.itemBob = step.itemLift;
+      ownDisc.bob = localPlayer.riding ? 0 : step.lift;
+      ownDisc.itemBob = localPlayer.riding ? 0 : step.itemLift;
+      ownDisc.ride = localPlayer.riding ? SCOOTER_DECK_TILES : 0;
       const { sip, cheers, wobble } = gesture.pose(now);
       ownDisc.sip = sip;
       ownDisc.cheers = cheers;
@@ -170,6 +179,15 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       ownDisc.held = heldItem;
       ownDisc.boombox = localPlayer.boombox;
       return ownDisc;
+    },
+    scooter() {
+      if (!localPlayer.riding) {
+        return null;
+      }
+      ownScooter.x = pose.x;
+      ownScooter.y = pose.y;
+      ownScooter.angle = pose.angle;
+      return ownScooter;
     },
     firstPerson(now) {
       firstPersonView.held = heldItem;

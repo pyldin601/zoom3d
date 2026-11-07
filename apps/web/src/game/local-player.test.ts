@@ -1,6 +1,7 @@
 import { parseMap } from '@zoom3d/shared';
 import { expect, test } from 'vitest';
 import { twoDoorways } from '../../../../packages/shared/src/portals/test-doorways';
+import { SCOOTER_DECK_TILES, SCOOTER_MODEL } from '../renderer/models/scooter';
 import { hexToRgb } from '../renderer/sprites';
 import { createLocalPlayer, OWN_SPRITE_KEY } from './local-player';
 
@@ -202,4 +203,27 @@ test('the same walk without portals stays south of A', () => {
   }
   expect(localPlayer.pose.x).toBeCloseTo(2.5);
   expect(localPlayer.pose.y).toBeGreaterThan(3.5);
+});
+
+test('riding, the own disc glides a deck up with no step, and the own scooter stands under it', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  expect(localPlayer.scooter()).toBeNull();
+  localPlayer.riding = true;
+  localPlayer.pose.angle = 0;
+  localPlayer.walk(MAP, { forward: 1, strafe: 0, turn: 0 }, 0, 0.1);
+  localPlayer.pose.angle = 0.7;
+  const disc = localPlayer.avatar(0, '#ff0000', true);
+  expect(disc).toMatchObject({ bob: 0, itemBob: 0, ride: SCOOTER_DECK_TILES });
+  const scooter = localPlayer.scooter();
+  expect(scooter).toMatchObject({
+    model: SCOOTER_MODEL,
+    x: localPlayer.pose.x,
+    y: localPlayer.pose.y,
+    angle: 0.7,
+    lift: 0,
+  });
+  expect(localPlayer.scooter()).toBe(scooter);
+  localPlayer.riding = false;
+  expect(localPlayer.avatar(0, '#ff0000', true)?.ride).toBe(0);
+  expect(localPlayer.scooter()).toBeNull();
 });

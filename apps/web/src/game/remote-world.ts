@@ -1,16 +1,25 @@
 // The other people and the world objects as the room frame shows them: their interpolated positions, for the audio
 // and the interest rule, and the discs, name labels and voxel models the renderer draws. Each peer keeps one record
 // from frame to frame, so a full room allocates nothing per frame (AGENTS.md: never block the render loop).
-import { type Apparent, INTERP_DELAY_MS, isDrink, type PlayerState, type Point, type Portals } from '@zoom3d/shared';
+import {
+  type Apparent,
+  INTERP_DELAY_MS,
+  isDrink,
+  type ObjectKind,
+  type PlayerState,
+  type Point,
+  type Portals,
+} from '@zoom3d/shared';
 import { nearTier } from '../net/peer-delay';
 import { objectKey, type RemotePeer, type Session } from '../net/session';
 import { type Bob, createBob } from '../renderer/bob';
 import type { LighterSource } from '../renderer/lighter';
 import { BALL_MODEL } from '../renderer/models/ball';
+import { SCOOTER_DECK_TILES, SCOOTER_MODEL } from '../renderer/models/scooter';
 import { VACUUM_MODEL } from '../renderer/models/vacuum';
 import { gesturePose } from '../renderer/sip';
 import { ringRgb, type Sprite } from '../renderer/sprites';
-import type { VoxelInstance } from '../renderer/voxels';
+import type { VoxelInstance, VoxelModel } from '../renderer/voxels';
 import type { BallPrediction } from './ball-prediction';
 import { ballShake } from './ball-shake';
 
@@ -71,6 +80,8 @@ interface PeerRecord {
 /** The ball as this client shows it: where it is predicted, its mood and how high it is drawn (BallPrediction). */
 export type ShownBall = Pick<BallPrediction, 'ball' | 'mood' | 'lift'>;
 
+const MODELS: Record<ObjectKind, VoxelModel> = { vacuum: VACUUM_MODEL, ball: BALL_MODEL, scooter: SCOOTER_MODEL };
+
 /** An object's pose to draw, with how high above the floor (only the ball's hop lifts one). */
 interface ObjectPose extends PlayerState {
   lift: number;
@@ -78,6 +89,8 @@ interface ObjectPose extends PlayerState {
 
 export function createRemoteWorld(): RemoteWorld {
   const positions = new Map<string, Point>();
+  /** Each peer's drawn heading, by id, beside its position: a ridden scooter points the way its rider faces. */
+  const headings = new Map<string, number>();
   const objectPoses = new Map<string, ObjectPose>();
   /** Each object's objectKey, made once rather than every frame. */
   const objectKeys = new Map<string, string>();
@@ -100,6 +113,7 @@ export function createRemoteWorld(): RemoteWorld {
     for (const id of positions.keys()) {
       if (!s.peers.has(id) && !objectPoses.has(id)) {
         positions.delete(id);
+        headings.delete(id);
       }
     }
   };
@@ -158,6 +172,7 @@ export function createRemoteWorld(): RemoteWorld {
       } else {
         positions.set(peer.info.id, { x: at.x, y: at.y });
       }
+      headings.set(peer.info.id, at.angle);
     }
   };
 
@@ -214,21 +229,32 @@ export function createRemoteWorld(): RemoteWorld {
     lighters.length = lit;
   };
 
+  /** Puts a model at `voxels[n]`, reusing the instance there. */
+  const placeVoxel = (n: number, model: VoxelModel, x: number, y: number, angle: number, lift: number) => {
+    const v = voxels.at(n) ?? { model, x: 0, y: 0, angle: 0, lift: 0 };
+    v.model = model;
+    v.x = x;
+    v.y = y;
+    v.angle = angle;
+    v.lift = lift;
+    voxels[n] = v;
+  };
+
   const collectVoxels = (s: Session) => {
     let n = 0;
     for (const obj of s.objects.values()) {
       const key = objectKeys.get(obj.info.id);
       const pose = key === undefined ? undefined : objectPoses.get(key);
-      if (!pose) {
-        continue;
+      if (pose) {
+        placeVoxel(n++, MODELS[obj.info.kind], pose.x, pose.y, pose.angle, pose.lift);
       }
-      const v = voxels.at(n) ?? { model: VACUUM_MODEL, x: 0, y: 0, angle: 0, lift: 0 };
-      v.model = obj.info.kind === 'ball' ? BALL_MODEL : VACUUM_MODEL;
-      v.x = pose.x;
-      v.y = pose.y;
-      v.angle = pose.angle;
-      v.lift = pose.lift;
-      voxels[n++] = v;
+    }
+    // A ridden scooter is drawn from its rider's own drawn pose, so the two can't drift apart.
+    for (const peer of s.peers.values()) {
+      const pos = peer.info.riding === null ? undefined : positions.get(peer.info.id);
+      if (pos) {
+        placeVoxel(n++, SCOOTER_MODEL, pos.x, pos.y, headings.get(peer.info.id) ?? 0, 0);
+      }
     }
     voxels.length = n;
   };
@@ -263,6 +289,7 @@ export function blankSprite(key: string): Sprite {
     speaking: 0,
     bob: 0,
     itemBob: 0,
+    ride: 0,
     sip: 0,
     cheers: 0,
     wobble: 0,
@@ -279,8 +306,11 @@ function fillSprite(sprite: Sprite, peer: RemotePeer, pos: Point, bob: Bob, medi
   sprite.color = ringRgb(color);
   sprite.face = media.faceOf(id);
   sprite.speaking = media.speaking(id);
-  sprite.bob = bob.lift;
-  sprite.itemBob = bob.itemLift;
+  // A rider glides on the deck: no step.
+  const riding = peer.info.riding !== null;
+  sprite.bob = riding ? 0 : bob.lift;
+  sprite.itemBob = riding ? 0 : bob.itemLift;
+  sprite.ride = riding ? SCOOTER_DECK_TILES : 0;
   const gesture = peer.gesture;
   // The sprite's sip, cheers and wobble are a HeldPose. The lighter has no gestures: one under way when it was taken
   // stops.
