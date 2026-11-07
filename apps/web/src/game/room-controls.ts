@@ -58,7 +58,7 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
 
   const refresh = () =>
     touchControls?.update({
-      held: localPlayer.held,
+      held: riding ? null : localPlayer.held,
       boombox: localPlayer.boombox,
       map: mapShown,
       lighting: o.renderMode(),
@@ -104,7 +104,8 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
         e.preventDefault();
         if (heldKeyAction(key.item, localPlayer.held) === 'pick') {
           o.chooseHeld(key.item);
-        } else {
+        } else if (!localPlayer.riding) {
+          // Riding, the drink is put away: its key neither sips nor cheers.
           drinkKey.down(e.timeStamp, key.code);
         }
         break;
@@ -133,7 +134,7 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
       return;
     }
     touchControls = showTouchControls(o.ui, {
-      held: localPlayer.held,
+      held: riding ? null : localPlayer.held,
       boombox: localPlayer.boombox,
       map: mapShown,
       lighting: o.renderMode(),
@@ -146,7 +147,7 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
         }
       },
       onDrinkDown: (t) => {
-        if (inRoom()) {
+        if (inRoom() && !localPlayer.riding) {
           drinkKey.down(t, 'touch');
         }
       },

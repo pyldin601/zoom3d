@@ -58,6 +58,10 @@ export type PersonLabel = AutomapPeer & NameLabel;
 export interface FirstPerson {
   held: HeldItem | null;
   boombox: boolean;
+  /** On a scooter: the handlebar is held instead (electric scooter spec §4.3). */
+  riding: boolean;
+  /** −1..1, eased: how far the handlebar is turned. */
+  steer: number;
   step: HeldStep;
   gesture: HeldPose;
 }

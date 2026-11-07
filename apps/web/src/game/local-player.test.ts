@@ -239,3 +239,26 @@ test('stepping on starts a ride at rest, and riding walks by the ride', () => {
   localPlayer.walk(MAP, { forward: 1, strafe: 0, turn: 0 }, 0, 0.1);
   expect(localPlayer.ride.speed).toBeCloseTo(0.4);
 });
+
+test('riding hides the own drink, boombox and lighter but keeps the choice', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  localPlayer.hold('beer');
+  localPlayer.boombox = true;
+  localPlayer.riding = true;
+  expect(localPlayer.avatar(0, '#ff0000', true)).toMatchObject({ held: null, boombox: false });
+  expect(localPlayer.firstPerson(0)).toMatchObject({ riding: true, held: null, boombox: false });
+  expect(localPlayer.held).toBe('beer');
+  localPlayer.hold('lighter');
+  expect(localPlayer.lighter()).toBeNull();
+  localPlayer.riding = false;
+  expect(localPlayer.lighter()).not.toBeNull();
+  expect(localPlayer.firstPerson(0)).toMatchObject({ riding: false, held: 'lighter', boombox: true });
+});
+
+test('stepping on cancels a sip under way', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  localPlayer.hold('beer');
+  localPlayer.gesture.start('sip', 0);
+  localPlayer.riding = true;
+  expect(localPlayer.gesture.kind(1)).toBeNull();
+});

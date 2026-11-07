@@ -345,3 +345,25 @@ describe('scooters', () => {
     expect(world.voxels.at(1)).toBe(first.at(1));
   });
 });
+
+describe('items put away while riding', () => {
+  test('a rider shows no drink, boombox or lighter, and stepping off brings them back', () => {
+    const world = createRemoteWorld();
+    room.addPeer('ada', 2, 3);
+    const peer = room.peers.get('ada');
+    if (!peer) {
+      throw new Error('no peer');
+    }
+    peer.info.held = 'lighter';
+    peer.info.boombox = true;
+    peer.info.riding = 's1';
+    world.sample(room.session, player, NOW);
+    world.collect(room.session, media, NOW, 0);
+    expect(world.sprites.at(0)).toMatchObject({ held: null, boombox: false });
+    expect(world.lighters).toEqual([]);
+    peer.info.riding = null;
+    world.collect(room.session, media, NOW, 0);
+    expect(world.sprites.at(0)).toMatchObject({ held: 'lighter', boombox: true });
+    expect(world.lighters).toHaveLength(1);
+  });
+});

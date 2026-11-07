@@ -212,7 +212,8 @@ export function createRemoteWorld(): RemoteWorld {
       }
       const { bob, sprite, label, lighter } = recordOf(id);
       bob.update(pos.x, pos.y, dt);
-      if (peer.info.held === 'lighter') {
+      // Both hands are on the handlebar while riding: the lighter is put away.
+      if (peer.info.held === 'lighter' && peer.info.riding === null) {
         lighter.x = pos.x;
         lighter.y = pos.y;
         lighters[lit++] = lighter;
@@ -316,8 +317,8 @@ function fillSprite(sprite: Sprite, peer: RemotePeer, pos: Point, bob: Bob, medi
   // stops.
   const shown = gesture && isDrink(held) ? gesture : null;
   gesturePose(shown ? shown.kind : null, shown ? now - shown.at : 0, sprite);
-  sprite.held = held;
-  sprite.boombox = boombox;
+  sprite.held = riding ? null : held;
+  sprite.boombox = riding ? false : boombox;
 }
 
 function fillLabel(label: PeerLabel, peer: RemotePeer, pos: Point, shown: Point): void {

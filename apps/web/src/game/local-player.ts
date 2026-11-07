@@ -92,7 +92,14 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
   let riding = false;
   const ride = createRideState();
   const ownScooter: VoxelInstance = { model: SCOOTER_MODEL, x: 0, y: 0, angle: 0, lift: 0 };
-  const firstPersonView: FirstPerson = { held: null, boombox: false, step, gesture: gesture.pose(0) };
+  const firstPersonView: FirstPerson = {
+    held: null,
+    boombox: false,
+    riding: false,
+    steer: 0,
+    step,
+    gesture: gesture.pose(0),
+  };
 
   const localPlayer: LocalPlayer = {
     pose,
@@ -108,6 +115,8 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
     set riding(on) {
       if (on && !riding) {
         ride.speed = 0;
+        // Both hands go to the handlebar.
+        gesture.cancel();
       }
       riding = on;
     },
@@ -151,7 +160,7 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       return glowSource;
     },
     lighter() {
-      if (heldItem !== 'lighter') {
+      if (heldItem !== 'lighter' || riding) {
         return null;
       }
       lighterSource.x = pose.x;
@@ -186,8 +195,8 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       ownDisc.sip = sip;
       ownDisc.cheers = cheers;
       ownDisc.wobble = wobble;
-      ownDisc.held = heldItem;
-      ownDisc.boombox = localPlayer.boombox;
+      ownDisc.held = riding ? null : heldItem;
+      ownDisc.boombox = riding ? false : localPlayer.boombox;
       return ownDisc;
     },
     scooter() {
@@ -200,8 +209,9 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       return ownScooter;
     },
     firstPerson(now) {
-      firstPersonView.held = heldItem;
-      firstPersonView.boombox = localPlayer.boombox;
+      firstPersonView.held = riding ? null : heldItem;
+      firstPersonView.boombox = riding ? false : localPlayer.boombox;
+      firstPersonView.riding = riding;
       firstPersonView.gesture = gesture.pose(now);
       return firstPersonView;
     },
