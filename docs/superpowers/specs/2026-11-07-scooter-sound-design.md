@@ -1,0 +1,100 @@
+# Scooter sound
+
+Date: 2026-11-07. Status: approved by the owner 2026-11-07. Replaces §4.4 (the motor's whine) of the
+[electric scooter spec](2026-11-07-electric-scooter-riding-design.md).
+
+## 1. Intent
+
+The first whine (two sawtooths, 180 → 720 Hz with speed) wasn't how an e-scooter sounds. The owner described it:
+- a PWM motor's whiss;
+- with wheel noise barely heard;
+- bumps that make a sound.
+
+The owner tuned the sound by ear on a listening page (the Scooter Sound Bench) and sent the values below. On the
+same page the owner dropped two parts: the metal ring on a bump, and any sound for scraping along a wall.
+
+## 2. Goals, non-goals
+
+**Goals:**
+- Every value below is built into the game as tuned.
+- Everyone nearby hears a rider's motor, wheels and bumps from the rider's spot. The rider hears their own unplaced.
+
+**Non-goals:**
+- A scrape sound (dropped by the owner).
+- A ring on bumps (dropped).
+- Chirps or an idle hum.
+- Protocol or server changes.
+
+## 3. Approaches
+
+- **Chosen: build the bench's synth as it is**, so what the owner tuned is what plays. Every screen works out the
+  load (speeding up, holding speed, coasting) and the bumps from motion: the owner chose "everyone nearby, from
+  motion" for bumps, as for the whine.
+- **Rejected: sample recordings.** They would need assets and licences. The owner tuned a synth and liked it.
+
+## 4. The sound, layer by layer (owner's values)
+
+The load decides how loud the motor layers are:
+
+| Load | When | Own screen | Others' screens |
+|---|---|---|---|
+| speeding up | throttle held, below top speed | from the input | smoothed speed rising by over 0.5 tiles/s² |
+| holding speed | throttle held at top speed | from the input | moving with the speed steady (within ±0.5 tiles/s²) |
+| coasting | everything else | from the input | everything else |
+
+Layers:
+
+- **PWM whiss:** fixed at 7800 Hz whatever the speed.
+  - A sine at gain 0.65 (1 − 0.5 × 0.7), plus noise through a band-pass at 7800 Hz, Q 12, gain 3.0 (0.5 × 6).
+  - Level 0.35 speeding up, 0.18 holding speed, and 0.02 × `min(1, speed / 0.3)` coasting.
+- **Motor tone:** frequency `max(30, 157 × speed / 6)` Hz.
+  - A triangle at gain 0.825 (1 − 0.35 × 0.5), a sine at 2× that frequency at gain 0.35, and a square through a
+    low-pass at 1200 Hz at gain 0.06 (0.15 × 0.4).
+  - Level 0.03 speeding up, 0.02 holding speed, 0.01 × moving coasting.
+- **Wheels:**
+  - Rolling noise through a band-pass at `1800 × (0.7 + 0.3 × speed / 6)` Hz, Q 0.8, level `0.12 × (speed / 6)^1.2`.
+  - Seam ticks: one per tile travelled while moving over 0.3 tiles/s. Each is a 50 ms burst of noise through a
+    band-pass at 3200 Hz, Q 2, starting at `0.15 × (speed / 6) × 0.5` and decaying exponentially to silence within
+    30 ms.
+- **Bump:** impact = speed just before the stop ÷ 6, at least 0.15; level = 0.45 × impact.
+  - Thud: a sine sweeping from 136 Hz (85 × 1.6) down to 85 Hz over 50 ms. It rises to the level in 4 ms, then
+    decays with a 0.06 s time constant.
+  - Rattle: noise through a band-pass at 1500 Hz, Q 3, starting at half the level and decaying with a 0.03 s time
+    constant.
+- **Master:** 0.6, so the loudest layer (the whiss while speeding up, 0.6 × 0.35 = 0.21) peaks about 13.5 dB under
+  unity, below a voice.
+- **Smoothing:** every level and pitch glides with a 0.05 s time constant, and a stopping sound fades for 5 time
+  constants before its oscillators stop.
+
+### When a bump plays
+
+- **Own:** `stepRide` reports a head-on stop (the existing wall rule, speed → 0) as `ride.bump`, the speed before
+  the stop, for that one step. Scraping makes no sound.
+- **Others:**
+  - a sudden stop in their drawn motion: unsmoothed speed falling by over 1.5 tiles/s at more than 25 tiles/s²;
+  - braking peaks at 10 tiles/s², so it never counts;
+  - a jump over `JUMP_TILES` (a portal or correction) never counts;
+  - one bump at most per 0.3 s per rider.
+
+## 5. Tests
+
+- **The synth:**
+  - the whiss's pitch never changes with speed;
+  - the motor tone's pitch is 157 Hz at full speed and 30 Hz at rest;
+  - the levels for each load match the table;
+  - wheel level and pitch follow speed;
+  - one seam tick per tile;
+  - a bump makes one thud and one rattle and no ring;
+  - a fade-out on stop.
+- **The manager:**
+  - the load is inferred from motion: speeding up, steady and slowing;
+  - a sudden stop plays one bump;
+  - braking and a portal jump don't;
+  - the own bump comes from `ride.bump`.
+- **`stepRide`:**
+  - `ride.bump` is the speed before a head-on stop;
+  - it is 0 on every other step, scraping included.
+
+## 6. Left to the builder
+
+How the synth is split across files.
