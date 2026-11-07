@@ -22,6 +22,9 @@ import type { VoxelInstance } from '../renderer/voxels';
 import { blankSprite } from './remote-world';
 import { createRideState, type RideState, stepRide } from './scooter-physics';
 
+/** Riding, the head turns at most this far either side of the scooter's heading: a neck over the shoulder. */
+const HEAD_LIMIT = Math.PI / 2;
+
 /** The first-person handlebar follows the steering keys this smoothly (time constant). */
 const STEER_EASE_S = 0.1;
 
@@ -51,6 +54,13 @@ export interface LocalPlayer {
   riding: boolean;
   /** The scooter's motion while riding (scooter-physics.ts). */
   readonly ride: RideState;
+  /**
+   * Riding, where the head looks relative to the scooter's heading (radians, + right, at most 90° each way): the mouse
+   * turns it, not the scooter. 0 on foot.
+   */
+  readonly head: number;
+  /** Where the eye looks from: the pose with the head's turn. One object, refilled on each call. */
+  eye(): PlayerState;
   /** Off while riding: both hands are on the handlebar, so no sip or cheers may start, even from a press made on foot. */
   readonly handsFree: boolean;
   /** Takes `item` in hand, or empties it with null; anything but a drink ends any gesture. False if already held. */
@@ -98,12 +108,15 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
   const ride = createRideState();
   /** −1..1, eased toward the steering keys: how far the first-person handlebar is turned. */
   let steer = 0;
+  let head = 0;
+  const eyePose: PlayerState = { x: 0, y: 0, angle: 0 };
   const ownScooter: VoxelInstance = { model: SCOOTER_MODEL, x: 0, y: 0, angle: 0, lift: 0 };
   const firstPersonView: FirstPerson = {
     held: null,
     boombox: false,
     riding: false,
     steer: 0,
+    head: 0,
     step,
     gesture: gesture.pose(0),
   };
@@ -125,9 +138,25 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
         // Both hands go to the handlebar.
         gesture.cancel();
       }
+      // Stepping off, the body turns to where the head was looking; stepping on, the head starts straight.
+      if (!on && riding) {
+        pose.angle += head;
+      }
+      if (on !== riding) {
+        head = 0;
+      }
       riding = on;
     },
     ride,
+    get head() {
+      return head;
+    },
+    eye() {
+      eyePose.x = pose.x;
+      eyePose.y = pose.y;
+      eyePose.angle = pose.angle + head;
+      return eyePose;
+    },
     get handsFree() {
       return !riding;
     },
@@ -142,7 +171,11 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       return true;
     },
     walk(map, move, turnRad, dt, portals = null) {
-      pose.angle += turnRad;
+      if (riding) {
+        head = Math.min(HEAD_LIMIT, Math.max(-HEAD_LIMIT, head + turnRad));
+      } else {
+        pose.angle += turnRad;
+      }
       if (riding) {
         stepRide(map, pose, ride, move, dt, portals);
         const target = Math.min(1, Math.max(-1, move.turn + move.strafe));
@@ -226,6 +259,7 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       firstPersonView.boombox = riding ? false : localPlayer.boombox;
       firstPersonView.riding = riding;
       firstPersonView.steer = steer;
+      firstPersonView.head = head;
       firstPersonView.gesture = gesture.pose(now);
       return firstPersonView;
     },

@@ -602,6 +602,7 @@ describe('first person', () => {
     boombox: false,
     riding,
     steer: 0,
+    head: 0,
     step: { itemLift: 0, sway: 0 },
     gesture: { sip: 0, cheers: 0, wobble: 0 },
   });

@@ -63,6 +63,8 @@ export interface FirstPerson {
   riding: boolean;
   /** −1..1, eased: how far the handlebar is turned. */
   steer: number;
+  /** Radians the head is turned from the scooter's heading: the handlebar stays with the scooter. */
+  head: number;
   step: HeldStep;
   gesture: HeldPose;
 }
