@@ -7,6 +7,7 @@ import type { TouchSource } from '../input/touch';
 import { track } from '../telemetry/analytics';
 import { heldKeyAction } from '../ui/held-store';
 import { nextRenderMode, type RenderMode } from '../ui/render-settings';
+import { el } from '../ui/screens';
 import { showTouchControls, type TouchControls } from '../ui/touch-controls';
 import type { LocalPlayer } from './local-player';
 import { isConnected, type Room } from './room';
@@ -31,6 +32,8 @@ export interface RoomControls {
   refresh(): void;
   /** Whether the ball is within kick reach; the touch controls change only when it flips. */
   setKickInReach(inReach: boolean): void;
+  /** Whether a parked scooter is in reach on foot, and whether one is ridden: the hint and the touch button. */
+  setScooterState(inReach: boolean, riding: boolean): void;
 }
 
 export function createRoomControls(o: RoomControlsOptions): RoomControls {
@@ -38,7 +41,20 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
   let mapShown = false;
   let touchControls: TouchControls | null = null;
   let kickInReach = false;
+  let scooterInReach = false;
+  let riding = false;
+  /** Shown on the keyboard only: touch mode's CSS hides it, where the scooter button says as much. */
+  const rideHint = el('div', { className: 'ride-hint', textContent: 'E: ride' });
+  rideHint.hidden = true;
   const inRoom = () => isConnected(o.room());
+  const scooterButtonShown = () => scooterInReach || riding;
+
+  const toggleRide = () => {
+    const room = o.room();
+    if (room && inRoom()) {
+      room.ride.toggle(localPlayer.pose);
+    }
+  };
 
   const refresh = () =>
     touchControls?.update({
@@ -47,6 +63,7 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
       map: mapShown,
       lighting: o.renderMode(),
       kick: kickInReach,
+      scooter: scooterButtonShown(),
     });
 
   const toggleMap = () => {
@@ -99,6 +116,10 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
         e.preventDefault();
         togglePortals();
         break;
+      case 'ride':
+        e.preventDefault();
+        toggleRide();
+        break;
       case 'media':
         // The same as pressing the mic button or the self-view circle (feedback, a camera that can't start, a missing
         // device and all).
@@ -117,6 +138,8 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
       map: mapShown,
       lighting: o.renderMode(),
       kick: kickInReach,
+      scooter: scooterButtonShown(),
+      onScooter: toggleRide,
       onPick(item) {
         if (inRoom()) {
           o.chooseHeld(item);
@@ -179,6 +202,18 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
         kickInReach = inReach;
         refresh();
       }
+    },
+    setScooterState(inReach, isRiding) {
+      if (inReach === scooterInReach && isRiding === riding) {
+        return;
+      }
+      scooterInReach = inReach;
+      riding = isRiding;
+      if (!rideHint.isConnected) {
+        o.ui.append(rideHint);
+      }
+      rideHint.hidden = !inReach;
+      refresh();
     },
   };
 }

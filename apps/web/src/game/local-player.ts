@@ -5,6 +5,7 @@ import {
   type GameMap,
   type HeldItem,
   isDrink,
+  MOVE_SPEED,
   type MoveInput,
   type PlayerState,
   type Portals,
@@ -43,8 +44,18 @@ export interface LocalPlayer {
   boombox: boolean;
   /** Takes `item` in hand, or empties it with null; anything but a drink ends any gesture. False if already held. */
   hold(item: HeldItem | null): boolean;
-  /** With `portals` (the room's, while on) a step through a doorway comes out of its destination, turned with it. */
-  walk(map: GameMap, move: MoveInput, turnRad: number, dt: number, portals?: Portals | null): void;
+  /**
+   * With `portals` (the room's, while on) a step through a doorway comes out of its destination, turned with it.
+   * `forwardSpeed` is a scooter's while riding one.
+   */
+  walk(
+    map: GameMap,
+    move: MoveInput,
+    turnRad: number,
+    dt: number,
+    portals?: Portals | null,
+    forwardSpeed?: number
+  ): void;
   /** The camera picture's average colour at `now`, or null while the camera is off. */
   useCameraColour(colourAt: (now: number) => number | null): void;
   useCameraFace(camera: OwnCamera): void;
@@ -97,9 +108,9 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       }
       return true;
     },
-    walk(map, move, turnRad, dt, portals = null) {
+    walk(map, move, turnRad, dt, portals = null, forwardSpeed = MOVE_SPEED) {
       pose.angle += turnRad;
-      stepPlayer(map, pose, move, dt, pose, portals);
+      stepPlayer(map, pose, move, dt, pose, portals, forwardSpeed);
       step.update(pose.x, pose.y, dt);
     },
     useCameraColour(colourAt) {

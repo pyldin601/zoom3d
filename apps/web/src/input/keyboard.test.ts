@@ -42,15 +42,25 @@ describe('createInput', () => {
     expect(input.state().forward).toBe(-1);
   });
 
-  test('arrows and Q/E turn, A/D strafe', () => {
+  test('arrows turn, A/D strafe', () => {
     const { input, key } = setup();
     key('keydown', 'ArrowRight');
     expect(input.state().turn).toBe(1);
     key('keyup', 'ArrowRight');
-    key('keydown', 'KeyQ');
+    key('keydown', 'ArrowLeft');
     expect(input.state().turn).toBe(-1);
+    key('keyup', 'ArrowLeft');
     key('keydown', 'KeyD');
     expect(input.state().strafe).toBe(1);
+  });
+
+  test('Q and E no longer turn: E rides a scooter (room-keys.ts)', () => {
+    const { input, key } = setup();
+    key('keydown', 'KeyQ');
+    expect(input.state().turn).toBe(0);
+    key('keyup', 'KeyQ');
+    key('keydown', 'KeyE');
+    expect(input.state().turn).toBe(0);
   });
 
   test('window blur releases held keys', () => {

@@ -38,6 +38,8 @@ export interface RoomLoopOptions {
   showMap(): boolean;
   /** Every frame: whether the local player can kick the ball (for the touch kick button). */
   ballInReach(inReach: boolean): void;
+  /** Every frame: whether a parked scooter is in reach on foot, and whether the local player rides one. */
+  scooterState(inReach: boolean, riding: boolean): void;
 }
 
 export interface RoomLoop {
@@ -164,7 +166,8 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     // Consumed outside the room too, so a turn made before it doesn't land on the first frame in it.
     const turn = o.input.consumeMouseTurn();
     if (isConnected(o.room())) {
-      localPlayer.walk(o.map, o.input.state(), turn, dt, o.room()?.portals());
+      const room = o.room();
+      localPlayer.walk(o.map, o.input.state(), turn, dt, room?.portals(), room?.ride.forwardSpeed());
     }
   };
 
@@ -251,6 +254,11 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
         followSequence(room, now);
         stepBall(room, now, dt);
         placeEveryoneElse(room, now, dt);
+        const connected = isConnected(room);
+        o.scooterState(
+          connected && room.ride.inReach(localPlayer.pose, apparent),
+          connected && room.session.riding !== null
+        );
       } else {
         showCountdown(o.ui, null);
       }

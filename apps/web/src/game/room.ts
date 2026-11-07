@@ -22,6 +22,7 @@ import { createRoomTracker, type RoomTracker, withRoomTracker } from '../telemet
 import { botsParam } from '../ui/route';
 import { type BallPrediction, createBallPrediction } from './ball-prediction';
 import { createPortalSequence, type PortalSequencePlayer } from './portal-sequence';
+import { createScooterRide, type ScooterRide } from './scooter-ride';
 
 export interface Room {
   readonly session: Session;
@@ -48,6 +49,8 @@ export interface Room {
   lighting(dark: boolean): Lighting | null;
   /** Kicks the ball the way the local player faces, if it is in reach: at once here, and on to the server. */
   kick(): void;
+  /** Stepping on and off kick scooters, and the local player's speed on one. */
+  readonly ride: ScooterRide;
 }
 
 export interface JoinOptions {
@@ -84,8 +87,20 @@ export function joinRoom(opts: JoinOptions): Room {
   const call = createRoomCall(opts, audio);
   const tracker = createRoomTracker(track, () => performance.now());
   const ball = createBallPrediction(opts.map, () => portals());
-  const joined = connectSession(opts, call, tracker, objectSounds, lighterSounds, ball, () => portals());
+  // The session's listener settles a ride the session itself answers, so the ride is made once the session is.
+  let ride: ScooterRide | null = null;
+  const joined = connectSession(
+    opts,
+    call,
+    tracker,
+    objectSounds,
+    lighterSounds,
+    ball,
+    () => portals(),
+    () => ride?.settled()
+  );
   session = joined;
+  ride = createScooterRide(joined, () => performance.now());
   call.attach(joined);
   const boombox = createOwnBoombox(opts, call, joined);
   const kick = () => {
@@ -118,6 +133,7 @@ export function joinRoom(opts: JoinOptions): Room {
     switchSounds,
     lighting,
     kick,
+    ride,
   };
 }
 
@@ -144,7 +160,8 @@ function connectSession(
   sounds: ObjectSounds,
   lighterSounds: LighterSounds,
   ball: BallPrediction,
-  portals: () => Portals | null
+  portals: () => Portals | null,
+  ownRideSettled: () => void
 ): Session {
   const people = withRoomTracker(withDoorbell(call.listener, createDoorbell(opts.audioCtx)), tracker, () => session);
   const session: Session = createSession({
@@ -174,6 +191,11 @@ function connectSession(
         }
       },
       kickRefused: (k) => ball.refused(k, performance.now()),
+      peerRide: (id) => {
+        if (id === session.selfId()) {
+          ownRideSettled();
+        }
+      },
       objectsReset: (objects) => ball.reset(objects.find((o) => o.kind === 'ball') ?? null),
     },
   });

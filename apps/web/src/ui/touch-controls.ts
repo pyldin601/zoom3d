@@ -1,5 +1,6 @@
 // The room's touch controls (mobile spec §5): the move pad bottom-left, and bottom-right above the self-view a kick
-// button while the ball is in reach (ball spec §7), a drink button (tap to sip, hold to cheers) and a ⋯ button whose
+// button while the ball is in reach (ball spec §7), a scooter button while one is in reach or ridden (kick scooter
+// spec §4.3), a drink button (tap to sip, hold to cheers) and a ⋯ button whose
 // tray holds the occasional actions. DOM only: game/room-controls.ts
 // wires the handlers, and input/touch.ts reads the pad.
 import { type HeldItem, isDrink } from '@zoom3d/shared';
@@ -14,6 +15,8 @@ export interface TouchControlsState {
   lighting: RenderMode;
   /** The ball is within kick reach: the kick button shows. */
   kick: boolean;
+  /** A parked scooter is in reach, or the local player rides one: the scooter button shows. */
+  scooter: boolean;
 }
 
 export interface TouchControlsOptions extends TouchControlsState {
@@ -27,6 +30,7 @@ export interface TouchControlsOptions extends TouchControlsState {
   /** Steps to the next lighting mode; the new mode comes back through `update`. */
   onLighting(): void;
   onKick(): void;
+  onScooter(): void;
 }
 
 export interface TouchControls {
@@ -59,13 +63,16 @@ export function showTouchControls(root: HTMLElement, opts: TouchControlsOptions)
   const kick = iconButton('kick', 'Kick the ball', touchIcon('ball'));
   // On the press, not the click: a kick should land the moment the thumb does.
   kick.addEventListener('pointerdown', () => opts.onKick());
+  const scooter = iconButton('scooter', 'Ride a scooter', touchIcon('scooter'));
+  scooter.addEventListener('pointerdown', () => opts.onScooter());
   const drink = createDrinkButton(opts);
   const tray = createTray(opts);
-  const buttons = el('div', { className: 'touch-buttons' }, kick, drink.button, tray.more);
+  const buttons = el('div', { className: 'touch-buttons' }, kick, scooter, drink.button, tray.more);
   root.append(pad, tray.tray, buttons);
 
   const update = (s: TouchControlsState) => {
     kick.hidden = !s.kick;
+    scooter.hidden = !s.scooter;
     drink.update(s.held);
     tray.update(s);
   };
