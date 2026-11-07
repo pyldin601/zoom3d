@@ -166,3 +166,35 @@ What follows is the first version, kept as history.
 - How the sound manager is split between `object-sounds.ts` and a new file.
 
 The numbers in §4.1 and §4.4 are starting values for the owner to tune by playing.
+
+## 7. Amendment: the mouse turns the head, not the scooter (owner, 2026-11-07)
+
+This replaces §4.1's "the mouse and touch drags turn the scooter instantly". The owner first chose that, then asked
+for "no instant rotation, only turn head".
+
+- **While riding, the mouse and touch drags turn only the rider's head.** The head's angle is relative to the
+  scooter's heading, clamped to ±90° (owner), and stays where it is left (owner, over easing back). Only the steering
+  keys (A/D, the arrows, the pad's sides) turn the scooter, at the speed-limited key rate.
+- **What others see:** the pose sent to the server keeps the scooter's heading, so a ridden scooter points where it
+  is going. Faces are billboards, so the head shows nowhere else.
+- **What follows the head:**
+  - the camera (`eye` = heading + head);
+  - the spatial-audio listener;
+  - the apparent world;
+  - the own label;
+  - face subscription (what is in view);
+  - portal hums;
+  - a kick's direction.
+
+  Position-only uses (sampling peers, scooter reach) don't care.
+- **The handlebar** stays with the scooter. In first person it shifts sideways by where straight ahead would project
+  on screen, so it slides out of view as the head turns past half the field of view.
+- **Stepping off:** the body turns to face where the head looked (`pose.angle += head`), and the head returns to 0.
+  Stepping on starts with the head straight. Portals carry the heading and leave the head as it is.
+- **Tests:**
+  - riding, a mouse turn changes the eye but not `pose.angle`;
+  - the head clamps at ±90°;
+  - the head stays after the mouse stops;
+  - stepping off faces the look;
+  - on foot, the mouse turns `pose.angle` as before;
+  - the handlebar is off screen at 90°.
