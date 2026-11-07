@@ -898,5 +898,26 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     renaming in place (a new message for every client). Giving up the only person's place keeps the room, its vacuum
     and ball: a room is opened only when it isn't open yet.
 
+### D36 — Kick scooters
+- *Resolved 2026-11-07* ([spec](superpowers/specs/2026-11-07-kick-scooter-design.md)): every room has a rack of 4 kick
+  scooters beside the spawn. E steps on the nearest one within a tile and off again (a Scooter button in touch mode).
+  Riding goes forward at 6 tiles/s, twice walking; backing up, sidestepping and turning stay as on foot.
+  - **Parked in the room, left where dropped** (owner, over a personal scooter on a key and over returning to the rack).
+    Leaving the room, or a restart, parks it where its rider stood; a reload within the grace comes back riding.
+  - **A ridden scooter is its rider's, not an object** (owner, over a world object that follows its rider): stepping on
+    removes it from the room's objects and sets `PeerInfo.riding`; stepping off puts it back at the rider's pose. One
+    message, `peer_ride`, does both, so `PROTOCOL_VERSION` is 6. Clients draw it from the rider's own drawn pose, so the
+    two can't drift apart; the parked ones are ordinary voxel objects, with lamp shadows and the floor mirror.
+  - **E, and Q/E no longer turn** (owner, 2026-11-07, over F): turning is the mouse and the arrow keys.
+  - **The server** accepts a mount within a tile plus 0.5 tiles of slack (it sees the rider a tick late), checks moves
+    against the ride speed while riding and for 1 s after stepping off (poses in flight), and keeps the ball's body
+    push at walking × 1.5, so a rider kicks no harder than a fast walker. Bots never ride.
+  - **Builder's calls:** the deck is 0.1 tiles high (two voxels; the spec guessed 0.06) and riders don't bob; an object
+    at a person's exact depth is drawn under them (the stem covered the rider's face); E takes the scooter nearest where
+    it appeared in the last frame (through portals too).
+  - **Left out:** sounds, scooters on the automap, a first-person handlebar, coasting, collisions with parked scooters.
+  - **Measured** (2026-11-07): every existing `bench:walls` and `bench:sprites` hash is unchanged; the new scooter scene
+    hashes -79513717.
+
 ## Resolved
 _(none yet)_

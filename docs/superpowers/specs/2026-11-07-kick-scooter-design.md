@@ -1,6 +1,6 @@
 # Kick scooters
 
-Date: 2026-11-07. Status: draft, awaiting the owner's approval.
+Date: 2026-11-07. Status: approved by the owner 2026-11-07; built (D36).
 
 ## 1. Intent
 
