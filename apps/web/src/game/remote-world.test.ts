@@ -346,6 +346,39 @@ describe('scooters', () => {
   });
 });
 
+describe('headlights', () => {
+  test('a rider gets a headlight at their drawn position and heading; a walker gets none', () => {
+    const world = createRemoteWorld();
+    room.addPeer('ada', 2, 3);
+    room.addPeer('bob', 5, 3);
+    const ada = room.peers.get('ada');
+    if (!ada) {
+      throw new Error('no ada');
+    }
+    ada.info.riding = 's1';
+    ada.buffer = new SnapshotBuffer();
+    ada.buffer.push({ t: 0, x: 2, y: 3, angle: 1.2 });
+    world.sample(room.session, player, NOW);
+    world.collect(room.session, media, NOW, 0);
+    expect(world.headlights).toEqual([{ key: 'ada', x: 2, y: 3, angle: 1.2 }]);
+    ada.info.riding = null;
+    world.collect(room.session, media, NOW, 0);
+    expect(world.headlights).toEqual([]);
+  });
+
+  test('a rider not yet drawn gets none', () => {
+    const world = createRemoteWorld();
+    room.addPeer('ada', 2, 3);
+    const ada = room.peers.get('ada');
+    if (!ada) {
+      throw new Error('no ada');
+    }
+    ada.info.riding = 's1';
+    world.collect(room.session, media, NOW, 0);
+    expect(world.headlights).toEqual([]);
+  });
+});
+
 describe('items put away while riding', () => {
   test('a rider shows no drink, boombox or lighter, and stepping off brings them back', () => {
     const world = createRemoteWorld();

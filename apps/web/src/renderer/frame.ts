@@ -6,6 +6,7 @@ import { type AutomapPeer, drawAutomap } from './automap';
 import { createView, type Pass, setView, WHOLE_FRAME, WINDOW_LEVELS } from './camera';
 import { createFramebuffer, type Framebuffer } from './framebuffer';
 import { createAvatarGlows, createPortalGlows, type Glow, type GlowSource } from './glow';
+import { createHeadlightGlows, type HeadlightSource } from './headlight';
 import { drawLabels, type NameLabel } from './labels';
 import { createLighterGlows, type LighterSource } from './lighter';
 import type { ReflectionMode } from './lighting';
@@ -41,6 +42,10 @@ export interface RoomScene extends PassScene {
   ownLighter: LighterSource | null;
   /** The lighters flicker with this, s. */
   lighterSeconds: number;
+  /** Everyone else riding a scooter: each headlight lights the way ahead of them (scooter headlight spec). */
+  headlights: readonly HeadlightSource[];
+  /** The local player's own headlight, while they ride. */
+  ownHeadlight: HeadlightSource | null;
   /**
    * The local player's own disc, at their own spot: only windows draw it, as the eye stands there. Null with portals
    * off or out of the room.
@@ -72,13 +77,15 @@ export interface FirstPerson {
 const avatarGlows = createAvatarGlows();
 const portalGlows = createPortalGlows();
 const lighterGlows = createLighterGlows();
-const NO_GLOWS: readonly Glow[] = [];
+const headlightGlows = createHeadlightGlows();
 /** The avatar glows, the lighters' then the portal glows, when portals are on: one list reused from frame to frame. */
 const allGlows: Glow[] = [];
-/** This frame's lighter glows: besides the room, they light the objects. */
-let objectGlows: readonly Glow[] = [];
+/** This frame's lighter then headlight glows: besides the room, they light the objects. Reused from frame to frame. */
+const objectGlows: Glow[] = [];
 /** The scene's lighters, then the own one: one list reused from frame to frame. */
 const lighterSources: LighterSource[] = [];
+/** The scene's headlights, then the own one: one list reused from frame to frame. */
+const headlightSources: HeadlightSource[] = [];
 
 /** One level of windows: the frame they are drawn into, at the frame's size, and the scene they are drawn from. */
 interface WindowLevel {
@@ -150,17 +157,15 @@ function listWindowObjects(objects: readonly VoxelInstance[], own: VoxelInstance
 }
 
 /**
- * Everything that glows this frame: the avatars, the lighters (only in a lit room: their shadow tables cost) and,
- * with portals on, the doorways.
+ * Everything that glows this frame: the avatars, the lighters and headlights (only in a lit room: their shadow tables
+ * cost) and, with portals on, the doorways.
  */
 function gatherGlows(scene: RoomScene): readonly Glow[] {
   let count = 0;
   for (const g of avatarGlows.update(scene.people, scene.ownGlow)) {
     allGlows[count++] = g;
   }
-  objectGlows = scene.lighting
-    ? lighterGlows.update(listLighters(scene), scene.map, scene.portals ?? null, scene.lighterSeconds)
-    : NO_GLOWS;
+  gatherObjectGlows(scene);
   for (const g of objectGlows) {
     allGlows[count++] = g;
   }
@@ -171,6 +176,33 @@ function gatherGlows(scene: RoomScene): readonly Glow[] {
   }
   allGlows.length = count;
   return allGlows;
+}
+
+/** The lighters' then the headlights' glows into `objectGlows`; none in an unlit room. */
+function gatherObjectGlows(scene: RoomScene): void {
+  let count = 0;
+  if (scene.lighting) {
+    const portals = scene.portals ?? null;
+    for (const g of lighterGlows.update(listLighters(scene), scene.map, portals, scene.lighterSeconds)) {
+      objectGlows[count++] = g;
+    }
+    for (const g of headlightGlows.update(listHeadlights(scene), scene.map, portals)) {
+      objectGlows[count++] = g;
+    }
+  }
+  objectGlows.length = count;
+}
+
+function listHeadlights(scene: RoomScene): readonly HeadlightSource[] {
+  let count = 0;
+  for (const source of scene.headlights) {
+    headlightSources[count++] = source;
+  }
+  if (scene.ownHeadlight) {
+    headlightSources[count++] = scene.ownHeadlight;
+  }
+  headlightSources.length = count;
+  return headlightSources;
 }
 
 function listLighters(scene: RoomScene): readonly LighterSource[] {

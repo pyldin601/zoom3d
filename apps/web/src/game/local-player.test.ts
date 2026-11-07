@@ -84,6 +84,15 @@ test('the own lighter: none with a drink or nothing in hand, else where the play
   });
 });
 
+test('on foot there is no headlight', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  expect(localPlayer.headlight()).toBeNull();
+  localPlayer.riding = true;
+  expect(localPlayer.headlight()).not.toBeNull();
+  localPlayer.riding = false;
+  expect(localPlayer.headlight()).toBeNull();
+});
+
 test('the own face is read only while a window shows the own disc, keeping the last one between', () => {
   const localPlayer = createLocalPlayer(MAP, () => 0.5);
   let reads = 0;
@@ -295,6 +304,19 @@ describe('the head while riding', () => {
     expect(localPlayer.pose.angle).toBe(heading);
     expect(localPlayer.head).toBeCloseTo(0.5);
     expect(localPlayer.eye().angle).toBeCloseTo(heading + 0.5);
+  });
+
+  test('the headlight follows the heading, not the head', () => {
+    const localPlayer = riding();
+    const heading = localPlayer.pose.angle;
+    localPlayer.walk(MAP, STILL, 1, 0.016);
+    expect(localPlayer.head).toBeCloseTo(1);
+    expect(localPlayer.headlight()).toEqual({
+      key: OWN_SPRITE_KEY,
+      x: localPlayer.pose.x,
+      y: localPlayer.pose.y,
+      angle: heading,
+    });
   });
 
   test('the head stops at 90° each way', () => {

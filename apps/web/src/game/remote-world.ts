@@ -13,6 +13,7 @@ import {
 import { nearTier } from '../net/peer-delay';
 import { objectKey, type RemotePeer, type Session } from '../net/session';
 import { type Bob, createBob } from '../renderer/bob';
+import type { HeadlightSource } from '../renderer/headlight';
 import type { LighterSource } from '../renderer/lighter';
 import { BALL_MODEL } from '../renderer/models/ball';
 import { SCOOTER_DECK_TILES, SCOOTER_MODEL } from '../renderer/models/scooter';
@@ -56,6 +57,8 @@ export interface RemoteWorld {
   readonly voxels: readonly VoxelInstance[];
   /** This frame's lit lighters, from `collect`: everyone holding one and where they stand. Reused objects. */
   readonly lighters: readonly LighterSource[];
+  /** This frame's riders' headlights, from `collect`: where each rider is drawn and the scooter's heading. */
+  readonly headlights: readonly HeadlightSource[];
   /**
    * Samples every peer's and object's position at `now`: every frame, and from the hidden-tab ticker. The ball is the
    * one object not drawn from its buffer: it is where the client's prediction has it, in the present (ball spec §3.3).
@@ -75,6 +78,7 @@ interface PeerRecord {
   sprite: Sprite;
   label: PeerLabel;
   lighter: { key: string; x: number; y: number };
+  headlight: { key: string; x: number; y: number; angle: number };
 }
 
 /** The ball as this client shows it: where it is predicted, its mood and how high it is drawn (BallPrediction). */
@@ -98,6 +102,7 @@ export function createRemoteWorld(): RemoteWorld {
   const sprites: Sprite[] = [];
   const labels: PeerLabel[] = [];
   const lighters: LighterSource[] = [];
+  const headlights: HeadlightSource[] = [];
   const voxels: VoxelInstance[] = [];
   const at = { x: 0, y: 0, angle: 0 };
   let atLift = 0;
@@ -184,6 +189,7 @@ export function createRemoteWorld(): RemoteWorld {
         sprite: blankSprite(id),
         label: { x: 0, y: 0, shownX: 0, shownY: 0, color: '', name: '', mic: false },
         lighter: { key: id, x: 0, y: 0 },
+        headlight: { key: id, x: 0, y: 0, angle: 0 },
       };
       records.set(id, record);
     }
@@ -204,19 +210,26 @@ export function createRemoteWorld(): RemoteWorld {
     }
     let n = 0;
     let lit = 0;
+    let riders = 0;
     for (const peer of s.peers.values()) {
       const id = peer.info.id;
       const pos = positions.get(id);
       if (!pos) {
         continue;
       }
-      const { bob, sprite, label, lighter } = recordOf(id);
+      const { bob, sprite, label, lighter, headlight } = recordOf(id);
       bob.update(pos.x, pos.y, dt);
       // Both hands are on the handlebar while riding: the lighter is put away.
       if (peer.info.held === 'lighter' && peer.info.riding === null) {
         lighter.x = pos.x;
         lighter.y = pos.y;
         lighters[lit++] = lighter;
+      }
+      if (peer.info.riding !== null) {
+        headlight.x = pos.x;
+        headlight.y = pos.y;
+        headlight.angle = headings.get(id) ?? 0;
+        headlights[riders++] = headlight;
       }
       fillSprite(sprite, peer, pos, bob, media, now);
       fillLabel(label, peer, pos, apparent?.get(id) ?? pos);
@@ -228,6 +241,7 @@ export function createRemoteWorld(): RemoteWorld {
     sprites.length = n;
     labels.length = n;
     lighters.length = lit;
+    headlights.length = riders;
   };
 
   /** Puts a model at `voxels[n]`, reusing the instance there. */
@@ -267,6 +281,7 @@ export function createRemoteWorld(): RemoteWorld {
     labels,
     voxels,
     lighters,
+    headlights,
     sample(s, player, now, ball = null, portals = null) {
       forgetGone(s);
       sampleObjects(s, now, ball);

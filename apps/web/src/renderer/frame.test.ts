@@ -76,6 +76,8 @@ describe('renderView without portals', () => {
     ownGlow: { x: sx, y: sy, face: null, color: rgb(250, 220, 120) },
     lighters: [],
     ownLighter: null,
+    headlights: [],
+    ownHeadlight: null,
     lighterSeconds: 0,
     self: null,
     ownScooter: null,
@@ -158,6 +160,47 @@ describe('renderView with a lighter', () => {
   });
 });
 
+describe('renderView with a headlight', () => {
+  // The lighter's dark corridor, with a wall across it at x = 6.
+  const map = parseMap(`
+1111111111111
+1S....1.....1
+1111111111111
+`);
+  const dark = bakeLighting(map, [], 0.08, FLOOR, CEILING);
+  const EAST = 0;
+  const WEST = Math.PI;
+  const rider = { key: 'r', x: 2.5, y: 1.5, angle: EAST };
+  const frameOf = (eye: PlayerState, headlights: RoomScene['headlights'], lighting: Lighting | null = dark) => {
+    const fb = createFramebuffer();
+    renderView(fb, { ...portalScene(map, null, eye, [], lighting), headlights });
+    return fb.pixels;
+  };
+
+  test('the way ahead of a rider is lit', () => {
+    const eye = { x: 1.5, y: 1.5, angle: EAST };
+    const red = (pixels: Uint32Array) => pixels.reduce((sum, c) => sum + (c & 0xff), 0);
+    expect(red(frameOf(eye, [rider]))).toBeGreaterThan(red(frameOf(eye, [])));
+  });
+
+  test('what lies behind the rider stays dark', () => {
+    const eye = { x: 5.4, y: 1.5, angle: WEST };
+    expect(firstDifference(frameOf(eye, []), frameOf(eye, [{ ...rider, x: 5.5 }]))).toBe(-1);
+  });
+
+  test('an unlit room gets no headlight', () => {
+    const eye = { x: 1.5, y: 1.5, angle: EAST };
+    expect(firstDifference(frameOf(eye, [], null), frameOf(eye, [rider], null))).toBe(-1);
+  });
+
+  test("the local player's own headlight lights the way ahead too", () => {
+    const eye = { x: 1.5, y: 1.5, angle: EAST };
+    const fb = createFramebuffer();
+    renderView(fb, { ...portalScene(map, null, eye, [], dark), ownHeadlight: { ...rider, x: 1.5 } });
+    expect(firstDifference(frameOf(eye, []), fb.pixels)).toBeGreaterThanOrEqual(0);
+  });
+});
+
 const SOUTH = Math.PI / 2;
 const RED = rgb(255, 0, 0);
 const BLACK = 0xff000000;
@@ -188,6 +231,8 @@ function portalScene(
     ownGlow: null,
     lighters: [],
     ownLighter: null,
+    headlights: [],
+    ownHeadlight: null,
     lighterSeconds: 0,
     self: null,
     ownScooter: null,

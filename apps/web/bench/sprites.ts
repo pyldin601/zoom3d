@@ -166,6 +166,8 @@ function drawWholeFrame(state: 'off' | 'on', s: Scene): void {
     ownGlow: null,
     lighters: [],
     ownLighter: null,
+    headlights: [],
+    ownHeadlight: null,
     lighterSeconds: 0,
     self: null,
     ownScooter: null,
