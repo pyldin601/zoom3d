@@ -898,10 +898,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     renaming in place (a new message for every client). Giving up the only person's place keeps the room, its vacuum
     and ball: a room is opened only when it isn't open yet.
 
-### D36 — Kick scooters
-- *Resolved 2026-11-07* ([spec](superpowers/specs/2026-11-07-kick-scooter-design.md)): every room has a rack of 4 kick
+### D36 — Kick scooters, then electric
+- *Resolved 2026-11-07* ([spec](superpowers/specs/2026-11-07-kick-scooter-design.md)): every room has a rack of 4
   scooters beside the spawn. E steps on the nearest one within a tile and off again (a Scooter button in touch mode).
-  Riding goes forward at 6 tiles/s, twice walking; backing up, sidestepping and turning stay as on foot.
+  Their top speed is 6 tiles/s, twice walking.
   - **Parked in the room, left where dropped** (owner, over a personal scooter on a key and over returning to the rack).
     Leaving the room, or a restart, parks it where its rider stood; a reload within the grace comes back riding.
   - **A ridden scooter is its rider's, not an object** (owner, over a world object that follows its rider): stepping on
@@ -915,9 +915,25 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Builder's calls:** the deck is 0.1 tiles high (two voxels; the spec guessed 0.06) and riders don't bob; an object
     at a person's exact depth is drawn under them (the stem covered the rider's face); E takes the scooter nearest where
     it appeared in the last frame (through portals too).
-  - **Left out:** sounds, scooters on the automap, a first-person handlebar, coasting, collisions with parked scooters.
-  - **Measured** (2026-11-07): every existing `bench:walls` and `bench:sprites` hash is unchanged; the new scooter scene
-    hashes -79513717.
+  - **Electric** (owner, 2026-11-07, the same day; [spec](superpowers/specs/2026-11-07-electric-scooter-riding-design.md)):
+    the scooters have motors, so riding has its own physics (`game/scooter-physics.ts`, on the rider's screen only).
+    W is the throttle (4 tiles/s², 0 to 6 in 1.5 s); let go, it coasts (−1.5 tiles/s², about 4 s from full speed); S
+    brakes (−10 tiles/s²), then backs up at up to 1 tile/s. No strafing: A/D steer like the arrows, 60% as fast at full
+    speed; the mouse turns it instantly (owner, over capping the mouse and over a separate look direction). A wall
+    within 20° of head-on stops it dead; scraping one slows it at the brake rate. Stepping on starts at rest.
+    - **Items put away** (owner): a rider's drink, boombox and lighter light are hidden on every screen, never sent as
+      `held: null`; the choice comes back on stepping off, the music keeps playing, and sip keys do nothing.
+    - **A handlebar in first person**, tilting and shifting with the steering keys. Riders never bob (the owner chose
+      motion over a flag for showing kicks; then the scooters went electric and kicks went).
+    - **A motor whine** (owner: only while moving, subtle): two detuned sawtooths, 180 Hz at a crawl to 720 Hz at full
+      speed, silent below 0.3 tiles/s, 30% louder while speeding up, at the vacuum's level. Others hear it from the
+      rider, worked out from their drawn motion (no protocol change); the rider hears their own unplaced.
+    - **A glowing headlight** on the stem and a battery under the deck; looks only.
+    - Starting values, for the owner to tune by riding. Not heard in the game by the builder.
+  - **Left out:** chirps or an idle hum, a headlight that lights the room, the battery running out, scooters on the
+    automap, collisions with parked scooters.
+  - **Measured** (2026-11-07): every existing `bench:walls` and `bench:sprites` hash is unchanged; the scooter scene
+    (with the headlight) hashes 1461280563.
 
 ## Resolved
 _(none yet)_

@@ -52,7 +52,7 @@ async function walkTo(page: Page, x: number, y: number): Promise<void> {
   );
 }
 
-test('a scooter is ridden from the rack at twice walking pace and left where its rider steps off', async ({
+test('a scooter is ridden from the rack, speeds up, rolls on, and is left where its rider steps off', async ({
   browser,
 }) => {
   const a = await (await browser.newContext()).newPage();
@@ -67,6 +67,9 @@ test('a scooter is ridden from the rack at twice walking pace and left where its
   if (!first) {
     throw new Error('no rack');
   }
+  // The spawn is random near S, where a straight line to the rack can clip a wall corner: reach the rack's row first.
+  const spawnX = await a.evaluate(() => (window as unknown as GameWindow).__game.player.x);
+  await walkTo(a, spawnX, first.y);
   await walkTo(a, first.x - 0.7, first.y);
   await expect(a.locator('.ride-hint')).toBeVisible();
   await a.keyboard.press('e');
@@ -78,20 +81,24 @@ test('a scooter is ridden from the rack at twice walking pace and left where its
   await a.evaluate(() => {
     (window as unknown as GameWindow).__game.player.angle = Math.PI;
   });
-  const startX = await a.evaluate(() => (window as unknown as GameWindow).__game.player.x);
+  const playerX = () => a.evaluate(() => (window as unknown as GameWindow).__game.player.x);
+  const startX = await playerX();
   await a.keyboard.down('w');
   await a.waitForTimeout(1000);
   await a.keyboard.up('w');
-  const endX = await a.evaluate(() => (window as unknown as GameWindow).__game.player.x);
-  expect(startX - endX).toBeGreaterThan(4.5);
-  // Not corrected back: the server accepted the ride.
+  const throttledX = await playerX();
+  // Electric: the motor takes 1.5 s to reach 6 tiles/s, so a second of throttle covers about 2 tiles, and walking 3.
+  expect(startX - throttledX).toBeGreaterThan(1.5);
+  expect(startX - throttledX).toBeLessThan(6);
+  // Let go, it rolls on.
   await a.waitForTimeout(500);
-  const settledX = await a.evaluate(() => (window as unknown as GameWindow).__game.player.x);
-  expect(settledX).toBeCloseTo(endX, 1);
+  const coastedX = await playerX();
+  expect(throttledX - coastedX).toBeGreaterThan(0.3);
 
   await a.keyboard.press('e');
   await expect.poll(() => riding(a)).toBeNull();
   await expect.poll(() => parked(b)).toHaveLength(4);
-  const left = (await parked(b)).find((s) => Math.abs(s.x - settledX) < 0.3);
+  const stoppedX = await playerX();
+  const left = (await parked(b)).find((s) => Math.abs(s.x - stoppedX) < 0.5);
   expect(left).toBeDefined();
 });
