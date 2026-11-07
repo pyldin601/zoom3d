@@ -71,7 +71,7 @@ means backing up). All values are starting values, to be tuned by playing.
 - **Walls** (builder's call, after the builder check; frame-rate independent):
   - the step is the speed along the heading, passed through `moveWithCollision`, which slides along a wall on the free
     axis;
-  - head-on means the step was blocked on both axes, or the angle between the heading and the wall is under 20°. Then
+  - head-on means the step was blocked on both axes, or the heading is within 20° of the wall's normal. Then
     the scooter stops dead: `speed = 0`;
   - otherwise, scraping along a wall (one axis blocked), the speed falls at the braking rate (10 tiles/s²) for as long
     as it scrapes, so a long scrape slows it to a stop;
