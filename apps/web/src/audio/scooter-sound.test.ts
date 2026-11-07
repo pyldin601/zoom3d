@@ -56,9 +56,17 @@ describe('createScooterSound', () => {
     expect(levels.at(-1)?.gain.targets.at(-1)).toEqual([1, ctx.currentTime, 0.1]);
   });
 
-  test('dispose stops it', () => {
+  test('stopping a whine fades it out before the oscillators stop, so it never clicks', () => {
     const s = createScooterSound(asAudioContext(ctx));
+    s.set(6, false);
     s.dispose();
-    expect(saws().every((o) => (o as unknown as { stoppedAt: number | null }).stoppedAt !== null)).toBe(true);
+    const level = (ctx.byKind('gain') as unknown as (FakeNode & { gain: FakeParam })[]).find(
+      (g) => g.gain.targets.length > 0
+    );
+    expect(level?.gain.targets.at(-1)?.[0]).toBe(0);
+    const saws = ctx.byKind('oscillator') as unknown as { stoppedAt: number | null }[];
+    for (const o of saws) {
+      expect(o.stoppedAt).toBeGreaterThan(ctx.currentTime);
+    }
   });
 });

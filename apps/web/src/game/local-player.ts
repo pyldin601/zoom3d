@@ -51,6 +51,8 @@ export interface LocalPlayer {
   riding: boolean;
   /** The scooter's motion while riding (scooter-physics.ts). */
   readonly ride: RideState;
+  /** Off while riding: both hands are on the handlebar, so no sip or cheers may start, even from a press made on foot. */
+  readonly handsFree: boolean;
   /** Takes `item` in hand, or empties it with null; anything but a drink ends any gesture. False if already held. */
   hold(item: HeldItem | null): boolean;
   /**
@@ -126,6 +128,9 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       riding = on;
     },
     ride,
+    get handsFree() {
+      return !riding;
+    },
     hold(item) {
       if (item === heldItem) {
         return false;

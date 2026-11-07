@@ -59,7 +59,11 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     surfaceWidth: () => page.game.clientWidth,
   });
   const input = createInput(window, document, touch);
-  const drinkKey = createDrinkKey({ gesture: localPlayer.gesture, canGesture: inRoom, onGesture: sendGesture });
+  const drinkKey = createDrinkKey({
+    gesture: localPlayer.gesture,
+    canGesture: () => inRoom() && localPlayer.handsFree,
+    onGesture: sendGesture,
+  });
 
   let room: Room | null = null;
   const backtickConsole = createBacktickConsole(page.ui, {

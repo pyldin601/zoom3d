@@ -273,3 +273,10 @@ test('riding, the handlebar eases toward the steering and rests on foot', () => 
   localPlayer.walk(MAP, { forward: 0, strafe: 1, turn: 0 }, 0, 0.1);
   expect(localPlayer.firstPerson(0).steer).toBe(0);
 });
+
+test('hands are free on foot, and on the handlebar while riding: no sip or cheers may start', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  expect(localPlayer.handsFree).toBe(true);
+  localPlayer.riding = true;
+  expect(localPlayer.handsFree).toBe(false);
+});

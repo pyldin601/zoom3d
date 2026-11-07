@@ -105,8 +105,8 @@ means backing up). All values are starting values, to be tuned by playing.
 
 ### 4.4 The motor's whine (`apps/web/src/audio/scooter-sound.ts`, plus a per-rider manager)
 
-- **Synthesis:** two slightly detuned oscillators (sawtooth, a few cents apart) through a band-pass filter, plus a
-  faint high harmonic, all synthesised like the vacuum.
+- **Synthesis:** two slightly detuned oscillators (sawtooth, a few cents apart) through a band-pass filter,
+  synthesised like the vacuum. (A faint high harmonic was dropped in building: the two sawtooths carry enough.)
   - Pitch from speed: 180 Hz at a crawl, rising to 720 Hz at `RIDE_SPEED`.
   - Level: proportional to speed, silent below 0.3 tiles/s, and 30% louder while speeding up.
   - Every change is smoothed (time constant about 0.1 s), so it never clicks.

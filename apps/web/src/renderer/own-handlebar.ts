@@ -36,9 +36,14 @@ export function renderOwnHandlebar(fb: Framebuffer, steer: number): void {
   blitHeldSprite(fb, STEM, centre - t, barTop + t, t, OVER_EVERYTHING);
   const half = (BAR_WIDTH - 1) / 2;
   const left = centre - (BAR_WIDTH / 2) * t;
-  BAR_COLUMNS.forEach((column, u) => {
+  // A loop, not forEach: drawn every frame, and a callback would be a new closure each time.
+  for (let u = 0; u < BAR_COLUMNS.length; u++) {
+    const column = BAR_COLUMNS.at(u);
+    if (!column) {
+      continue;
+    }
     // Steering right drops the right grip and lifts the left one, the bar sloping evenly between them.
     const drop = (steer * HANDLEBAR_TILT_TEXELS * t * (u - half)) / half;
     blitHeldSprite(fb, column, left + u * t, barTop + drop, t, OVER_EVERYTHING);
-  });
+  }
 }

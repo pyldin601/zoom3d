@@ -14,6 +14,8 @@ const SPEEDING_UP_BOOST = 1.3;
 const DETUNE = 1.004;
 /** Pitch and level glide with this time constant, so a change never clicks. */
 const GLIDE_S = 0.1;
+/** A stopped whine fades for this many glide constants (under 1% left) before its oscillators stop. */
+const FADE_GLIDES = 5;
 
 export function whinePitchHz(speed: number): number {
   return CRAWL_HZ + (TOP_HZ - CRAWL_HZ) * Math.min(Math.abs(speed) / RIDE_SPEED, 1);
@@ -69,10 +71,12 @@ export function createScooterSound(ctx: BaseAudioContext): ScooterSound {
       level.gain.setTargetAtTime(whineLevel(speed, speedingUp), t, GLIDE_S);
     },
     dispose() {
+      const t = ctx.currentTime;
+      level.gain.setTargetAtTime(0, t, GLIDE_S);
+      low.onended = () => master.disconnect();
       for (const o of oscillators) {
-        o.stop();
+        o.stop(t + FADE_GLIDES * GLIDE_S);
       }
-      master.disconnect();
     },
   };
 }
