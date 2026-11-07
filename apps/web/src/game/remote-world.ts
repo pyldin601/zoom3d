@@ -16,7 +16,7 @@ import { type Bob, createBob } from '../renderer/bob';
 import type { HeadlightSource } from '../renderer/headlight';
 import type { LighterSource } from '../renderer/lighter';
 import { BALL_MODEL } from '../renderer/models/ball';
-import { SCOOTER_DECK_TILES, SCOOTER_MODEL } from '../renderer/models/scooter';
+import { RIDDEN_SCOOTER_MODEL, SCOOTER_DECK_TILES, SCOOTER_MODEL } from '../renderer/models/scooter';
 import { VACUUM_MODEL } from '../renderer/models/vacuum';
 import { gesturePose } from '../renderer/sip';
 import { ringRgb, type Sprite } from '../renderer/sprites';
@@ -268,7 +268,7 @@ export function createRemoteWorld(): RemoteWorld {
     for (const peer of s.peers.values()) {
       const pos = peer.info.riding === null ? undefined : positions.get(peer.info.id);
       if (pos) {
-        placeVoxel(n++, SCOOTER_MODEL, pos.x, pos.y, headings.get(peer.info.id) ?? 0, 0);
+        placeVoxel(n++, RIDDEN_SCOOTER_MODEL, pos.x, pos.y, headings.get(peer.info.id) ?? 0, 0);
       }
     }
     voxels.length = n;

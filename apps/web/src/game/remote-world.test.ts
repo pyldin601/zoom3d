@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, test } from 'vitest';
 import { FAR_DELAY_MS, PeerDelay } from '../net/peer-delay';
 import { objectKey, type RemoteObject, type RemotePeer, type Session } from '../net/session';
 import { BALL_MODEL } from '../renderer/models/ball';
-import { SCOOTER_DECK_TILES, SCOOTER_MODEL } from '../renderer/models/scooter';
+import { RIDDEN_SCOOTER_MODEL, SCOOTER_DECK_TILES, SCOOTER_MODEL } from '../renderer/models/scooter';
 import { VACUUM_MODEL } from '../renderer/models/vacuum';
 import { hexToRgb } from '../renderer/sprites';
 import { createRemoteWorld, type PeerMedia, type ShownBall } from './remote-world';
@@ -308,7 +308,7 @@ describe('scooters', () => {
     world.sample(room.session, player, NOW);
     world.collect(room.session, media, NOW, 0.1);
     expect(world.voxels).toHaveLength(1);
-    expect(world.voxels.at(0)).toMatchObject({ model: SCOOTER_MODEL, x: 2, y: 3, angle: 1.5, lift: 0 });
+    expect(world.voxels.at(0)).toMatchObject({ model: RIDDEN_SCOOTER_MODEL, x: 2, y: 3, angle: 1.5, lift: 0 });
     expect(world.sprites.at(0)).toMatchObject({ bob: 0, itemBob: 0, ride: SCOOTER_DECK_TILES });
   });
 
@@ -361,6 +361,7 @@ describe('headlights', () => {
     world.sample(room.session, player, NOW);
     world.collect(room.session, media, NOW, 0);
     expect(world.headlights).toEqual([{ key: 'ada', x: 2, y: 3, angle: 1.2 }]);
+    expect(world.voxels.map((v) => v.model)).toEqual([RIDDEN_SCOOTER_MODEL]);
     ada.info.riding = null;
     world.collect(room.session, media, NOW, 0);
     expect(world.headlights).toEqual([]);

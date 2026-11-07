@@ -16,7 +16,7 @@ import type { FirstPerson } from '../renderer/frame';
 import type { GlowSource } from '../renderer/glow';
 import type { HeadlightSource } from '../renderer/headlight';
 import type { LighterSource } from '../renderer/lighter';
-import { SCOOTER_DECK_TILES, SCOOTER_MODEL } from '../renderer/models/scooter';
+import { RIDDEN_SCOOTER_MODEL, SCOOTER_DECK_TILES } from '../renderer/models/scooter';
 import { createGestureClock, type GestureClock } from '../renderer/sip';
 import { ringRgb, type Sprite } from '../renderer/sprites';
 import type { VoxelInstance } from '../renderer/voxels';
@@ -114,7 +114,7 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
   let steer = 0;
   let head = 0;
   const eyePose: PlayerState = { x: 0, y: 0, angle: 0 };
-  const ownScooter: VoxelInstance = { model: SCOOTER_MODEL, x: 0, y: 0, angle: 0, lift: 0 };
+  const ownScooter: VoxelInstance = { model: RIDDEN_SCOOTER_MODEL, x: 0, y: 0, angle: 0, lift: 0 };
   const firstPersonView: FirstPerson = {
     held: null,
     boombox: false,

@@ -12,7 +12,7 @@ import { createFramebuffer, rgb } from '../src/renderer/framebuffer';
 import { GLOW_RADIUS, type Glow } from '../src/renderer/glow';
 import { bakeLighting, bakePortalLighting, corridorLights } from '../src/renderer/lighting';
 import { BALL_MODEL } from '../src/renderer/models/ball';
-import { SCOOTER_DECK_TILES, SCOOTER_MODEL } from '../src/renderer/models/scooter';
+import { RIDDEN_SCOOTER_MODEL, SCOOTER_DECK_TILES, SCOOTER_MODEL } from '../src/renderer/models/scooter';
 import { VACUUM_MODEL } from '../src/renderer/models/vacuum';
 import { type PeopleAndObjects, renderSprites, type Sprite } from '../src/renderer/sprites';
 import { averageColour, makeTextures } from '../src/renderer/textures';
@@ -265,7 +265,7 @@ function scooterHash(): number {
         sprites: [riding, ...scene.sprites.slice(1)],
         voxels: [
           ...scene.voxels,
-          { model: SCOOTER_MODEL, x: rider.x, y: rider.y, angle: scene.angle + 1, lift: 0 },
+          { model: RIDDEN_SCOOTER_MODEL, x: rider.x, y: rider.y, angle: scene.angle + 1, lift: 0 },
           { model: SCOOTER_MODEL, ...parked, angle: scene.angle - 0.5, lift: 0 },
         ],
       };
