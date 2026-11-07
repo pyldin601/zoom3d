@@ -8,6 +8,7 @@ import { createLighterSounds, type LighterSounds } from '../audio/lighter-sounds
 import { createObjectSounds, type ObjectSounds } from '../audio/object-sounds';
 import { createPortalHums, type PortalHums } from '../audio/portal-hum';
 import { createPortalSwitchSounds, type PortalSwitchSounds } from '../audio/portal-switch-sound';
+import { createScooterSounds, type ScooterSounds } from '../audio/scooter-sounds';
 import { type Boombox, createBoombox } from '../media/boombox';
 import { type Call, createCall } from '../media/call';
 import { createFace } from '../media/faces';
@@ -33,6 +34,8 @@ export interface Room {
   readonly lighterSounds: LighterSounds;
   /** A hum from each portal doorway while `portals()` isn't null. */
   readonly hums: PortalHums;
+  /** The riders' motor whines, the local player's own among them. */
+  readonly scooterSounds: ScooterSounds;
   readonly boombox: Boombox;
   readonly tracker: RoomTracker;
   readonly ball: BallPrediction;
@@ -84,6 +87,7 @@ export function joinRoom(opts: JoinOptions): Room {
   const objectSounds = createObjectSounds(opts.audioCtx, audio, () => session?.selfId() ?? null);
   const hums = createPortalHums(opts.audioCtx, audio);
   const lighterSounds = createLighterSounds(opts.audioCtx, audio);
+  const scooterSounds = createScooterSounds(opts.audioCtx, audio);
   const call = createRoomCall(opts, audio);
   const tracker = createRoomTracker(track, () => performance.now());
   const ball = createBallPrediction(opts.map, () => portals());
@@ -95,6 +99,7 @@ export function joinRoom(opts: JoinOptions): Room {
     tracker,
     objectSounds,
     lighterSounds,
+    scooterSounds,
     ball,
     () => portals(),
     () => ride?.settled()
@@ -124,6 +129,7 @@ export function joinRoom(opts: JoinOptions): Room {
     audio,
     objectSounds,
     lighterSounds,
+    scooterSounds,
     hums,
     boombox,
     tracker,
@@ -159,6 +165,7 @@ function connectSession(
   tracker: RoomTracker,
   sounds: ObjectSounds,
   lighterSounds: LighterSounds,
+  scooterSounds: ScooterSounds,
   ball: BallPrediction,
   portals: () => Portals | null,
   ownRideSettled: () => void
@@ -180,6 +187,7 @@ function connectSession(
       peerLeft(id) {
         people.peerLeft?.(id);
         lighterSounds.peerLeft(id);
+        scooterSounds.peerLeft(id);
       },
       peerHeld: (id, before, after) => lighterSounds.peerHeld(id, before, after),
       portalsChanged: (on) => opts.onPortalsChanged(on),
