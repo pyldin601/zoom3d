@@ -11,8 +11,8 @@ export const SCOOTER_MASTER = 0.6;
 const PWM_HZ = 7800;
 const PWM_LEVEL: Record<ScooterLoad, number> = { pulling: 0.35, cruising: 0.18, coasting: 0.02 };
 const PWM_TONE_GAIN = 0.65;
-/** 80% of the bench's 3 (owner, 2026-11-07). */
-const PWM_HISS_GAIN = 2.4;
+/** Half the bench's 3 (owner, 2026-11-07: 80% was still too loud). */
+const PWM_HISS_GAIN = 1.5;
 const PWM_HISS_Q = 12;
 const WHEEL_HZ = 1800;
 const WHEEL_Q = 0.8;
