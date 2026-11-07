@@ -37,6 +37,14 @@ test('a valid snapshot parses unchanged', () => {
   expect(parseSnapshot(JSON.stringify(s))).toEqual(s);
 });
 
+test('parked scooters survive the file; a misshapen save is dropped for a fresh rack', () => {
+  const scooters = { map: 'fp', scooters: [{ id: 's1', x: 38.5, y: 50.5, angle: 0 }] };
+  const s: LobbySnapshot = { version: 1, rooms: [{ id: ROOM, peers: [peer('a')], scooters }] };
+  expect(parseSnapshot(JSON.stringify(s))).toEqual(s);
+  const bad = { version: 1, rooms: [{ id: ROOM, peers: [peer('a')], scooters: { map: 3 } }] };
+  expect(parseSnapshot(JSON.stringify(bad))?.rooms.at(0)?.scooters).toBeUndefined();
+});
+
 test('a saved picture stays a data URL, as before 6d; anything else reads as none', () => {
   const PIC = 'data:image/jpeg;base64,/9j/4AAQ';
   const kept = parseSnapshot(snap([peer('a', { avatar: PIC }), { ...peer('b'), avatar: 'abcdefghijklmnopqrstuv' }]));

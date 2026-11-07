@@ -18,6 +18,7 @@ import {
   type BoomboxMessage,
   ballInfo,
   ballMoving,
+  canMount,
   createBall,
   createBallMind,
   createVacuum,
@@ -36,19 +37,29 @@ import {
   type LiveKitAccess,
   MAX_PEERS,
   type MediaMessage,
+  MOVE_SPEED,
+  type ObjectInfo,
   type PeerInfo,
   PLAYER_RADIUS,
   type Point,
   type Portals,
   PROTOCOL_VERSION,
   RESUME_GRACE_MS,
+  RIDE_GRACE_MS,
+  RIDE_SPEED,
+  type RideMessage,
+  rackSpots,
   restoreBall,
+  restoreScooters,
   restoreVacuum,
+  type ScooterPose,
+  type ScooterSave,
   type SequenceKind,
   type ServerMessage,
   type StateMessage,
   sanitizeName,
   saveBall,
+  saveScooters,
   saveVacuum,
   sequenceTimes,
   spawnPoint,
@@ -123,6 +134,8 @@ export interface LobbyOptions {
   ball?: boolean;
   /** The ball has a mind of its own (living ball spec §3). Off unless set, so tests with a ball keep it still. */
   ballMind?: boolean;
+  /** Every new room gets a rack of kick scooters (kick scooter spec §4.2). Off unless set, so tests opt in. */
+  scooters?: boolean;
 }
 
 /** The server sees a kicker a little late, so it allows them this much further away than the client does. */
@@ -131,6 +144,8 @@ const KICK_SLACK_TILES = 0.5;
 const KICK_SEEN_LATE_S = 0.2;
 /** Clients space kicks BALL_KICK_GAP_MS apart when they send them; the network can bunch two by this much. */
 const KICK_GAP_JITTER_MS = 50;
+/** The server sees a rider a tick late too: a scooter in reach on their screen may be this much further here. */
+const MOUNT_SLACK_TILES = 0.5;
 const seen: Apparent = { x: 0, y: 0, sees: false, through: 0, cos: 1, sin: 0 };
 
 /** A walker whose last pose is older than this is standing still, as far as the ball can tell. */
@@ -150,6 +165,8 @@ interface Peer extends PeerInfo {
   vy: number;
   /** When this person last kicked the ball. */
   lastKickAt: number;
+  /** Until when ride-speed poses are let through after stepping off a scooter: ones sent before it are in flight. */
+  rodeUntil: number;
   /** Bumped whenever the pose changes, so fan-out sends only what moved. */
   poseVersion: number;
   /** When the pose last changed: batches carry its age, so receivers can place it on its real timeline. */
@@ -184,6 +201,8 @@ export interface LobbySnapshot {
     id: string;
     peers: SnapshotPeer[];
     vacuum?: VacuumSave;
+    /** Parked ones, and ridden ones parked where their riders stood. */
+    scooters?: ScooterSave;
     ball?: BallSave;
     portals?: boolean;
     portalsEverOn?: true;
@@ -191,6 +210,8 @@ export interface LobbySnapshot {
 }
 
 const isPerson = (p: Peer) => p.bot === undefined;
+
+const scooterInfo = ({ id, x, y, angle }: ScooterPose): ObjectInfo => ({ id, kind: 'scooter', x, y, angle });
 
 /** The room's people, without its bots. */
 const peopleIn = (room: Room) => [...room.values()].filter(isPerson);
@@ -245,10 +266,11 @@ function savePeer(p: Peer): SnapshotPeer {
 /** The bookkeeping every new or restored peer starts with: no gesture yet, a fresh pose, nothing sent. */
 function freshTracking(
   now: number
-): Pick<Peer, 'lastGestureAt' | 'lastKickAt' | 'vx' | 'vy' | 'poseVersion' | 'poseAt' | 'sent'> {
+): Pick<Peer, 'lastGestureAt' | 'lastKickAt' | 'rodeUntil' | 'vx' | 'vy' | 'poseVersion' | 'poseAt' | 'sent'> {
   return {
     lastGestureAt: Number.NEGATIVE_INFINITY,
     lastKickAt: Number.NEGATIVE_INFINITY,
+    rodeUntil: Number.NEGATIVE_INFINITY,
     vx: 0,
     vy: 0,
     poseVersion: 0,
@@ -268,6 +290,8 @@ export class Lobby {
   private readonly vacuums = new Map<string, Vacuum>();
   /** Each vacuum's velocity over its last step, by room id: how hard it knocks the ball. */
   private readonly vacuumVelocities = new Map<string, { vx: number; vy: number }>();
+  /** Each room's parked scooters by id, by room id. A ridden one is only its rider's `riding`. */
+  private readonly scooters = new Map<string, Map<string, ScooterPose>>();
   /** Each room's ball, by room id. Not a peer either. */
   private readonly balls = new Map<string, Ball>();
   /** Each ball's mind, by room id, with what the physics told it and a kick's cry waiting for the next broadcast. */
@@ -376,7 +400,7 @@ export class Lobby {
       const sincePose = now - peer.poseAt;
       const moving = sincePose > 0 && sincePose <= MOVING_POSE_MS;
       // A move only a portal explains is a jump, not a speed.
-      const walked = moving && isPlausibleMove(this.opts.map, peer, msg, sincePose, null);
+      const walked = moving && isPlausibleMove(this.opts.map, peer, msg, sincePose, null, this.speedLimit(peer, now));
       peer.vx = walked ? ((msg.x - peer.x) * 1000) / sincePose : 0;
       peer.vy = walked ? ((msg.y - peer.y) * 1000) / sincePose : 0;
       peer.x = msg.x;
@@ -438,6 +462,32 @@ export class Lobby {
     const { room, peer } = found;
     peer.boombox = msg.on;
     this.broadcast(room, peer.id, { type: 'peer_boombox', id: peer.id, on: msg.on });
+  }
+
+  /** Steps on a parked scooter in reach of where the server last saw the rider; a refusal is silent. */
+  ride(conn: string, msg: RideMessage): void {
+    const found = this.peerOf(conn);
+    const parked = found && this.scooters.get(found.roomId);
+    const scooter = parked?.get(msg.id);
+    if (!found || !parked || !scooter || found.peer.riding !== null) {
+      return;
+    }
+    const { roomId, room, peer } = found;
+    const rider = this.seenFrom(this.activePortals(roomId), scooter, peer);
+    if (!canMount(rider, scooter, MOUNT_SLACK_TILES)) {
+      return;
+    }
+    parked.delete(scooter.id);
+    peer.riding = scooter.id;
+    this.broadcast(room, '', { type: 'peer_ride', id: peer.id, scooter: scooter.id });
+  }
+
+  dismount(conn: string): void {
+    const found = this.peerOf(conn);
+    if (found?.peer.riding) {
+      found.peer.rodeUntil = this.opts.now() + RIDE_GRACE_MS;
+      this.park(found.roomId, found.room, found.peer);
+    }
   }
 
   /**
@@ -559,6 +609,7 @@ export class Lobby {
           peers: peopleIn(room).map(savePeer),
           ...(vacuum ? { vacuum: saveVacuum(this.vacuumNav(), vacuum) } : {}),
           ...(ball ? { ball: saveBall(this.opts.map, ball) } : {}),
+          ...(this.scooters.has(id) ? { scooters: saveScooters(this.opts.map, this.scootersToSave(id, room)) } : {}),
           ...(mode?.on ? { portals: true } : {}),
           ...(mode?.everOn ? { portalsEverOn: true } : {}),
         };
@@ -569,7 +620,7 @@ export class Lobby {
   /** Loads a snapshot into an empty lobby. Every slot starts a fresh grace period, waiting for its owner to resume. */
   restore(snap: LobbySnapshot): void {
     const now = this.opts.now();
-    for (const { id, peers, vacuum, ball, portals, portalsEverOn } of snap.rooms) {
+    for (const { id, peers, vacuum, ball, scooters, portals, portalsEverOn } of snap.rooms) {
       const room: Room = new Map();
       for (const saved of peers) {
         room.set(saved.id, {
@@ -600,6 +651,12 @@ export class Lobby {
         this.placeBall(id, restoredBall);
       } else {
         this.spawnBall(id);
+      }
+      const restoredScooters = this.opts.scooters && scooters ? restoreScooters(this.opts.map, scooters) : null;
+      if (restoredScooters) {
+        this.scooters.set(id, new Map(restoredScooters.map((s) => [s.id, s])));
+      } else {
+        this.spawnScooters(id);
       }
     }
   }
@@ -703,10 +760,12 @@ export class Lobby {
     }
     this.spawnVacuum(roomId);
     this.spawnBall(roomId);
+    this.spawnScooters(roomId);
   }
 
   /** Removes a person whose grace ran out, and tells the room. */
   private expire(roomId: string, room: Room, peer: Peer): void {
+    this.park(roomId, room, peer);
     room.delete(peer.id);
     if (peer.avatar !== null) {
       this.avatars.release(peer.avatar);
@@ -724,6 +783,7 @@ export class Lobby {
     this.vacuumVelocities.delete(roomId);
     this.balls.delete(roomId);
     this.ballMinds.delete(roomId);
+    this.scooters.delete(roomId);
     this.kicks.delete(roomId);
     this.portalModes.delete(roomId);
     this.sequences.delete(roomId);
@@ -756,6 +816,7 @@ export class Lobby {
       objects: [
         ...(vacuum ? [vacuumInfo(vacuum)] : []),
         ...(ball ? [{ ...ballInfo(ball), ...this.ballMood(roomId) }] : []),
+        ...[...(this.scooters.get(roomId)?.values() ?? [])].map(scooterInfo),
       ],
       portals: this.portalModes.get(roomId)?.on === true,
       ...(sequence ? { sequence: { kind: sequence.kind, age: now - sequence.startedAt } } : {}),
@@ -868,6 +929,39 @@ export class Lobby {
         ...(event ? { event } : {}),
       });
     }
+  }
+
+  private spawnScooters(roomId: string): void {
+    if (this.opts.scooters) {
+      const rack = rackSpots(this.opts.map).map((spot) => ({ id: this.opts.newToken(), ...spot }));
+      this.scooters.set(roomId, new Map(rack.map((s) => [s.id, s])));
+    }
+  }
+
+  /** Leaves the peer's scooter, if they ride one, where they stand, and tells the room (them included). */
+  private park(roomId: string, room: Room, peer: Peer): void {
+    const id = peer.riding;
+    const parked = this.scooters.get(roomId);
+    if (id === null || !parked) {
+      return;
+    }
+    const scooter = { id, x: peer.x, y: peer.y, angle: peer.angle };
+    parked.set(id, scooter);
+    peer.riding = null;
+    this.broadcast(room, '', { type: 'peer_ride', id: peer.id, scooter: null, parked: scooterInfo(scooter) });
+  }
+
+  /** The room's scooters as a restart should find them: every ridden one parked at its rider. */
+  private scootersToSave(roomId: string, room: Room): ScooterPose[] {
+    const ridden = [...room.values()].flatMap((p) =>
+      p.riding === null ? [] : [{ id: p.riding, x: p.x, y: p.y, angle: p.angle }]
+    );
+    return [...(this.scooters.get(roomId)?.values() ?? []), ...ridden];
+  }
+
+  /** Riders, and for a moment after stepping off, may move at ride speed. */
+  private speedLimit(peer: Peer, now: number): number {
+    return peer.riding !== null || now < peer.rodeUntil ? RIDE_SPEED : MOVE_SPEED;
   }
 
   private spawnBall(roomId: string): void {
@@ -1062,7 +1156,8 @@ export class Lobby {
   private isPlausibleInRoom(roomId: string, peer: Peer, msg: StateMessage, now: number): boolean {
     const elapsedMs = now - peer.lastAcceptedAt;
     const current = this.activePortals(roomId);
-    if (isPlausibleMove(this.opts.map, peer, msg, elapsedMs, current)) {
+    const speed = this.speedLimit(peer, now);
+    if (isPlausibleMove(this.opts.map, peer, msg, elapsedMs, current, speed)) {
       return true;
     }
     const justFlipped =
@@ -1071,7 +1166,7 @@ export class Lobby {
       return false;
     }
     const other = current === null ? this.wiring(roomId) : null;
-    return isPlausibleMove(this.opts.map, peer, msg, elapsedMs, other);
+    return isPlausibleMove(this.opts.map, peer, msg, elapsedMs, other, speed);
   }
 
   private wiring(roomId: string): Portals {
