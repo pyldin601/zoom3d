@@ -52,7 +52,8 @@ export function stepPlayer(
   input: MoveInput,
   dt: number,
   out: PlayerState,
-  portals: Portals | null = null
+  portals: Portals | null = null,
+  forwardSpeed = MOVE_SPEED
 ): PlayerState {
   const t = Math.min(Math.max(dt, 0), MAX_STEP_S);
   let angle = (s.angle + input.turn * TURN_SPEED * t) % TWO_PI;
@@ -69,10 +70,12 @@ export function stepPlayer(
   }
   const cos = Math.cos(s.angle);
   const sin = Math.sin(s.angle);
-  const step = MOVE_SPEED * t;
+  // A scooter is ridden forward: backing up and sidestepping on one stay at walking pace.
+  const ahead = forward * (forward > 0 ? forwardSpeed : MOVE_SPEED) * t;
+  const aside = strafe * MOVE_SPEED * t;
   // Right of facing (cos, sin) in y-down coordinates is (-sin, cos).
-  const dx = (forward * cos - strafe * sin) * step;
-  const dy = (forward * sin + strafe * cos) * step;
+  const dx = ahead * cos - aside * sin;
+  const dy = ahead * sin + aside * cos;
 
   const startX = s.x;
   const startY = s.y;

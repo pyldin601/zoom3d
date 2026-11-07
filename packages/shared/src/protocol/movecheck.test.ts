@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { parseMap } from '../map/map';
+import { RIDE_SPEED } from '../objects/scooter/scooter';
 import { invert, type RigidTransform } from '../portals/transform';
 import type { Portal, Portals } from '../portals/wiring';
 import { isPlausibleMove } from './movecheck';
@@ -12,6 +13,14 @@ test('a normal step is plausible', () => {
 
 test('a teleport is not', () => {
   expect(isPlausibleMove(ROOM, { x: 1.5, y: 1.5 }, { x: 3.5, y: 3.5 }, 100)).toBe(false);
+});
+
+test('a ride-speed step is too fast on foot', () => {
+  expect(isPlausibleMove(ROOM, { x: 1.5, y: 2.5 }, { x: 2.7, y: 2.5 }, 100)).toBe(false);
+});
+
+test('a ride-speed step is plausible at ride speed', () => {
+  expect(isPlausibleMove(ROOM, { x: 1.5, y: 2.5 }, { x: 2.7, y: 2.5 }, 100, null, RIDE_SPEED)).toBe(true);
 });
 
 test('a wall target is never plausible', () => {
