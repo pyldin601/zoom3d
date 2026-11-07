@@ -14,9 +14,15 @@ const BAR_RISE_TEXELS = 4.5;
 
 const PALETTE: Readonly<Record<string, string>> = { m: '#aab0b8', M: '#6d737b', k: '#26262a', K: '#3d3d44' };
 const LEFT_HALF = ['kkk.......', 'kKkmmmmmmm', 'kkkMMMMMMM', 'kkk.......'];
-const mirror = (rows: readonly string[]) => rows.map((row) => [...row].reverse().join(''));
-const LEFT: HeldSprite = toHeldSprite(LEFT_HALF, PALETTE);
-const RIGHT: HeldSprite = toHeldSprite(mirror(LEFT_HALF), PALETTE);
+const BAR_ROWS = LEFT_HALF.map((row) => row + [...row].reverse().join(''));
+const BAR_WIDTH = BAR_ROWS[0]?.length ?? 0;
+/** The bar a column at a time, made once: each column is drawn at its own height, so a tilt slopes the bar. */
+const BAR_COLUMNS: readonly HeldSprite[] = Array.from({ length: BAR_WIDTH }, (_, u) =>
+  toHeldSprite(
+    BAR_ROWS.map((row) => row.charAt(u)),
+    PALETTE
+  )
+);
 /** Taller than any bar ever rises: the bottom edge crops it. */
 const STEM: HeldSprite = toHeldSprite(['mM', 'mM', 'mM', 'mM', 'mM', 'mM', 'mM'], PALETTE);
 
@@ -26,9 +32,13 @@ export function renderOwnHandlebar(fb: Framebuffer, steer: number): void {
   const t = ownTexel(fb);
   const centre = w / 2 + steer * HANDLEBAR_SHIFT * w;
   const barTop = h - BAR_RISE_TEXELS * t;
-  const tilt = steer * HANDLEBAR_TILT_TEXELS * t;
   // The bar's middle rows sit on the stem's top.
   blitHeldSprite(fb, STEM, centre - t, barTop + t, t, OVER_EVERYTHING);
-  blitHeldSprite(fb, LEFT, centre - LEFT.w * t, barTop - tilt, t, OVER_EVERYTHING);
-  blitHeldSprite(fb, RIGHT, centre, barTop + tilt, t, OVER_EVERYTHING);
+  const half = (BAR_WIDTH - 1) / 2;
+  const left = centre - (BAR_WIDTH / 2) * t;
+  BAR_COLUMNS.forEach((column, u) => {
+    // Steering right drops the right grip and lifts the left one, the bar sloping evenly between them.
+    const drop = (steer * HANDLEBAR_TILT_TEXELS * t * (u - half)) / half;
+    blitHeldSprite(fb, column, left + u * t, barTop + drop, t, OVER_EVERYTHING);
+  });
 }

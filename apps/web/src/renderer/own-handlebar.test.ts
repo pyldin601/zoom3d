@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { createFramebuffer, type Framebuffer } from './framebuffer';
 import { renderOwnHandlebar } from './own-handlebar';
+import { ownTexel } from './own-held';
 
 function drawn(steer: number): { fb: Framebuffer; cols: number[]; rows: number[] } {
   const fb = createFramebuffer();
@@ -41,6 +42,21 @@ describe('renderOwnHandlebar', () => {
     expect(Math.max(...right.cols)).toBeGreaterThan(Math.max(...straight.cols));
     expect(gripBottom(right, 'right')).toBeGreaterThan(gripBottom(straight, 'right'));
     expect(gripBottom(right, 'left')).toBeLessThan(gripBottom(straight, 'left'));
+  });
+
+  test('a tilted bar slopes in one piece: its top edge never steps much more than a texel', () => {
+    const d = drawn(1);
+    const topByCol = new Map<number, number>();
+    d.cols.forEach((c, i) => {
+      topByCol.set(c, Math.min(topByCol.get(c) ?? Number.POSITIVE_INFINITY, d.rows.at(i) ?? 0));
+    });
+    const cols = [...topByCol.keys()].sort((a, b) => a - b);
+    const texel = ownTexel(d.fb);
+    for (let i = 1; i < cols.length; i++) {
+      const step = Math.abs((topByCol.get(cols.at(i) ?? 0) ?? 0) - (topByCol.get(cols.at(i - 1) ?? 0) ?? 0));
+      // A grip stands a texel proud of the bar; anything more is the bar coming apart.
+      expect(step).toBeLessThanOrEqual(1.5 * texel);
+    }
   });
 
   test('steering left mirrors it', () => {
