@@ -262,3 +262,14 @@ test('stepping on cancels a sip under way', () => {
   localPlayer.riding = true;
   expect(localPlayer.gesture.kind(1)).toBeNull();
 });
+
+test('riding, the handlebar eases toward the steering and rests on foot', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  localPlayer.riding = true;
+  localPlayer.walk(MAP, { forward: 0, strafe: 1, turn: 0 }, 0, 0.1);
+  const steer = localPlayer.firstPerson(0).steer;
+  expect(steer).toBeCloseTo(1 - Math.exp(-1), 2);
+  localPlayer.riding = false;
+  localPlayer.walk(MAP, { forward: 0, strafe: 1, turn: 0 }, 0, 0.1);
+  expect(localPlayer.firstPerson(0).steer).toBe(0);
+});

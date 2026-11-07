@@ -22,6 +22,9 @@ import type { VoxelInstance } from '../renderer/voxels';
 import { blankSprite } from './remote-world';
 import { createRideState, type RideState, stepRide } from './scooter-physics';
 
+/** The first-person handlebar follows the steering keys this smoothly (time constant). */
+const STEER_EASE_S = 0.1;
+
 /** The own disc's key: no peer has it, so it never reaches the facts dynamic subscription reads. */
 export const OWN_SPRITE_KEY = 'self';
 
@@ -91,6 +94,8 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
   const ownDisc = blankSprite(OWN_SPRITE_KEY);
   let riding = false;
   const ride = createRideState();
+  /** −1..1, eased toward the steering keys: how far the first-person handlebar is turned. */
+  let steer = 0;
   const ownScooter: VoxelInstance = { model: SCOOTER_MODEL, x: 0, y: 0, angle: 0, lift: 0 };
   const firstPersonView: FirstPerson = {
     held: null,
@@ -135,7 +140,10 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       pose.angle += turnRad;
       if (riding) {
         stepRide(map, pose, ride, move, dt, portals);
+        const target = Math.min(1, Math.max(-1, move.turn + move.strafe));
+        steer += (target - steer) * (1 - Math.exp(-Math.max(dt, 0) / STEER_EASE_S));
       } else {
+        steer = 0;
         stepPlayer(map, pose, move, dt, pose, portals);
       }
       step.update(pose.x, pose.y, dt);
@@ -212,6 +220,7 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       firstPersonView.held = riding ? null : heldItem;
       firstPersonView.boombox = riding ? false : localPlayer.boombox;
       firstPersonView.riding = riding;
+      firstPersonView.steer = steer;
       firstPersonView.gesture = gesture.pose(now);
       return firstPersonView;
     },

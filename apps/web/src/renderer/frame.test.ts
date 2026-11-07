@@ -593,3 +593,29 @@ describe('the own avatar', () => {
     expect(changed.some(([col, row]) => looksGreen(pixelAt(shown, col, row)))).toBe(true);
   });
 });
+
+describe('first person', () => {
+  const map = parseMap(LEVEL1);
+  const eye = { x: map.spawn.x + 0.5, y: map.spawn.y + 0.5, angle: 0 };
+  const hands = (riding: boolean) => ({
+    held: null,
+    boombox: false,
+    riding,
+    steer: 0,
+    step: { itemLift: 0, sway: 0 },
+    gesture: { sip: 0, cheers: 0, wobble: 0 },
+  });
+
+  test('the handlebar is drawn only while riding', () => {
+    const on = createFramebuffer();
+    renderView(on, { ...portalScene(map, null, eye), firstPerson: hands(true) });
+    const off = createFramebuffer();
+    renderView(off, { ...portalScene(map, null, eye), firstPerson: hands(false) });
+    const plain = createFramebuffer();
+    renderView(plain, portalScene(map, null, eye));
+    expect(differences(off, plain)).toEqual([]);
+    const changed = differences(on, plain);
+    expect(changed.length).toBeGreaterThan(0);
+    expect(changed.every(([, row]) => row > on.height / 2)).toBe(true);
+  });
+});

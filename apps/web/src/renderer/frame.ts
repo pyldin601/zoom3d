@@ -10,6 +10,7 @@ import { drawLabels, type NameLabel } from './labels';
 import { createLighterGlows, type LighterSource } from './lighter';
 import type { ReflectionMode } from './lighting';
 import { renderOwnBoombox } from './own-boombox';
+import { renderOwnHandlebar } from './own-handlebar';
 import { type HeldStep, renderOwnHeld } from './own-held';
 import { nextRippleDown, openingEdge, shimmerAndRim, startRippleDown, toSketchPx } from './portal-window';
 import type { HeldPose } from './sip';
@@ -378,6 +379,10 @@ function drawPeopleAndObjects(fb: Framebuffer, scene: PassScene, seen: Map<strin
 }
 
 function drawFirstPerson(fb: Framebuffer, hands: FirstPerson): void {
+  if (hands.riding) {
+    renderOwnHandlebar(fb, hands.steer);
+    return;
+  }
   // The boombox first: a sip swings the drink across it, and the drink must stay in front.
   renderOwnBoombox(fb, hands.boombox, hands.step);
   renderOwnHeld(fb, hands.held, hands.step, hands.gesture);
