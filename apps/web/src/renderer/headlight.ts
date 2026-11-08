@@ -2,10 +2,10 @@
 // heading, blocked by walls. Like the lighter's, its shadow table is refilled only when the lamp enters another floor
 // cell or the portals switch: the table covers the whole disc round the lamp, and the cone only picks from it. The
 // lamp sits ahead of the rider, so turning on the spot carries it through a few cells too (about 19 a full turn).
-// Like a projector headlight's lens, it spreads its colours at the cut-off (owner, 2026-11-08). Most of the light is one
-// white cone. A faint share is split into red, green and blue cones a degree apart, blue widest, so a thin blue-violet
-// line runs just past the white edge, with a cool tint just inside. Nested cones can't put a warm band inside a blue
-// one: the widest colour lights everything within it.
+// Like a projector headlight's lens, it spreads its colours at the edge (owner, 2026-11-08). Most of the light is one
+// white cone with a soft edge. A faint share is split into red, green and blue cones a degree apart, blue widest, so a
+// thin blue-violet line runs just past the white edge, with a cool tint just inside. Nested cones can't put a warm band
+// inside a blue one: the widest colour lights everything within it.
 import type { GameMap, Portals } from '@zoom3d/shared';
 import type { Glow, GlowCone, GlowShadow } from './glow';
 import { FLOOR_SUB, fillGlowSeen, newGlowShadow } from './lighting';
@@ -18,8 +18,8 @@ export const HEADLIGHT_STRENGTH = 1.5;
 export const HEADLIGHT_COLOUR = { r: 1, g: 0.9, b: 0.7 };
 /** Half the cone's width: past it, no light. The lighter's cone, before it went all round (D31). */
 export const HEADLIGHT_CONE_HALF_RAD = (35 * Math.PI) / 180;
-/** The outermost part of the white cone's half-width, over which its light fades out. */
-export const HEADLIGHT_CONE_FADE_RAD = (3 * Math.PI) / 180;
+/** The outermost part of the white cone's half-width, over which its light fades out; soft, as 3° was too sharp. */
+export const HEADLIGHT_CONE_FADE_RAD = (8 * Math.PI) / 180;
 /** How far apart the fringe's red, green and blue edges are. */
 export const HEADLIGHT_FRINGE_RAD = (1 * Math.PI) / 180;
 /** Each fringe colour fades out over this much of its half-width: a thin line, not a band. */
@@ -73,7 +73,10 @@ export interface HeadlightSource {
 
 /** A frame's headlight glows, in objects reused from frame to frame. */
 export interface HeadlightGlows {
-  /** Four glows per source in order (white, then the fringe's red, green and blue), shadowed on `map` with `portals` (the room's, while on). */
+  /**
+   * Four glows per source in order (white, then the fringe's red, green and blue), shadowed on `map` with `portals`
+   * (the room's, while on).
+   */
   update(sources: Iterable<HeadlightSource>, map: GameMap, portals: Portals | null): readonly Glow[];
 }
 

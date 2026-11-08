@@ -961,7 +961,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
         pass.
         - **First try:** all the light split into red, green and blue cones (40°, 35° and 30°, with 5° fades), giving
           a broad yellow-then-red rim. The owner found it unnatural.
-        - **Now:** 80% of the light is one white cone, 35° with a 3° fade, for a sharp cut-off.
+        - **Now:** 80% of the light is one white cone, 35° with a soft 8° fade. A 3° fade was tried first, and the
+          owner found it too sharp.
         - **The fringe:** 20% is split into red, green and blue cones a degree apart (34.5°, 35.5° and 36.5°), each
           fading over 2°, so a thin blue-violet line runs just past the white edge.
         - **Why blue outermost:** nested cones can't put a warm band inside a blue one.
