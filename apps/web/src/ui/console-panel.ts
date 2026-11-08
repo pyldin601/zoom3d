@@ -1,8 +1,10 @@
 // The backtick panel: the frame rate, the render time and which face sizes others receive at the top, the renderer's
 // lighting mode under them, and the boombox's controls on the right while it plays (boombox spec §3.1). All text goes
 // through textContent.
+
 import { frameRateBand, type RenderLoad, renderLoadBand } from '../game/frame-rate';
 import type { FacesSent } from '../media/transport';
+import type { StatsSwitch } from '../telemetry/analytics';
 import { type BoomboxPanelOptions, showBoomboxPanel } from './boombox-panel';
 import { normalizeRenderSettings, RENDER_MODE_NAMES, RENDER_MODES, type RenderSettings } from './render-settings';
 import { el } from './screens';
@@ -16,6 +18,8 @@ export interface ConsolePanelOptions {
   facesSent: () => FacesSent;
   /** The renderer's options. */
   render: { settings: RenderSettings; onChange(s: RenderSettings): void };
+  /** The usage-stats opt-in (D20), switched off again here; null while analytics is off. */
+  stats: StatsSwitch | null;
 }
 
 /** The face sizes, biggest first: a dot and the size's number each. */
@@ -73,6 +77,9 @@ export function showConsolePanel(root: HTMLElement, opts: ConsolePanelOptions | 
     el('h2', { textContent: 'Renderer' }),
     lightingRow(opts.render)
   );
+  if (opts.stats) {
+    renderer.append(el('h2', { textContent: 'Usage stats' }), statsRow(opts.stats));
+  }
   refresh();
   timers.set(panel, setInterval(refresh, REFRESH_MS));
 
@@ -93,6 +100,14 @@ function lightingRow(opts: ConsolePanelOptions['render']): HTMLElement {
   });
   const row = el('label');
   row.append('Lighting', mode);
+  return row;
+}
+
+function statsRow(stats: StatsSwitch): HTMLElement {
+  const box = el('input', { type: 'checkbox', checked: stats.on });
+  box.addEventListener('change', () => stats.onChange(box.checked));
+  const row = el('label');
+  row.append('Remember this browser', box);
   return row;
 }
 

@@ -222,6 +222,12 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   `beforeSend` scrubs `/r/<id>`.
   Add an analytics event by extending `AnalyticsEvent` in `apps/web/src/telemetry/analytics.ts`. Analytics must stay
   storage-free (no cookies, localStorage or sessionStorage; that's why no consent banner is needed), so "Start a party"
-  is an in-page `pushState`, not a page load. Keep `public/privacy.html` in step with what is collected.
+  is an in-page `pushState`, not a page load. The one exception is opt-in: a visitor who ticks "Remember this browser"
+  (lobby, or the console) consents to one localStorage key, `zoom3d.analytics`, holding the device id
+  (`telemetry/analytics-consent.ts`); never add other analytics storage, and never write that key without the tick.
+  The Amplitude SDK opens an IndexedDB database for its diagnostics even with `enableDiagnostics: false`;
+  `patches/@amplitude__analytics-core@<version>.patch` stops that, and `telemetry/amplitude-storage.test.ts` runs the
+  real SDK with our options and fails if anything is stored. When Renovate bumps `@amplitude/analytics-core`, redo the
+  patch for the new version (`pnpm patch`) or drop it if upstream fixed it; never drop the test. Keep `public/privacy.html` in step with what is collected.
 - Playwright file choosers: start `page.waitForEvent('filechooser')` before the action that opens one, with a
   step in between. Interception turns on asynchronously, and a dialog opened right away can go unseen.

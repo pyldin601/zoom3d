@@ -1,11 +1,13 @@
 // The lobby at /r/<id> (lobby spec §2–3): what others will see and hear, set up before joining.
 // User-provided text only ever goes through textContent; the picture is a validated data: URL set as an attribute.
+
 import { NAME_MAX_CHARS, sanitizeName } from '@zoom3d/shared';
 import { makeAvatar } from '../media/avatar';
 import type { Device, DeviceProblem } from '../media/devices';
 import { initials } from '../media/faces';
 import type { LocalMediaController, MediaState } from '../media/local-media';
 import type { MediaPrefs } from '../media/media-prefs';
+import type { StatsSwitch } from '../telemetry/analytics';
 import { addMeter, deviceIcon, setMeter, touchIcon } from './icons';
 import { meterHeight } from './mic-level';
 import { el, setScreen } from './screens';
@@ -65,6 +67,8 @@ export interface LobbyOptions {
   level?: () => number;
   /** This room's link, copied by the button under Join. */
   inviteUrl: string;
+  /** The usage-stats opt-in (D20), or absent while analytics is off. */
+  stats?: StatsSwitch | null;
   onJoin(name: string, avatar: string | null): void;
 }
 
@@ -413,6 +417,15 @@ function startMeter(media: LocalMediaController, level: (() => number) | undefin
   return () => cancelAnimationFrame(frame);
 }
 
+/** Off by default; it takes effect when clicked, Join or not. */
+function statsCheckbox(stats: StatsSwitch): HTMLLabelElement {
+  const box = el('input', { type: 'checkbox', checked: stats.on });
+  box.addEventListener('change', () => stats.onChange(box.checked));
+  const privacy = el('a', { href: '/privacy.html', target: '_blank', textContent: 'privacy' });
+  const text = el('span', {}, 'Remember this browser for anonymous usage stats (', privacy, ')');
+  return el('label', { className: 'remember-stats' }, box, text);
+}
+
 export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
   const { media } = opts;
   const menus: OpenableMenu[] = [];
@@ -479,6 +492,7 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
       el('div', { className: 'devices' }, cam.root, mic.root),
       form,
       error,
+      ...(opts.stats ? [statsCheckbox(opts.stats)] : []),
       el('div', { className: 'invite' }, invite.button)
     )
   );

@@ -514,3 +514,39 @@ test('joinBanner explains devices unavailable at Join', () => {
   ).toBe('Camera and mic unavailable — others see your picture or initials, you can listen only.');
   expect(joinBanner({ ...STATE, cam: false })).toBeNull();
 });
+
+test('no stats checkbox without a switch', () => {
+  show();
+  expect(root.querySelector('.remember-stats')).toBeNull();
+});
+
+test('the stats checkbox is off by default, says what it does and links the privacy page', () => {
+  show({ stats: { on: false, onChange: () => {} } });
+  const label = root.querySelector('.lobby .remember-stats') as HTMLLabelElement;
+  const form = root.querySelector('.lobby form') as HTMLFormElement;
+  const invite = root.querySelector('.lobby .invite') as HTMLElement;
+  expect(form.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(label.compareDocumentPosition(invite) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(label.textContent).toBe('Remember this browser for anonymous usage stats (privacy)');
+  expect((label.querySelector('input[type=checkbox]') as HTMLInputElement).checked).toBe(false);
+  const link = label.querySelector('a') as HTMLAnchorElement;
+  expect(link.href.endsWith('/privacy.html')).toBe(true);
+  expect(link.target).toBe('_blank');
+});
+
+test('ticking it calls the switch at once, without joining', () => {
+  const onChange = vi.fn();
+  const onJoin = vi.fn();
+  show({ stats: { on: false, onChange }, onJoin });
+  const box = root.querySelector('.remember-stats input') as HTMLInputElement;
+  box.click();
+  expect(onChange).toHaveBeenLastCalledWith(true);
+  box.click();
+  expect(onChange).toHaveBeenLastCalledWith(false);
+  expect(onJoin).not.toHaveBeenCalled();
+});
+
+test('it shows as ticked when already remembered', () => {
+  show({ stats: { on: true, onChange: () => {} } });
+  expect((root.querySelector('.remember-stats input') as HTMLInputElement).checked).toBe(true);
+});

@@ -1,9 +1,12 @@
 // Anonymous product analytics (Amplitude). Off unless the build sets VITE_AMPLITUDE_API_KEY.
-// Storage-free (ePrivacy: no consent needed when nothing is read from or written to the device): the device id and the
-// unsent-event queue live in memory, so one page load is one user. "Start a party" stays in the page to keep the
+// Storage-free unless the visitor opts in (ePrivacy: no consent needed when nothing is read from or written to the
+// device): the unsent-event queue always lives in memory, and so does the device id, so one page load is one user.
+// A visitor who ticks "Remember this browser" consents to one key, the device id (`analytics-consent.ts`), so later
+// visits are the same user; sessions still start afresh on each load. "Start a party" stays in the page to keep the
 // onboarding funnel in one load. No IP, no autocapture, and never names or room ids.
 import type { Types } from '@amplitude/analytics-browser';
 import type { HeldItem } from '@zoom3d/shared';
+import { forgetDeviceId, loadRememberedDeviceId, rememberDeviceId } from './analytics-consent';
 import type { MediaOutcome } from './onboarding';
 
 export type AnalyticsEvent =
@@ -27,7 +30,15 @@ export type AnalyticsEvent =
   | { name: 'connection_restored'; downS: number }
   | { name: 'connection_failed'; reason: string; joined: boolean }
   | { name: 'webrtc_failed'; stage: 'negotiation' | 'signal' | 'ice' }
-  | { name: 'face_detector_unavailable' };
+  | { name: 'face_detector_unavailable' }
+  // Privacy
+  | { name: 'analytics_consent'; on: boolean };
+
+/** The "Remember this browser" checkbox: whether the device id is kept across visits. */
+export interface StatsSwitch {
+  on: boolean;
+  onChange(on: boolean): void;
+}
 
 type Amplitude = typeof import('@amplitude/analytics-browser');
 
@@ -35,6 +46,9 @@ type Amplitude = typeof import('@amplitude/analytics-browser');
 // both stay null when analytics is off.
 let amp: Amplitude | null = null;
 let queue: AnalyticsEvent[] | null = null;
+let storage: Storage | null = null;
+/** Ours, not read back from the SDK: its init is async, and an opt-in may come before the SDK has loaded. */
+let deviceId = '';
 
 type EventStorage = NonNullable<Types.BrowserOptions['storageProvider']>;
 type StoredEvents = Awaited<ReturnType<EventStorage['get']>>;
@@ -52,28 +66,41 @@ function memoryStorage(): EventStorage {
   };
 }
 
+/** Storage-free: identity and the unsent-event queue in memory; the IndexedDB write is patched out (D20). */
+export function amplitudeOptions(appVersion: string | undefined, deviceId: string): Types.BrowserOptions {
+  return {
+    appVersion,
+    deviceId,
+    autocapture: false,
+    identityStorage: 'none',
+    storageProvider: memoryStorage(),
+    trackingOptions: { ipAddress: false },
+    // Remote config could switch autocapture back on from Amplitude's UI.
+    remoteConfig: { fetchRemoteConfig: false },
+    enableDiagnostics: false,
+  };
+}
+
 function send(sdk: Amplitude, e: AnalyticsEvent): void {
   const { name, ...props } = e;
   sdk.track(name, props);
 }
 
-export function initAnalytics(apiKey: string | undefined, appVersion: string | undefined): void {
+export function initAnalytics(
+  apiKey: string | undefined,
+  appVersion: string | undefined,
+  pageStorage: Storage | null
+): void {
   if (!apiKey) {
     return;
   }
+  storage = pageStorage;
   queue = [];
+  deviceId = loadRememberedDeviceId(storage) ?? crypto.randomUUID();
   import('@amplitude/analytics-browser').then(
     (sdk) => {
-      sdk.init(apiKey, {
-        appVersion,
-        autocapture: false,
-        identityStorage: 'none',
-        storageProvider: memoryStorage(),
-        trackingOptions: { ipAddress: false },
-        // Remote config could switch autocapture back on from Amplitude's UI.
-        remoteConfig: { fetchRemoteConfig: false },
-        enableDiagnostics: false,
-      });
+      // deviceId is read when the SDK arrives: an opt-out before then has already replaced the remembered one.
+      sdk.init(apiKey, amplitudeOptions(appVersion, deviceId));
       amp = sdk;
       for (const e of queue ?? []) {
         send(sdk, e);
@@ -85,6 +112,29 @@ export function initAnalytics(apiKey: string | undefined, appVersion: string | u
       queue = null;
     }
   );
+}
+
+/** Null while analytics is off or its SDK failed to load: then there is nothing to remember. */
+export function statsSwitch(): StatsSwitch | null {
+  if (!amp && !queue) {
+    return null;
+  }
+  return { on: loadRememberedDeviceId(storage) !== null, onChange: setStatsRemembered };
+}
+
+export function setStatsRemembered(on: boolean): void {
+  if (!amp && !queue) {
+    return;
+  }
+  if (on) {
+    rememberDeviceId(storage, deviceId);
+  } else {
+    forgetDeviceId(storage);
+    // The rest of this visit must not be tied to the id that was remembered.
+    deviceId = crypto.randomUUID();
+    amp?.setDeviceId(deviceId);
+  }
+  track({ name: 'analytics_consent', on });
 }
 
 export function track(e: AnalyticsEvent): void {

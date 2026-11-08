@@ -4,3 +4,6 @@ packages:
 
 allowBuilds:
   esbuild: true
+
+patchedDependencies:
+  '@amplitude/analytics-core@2.60.2': patches/@amplitude__analytics-core@2.60.2.patch
