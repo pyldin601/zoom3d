@@ -60,6 +60,14 @@ These were all left out for the lighter too, and each would be a project of its 
 - **Unchanged:** every scene with no rider draws pixel for pixel as before. The `bench:walls` and `bench:sprites`
   hashes for scenes without riders stay the same.
 
+## Amended 2026-11-08: a coloured edge
+
+The owner asked for the cone to break into colours at its edge, and tried the cheapest of three ideas.
+- **First try:** a full split into red, green and blue cones. It gave a broad red rim, which looked unnatural.
+- **Now:** 80% of the light is a white 35° cone with a soft 8° fade (3° was too sharp). The other 20% is split into red, green and blue cones at
+  34.5°, 35.5° and 36.5°, each fading over 2°. That leaves a thin blue-violet line just past the white edge.
+- **Not chosen:** a full spectral band and a halo ring. Both need a colour per lit point in every pass.
+
 ## Left to the builder
 
 - The exact lamp offset and the light's height.

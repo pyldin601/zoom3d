@@ -214,8 +214,9 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   screen, never sent as `held: null`. Riding, the mouse turns only the head (`LocalPlayer.head`, ±90°): `pose.angle`
   is the scooter's heading (what is sent, parked and drawn under the rider), and anything about where the player looks
   (camera, listener, labels, subscription, hums, kicks) reads `localPlayer.eye()`. A dropped connection is no stepping
-  off (`ridesNow`). A rider's headlight (`renderer/headlight.ts`) is a cone glow pointed by `pose.angle`, never `eye()`,
-  with a lighter-style shadow table; the parked model's lamp is dark and `RIDDEN_SCOOTER_MODEL`'s glows.
+  off (`ridesNow`). A rider's headlight (`renderer/headlight.ts`) is four cone glows pointed by `pose.angle`, never
+  `eye()`: a white beam and a faint red, green and blue fringe (blue widest), sharing one lighter-style shadow table. The parked
+  model's lamp is dark and `RIDDEN_SCOOTER_MODEL`'s glows.
 - Telemetry privacy: logs, metrics labels, Sentry and Amplitude never get names, resume tokens or IPs, nor raw room
   ids: a room link is the room's only key. Server logs use `roomRef()` (a short hash), and the browser Sentry
   `beforeSend` scrubs `/r/<id>`.
