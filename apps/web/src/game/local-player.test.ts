@@ -290,6 +290,68 @@ test('hands are free on foot, and on the handlebar while riding: no sip or cheer
   expect(localPlayer.handsFree).toBe(false);
 });
 
+describe('stepping on turns the view to the scooter', () => {
+  const mounted = (facing: number, scooterHeading: number) => {
+    const localPlayer = createLocalPlayer(MAP, () => 0.5);
+    localPlayer.pose.angle = facing;
+    localPlayer.riding = true;
+    localPlayer.faceScooter(scooterHeading);
+    return localPlayer;
+  };
+
+  test("the heading is the scooter's at once, and the view turns to it within half a second", () => {
+    const localPlayer = mounted(0, 1);
+    expect(localPlayer.pose.angle).toBe(1);
+    expect(localPlayer.eye().angle).toBeCloseTo(0);
+    localPlayer.walk(MAP, STILL, 0, 0.05);
+    const partway = localPlayer.eye().angle;
+    expect(partway).toBeGreaterThan(0);
+    expect(partway).toBeLessThan(1);
+    for (let i = 0; i < 30; i++) {
+      localPlayer.walk(MAP, STILL, 0, 1 / 60);
+    }
+    expect(localPlayer.eye().angle).toBeCloseTo(1, 3);
+    expect(localPlayer.head).toBe(0);
+  });
+
+  test('it turns the short way round', () => {
+    const localPlayer = mounted(0.1, 2 * Math.PI - 0.1);
+    expect(localPlayer.head).toBeCloseTo(0.2);
+  });
+
+  test("a turn of more than 90° still eases rather than jumping to the head's limit", () => {
+    const localPlayer = mounted(0, Math.PI - 0.1);
+    expect(localPlayer.eye().angle).toBeCloseTo(0);
+    localPlayer.walk(MAP, STILL, 0.01, 1 / 60);
+    expect(Math.abs(localPlayer.head)).toBeGreaterThan(Math.PI / 2);
+  });
+
+  test('once turned, the head keeps to its 90° limit again', () => {
+    const localPlayer = mounted(0, 1);
+    for (let i = 0; i < 60; i++) {
+      localPlayer.walk(MAP, STILL, 0, 1 / 60);
+    }
+    localPlayer.walk(MAP, STILL, 3, 1 / 60);
+    expect(localPlayer.head).toBeCloseTo(Math.PI / 2);
+  });
+});
+
+describe('arrow keys drive like WASD while riding', () => {
+  test('← and → steer exactly as A and D do', () => {
+    const steered = (move: { forward: number; strafe: number; turn: number }) => {
+      const localPlayer = createLocalPlayer(MAP, () => 0.5);
+      localPlayer.riding = true;
+      localPlayer.ride.speed = 3;
+      const before = localPlayer.pose.angle;
+      localPlayer.walk(MAP, move, 0, 0.1);
+      return localPlayer.pose.angle - before;
+    };
+    expect(steered({ forward: 0, strafe: 0, turn: -1 })).toBe(steered({ forward: 0, strafe: -1, turn: 0 }));
+    expect(steered({ forward: 0, strafe: 0, turn: 1 })).toBe(steered({ forward: 0, strafe: 1, turn: 0 }));
+    expect(steered({ forward: 0, strafe: 0, turn: 1 })).toBeGreaterThan(0);
+  });
+});
+
 describe('the head while riding', () => {
   const riding = () => {
     const localPlayer = createLocalPlayer(MAP, () => 0.5);

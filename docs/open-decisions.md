@@ -940,6 +940,14 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
         sharper than 25 tiles/s², which braking never reaches) come from their drawn motion, so there is no protocol
         change. The rider hears their own unplaced, from the throttle and the ride's head-on stop.
     - **A glowing headlight** on the stem and a battery under the deck; looks only.
+    - **Stepping on turns the view to the scooter** (owner, 2026-11-08):
+      - **Heading:** the ride starts with the scooter's parked heading, which is kept from the ask, because the server
+        takes the scooter out of the room as it says yes. Before, the scooter swung to wherever the rider looked.
+      - **The view:** it eases to that heading the short way round, with a 0.08 s time constant, even past the head's
+        90°.
+      - **Rejoining:** a rider back after a reload keeps their pose.
+      - **Arrow keys:** they already drove like WASD while riding (↑/↓ throttle and brake, ←/→ steer as A/D do). A
+        test now pins it.
     - **A headlight that lights the way** (owner, 2026-11-07; [spec](superpowers/specs/2026-11-07-scooter-headlight-design.md)):
       - **The beam:** while someone rides, a cone of light falls ahead of the scooter along its heading, never the head's.
         - It is 35° each way with the last 10° fading out. That is D31's lighter cone, restored to `Glow`, which the
