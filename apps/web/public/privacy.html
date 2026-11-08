@@ -53,13 +53,18 @@
         app sends anonymous events to <a href="https://amplitude.com/privacy">Amplitude</a>. The events use a
         random id that is forgotten when you reload or close the page. Nothing is stored on your device for this: no
         cookies, no local storage. No IP address, name or room link is included.</p>
+      <p>Only if you tick "Remember this browser for anonymous usage stats" in the lobby, that random id is kept in your
+        browser (local storage, under <code>zoom3d.analytics</code>), so your later visits count as the same visitor.
+        It is off unless you tick it, and we rely on your consent for it. Untick it in the lobby, or in the room's
+        console (the <kbd>`</kbd> key), and the id is deleted at once; the rest of that visit gets a new one.</p>
 
       <h2>Error reports</h2>
       <p>When something breaks, technical details (the error, your browser and the app version) go to
         <a href="https://sentry.io/privacy/">Sentry</a> so we can fix it. Room links are removed first.</p>
 
       <h2>Why, and your rights</h2>
-      <p>We process this data because we have a legitimate interest in keeping zoom3d working and making it better.
+      <p>We process this data because we have a legitimate interest in keeping zoom3d working and making it better,
+        except the remembered usage-stats id, which is kept only with your consent.
         Amplitude and Sentry may process it in the United States. We don't sell data or use it for advertising.
         Questions or requests:
         <a href="https://github.com/pyldin601/zoom3d/issues">open an issue on GitHub</a>.</p>

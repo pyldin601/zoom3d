@@ -63,8 +63,8 @@ A room link is its only key (D8), so anyone with it can walk in with a camera on
   (ePrivacy Art. 5(3): analytics isn't strictly necessary; the existing name/lighting storage can't be reused for it).
   *Decided 2026-11-08 (D20 amendment):* an opt-in toggle in the lobby, off by default; on, Amplitude keeps its device
   id in localStorage. Withdrawable from the room console; decliners stay storage-free as today.
-  - [ ] Spec (open details listed in D20).
-  - [ ] Build it, with `privacy.html` and AGENTS.md updated in the same change.
+  - [x] Spec: `superpowers/specs/2026-11-08-analytics-opt-in-design.md`.
+  - [x] Build it, with `privacy.html` and AGENTS.md updated in the same change.
 - [ ] **Uplink.** The 100-person test left uplink unmeasured; measure it with a few real rooms of 8, faces on.
 - [ ] **Restart drill.** Deploy during a live room: people reconnect into their places (D35), the state file restores
   the vacuum, ball and scooters.
