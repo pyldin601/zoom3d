@@ -57,6 +57,15 @@ Layers:
   - Level 0.35 speeding up, 0.18 holding speed, and 0.02 × `min(1, speed / 0.3)` coasting.
 - **Motor tone:** *removed 2026-11-07 (owner).* It was a triangle, its second harmonic and a low-passed square at
   `max(30, 157 × speed / 6)` Hz, at levels 0.03, 0.02 and 0.01.
+- **Magnetic whine:** *added 2026-11-08 (owner: "like gears, but based on a magnetic field rather than physical
+  teeth"), tuned by ear on the Scooter Motor Whine listening page.*
+  - The magnet rate is `210 × speed / 6` Hz: how many magnet pairs pass a coil each second.
+  - Four sines at multiples of it: ×1 at gain 0.12, ×2 at 0.08, the slot tone at ×2.22 at 0.3, and ×12 at 0.06.
+    The slot tone and ×12 form an upper bus, raised 1.6× while speeding up.
+  - A once-per-wheel-turn pulse (the magnet rate ÷ 23 magnet pairs) dips the sum to 0.7.
+  - Every tone's pitch drifts by up to 6 cents: a smooth random wander, about 7 new targets a second.
+  - Then a peaking filter at 1500 Hz, Q 1.5, −3 dB (the housing).
+  - Level 0.1 speeding up, 0.05 holding speed and 0.008 coasting, each × `min(1, speed / 0.3)`.
 - **Wheels:**
   - Rolling noise through a band-pass at `1800 × (0.7 + 0.3 × speed / 6)` Hz, Q 0.8, level `0.12 × (speed / 6)^1.2`.
   - Seam ticks: one per tile travelled while moving over 0.3 tiles/s. Each is a 50 ms burst of noise through a
@@ -92,7 +101,7 @@ Layers:
 
 - **The synth:**
   - the whiss's pitch never changes with speed;
-  - there is no motor tone: the whiss is the only oscillator running;
+  - the whine's four tones sit at ×1, ×2, ×2.22 and ×12 the magnet rate, drift, and pulse once a wheel turn;
   - the levels for each load match the table;
   - wheel level and pitch follow speed;
   - one seam tick per tile;

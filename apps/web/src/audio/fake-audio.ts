@@ -76,7 +76,12 @@ export class FakeAudioContext {
   }
   createBiquadFilter() {
     return this.track(
-      Object.assign(new FakeNode('biquad'), { type: 'lowpass', frequency: new FakeParam(350), Q: new FakeParam(1) })
+      Object.assign(new FakeNode('biquad'), {
+        type: 'lowpass',
+        frequency: new FakeParam(350),
+        Q: new FakeParam(1),
+        gain: new FakeParam(0),
+      })
     );
   }
   createPanner() {
@@ -96,6 +101,7 @@ export class FakeAudioContext {
       Object.assign(new FakeNode('oscillator'), {
         type: 'sine' as OscillatorType,
         frequency: new FakeParam(440),
+        detune: new FakeParam(0),
         startedAt: null as number | null,
         stoppedAt: null as number | null,
         onended: null as (() => void) | null,
