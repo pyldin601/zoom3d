@@ -15,10 +15,10 @@ describe('rackSpots', () => {
     }
   });
 
-  test('stand against the south wall of the hall south of the spawn room, two tiles apart, handlebars north', () => {
+  test('stand side by side against the south wall of the hall south of the spawn room, one a cell, handlebars north', () => {
     expect(SCOOTER_COUNT).toBe(6);
     expect(rackSpots(MAP)).toEqual(
-      [29.5, 31.5, 33.5, 35.5, 37.5, 39.5].map((x) => ({ x, y: 55.5, angle: -Math.PI / 2 }))
+      [32.5, 33.5, 34.5, 35.5, 36.5, 37.5].map((x) => ({ x, y: 55.5, angle: -Math.PI / 2 }))
     );
     for (const s of rackSpots(MAP)) {
       expect(tileAt(MAP, Math.floor(s.x), Math.floor(s.y) + 1)).not.toBe(0);
