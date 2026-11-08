@@ -227,6 +227,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     `analytics_consent` event shows the opt-in rate; no EU data residency (a new project would lose the history;
     Amplitude is under the EU-US Data Privacy Framework). `privacy.html` names consent as the basis for opted-in
     visitors.
+    *Found in review 2026-11-08:* the SDK created an IndexedDB database (`AMP_diagnostics_<key>`) on every visitor's
+    device, opt-in or not, because its diagnostics client opens storage even when disabled. Fixed by a `pnpm patch` of
+    `@amplitude/analytics-core` (owner, over replacing the SDK with direct HTTP API calls) and guarded by
+    `amplitude-storage.test.ts`, which runs the real SDK with our options. Production had the write until this ships.
   - **Config:** the web DSN, the Amplitude key and the release are Vite build args passed by
     `.github/workflows/docker.yml`. Both values are public by design, since browsers see them anyway. Unset (dev,
     tests, forks), everything stays off. Both SDKs are lazy chunks, so the main bundle stays the same size.

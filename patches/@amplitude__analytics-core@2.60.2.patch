@@ -1,0 +1,26 @@
+diff --git a/lib/cjs/diagnostics/diagnostics-client.js b/lib/cjs/diagnostics/diagnostics-client.js
+index 3ae0a14ae6293a986c332a7fb29e291572e682b0..e50bd09df4b090104499160eb0c17bcd4f1d9cbc 100644
+--- a/lib/cjs/diagnostics/diagnostics-client.js
++++ b/lib/cjs/diagnostics/diagnostics-client.js
+@@ -42,7 +42,7 @@ var DiagnosticsClient = /** @class */ (function () {
+         if (storage) {
+             this.storage = storage;
+         }
+-        else if (diagnostics_storage_1.DiagnosticsStorage.isSupported()) {
++        else if (this.config.enabled && diagnostics_storage_1.DiagnosticsStorage.isSupported()) {
+             this.storage = new diagnostics_storage_1.DiagnosticsStorage(apiKey, logger);
+         }
+         else {
+diff --git a/lib/esm/diagnostics/diagnostics-client.js b/lib/esm/diagnostics/diagnostics-client.js
+index 494d302e4d2ec20556ccad463105e82d561ae047..230bf226873bd906a2f67f67fe043e2a61ff736d 100644
+--- a/lib/esm/diagnostics/diagnostics-client.js
++++ b/lib/esm/diagnostics/diagnostics-client.js
+@@ -39,7 +39,7 @@ var DiagnosticsClient = /** @class */ (function () {
+         if (storage) {
+             this.storage = storage;
+         }
+-        else if (DiagnosticsStorage.isSupported()) {
++        else if (this.config.enabled && DiagnosticsStorage.isSupported()) {
+             this.storage = new DiagnosticsStorage(apiKey, logger);
+         }
+         else {

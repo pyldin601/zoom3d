@@ -66,6 +66,21 @@ function memoryStorage(): EventStorage {
   };
 }
 
+/** Storage-free: identity and the unsent-event queue in memory; the IndexedDB write is patched out (D20). */
+export function amplitudeOptions(appVersion: string | undefined, deviceId: string): Types.BrowserOptions {
+  return {
+    appVersion,
+    deviceId,
+    autocapture: false,
+    identityStorage: 'none',
+    storageProvider: memoryStorage(),
+    trackingOptions: { ipAddress: false },
+    // Remote config could switch autocapture back on from Amplitude's UI.
+    remoteConfig: { fetchRemoteConfig: false },
+    enableDiagnostics: false,
+  };
+}
+
 function send(sdk: Amplitude, e: AnalyticsEvent): void {
   const { name, ...props } = e;
   sdk.track(name, props);
@@ -84,18 +99,8 @@ export function initAnalytics(
   deviceId = loadRememberedDeviceId(storage) ?? crypto.randomUUID();
   import('@amplitude/analytics-browser').then(
     (sdk) => {
-      sdk.init(apiKey, {
-        appVersion,
-        // Read when the SDK arrives: an opt-out before then has already replaced the remembered id.
-        deviceId,
-        autocapture: false,
-        identityStorage: 'none',
-        storageProvider: memoryStorage(),
-        trackingOptions: { ipAddress: false },
-        // Remote config could switch autocapture back on from Amplitude's UI.
-        remoteConfig: { fetchRemoteConfig: false },
-        enableDiagnostics: false,
-      });
+      // deviceId is read when the SDK arrives: an opt-out before then has already replaced the remembered one.
+      sdk.init(apiKey, amplitudeOptions(appVersion, deviceId));
       amp = sdk;
       for (const e of queue ?? []) {
         send(sdk, e);
