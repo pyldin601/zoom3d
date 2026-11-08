@@ -975,6 +975,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     39.5, two tiles apart and centred on the corridor's opening, handlebars north (builder's call: facing into the hall,
     a rider rolls straight off, where facing the wall would mean backing up first). `SCOOTER_COUNT` is 6. Rooms saved
     in the state file keep their parked scooters; only new rooms get the new rack.
+    - **One a cell** (owner, 2026-11-08): closer together, at x 32.5 to 37.5. Six cells can't centre on the corridor's
+      three-cell opening, so the row covers it and runs one cell further east (builder's call).
     - **Steering only while rolling, and the other way backing up** (owner, 2026-11-07, PR 143): the keys' turn fades
       in over the first 0.5 tiles/s, as the front wheel steers.
     - Starting values, for the owner to tune by riding. Not heard in the game by the builder.
