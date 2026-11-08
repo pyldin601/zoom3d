@@ -231,6 +231,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     device, opt-in or not, because its diagnostics client opens storage even when disabled. Fixed by a `pnpm patch` of
     `@amplitude/analytics-core` (owner, over replacing the SDK with direct HTTP API calls) and guarded by
     `amplitude-storage.test.ts`, which runs the real SDK with our options. Production had the write until this ships.
+    *2026-11-08, after seeing it live (owner):* the lobby checkbox looked out of place and is hidden: `lobby-flow.ts`
+    no longer passes the switch (`showLobby` still supports it). Opting in is only in the backtick console's "Usage
+    stats" row, so few people will opt in; returning-visitor numbers cover only them.
   - **Config:** the web DSN, the Amplitude key and the release are Vite build args passed by
     `.github/workflows/docker.yml`. Both values are public by design, since browsers see them anyway. Unset (dev,
     tests, forks), everything stays off. Both SDKs are lazy chunks, so the main bundle stays the same size.

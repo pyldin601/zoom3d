@@ -223,7 +223,7 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   Add an analytics event by extending `AnalyticsEvent` in `apps/web/src/telemetry/analytics.ts`. Analytics must stay
   storage-free (no cookies, localStorage or sessionStorage; that's why no consent banner is needed), so "Start a party"
   is an in-page `pushState`, not a page load. The one exception is opt-in: a visitor who ticks "Remember this browser"
-  (lobby, or the console) consents to one localStorage key, `zoom3d.analytics`, holding the device id
+  (the backtick console; the lobby checkbox exists but is hidden, owner 2026-11-08) consents to one localStorage key, `zoom3d.analytics`, holding the device id
   (`telemetry/analytics-consent.ts`); never add other analytics storage, and never write that key without the tick.
   The Amplitude SDK opens an IndexedDB database for its diagnostics even with `enableDiagnostics: false`;
   `patches/@amplitude__analytics-core@<version>.patch` stops that, and `telemetry/amplitude-storage.test.ts` runs the
