@@ -1,7 +1,7 @@
 // A ridden scooter's headlight (scooter headlight spec): a warm white cone of light ahead of the scooter, along its
 // heading, blocked by walls. Like the lighter's, its shadow table is refilled only when the lamp enters another floor
-// cell or the portals switch, never on a turn: the table covers the whole disc round the lamp, and the cone only picks
-// from it.
+// cell or the portals switch: the table covers the whole disc round the lamp, and the cone only picks from it. The
+// lamp sits ahead of the rider, so turning on the spot carries it through a few cells too (about 19 a full turn).
 import type { GameMap, Portals } from '@zoom3d/shared';
 import type { Glow, GlowCone, GlowShadow } from './glow';
 import { FLOOR_SUB, fillGlowSeen, newGlowShadow } from './lighting';

@@ -129,7 +129,7 @@ export function glowLight(g: Glow, x: number, y: number, z: number, nx: number, 
   if (hiddenByCut(g, x, y)) {
     return 0;
   }
-  // First, as most cells round a lighter lie outside its cone: the rest would be wasted on them.
+  // First, as most cells round a headlight lie outside its cone: the rest would be wasted on them.
   const ahead = coneFactor(g, x, y);
   if (ahead === 0) {
     return 0;

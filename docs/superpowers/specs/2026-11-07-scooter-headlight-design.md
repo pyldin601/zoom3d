@@ -49,9 +49,10 @@ These were all left out for the lighter too, and each would be a project of its 
   - Strength starts near the lighter's 1.5.
 - **Shadows:**
   - Each rider has a pooled `GlowShadow`, filled with `seenShare` like the lighter's. It is refilled only when the
-    lamp enters another floor cell or the portals switch, never on a turn.
-  - At full speed that's about 48 refills a second per rider, at about 0.13 ms each. `pnpm bench:walls` gets a
-    riding case.
+    lamp enters another floor cell or the portals switch. As the lamp sits ahead of the rider, turning on the spot
+    moves it through a few cells too (about 19 a full turn).
+  - At full speed that's about 48 refills a second per rider, at about 0.13 ms each (0.21 ms as measured when
+    built). `pnpm bench:walls` gets a riding case.
   - If a refill turns out too costly at speed, the builder may refill per tile instead and record it.
 - **The lamp voxel:**
   - The parked model's lamp is a plain, unlit colour.
