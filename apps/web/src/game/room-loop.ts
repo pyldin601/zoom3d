@@ -171,7 +171,14 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     // Consumed outside the room too, so a turn made before it doesn't land on the first frame in it.
     const turn = o.input.consumeMouseTurn();
     const room = o.room();
+    const ridden = room?.session.riding ?? null;
+    const steppingOn = ridesNow(room?.session ?? null) && !localPlayer.riding;
     localPlayer.riding = ridesNow(room?.session ?? null);
+    // A rider back after a reload has no ask behind them, so keeps the pose the server gave.
+    const parkedHeading = steppingOn && ridden !== null ? (room?.ride.headingOf(ridden) ?? null) : null;
+    if (parkedHeading !== null) {
+      localPlayer.faceScooter(parkedHeading);
+    }
     if (isConnected(room)) {
       localPlayer.walk(o.map, o.input.state(), turn, dt, room?.portals());
     }

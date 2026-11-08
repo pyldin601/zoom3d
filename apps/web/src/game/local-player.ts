@@ -25,6 +25,10 @@ import { createRideState, type RideState, stepRide } from './scooter-physics';
 
 /** Riding, the head turns at most this far either side of the scooter's heading: a neck over the shoulder. */
 const HEAD_LIMIT = Math.PI / 2;
+/** Stepping on, the view turns to the scooter's heading with this time constant (s): a quick turn, not a cut. */
+const HEAD_RETURN_S = 0.08;
+/** Turned this close (radians), the view is on the heading. */
+const HEAD_SETTLED_RAD = 0.002;
 
 /** The first-person handlebar follows the steering keys this smoothly (time constant). */
 const STEER_EASE_S = 0.1;
@@ -60,6 +64,11 @@ export interface LocalPlayer {
    * turns it, not the scooter. 0 on foot.
    */
   readonly head: number;
+  /**
+   * Stepping on: the scooter keeps its parked `heading`, and the view, still where the player looked, turns to it the
+   * short way round. Called once riding.
+   */
+  faceScooter(heading: number): void;
   /** Where the eye looks from: the pose with the head's turn. One object, refilled on each call. */
   eye(): PlayerState;
   /** Off while riding: both hands are on the handlebar, so no sip or cheers may start, even from a press made on foot. */
@@ -113,6 +122,7 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
   /** −1..1, eased toward the steering keys: how far the first-person handlebar is turned. */
   let steer = 0;
   let head = 0;
+  let headReturning = false;
   const eyePose: PlayerState = { x: 0, y: 0, angle: 0 };
   const ownScooter: VoxelInstance = { model: RIDDEN_SCOOTER_MODEL, x: 0, y: 0, angle: 0, lift: 0 };
   const firstPersonView: FirstPerson = {
@@ -148,6 +158,7 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       }
       if (on !== riding) {
         head = 0;
+        headReturning = false;
       }
       riding = on;
     },
@@ -174,8 +185,21 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       }
       return true;
     },
+    faceScooter(heading) {
+      head = shortestTurn(pose.angle - heading);
+      pose.angle = heading;
+      headReturning = head !== 0;
+    },
     walk(map, move, turnRad, dt, portals = null) {
-      if (riding) {
+      if (riding && headReturning) {
+        // Past the head's limit too: a turn of more than 90° eases all the way rather than jumping to the limit.
+        head += turnRad;
+        head -= head * (1 - Math.exp(-Math.max(dt, 0) / HEAD_RETURN_S));
+        if (Math.abs(head) < HEAD_SETTLED_RAD) {
+          head = 0;
+          headReturning = false;
+        }
+      } else if (riding) {
         head = Math.min(HEAD_LIMIT, Math.max(-HEAD_LIMIT, head + turnRad));
       } else {
         pose.angle += turnRad;
@@ -278,4 +302,9 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
     },
   };
   return localPlayer;
+}
+
+/** `rad` as the same turn within ±π: the short way round. */
+function shortestTurn(rad: number): number {
+  return rad - 2 * Math.PI * Math.round(rad / (2 * Math.PI));
 }

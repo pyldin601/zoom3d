@@ -18,6 +18,11 @@ export interface ScooterRide {
   inReach(player: Point, apparent?: ReadonlyMap<string, Point>): boolean;
   /** The server answered the local player's ask. */
   settled(): void;
+  /**
+   * The parked heading of scooter `id` if it is the one last asked for, else null: the server takes it out of the room
+   * as it says yes, so it is kept from the ask.
+   */
+  headingOf(id: string): number | null;
 }
 
 /** An unanswered ask (refused, or lost in a reconnect) stops blocking presses after this long. */
@@ -26,6 +31,8 @@ const RIDE_PENDING_MS = 1000;
 export function createScooterRide(session: RideSession, now: () => number): ScooterRide {
   let askedAt = Number.NEGATIVE_INFINITY;
   let lastApparent: ReadonlyMap<string, Point> | undefined;
+  let askedId: string | null = null;
+  let askedHeading = 0;
   /** Each scooter's objectKey, made once rather than every frame. */
   const keys = new Map<string, string>();
   const keyOf = (id: string) => {
@@ -68,6 +75,8 @@ export function createScooterRide(session: RideSession, now: () => number): Scoo
       }
       const id = nearest(player, lastApparent);
       if (id !== null) {
+        askedId = id;
+        askedHeading = session.objects.get(id)?.info.angle ?? 0;
         session.sendRide(id);
         askedAt = now();
       }
@@ -78,6 +87,9 @@ export function createScooterRide(session: RideSession, now: () => number): Scoo
     },
     settled() {
       askedAt = Number.NEGATIVE_INFINITY;
+    },
+    headingOf(id) {
+      return id === askedId ? askedHeading : null;
     },
   };
 }

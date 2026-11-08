@@ -31,6 +31,23 @@ beforeEach(() => {
 const ride = () => createScooterRide(session, () => time);
 const player = { x: 0, y: 0 };
 
+describe('headingOf', () => {
+  test('knows the parked heading of the scooter it asked for, and of no other', () => {
+    const near = session.objects.get('near');
+    if (!near) {
+      throw new Error('no scooter');
+    }
+    near.info.angle = 1.25;
+    const r = ride();
+    expect(r.headingOf('near')).toBeNull();
+    r.toggle(player);
+    // The server takes the scooter out of the room as it says yes: the heading must outlive it.
+    session.objects.delete('near');
+    expect(r.headingOf('near')).toBe(1.25);
+    expect(r.headingOf('far')).toBeNull();
+  });
+});
+
 describe('toggle', () => {
   test('on foot it asks for the nearest scooter in reach, never another object', () => {
     ride().toggle(player);
