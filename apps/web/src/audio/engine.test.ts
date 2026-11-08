@@ -319,3 +319,25 @@ describe('playUnplaced', () => {
     expect(ctx.byKind('panner')).toHaveLength(0);
   });
 });
+
+describe('playOwn', () => {
+  test("goes straight out at full level and into the shared reverb at a voice's near send", () => {
+    const node = new FakeNode('synth');
+    engine().playOwn(node as unknown as AudioNode);
+    const convolver = one('convolver');
+    const [out, send] = node.connections as (FakeNode & { gain: FakeParam })[];
+    expect(out).toBe(ctx.destination);
+    expect(send?.connections).toEqual([convolver]);
+    expect(send?.gain.value).toBe(voiceGains(0, false, DEFAULT_AUDIO_SETTINGS).send);
+    expect(ctx.byKind('panner')).toHaveLength(0);
+  });
+
+  test('every own sound shares one send', () => {
+    const e = engine();
+    const a = new FakeNode('synth');
+    const b = new FakeNode('synth');
+    e.playOwn(a as unknown as AudioNode);
+    e.playOwn(b as unknown as AudioNode);
+    expect(a.connections.at(1)).toBe(b.connections.at(1));
+  });
+});

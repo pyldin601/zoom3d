@@ -3,11 +3,11 @@ import type { AudioEngine } from './engine';
 import { asAudioContext, FakeAudioContext } from './fake-audio';
 import { createLighterSounds } from './lighter-sounds';
 
-/** An engine that only records what is attached, detached and played unplaced. */
+/** An engine that only records what is attached, detached and played as the local player's own. */
 function fakeEngine() {
   const attached = new Map<string, string>();
   const detached: string[] = [];
-  let unplaced = 0;
+  let own = 0;
   const engine = {
     attachNode(key: string, _node: AudioNode, owner = key) {
       attached.set(key, owner);
@@ -16,11 +16,11 @@ function fakeEngine() {
       attached.delete(key);
       detached.push(key);
     },
-    playUnplaced() {
-      unplaced++;
+    playOwn() {
+      own++;
     },
   } as unknown as AudioEngine;
-  return { engine, attached, detached, unplaced: () => unplaced };
+  return { engine, attached, detached, own: () => own };
 }
 
 describe('createLighterSounds', () => {
@@ -53,14 +53,14 @@ describe('createLighterSounds', () => {
     expect(detached).toContain('lighter:a');
   });
 
-  test("the local player's own lighter is heard unplaced, wired up once", () => {
+  test("the local player's own lighter goes through the room reverb, wired up once", () => {
     const ctx = new FakeAudioContext();
     const fake = fakeEngine();
     const sounds = createLighterSounds(asAudioContext(ctx), fake.engine);
     sounds.own(null, 'lighter');
     sounds.own('lighter', null);
     sounds.own('wine', 'beer');
-    expect(fake.unplaced()).toBe(1);
+    expect(fake.own()).toBe(1);
     expect(ctx.byKind('buffer-source')).toHaveLength(1);
   });
 });

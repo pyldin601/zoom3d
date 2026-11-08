@@ -1,5 +1,6 @@
 // The local boombox (boombox spec §3): B picks an audio file, which plays once. Its sound goes into
-// Web Audio and splits two ways: a stream track sent to the room, and our own speakers, centred and dry.
+// Web Audio and splits two ways: a stream track sent to the room, and the carrier's own ears, centred with the room's
+// reverb.
 
 /** How loud the carrier hears their own music; it's in their hand, not out in the room. */
 export const BOOMBOX_SELF_GAIN = 0.5;
@@ -58,11 +59,13 @@ export interface BoomboxOptions {
   container: HTMLElement;
   onTrack(track: MediaStreamTrack | null): void;
   onChange(on: boolean): void;
+  /** Plays the carrier's own copy: `AudioEngine.playOwn`, so it sounds in the room like their scooter and lighter. */
+  hearOwn(node: AudioNode): void;
   urls?: { create(file: Blob): string; revoke(url: string): void };
 }
 
 export function createBoombox(opts: BoomboxOptions): Boombox {
-  const { ctx, container, onTrack, onChange } = opts;
+  const { ctx, container, onTrack, onChange, hearOwn } = opts;
   const urls = opts.urls ?? {
     create: (f: Blob) => URL.createObjectURL(f),
     revoke: (u: string) => URL.revokeObjectURL(u),
@@ -103,7 +106,7 @@ export function createBoombox(opts: BoomboxOptions): Boombox {
     source.connect(volumeNode);
     volumeNode.connect(stream);
     volumeNode.connect(self);
-    self.connect(ctx.destination);
+    hearOwn(self);
     track = stream.stream.getAudioTracks()[0] ?? null;
     return track;
   };

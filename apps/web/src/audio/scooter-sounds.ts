@@ -1,5 +1,5 @@
 // The riders' scooter sounds (scooter sound spec §4): one per rider, heard from where they are drawn, their speed, load
-// and bumps read from the poses the server sent of them (rider-motion.ts); and the local player's own, unplaced, fed
+// and bumps read from the poses the server sent of them (rider-motion.ts); and the local player's own, centred with the room's reverb, fed
 // from their ride and their throttle. Nothing is sent over the wire for it.
 import { type Point, RIDE_SPEED } from '@zoom3d/shared';
 import type { RemotePeer } from '../net/session';
@@ -101,7 +101,7 @@ export function createScooterSounds(ctx: BaseAudioContext, engine: AudioEngine):
       }
       if (!ownSound) {
         ownSound = createScooterSound(ctx);
-        engine.playUnplaced(ownSound.output);
+        engine.playOwn(ownSound.output);
       }
       ownSound.set(speed, load, dtSeconds);
       sinceOwnBumpS += Math.max(dtSeconds, 0);

@@ -137,7 +137,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   room hears, with no protocol message (spec §3.1). *Amended 2026-10-10:* the picker offers, and the boombox
   accepts, only formats every current browser decodes (MP3, M4A/AAC, WAV, FLAC), not `audio/*`. WebRTC re-encodes
   whatever the element decodes, so the decoders are the real limit; Ogg, Opus and WebM are left out as patchy in
-  Safari, so a track that plays for one carrier plays for any (spec §3).
+  Safari, so a track that plays for one carrier plays for any (spec §3). *Amended 2026-11-08* (owner): the carrier's
+  own copy is no longer dry. It goes through `AudioEngine.playOwn`, like their own scooter and lighter: still centred
+  at `BOOMBOX_SELF_GAIN`, plus the shared reverb at a voice's near send, so it sounds in the same room.
 
 ### D17 — Lobby (pre-join screen)
 - What the join screen offers for camera, mic, name and picture, and what "camera off" means.
@@ -843,8 +845,11 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     floor images too. Face and portal glows still don't, so every existing hash in `bench:walls` and `bench:sprites`
     is unchanged.
   - **It clicks** (the owner asked, 2026-10-31): lit, a lid click, a flint rasp and the flame catching; put away, a
-    lid snap. Synthesised like the ball. Others hear a peer's from their spot; the holder hears their own unplaced. It
+    lid snap. Synthesised like the ball. Others hear a peer's from their spot; the holder hears their own centred. It
     hasn't been listened to in the game.
+    - **In the room's reverb** (owner, 2026-11-08): the holder's own goes through `AudioEngine.playOwn`, straight out
+      at full level plus the shared reverb at a voice's near send (`WET_NEAR`), so it sounds in the same room as the
+      ball and the vacuum.
   - **Through portals,** the shadow table uses the portal-aware sight test, so the light stops at a doorway's front
     instead of spilling into the room physically behind it.
   - **Starting values, tuned by play only for brightness:**
@@ -959,7 +964,9 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
       - Master 0.6: the loudest layer peaks about 13.5 dB under unity.
       - Others hear a rider from their spot. Their load (speeding up, holding speed, coasting) and their bumps (a stop
         sharper than 25 tiles/s², which braking never reaches) come from their drawn motion, so there is no protocol
-        change. The rider hears their own unplaced, from the throttle and the ride's head-on stop.
+        change. The rider hears their own centred, from the throttle and the ride's head-on stop.
+      - The rider's own goes into the room's reverb too (owner, 2026-11-08): `AudioEngine.playOwn`, like the own
+        lighter, with the same send as a voice beside the listener. Not listened to in the game by the builder.
     - **A glowing headlight** on the stem and a battery under the deck; looks only.
     - **Stepping on turns the view to the scooter** (owner, 2026-11-08):
       - **Heading:** the ride starts with the scooter's parked heading, which is kept from the ask, because the server

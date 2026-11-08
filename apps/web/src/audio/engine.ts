@@ -45,6 +45,12 @@ export interface AudioEngine {
    * reverb of its own. The caller disconnects `node` when the sound is over.
    */
   playUnplaced(node: AudioNode): void;
+  /**
+   * A sound the local player makes, like their own scooter: straight out at full level, like `playUnplaced`, and into
+   * the shared reverb as much as a voice beside the listener, so it sounds in the same room as everything else. The
+   * caller disconnects `node` when the sound is over.
+   */
+  playOwn(node: AudioNode): void;
   update(now: number, listener: PlayerState, sources: ReadonlyMap<string, Source>): void;
   /** 0..1 speaking indicator. */
   speaking(peerId: string): number;
@@ -177,6 +183,16 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
   const reverbGain = ctx.createGain();
   reverbGain.gain.value = settings.reverb;
   reverb.connect(reverbGain).connect(ctx.destination);
+  /** Every own sound's way into the reverb, built on the first one. */
+  let ownSend: GainNode | null = null;
+  const ownReverbSend = (): GainNode => {
+    if (!ownSend) {
+      ownSend = ctx.createGain();
+      ownSend.gain.value = voiceGains(0, false, settings).send;
+      ownSend.connect(reverb);
+    }
+    return ownSend;
+  };
 
   const setListener = (p: PlayerState, t: number) => {
     const l = ctx.listener;
@@ -340,6 +356,11 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
       node.connect(ctx.destination);
     },
 
+    playOwn(node) {
+      node.connect(ctx.destination);
+      node.connect(ownReverbSend());
+    },
+
     update(now, listener, sources) {
       const t = ctx.currentTime;
       const dt = lastUpdate === null ? 0 : (now - lastUpdate) / 1000;
@@ -373,6 +394,7 @@ export function createAudioEngine(opts: { ctx: AudioContext; map: GameMap; setti
       for (const id of [...voices.keys()]) {
         detach(id);
       }
+      ownSend?.disconnect();
       reverb.disconnect();
       reverbGain.disconnect();
     },

@@ -53,6 +53,8 @@ let onTrack: ReturnType<typeof vi.fn<(track: MediaStreamTrack | null) => void>>;
 let onChange: ReturnType<typeof vi.fn<(on: boolean) => void>>;
 let box: Boombox;
 let order: string[];
+/** What the boombox handed over for the carrier to hear. */
+let heard: FakeNode[];
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 const file = { name: 'Song – live.mp3', type: 'audio/mpeg' };
@@ -65,6 +67,7 @@ beforeEach(() => {
   revoked = [];
   onTrack = vi.fn<(track: MediaStreamTrack | null) => void>();
   onChange = vi.fn<(on: boolean) => void>();
+  heard = [];
   order = [];
   input.click.mockImplementation(() => order.push('click'));
   const container = {
@@ -79,6 +82,7 @@ beforeEach(() => {
     container: container as unknown as HTMLElement,
     onTrack,
     onChange,
+    hearOwn: (node) => heard.push(node as unknown as FakeNode),
     urls: {
       create: () => {
         created.push(`blob:${created.length}`);
@@ -171,7 +175,7 @@ test('picking a file plays it once and sends the track', async () => {
   expect(input.value).toBe('');
 });
 
-test('the graph goes through the volume, then splits to the stream and to the speakers, built once', async () => {
+test("the graph goes through the volume, then splits to the stream and to the carrier's own ears, built once", async () => {
   expect(BOOMBOX_SELF_GAIN).toBe(0.5);
   await pickAndPlay();
   box.toggle(true);
@@ -185,7 +189,8 @@ test('the graph goes through the volume, then splits to the stream and to the sp
   expect(toStream?.kind).toBe('stream-destination');
   expect(toSelf?.kind).toBe('gain');
   expect(toSelf?.gain?.value).toBe(0.5);
-  expect(toSelf?.connections).toEqual([ctx.destination]);
+  expect(heard).toEqual([toSelf]);
+  expect(toSelf?.connections).toEqual([]);
 });
 
 test('the sent track is mono on every browser: one point in the room, panned again by each listener', async () => {

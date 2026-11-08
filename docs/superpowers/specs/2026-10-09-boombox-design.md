@@ -115,8 +115,8 @@ keys in `main.ts`), calls `toggle(inRoom)`. States are `off`, `starting` and `pl
                                                  └→ GainNode (BOOMBOX_SELF_GAIN) → ctx.destination
 ```
 
-- The carrier hears their own music centred and dry at `BOOMBOX_SELF_GAIN = 0.5` (tuned by ear),
-  not spatialised: it's in their hand.
+- The carrier hears their own music centred at `BOOMBOX_SELF_GAIN = 0.5` (tuned by ear), not spatialised: it's in
+  their hand. Since 2026-11-08 (D16) it also feeds the room's shared reverb (`AudioEngine.playOwn`).
 - `MediaElementSource` can be created only once per element, hence the single reused element.
 - With no `AudioContext` (no engine), the boombox is unavailable and `B` does nothing.
 - Opening the file dialog may release pointer lock; clicking the view re-locks as usual.
