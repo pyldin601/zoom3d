@@ -422,14 +422,8 @@ function statsCheckbox(stats: StatsSwitch): HTMLLabelElement {
   const box = el('input', { type: 'checkbox', checked: stats.on });
   box.addEventListener('change', () => stats.onChange(box.checked));
   const privacy = el('a', { href: '/privacy.html', target: '_blank', textContent: 'privacy' });
-  return el(
-    'label',
-    { className: 'remember-stats' },
-    box,
-    'Remember this browser for anonymous usage stats (',
-    privacy,
-    ')'
-  );
+  const text = el('span', {}, 'Remember this browser for anonymous usage stats (', privacy, ')');
+  return el('label', { className: 'remember-stats' }, box, text);
 }
 
 export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
