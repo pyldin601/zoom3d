@@ -1,6 +1,6 @@
 # Scooter headlight design
 
-Date: 2026-11-07. Status: proposed. Extends D36 (kick scooters, then electric) and reuses D31 (the lighter).
+Date: 2026-11-07. Status: approved and built (2026-11-07). Extends D36 (kick scooters, then electric) and reuses D31 (the lighter).
 
 ## Intent
 

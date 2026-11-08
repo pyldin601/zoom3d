@@ -940,6 +940,22 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
         sharper than 25 tiles/s², which braking never reaches) come from their drawn motion, so there is no protocol
         change. The rider hears their own unplaced, from the throttle and the ride's head-on stop.
     - **A glowing headlight** on the stem and a battery under the deck; looks only.
+    - **A headlight that lights the way** (owner, 2026-11-07; [spec](superpowers/specs/2026-11-07-scooter-headlight-design.md)):
+      - **The beam:** while someone rides, a cone of light falls ahead of the scooter along its heading, never the head's.
+        - It is 35° each way with the last 10° fading out. That is D31's lighter cone, restored to `Glow`, which the
+          owner chose over a flat half-circle and over all-round light.
+        - It reaches 5 tiles at strength 1.5, warm white (`renderer/headlight.ts`).
+        - Everyone sees it, and it lights floor, walls, people and objects, only in a lit room.
+      - **Shadows:** walls block it. As with the lighter, each rider's shadow table is refilled when the lamp enters
+        another floor cell or the portals switch.
+        - A refill costs 0.21 ms (`bench:walls`), about 48 a second at full speed.
+        - 7 riders' headlights take a frame 2.69 ms, against 2.80 ms for 7 lighters.
+      - **The stem lamp:** it glows only while ridden; parked, it is dark.
+      - **Seen in the game** (builder, 2026-11-07): in the brightly lit hall south of the spawn, the wall a tile ahead
+        reads about 2.5× brighter riding than on foot, and the cone's edge shows. The floor ahead gains only a little,
+        under the ceiling lamps. Strength is a starting value for the owner to tune.
+      - **Left out, as with the lighter:** shadows cast by people or objects, reflections, light through portals, and
+        unlit rooms.
     - **Parked scooters are silent.** Until 2026-11-07 every object that wasn't the ball got the vacuum's hum, so each
       parked scooter hummed like a vacuum (the owner heard it); only the vacuum hums now.
   - **Six in the hall south of the spawn room** (owner, 2026-11-07, after the steering fix): the rack moved from the open

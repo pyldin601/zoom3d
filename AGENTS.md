@@ -201,6 +201,8 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   - **Item:** key 9 holds it. It is a `HeldItem` with no gestures, so `isDrink` guards every sip and cheers.
   - **Light:** a glow all round the holder with its own `reach`, plus a pooled shadow table refilled only per floor
     cell (`renderer/lighter.ts`). Glows with `reach: GLOW_RADIUS` must keep drawing exactly as before.
+  - **Cones:** the lighter is all round, but a `Glow` may carry a `cone` again, for the scooter headlight; every pass
+    honours it through `glowLight` and `glowReaching`.
   - **Not covered:** it makes no reflections and doesn't light anything through a portal. It lights objects (and their
     floor images) through `objectGlows`, which face and portal glows never join.
 - Kick scooters (D36, spec `docs/superpowers/specs/2026-11-07-kick-scooter-design.md`): parked scooters are world
@@ -212,7 +214,8 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   screen, never sent as `held: null`. Riding, the mouse turns only the head (`LocalPlayer.head`, ±90°): `pose.angle`
   is the scooter's heading (what is sent, parked and drawn under the rider), and anything about where the player looks
   (camera, listener, labels, subscription, hums, kicks) reads `localPlayer.eye()`. A dropped connection is no stepping
-  off (`ridesNow`).
+  off (`ridesNow`). A rider's headlight (`renderer/headlight.ts`) is a cone glow pointed by `pose.angle`, never `eye()`,
+  with a lighter-style shadow table; the parked model's lamp is dark and `RIDDEN_SCOOTER_MODEL`'s glows.
 - Telemetry privacy: logs, metrics labels, Sentry and Amplitude never get names, resume tokens or IPs, nor raw room
   ids: a room link is the room's only key. Server logs use `roomRef()` (a short hash), and the browser Sentry
   `beforeSend` scrubs `/r/<id>`.
