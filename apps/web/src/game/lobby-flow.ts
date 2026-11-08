@@ -8,7 +8,7 @@ import { createLocalMedia, type LocalMediaController } from '../media/local-medi
 import { loadMediaPrefs, saveMediaPrefs } from '../media/media-prefs';
 import { createOwnFaceSampler } from '../media/own-face';
 import { createOwnGlowSampler } from '../media/own-glow';
-import { statsSwitch, track } from '../telemetry/analytics';
+import { track } from '../telemetry/analytics';
 import { mediaOutcome } from '../telemetry/onboarding';
 import { showLobby } from '../ui/lobby';
 import { createMicLevel } from '../ui/mic-level';
@@ -48,7 +48,6 @@ export function openLobby(o: LobbyOptions): void {
     defaultAvatar: loadAvatar(pageStorage()),
     level: meter.level,
     inviteUrl: location.href,
-    stats: statsSwitch(),
     onJoin(name, avatar) {
       // Resumed synchronously inside the Join click (user gesture), before anything else.
       void audioCtx.resume();
