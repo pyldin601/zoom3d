@@ -14,7 +14,7 @@ import type { Session } from '../net/session';
 import { bakeRoomLightingOnce, roomLightingByRoom } from '../renderer/room-lighting';
 import type { Gesture } from '../renderer/sip';
 import { makeTextures } from '../renderer/textures';
-import { flushOnHide, track } from '../telemetry/analytics';
+import { flushOnHide, statsSwitch, track } from '../telemetry/analytics';
 import { createBacktickConsole } from '../ui/backtick-console';
 import { loadBoomboxVolume, saveBoomboxVolume } from '../ui/boombox-store';
 import { loadHeld, saveHeld } from '../ui/held-store';
@@ -78,6 +78,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
           controls.refresh();
         },
       },
+      stats: statsSwitch(),
     }),
     boombox: () => room?.boombox ?? null,
     saveBoomboxVolume: (volume) => saveBoomboxVolume(pageStorage(), volume),

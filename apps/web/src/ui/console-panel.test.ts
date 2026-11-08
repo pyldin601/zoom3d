@@ -14,6 +14,7 @@ const options = (overrides: Partial<ConsolePanelOptions> = {}): ConsolePanelOpti
   renderLoad: () => null,
   facesSent: () => ({ 256: false, 128: false, 64: false }),
   render: { settings: { mode: 'reflections' }, onChange: () => {} },
+  stats: null,
   ...overrides,
 });
 
@@ -168,4 +169,23 @@ describe('boombox column', () => {
       vi.useRealTimers();
     }
   });
+});
+
+test('no usage stats row without a switch', () => {
+  showConsolePanel(root, options());
+  expect(root.textContent).not.toContain('Usage stats');
+});
+
+test('the usage stats row shows the switch and changes it', () => {
+  const onChange = vi.fn();
+  showConsolePanel(root, options({ stats: { on: true, onChange } }));
+  const column = root.querySelector('.console-panel > .renderer') as HTMLElement;
+  const headings = [...column.querySelectorAll('h2')].map((h) => h.textContent);
+  expect(headings).toEqual(['Renderer', 'Usage stats']);
+  const label = column.lastElementChild as HTMLLabelElement;
+  expect(label.textContent).toBe('Remember this browser');
+  const box = label.querySelector('input[type=checkbox]') as HTMLInputElement;
+  expect(box.checked).toBe(true);
+  box.click();
+  expect(onChange).toHaveBeenCalledWith(false);
 });
