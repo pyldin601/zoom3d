@@ -62,10 +62,10 @@ These were all left out for the lighter too, and each would be a project of its 
 
 ## Amended 2026-11-08: a coloured edge
 
-The owner asked for the cone to break into colours at its edge. They tried the cheapest of three ideas first.
-- **The lamp:** three glows (red, green, blue) with one shadow table. Red's cone is 40° each way, green's 35° and blue's
-  30°, each fading over its last 5°.
-- **What it looks like:** white in the middle, yellow then red at the rim.
+The owner asked for the cone to break into colours at its edge, and tried the cheapest of three ideas.
+- **First try:** a full split into red, green and blue cones. It gave a broad red rim, which looked unnatural.
+- **Now:** 80% of the light is a white 35° cone with a 3° fade. The other 20% is split into red, green and blue cones at
+  34.5°, 35.5° and 36.5°, each fading over 2°. That leaves a thin blue-violet line just past the white edge.
 - **Not chosen:** a full spectral band and a halo ring. Both need a colour per lit point in every pass.
 
 ## Left to the builder

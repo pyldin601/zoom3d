@@ -956,13 +956,17 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
         under the ceiling lamps. Strength is a starting value for the owner to tune.
       - **Left out, as with the lighter:** shadows cast by people or objects, reflections, light through portals, and
         unlit rooms.
-      - **A coloured edge, like a real lens** (owner, 2026-11-08). The owner tried this first, over a full rainbow band
-        across the fade, which needs a colour per lit point in every pass, and over a rainbow halo ring.
-        - Each lamp is three glows: red, green and blue, sharing one shadow table.
-        - Red's cone is 40° each way, green's 35° and blue's 30°, each fading over its last 5° (the fade was 10°).
-        - The middle stays the lamp's warm white, and the edge goes yellow, then red.
-        - It shows best on grey things, such as a scooter's stem at the beam's edge. Blue walls hardly reflect it.
-        - 7 riders' headlights take a frame 3.16 ms, against 2.69 ms for single white cones (`bench:walls`).
+      - **A coloured edge, like a projector headlight's lens** (owner, 2026-11-08). The owner chose this over a full
+        rainbow band across the fade and over a rainbow halo ring, both of which need a colour per lit point in every
+        pass.
+        - **First try:** all the light split into red, green and blue cones (40°, 35° and 30°, with 5° fades), giving
+          a broad yellow-then-red rim. The owner found it unnatural.
+        - **Now:** 80% of the light is one white cone, 35° with a 3° fade, for a sharp cut-off.
+        - **The fringe:** 20% is split into red, green and blue cones a degree apart (34.5°, 35.5° and 36.5°), each
+          fading over 2°, so a thin blue-violet line runs just past the white edge.
+        - **Why blue outermost:** nested cones can't put a warm band inside a blue one.
+        - **Cost:** four glows and one shadow table per rider. In one `bench:walls` run, 7 riders' headlights took a
+          frame about 35% longer than 7 lighters' (4.02 ms against 2.98 ms, with a dev server running alongside).
     - **Parked scooters are silent.** Until 2026-11-07 every object that wasn't the ball got the vacuum's hum, so each
       parked scooter hummed like a vacuum (the owner heard it); only the vacuum hums now.
   - **Six in the hall south of the spawn room** (owner, 2026-11-07, after the steering fix): the rack moved from the open

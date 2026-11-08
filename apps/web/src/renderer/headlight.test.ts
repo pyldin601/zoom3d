@@ -7,6 +7,7 @@ import {
   HEADLIGHT_COLOUR,
   HEADLIGHT_CONE_HALF_RAD,
   HEADLIGHT_FRINGE_RAD,
+  HEADLIGHT_FRINGE_SHARE,
   HEADLIGHT_REACH,
   HEADLIGHT_STRENGTH,
 } from './headlight';
@@ -32,22 +33,17 @@ const EAST = 0;
 const SOUTH = Math.PI / 2;
 const rider = (x: number, y: number, angle = EAST, key = 'a') => ({ key, x, y, angle });
 
-/** One rider's lamp: its red, green and blue glows, in that order. */
-function only(glows: readonly Glow[]): Glow {
-  const g = glows.at(1);
-  if (!g || glows.length !== 3) {
-    throw new Error(`expected one lamp of three glows, got ${glows.length} glows`);
+/** One rider's lamp: its white glow, then its red, green and blue fringe glows. */
+function lampOf(glows: readonly Glow[]): [Glow, Glow, Glow, Glow] {
+  const [white, red, green, blue] = glows;
+  if (!white || !red || !green || !blue || glows.length !== 4) {
+    throw new Error(`expected one lamp of four glows, got ${glows.length} glows`);
   }
-  return g;
+  return [white, red, green, blue];
 }
 
-function channels(glows: readonly Glow[]): [Glow, Glow, Glow] {
-  const [red, green, blue] = glows;
-  if (!red || !green || !blue || glows.length !== 3) {
-    throw new Error(`expected one lamp of three glows, got ${glows.length} glows`);
-  }
-  return [red, green, blue];
-}
+/** One rider's white glow, which carries most of the light. */
+const only = (glows: readonly Glow[]): Glow => lampOf(glows)[0];
 
 /** The shadow table's value for the floor cell holding (x, y). */
 function seenAt(g: Glow, x: number, y: number): number | undefined {
@@ -73,34 +69,42 @@ describe('createHeadlightGlows', () => {
     expect(g.reach).toBe(HEADLIGHT_REACH);
   });
 
-  test('a lamp is a red, a green and a blue glow that add up to the headlight colour', () => {
-    const [red, green, blue] = channels(createHeadlightGlows().update([rider(5.5, 2.5)], open, null));
-    expect([red.r, red.g, red.b]).toEqual([HEADLIGHT_COLOUR.r * HEADLIGHT_STRENGTH, 0, 0]);
-    expect([green.r, green.g, green.b]).toEqual([0, HEADLIGHT_COLOUR.g * HEADLIGHT_STRENGTH, 0]);
-    expect([blue.r, blue.g, blue.b]).toEqual([0, 0, HEADLIGHT_COLOUR.b * HEADLIGHT_STRENGTH]);
-    // One shadow table for the three: walls block every colour the same.
-    expect(red.shadow).toBe(green.shadow);
-    expect(blue.shadow).toBe(green.shadow);
-    expect([red.x, red.y]).toEqual([green.x, green.y]);
+  test('a lamp is a white glow with most of the light and a faint red, green and blue fringe, adding up to its colour', () => {
+    const [white, red, green, blue] = lampOf(createHeadlightGlows().update([rider(5.5, 2.5)], open, null));
+    const full = (c: number) => c * HEADLIGHT_STRENGTH;
+    const fringe = (c: number) => c * HEADLIGHT_STRENGTH * HEADLIGHT_FRINGE_SHARE;
+    expect(white.r).toBeCloseTo(full(HEADLIGHT_COLOUR.r) - fringe(HEADLIGHT_COLOUR.r));
+    expect(white.b).toBeCloseTo(full(HEADLIGHT_COLOUR.b) - fringe(HEADLIGHT_COLOUR.b));
+    expect([red.r, red.g, red.b]).toEqual([fringe(HEADLIGHT_COLOUR.r), 0, 0]);
+    expect([green.r, green.g, green.b]).toEqual([0, fringe(HEADLIGHT_COLOUR.g), 0]);
+    expect([blue.r, blue.g, blue.b]).toEqual([0, 0, fringe(HEADLIGHT_COLOUR.b)]);
+    expect(HEADLIGHT_FRINGE_SHARE).toBeLessThanOrEqual(0.25);
+    // One shadow table for all four: walls block every colour the same.
+    for (const g of [red, green, blue]) {
+      expect(g.shadow).toBe(white.shadow);
+      expect([g.x, g.y]).toEqual([white.x, white.y]);
+    }
   });
 
-  test('red reaches widest and blue narrowest: well inside all three light, at the edge only red does', () => {
-    const [red, green, blue] = channels(createHeadlightGlows().update([rider(5.5, 2.5)], open, null));
+  test('just past the white beam only a thin blue line is left, and well inside every glow lights', () => {
+    const [white, red, green, blue] = lampOf(createHeadlightGlows().update([rider(5.5, 2.5)], open, null));
     const lamp = 5.5 + HEADLIGHT_AHEAD_TILES;
     const atDeg = (deg: number) =>
       [lamp + 2 * Math.cos((deg * Math.PI) / 180), 2.5 + 2 * Math.sin((deg * Math.PI) / 180)] as const;
-    const inside = atDeg(5);
-    for (const g of [red, green, blue]) {
-      expect(floorLight(g, ...inside)).toBeGreaterThan(0);
+    for (const g of [white, red, green, blue]) {
+      expect(floorLight(g, ...atDeg(5))).toBeGreaterThan(0);
     }
-    const edgeDeg = ((HEADLIGHT_CONE_HALF_RAD + HEADLIGHT_FRINGE_RAD / 2) * 180) / Math.PI;
-    const edge = atDeg(edgeDeg);
-    expect(floorLight(red, ...edge)).toBeGreaterThan(0);
-    expect(floorLight(green, ...edge)).toBe(0);
-    expect(floorLight(blue, ...edge)).toBe(0);
-    const yellow = atDeg(((HEADLIGHT_CONE_HALF_RAD - HEADLIGHT_FRINGE_RAD / 2) * 180) / Math.PI);
-    expect(floorLight(green, ...yellow)).toBeGreaterThan(0);
-    expect(floorLight(blue, ...yellow)).toBe(0);
+    const halfDeg = (HEADLIGHT_CONE_HALF_RAD * 180) / Math.PI;
+    const spacingDeg = (HEADLIGHT_FRINGE_RAD * 180) / Math.PI;
+    const line = atDeg(halfDeg + spacingDeg);
+    expect(floorLight(blue, ...line)).toBeGreaterThan(0);
+    expect(floorLight(white, ...line)).toBe(0);
+    expect(floorLight(green, ...line)).toBe(0);
+    expect(floorLight(red, ...line)).toBe(0);
+    // The line is thin: two spacings past the white edge, nothing at all.
+    for (const g of [white, red, green, blue]) {
+      expect(floorLight(g, ...atDeg(halfDeg + 2 * spacingDeg))).toBe(0);
+    }
   });
 
   test('it lights the floor ahead and none behind', () => {

@@ -2,8 +2,10 @@
 // heading, blocked by walls. Like the lighter's, its shadow table is refilled only when the lamp enters another floor
 // cell or the portals switch: the table covers the whole disc round the lamp, and the cone only picks from it. The
 // lamp sits ahead of the rider, so turning on the spot carries it through a few cells too (about 19 a full turn).
-// Like a real lens, it spreads its colours (owner, 2026-11-08): each lamp is a red, a green and a blue glow, red a
-// little wider and blue a little narrower, so the middle is the lamp's white and the edge goes yellow, then red.
+// Like a projector headlight's lens, it spreads its colours at the cut-off (owner, 2026-11-08). Most of the light is one
+// white cone. A faint share is split into red, green and blue cones a degree apart, blue widest, so a thin blue-violet
+// line runs just past the white edge, with a cool tint just inside. Nested cones can't put a warm band inside a blue
+// one: the widest colour lights everything within it.
 import type { GameMap, Portals } from '@zoom3d/shared';
 import type { Glow, GlowCone, GlowShadow } from './glow';
 import { FLOOR_SUB, fillGlowSeen, newGlowShadow } from './lighting';
@@ -16,18 +18,49 @@ export const HEADLIGHT_STRENGTH = 1.5;
 export const HEADLIGHT_COLOUR = { r: 1, g: 0.9, b: 0.7 };
 /** Half the cone's width: past it, no light. The lighter's cone, before it went all round (D31). */
 export const HEADLIGHT_CONE_HALF_RAD = (35 * Math.PI) / 180;
-/** The outermost part of the cone's half-width, over which its light fades out. */
-export const HEADLIGHT_CONE_FADE_RAD = (5 * Math.PI) / 180;
-/** Red's cone is this much wider than green's, and blue's this much narrower: how wide the coloured edge is. */
-export const HEADLIGHT_FRINGE_RAD = (5 * Math.PI) / 180;
+/** The outermost part of the white cone's half-width, over which its light fades out. */
+export const HEADLIGHT_CONE_FADE_RAD = (3 * Math.PI) / 180;
+/** How far apart the fringe's red, green and blue edges are. */
+export const HEADLIGHT_FRINGE_RAD = (1 * Math.PI) / 180;
+/** Each fringe colour fades out over this much of its half-width: a thin line, not a band. */
+export const HEADLIGHT_FRINGE_FADE_RAD = (2 * Math.PI) / 180;
+/** The share of the lamp's light split into the coloured fringe; the rest stays white. A hint, not a tint. */
+export const HEADLIGHT_FRINGE_SHARE = 0.2;
 /** How far ahead of its rider the lamp sits: about at the stem. */
 export const HEADLIGHT_AHEAD_TILES = 0.3;
 
-/** Red, green and blue: each colour's share of the lamp and how much wider than green its cone is. */
+const WHITE = 1 - HEADLIGHT_FRINGE_SHARE;
+const FRINGE = HEADLIGHT_FRINGE_SHARE;
+/** The white beam, then the fringe's red, green and blue: each one's colour, half-width and fade. */
 const CHANNELS = [
-  { r: HEADLIGHT_COLOUR.r, g: 0, b: 0, wider: HEADLIGHT_FRINGE_RAD },
-  { r: 0, g: HEADLIGHT_COLOUR.g, b: 0, wider: 0 },
-  { r: 0, g: 0, b: HEADLIGHT_COLOUR.b, wider: -HEADLIGHT_FRINGE_RAD },
+  {
+    r: HEADLIGHT_COLOUR.r * WHITE,
+    g: HEADLIGHT_COLOUR.g * WHITE,
+    b: HEADLIGHT_COLOUR.b * WHITE,
+    half: HEADLIGHT_CONE_HALF_RAD,
+    fade: HEADLIGHT_CONE_FADE_RAD,
+  },
+  {
+    r: HEADLIGHT_COLOUR.r * FRINGE,
+    g: 0,
+    b: 0,
+    half: HEADLIGHT_CONE_HALF_RAD - 0.5 * HEADLIGHT_FRINGE_RAD,
+    fade: HEADLIGHT_FRINGE_FADE_RAD,
+  },
+  {
+    r: 0,
+    g: HEADLIGHT_COLOUR.g * FRINGE,
+    b: 0,
+    half: HEADLIGHT_CONE_HALF_RAD + 0.5 * HEADLIGHT_FRINGE_RAD,
+    fade: HEADLIGHT_FRINGE_FADE_RAD,
+  },
+  {
+    r: 0,
+    g: 0,
+    b: HEADLIGHT_COLOUR.b * FRINGE,
+    half: HEADLIGHT_CONE_HALF_RAD + 1.5 * HEADLIGHT_FRINGE_RAD,
+    fade: HEADLIGHT_FRINGE_FADE_RAD,
+  },
 ] as const;
 
 /** Someone riding: who (to tell their tables apart), where they stand and which way the scooter faces. */
@@ -40,13 +73,13 @@ export interface HeadlightSource {
 
 /** A frame's headlight glows, in objects reused from frame to frame. */
 export interface HeadlightGlows {
-  /** Three glows per source in order (red, green, blue), shadowed on `map` with `portals` (the room's, while on). */
+  /** Four glows per source in order (white, then the fringe's red, green and blue), shadowed on `map` with `portals` (the room's, while on). */
   update(sources: Iterable<HeadlightSource>, map: GameMap, portals: Portals | null): readonly Glow[];
 }
 
 type ChannelGlow = Glow & { cone: GlowCone; shadow: GlowShadow };
 
-/** One rider's red, green and blue glows, their one shadow table, and the floor cell and portals it was filled for. */
+/** One rider's white and fringe glows, their one shadow table, and the floor cell and portals it was filled for. */
 interface Lamp {
   glows: readonly ChannelGlow[];
   shadow: GlowShadow;
@@ -66,9 +99,8 @@ export function createHeadlightGlows(): HeadlightGlows {
     if (!lamp) {
       const shadow = newGlowShadow(HEADLIGHT_REACH);
       const glows = CHANNELS.map((channel) => {
-        const half = HEADLIGHT_CONE_HALF_RAD + channel.wider;
-        const cosEdge = Math.cos(half);
-        const cosFull = Math.cos(half - HEADLIGHT_CONE_FADE_RAD);
+        const cosEdge = Math.cos(channel.half);
+        const cosFull = Math.cos(channel.half - channel.fade);
         return {
           x: 0,
           y: 0,
