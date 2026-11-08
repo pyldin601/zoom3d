@@ -2,6 +2,8 @@
 // heading, blocked by walls. Like the lighter's, its shadow table is refilled only when the lamp enters another floor
 // cell or the portals switch: the table covers the whole disc round the lamp, and the cone only picks from it. The
 // lamp sits ahead of the rider, so turning on the spot carries it through a few cells too (about 19 a full turn).
+// Like a real lens, it spreads its colours (owner, 2026-11-08): each lamp is a red, a green and a blue glow, red a
+// little wider and blue a little narrower, so the middle is the lamp's white and the edge goes yellow, then red.
 import type { GameMap, Portals } from '@zoom3d/shared';
 import type { Glow, GlowCone, GlowShadow } from './glow';
 import { FLOOR_SUB, fillGlowSeen, newGlowShadow } from './lighting';
@@ -15,12 +17,18 @@ export const HEADLIGHT_COLOUR = { r: 1, g: 0.9, b: 0.7 };
 /** Half the cone's width: past it, no light. The lighter's cone, before it went all round (D31). */
 export const HEADLIGHT_CONE_HALF_RAD = (35 * Math.PI) / 180;
 /** The outermost part of the cone's half-width, over which its light fades out. */
-export const HEADLIGHT_CONE_FADE_RAD = (10 * Math.PI) / 180;
+export const HEADLIGHT_CONE_FADE_RAD = (5 * Math.PI) / 180;
+/** Red's cone is this much wider than green's, and blue's this much narrower: how wide the coloured edge is. */
+export const HEADLIGHT_FRINGE_RAD = (5 * Math.PI) / 180;
 /** How far ahead of its rider the lamp sits: about at the stem. */
 export const HEADLIGHT_AHEAD_TILES = 0.3;
 
-const CONE_COS_EDGE = Math.cos(HEADLIGHT_CONE_HALF_RAD);
-const CONE_COS_FULL = Math.cos(HEADLIGHT_CONE_HALF_RAD - HEADLIGHT_CONE_FADE_RAD);
+/** Red, green and blue: each colour's share of the lamp and how much wider than green its cone is. */
+const CHANNELS = [
+  { r: HEADLIGHT_COLOUR.r, g: 0, b: 0, wider: HEADLIGHT_FRINGE_RAD },
+  { r: 0, g: HEADLIGHT_COLOUR.g, b: 0, wider: 0 },
+  { r: 0, g: 0, b: HEADLIGHT_COLOUR.b, wider: -HEADLIGHT_FRINGE_RAD },
+] as const;
 
 /** Someone riding: who (to tell their tables apart), where they stand and which way the scooter faces. */
 export interface HeadlightSource {
@@ -32,13 +40,16 @@ export interface HeadlightSource {
 
 /** A frame's headlight glows, in objects reused from frame to frame. */
 export interface HeadlightGlows {
-  /** One glow per source in order, shadowed on `map` with `portals` (the room's, while on). */
+  /** Three glows per source in order (red, green, blue), shadowed on `map` with `portals` (the room's, while on). */
   update(sources: Iterable<HeadlightSource>, map: GameMap, portals: Portals | null): readonly Glow[];
 }
 
-/** One rider's glow and the floor cell and portals its shadow table was filled for. */
+type ChannelGlow = Glow & { cone: GlowCone; shadow: GlowShadow };
+
+/** One rider's red, green and blue glows, their one shadow table, and the floor cell and portals it was filled for. */
 interface Lamp {
-  glow: Glow & { cone: GlowCone; shadow: GlowShadow };
+  glows: readonly ChannelGlow[];
+  shadow: GlowShadow;
   cellX: number;
   cellY: number;
   portals: Portals | null;
@@ -54,20 +65,24 @@ export function createHeadlightGlows(): HeadlightGlows {
     let lamp = lamps.get(key);
     if (!lamp) {
       const shadow = newGlowShadow(HEADLIGHT_REACH);
-      const cone = { dx: 1, dy: 0, cosEdge: CONE_COS_EDGE, cosFull: CONE_COS_FULL };
-      const glow = {
-        x: 0,
-        y: 0,
-        r: HEADLIGHT_COLOUR.r * HEADLIGHT_STRENGTH,
-        g: HEADLIGHT_COLOUR.g * HEADLIGHT_STRENGTH,
-        b: HEADLIGHT_COLOUR.b * HEADLIGHT_STRENGTH,
-        reach: HEADLIGHT_REACH,
-        cut: null,
-        shadow,
-        cone,
-      };
+      const glows = CHANNELS.map((channel) => {
+        const half = HEADLIGHT_CONE_HALF_RAD + channel.wider;
+        const cosEdge = Math.cos(half);
+        const cosFull = Math.cos(half - HEADLIGHT_CONE_FADE_RAD);
+        return {
+          x: 0,
+          y: 0,
+          r: channel.r * HEADLIGHT_STRENGTH,
+          g: channel.g * HEADLIGHT_STRENGTH,
+          b: channel.b * HEADLIGHT_STRENGTH,
+          reach: HEADLIGHT_REACH,
+          cut: null,
+          shadow,
+          cone: { dx: 1, dy: 0, cosEdge, cosFull },
+        };
+      });
       // A cell no lamp is in, so the first update fills the table.
-      lamp = { glow, cellX: -1, cellY: -1, portals: null, stamp: 0 };
+      lamp = { glows, shadow, cellX: -1, cellY: -1, portals: null, stamp: 0 };
       lamps.set(key, lamp);
     }
     return lamp;
@@ -81,23 +96,26 @@ export function createHeadlightGlows(): HeadlightGlows {
         // A rider missing from an update is forgotten, so on return they get a new table.
         const lamp = lampOf(source.key);
         lamp.stamp = stamp;
-        const { glow } = lamp;
         const dx = Math.cos(source.angle);
         const dy = Math.sin(source.angle);
-        glow.x = source.x + dx * HEADLIGHT_AHEAD_TILES;
-        glow.y = source.y + dy * HEADLIGHT_AHEAD_TILES;
-        glow.cone.dx = dx;
-        glow.cone.dy = dy;
-        const cellX = Math.floor(glow.x * FLOOR_SUB);
-        const cellY = Math.floor(glow.y * FLOOR_SUB);
+        const x = source.x + dx * HEADLIGHT_AHEAD_TILES;
+        const y = source.y + dy * HEADLIGHT_AHEAD_TILES;
+        for (const glow of lamp.glows) {
+          glow.x = x;
+          glow.y = y;
+          glow.cone.dx = dx;
+          glow.cone.dy = dy;
+          // Written by index and trimmed after, as in createLighterGlows.
+          glows[count++] = glow;
+        }
+        const cellX = Math.floor(x * FLOOR_SUB);
+        const cellY = Math.floor(y * FLOOR_SUB);
         if (cellX !== lamp.cellX || cellY !== lamp.cellY || portals !== lamp.portals) {
-          fillGlowSeen(map, portals, glow.x, glow.y, HEADLIGHT_REACH, null, glow.shadow);
+          fillGlowSeen(map, portals, x, y, HEADLIGHT_REACH, null, lamp.shadow);
           lamp.cellX = cellX;
           lamp.cellY = cellY;
           lamp.portals = portals;
         }
-        // Written by index and trimmed after, as in createLighterGlows.
-        glows[count++] = glow;
       }
       glows.length = count;
       for (const [key, lamp] of lamps) {

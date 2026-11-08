@@ -956,6 +956,13 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
         under the ceiling lamps. Strength is a starting value for the owner to tune.
       - **Left out, as with the lighter:** shadows cast by people or objects, reflections, light through portals, and
         unlit rooms.
+      - **A coloured edge, like a real lens** (owner, 2026-11-08). The owner tried this first, over a full rainbow band
+        across the fade, which needs a colour per lit point in every pass, and over a rainbow halo ring.
+        - Each lamp is three glows: red, green and blue, sharing one shadow table.
+        - Red's cone is 40° each way, green's 35° and blue's 30°, each fading over its last 5° (the fade was 10°).
+        - The middle stays the lamp's warm white, and the edge goes yellow, then red.
+        - It shows best on grey things, such as a scooter's stem at the beam's edge. Blue walls hardly reflect it.
+        - 7 riders' headlights take a frame 3.16 ms, against 2.69 ms for single white cones (`bench:walls`).
     - **Parked scooters are silent.** Until 2026-11-07 every object that wasn't the ball got the vacuum's hum, so each
       parked scooter hummed like a vacuum (the owner heard it); only the vacuum hums now.
   - **Six in the hall south of the spawn room** (owner, 2026-11-07, after the steering fix): the rack moved from the open

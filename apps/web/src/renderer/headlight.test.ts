@@ -5,6 +5,8 @@ import {
   createHeadlightGlows,
   HEADLIGHT_AHEAD_TILES,
   HEADLIGHT_COLOUR,
+  HEADLIGHT_CONE_HALF_RAD,
+  HEADLIGHT_FRINGE_RAD,
   HEADLIGHT_REACH,
   HEADLIGHT_STRENGTH,
 } from './headlight';
@@ -30,12 +32,21 @@ const EAST = 0;
 const SOUTH = Math.PI / 2;
 const rider = (x: number, y: number, angle = EAST, key = 'a') => ({ key, x, y, angle });
 
+/** One rider's lamp: its red, green and blue glows, in that order. */
 function only(glows: readonly Glow[]): Glow {
-  const g = glows.at(0);
-  if (!g || glows.length !== 1) {
-    throw new Error(`expected one glow, got ${glows.length}`);
+  const g = glows.at(1);
+  if (!g || glows.length !== 3) {
+    throw new Error(`expected one lamp of three glows, got ${glows.length} glows`);
   }
   return g;
+}
+
+function channels(glows: readonly Glow[]): [Glow, Glow, Glow] {
+  const [red, green, blue] = glows;
+  if (!red || !green || !blue || glows.length !== 3) {
+    throw new Error(`expected one lamp of three glows, got ${glows.length} glows`);
+  }
+  return [red, green, blue];
 }
 
 /** The shadow table's value for the floor cell holding (x, y). */
@@ -60,8 +71,36 @@ describe('createHeadlightGlows', () => {
     expect(g.cone?.dx).toBeCloseTo(0);
     expect(g.cone?.dy).toBeCloseTo(1);
     expect(g.reach).toBe(HEADLIGHT_REACH);
-    expect(g.r).toBeCloseTo(HEADLIGHT_COLOUR.r * HEADLIGHT_STRENGTH);
-    expect(g.b).toBeCloseTo(HEADLIGHT_COLOUR.b * HEADLIGHT_STRENGTH);
+  });
+
+  test('a lamp is a red, a green and a blue glow that add up to the headlight colour', () => {
+    const [red, green, blue] = channels(createHeadlightGlows().update([rider(5.5, 2.5)], open, null));
+    expect([red.r, red.g, red.b]).toEqual([HEADLIGHT_COLOUR.r * HEADLIGHT_STRENGTH, 0, 0]);
+    expect([green.r, green.g, green.b]).toEqual([0, HEADLIGHT_COLOUR.g * HEADLIGHT_STRENGTH, 0]);
+    expect([blue.r, blue.g, blue.b]).toEqual([0, 0, HEADLIGHT_COLOUR.b * HEADLIGHT_STRENGTH]);
+    // One shadow table for the three: walls block every colour the same.
+    expect(red.shadow).toBe(green.shadow);
+    expect(blue.shadow).toBe(green.shadow);
+    expect([red.x, red.y]).toEqual([green.x, green.y]);
+  });
+
+  test('red reaches widest and blue narrowest: well inside all three light, at the edge only red does', () => {
+    const [red, green, blue] = channels(createHeadlightGlows().update([rider(5.5, 2.5)], open, null));
+    const lamp = 5.5 + HEADLIGHT_AHEAD_TILES;
+    const atDeg = (deg: number) =>
+      [lamp + 2 * Math.cos((deg * Math.PI) / 180), 2.5 + 2 * Math.sin((deg * Math.PI) / 180)] as const;
+    const inside = atDeg(5);
+    for (const g of [red, green, blue]) {
+      expect(floorLight(g, ...inside)).toBeGreaterThan(0);
+    }
+    const edgeDeg = ((HEADLIGHT_CONE_HALF_RAD + HEADLIGHT_FRINGE_RAD / 2) * 180) / Math.PI;
+    const edge = atDeg(edgeDeg);
+    expect(floorLight(red, ...edge)).toBeGreaterThan(0);
+    expect(floorLight(green, ...edge)).toBe(0);
+    expect(floorLight(blue, ...edge)).toBe(0);
+    const yellow = atDeg(((HEADLIGHT_CONE_HALF_RAD - HEADLIGHT_FRINGE_RAD / 2) * 180) / Math.PI);
+    expect(floorLight(green, ...yellow)).toBeGreaterThan(0);
+    expect(floorLight(blue, ...yellow)).toBe(0);
   });
 
   test('it lights the floor ahead and none behind', () => {
