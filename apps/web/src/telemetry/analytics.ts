@@ -47,8 +47,8 @@ type Amplitude = typeof import('@amplitude/analytics-browser');
 let amp: Amplitude | null = null;
 let queue: AnalyticsEvent[] | null = null;
 let storage: Storage | null = null;
-/** Opted in before the SDK arrived: its device id is remembered once it has. */
-let rememberOnLoad = false;
+/** Ours, not read back from the SDK: its init is async, and an opt-in may come before the SDK has loaded. */
+let deviceId = '';
 
 type EventStorage = NonNullable<Types.BrowserOptions['storageProvider']>;
 type StoredEvents = Awaited<ReturnType<EventStorage['get']>>;
@@ -81,12 +81,13 @@ export function initAnalytics(
   }
   storage = pageStorage;
   queue = [];
-  const rememberedId = loadRememberedDeviceId(storage);
+  deviceId = loadRememberedDeviceId(storage) ?? crypto.randomUUID();
   import('@amplitude/analytics-browser').then(
     (sdk) => {
       sdk.init(apiKey, {
         appVersion,
-        ...(rememberedId === null ? {} : { deviceId: rememberedId }),
+        // Read when the SDK arrives: an opt-out before then has already replaced the remembered id.
+        deviceId,
         autocapture: false,
         identityStorage: 'none',
         storageProvider: memoryStorage(),
@@ -96,10 +97,6 @@ export function initAnalytics(
         enableDiagnostics: false,
       });
       amp = sdk;
-      if (rememberOnLoad) {
-        rememberOnLoad = false;
-        rememberCurrentId(sdk);
-      }
       for (const e of queue ?? []) {
         send(sdk, e);
       }
@@ -108,16 +105,8 @@ export function initAnalytics(
     (err) => {
       console.warn('analytics unavailable', err);
       queue = null;
-      rememberOnLoad = false;
     }
   );
-}
-
-function rememberCurrentId(sdk: Amplitude): void {
-  const id = sdk.getDeviceId();
-  if (id !== undefined) {
-    rememberDeviceId(storage, id);
-  }
 }
 
 /** Null while analytics is off or its SDK failed to load: then there is nothing to remember. */
@@ -133,16 +122,12 @@ export function setStatsRemembered(on: boolean): void {
     return;
   }
   if (on) {
-    if (amp) {
-      rememberCurrentId(amp);
-    } else {
-      rememberOnLoad = true;
-    }
+    rememberDeviceId(storage, deviceId);
   } else {
-    rememberOnLoad = false;
     forgetDeviceId(storage);
     // The rest of this visit must not be tied to the id that was remembered.
-    amp?.setDeviceId(crypto.randomUUID());
+    deviceId = crypto.randomUUID();
+    amp?.setDeviceId(deviceId);
   }
   track({ name: 'analytics_consent', on });
 }

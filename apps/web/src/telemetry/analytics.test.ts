@@ -6,7 +6,7 @@ const sdk = vi.hoisted(() => ({
   track: vi.fn(),
   flush: vi.fn(),
   setTransport: vi.fn(),
-  getDeviceId: vi.fn(() => 'memory-id-1' as string | undefined),
+  getDeviceId: vi.fn(() => undefined as string | undefined),
   setDeviceId: vi.fn(),
 }));
 
@@ -47,27 +47,39 @@ test('starts with the remembered device id', async () => {
   expect(initOptions()).toEqual(expect.objectContaining({ deviceId: 'stored-id-1', identityStorage: 'none' }));
 });
 
-test('starts without a device id when none is remembered', async () => {
+test('starts with a fresh random id when none is remembered', async () => {
   analytics.initAnalytics('key', 'v1', storage);
   await vi.dynamicImportSettled();
-  expect(initOptions()).not.toHaveProperty('deviceId');
+  expect(typeof initOptions().deviceId).toBe('string');
+  expect(String(initOptions().deviceId).length).toBeGreaterThanOrEqual(5);
 });
 
-test('remembering saves the current id and reports consent', async () => {
+test('remembering saves the id the SDK runs with and reports consent', async () => {
   analytics.initAnalytics('key', 'v1', storage);
   await vi.dynamicImportSettled();
   analytics.setStatsRemembered(true);
-  expect(map.get(ANALYTICS_KEY)).toBe('memory-id-1');
+  expect(map.get(ANALYTICS_KEY)).toBe(initOptions().deviceId);
   expect(sdk.track).toHaveBeenCalledWith('analytics_consent', { on: true });
   expect(analytics.statsSwitch()?.on).toBe(true);
 });
 
-test('remembering before the SDK loads saves the id once it has', async () => {
+test('remembering before the SDK loads saves the id it then starts with', async () => {
   analytics.initAnalytics('key', 'v1', storage);
   analytics.setStatsRemembered(true);
-  expect(map.has(ANALYTICS_KEY)).toBe(false);
+  const saved = map.get(ANALYTICS_KEY);
+  expect(typeof saved).toBe('string');
   await vi.dynamicImportSettled();
-  expect(map.get(ANALYTICS_KEY)).toBe('memory-id-1');
+  expect(initOptions().deviceId).toBe(saved);
+});
+
+test('forgetting before the SDK loads starts it with a fresh id', async () => {
+  map.set(ANALYTICS_KEY, 'stored-id-1');
+  analytics.initAnalytics('key', 'v1', storage);
+  analytics.setStatsRemembered(false);
+  await vi.dynamicImportSettled();
+  expect(map.has(ANALYTICS_KEY)).toBe(false);
+  expect(typeof initOptions().deviceId).toBe('string');
+  expect(initOptions().deviceId).not.toBe('stored-id-1');
 });
 
 test('remembering then forgetting before the SDK loads saves nothing', async () => {
