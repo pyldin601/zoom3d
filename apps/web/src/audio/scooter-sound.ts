@@ -17,8 +17,8 @@ export const SCOOTER_MASTER = 0.6;
 const PWM_HZ = 7800;
 const PWM_LEVEL: Record<ScooterLoad, number> = { pulling: 0.35, cruising: 0.18, coasting: 0.02 };
 const PWM_TONE_GAIN = 0.65;
-/** Half the bench's 3 (owner, 2026-11-07: 80% was still too loud). */
-const PWM_HISS_GAIN = 1.5;
+/** A tenth of 1.5, which was half the bench's 3 (owner: 2026-11-07, 80% too loud; 2026-11-08, a tenth of that). */
+const PWM_HISS_GAIN = 0.15;
 const PWM_HISS_Q = 12;
 /** How many magnet pairs pass a coil each second at full speed. */
 const MAGNET_HZ_AT_TOP = 210;
