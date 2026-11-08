@@ -213,6 +213,15 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     or Forward reloads the page. The host/invite flag is a variable. `/privacy.html` (linked from the landing panel)
     covers GDPR transparency, with legitimate interest as the basis. Retention and returning-user cohorts would need a
     persistent id behind an opt-in banner.
+    *Amended 2026-11-08 (owner, over staying storage-free; for the alpha launch, not built yet):* returning visitors
+    are counted for those who opt in. An opt-in toggle in the lobby, **off by default**, no banner and nothing that
+    blocks joining. On, Amplitude keeps its device id in localStorage, so later visits in the same browser are the
+    same user; off (the default, or switched off later), analytics is storage-free exactly as above. Rejected: a
+    cookieless server-side daily hash (same-day continuity at most, and it needs IPs, which telemetry never gets), and
+    reusing the lobby's localStorage for an id (that storage is allowed only for what the person asked for). Still
+    for the spec: the toggle's wording, where it is switched off again (the room console), whether switching off
+    also clears the stored id, how the choice itself is remembered, Amplitude's EU data residency, and the
+    `privacy.html` and AGENTS.md changes (consent as the basis for opted-in visitors).
   - **Config:** the web DSN, the Amplitude key and the release are Vite build args passed by
     `.github/workflows/docker.yml`. Both values are public by design, since browsers see them anyway. Unset (dev,
     tests, forks), everything stays off. Both SDKs are lazy chunks, so the main bundle stays the same size.

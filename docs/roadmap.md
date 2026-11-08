@@ -14,3 +14,5 @@ Each step gets its own implementation plan in `docs/superpowers/plans/`. Parked,
 | 5 | M5 Polish | Device pickers, error states, perf, Firefox |
 | 6 | M6 Deploy ✅ | Home k3s (casa) via ArgoCD, HTTPS; TURN comes with LiveKit (D11) |
 | 7 | M7 100+ rooms | LiveKit on casa (D21): 6a deploy ✅, 6b media through it ✅, 6c dynamic subscription ✅ (no video for people out of view, no audio beyond hearing range, smaller face tracks for distant faces), 6d server fan-out ✅ (one batch of changed poses per client per tick, far peers twice a second, avatars over HTTP, generated colours, 128 people), 100-person load test ✅ (fits: ~60% node CPU tested, ~80% modelled; uplink unmeasured, [report](load-tests/2026-10-12-m7-100-people.md)) |
+
+Before inviting outside testers: [alpha launch checklist](alpha-launch-checklist.md).
