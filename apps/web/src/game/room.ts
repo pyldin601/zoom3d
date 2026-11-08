@@ -109,7 +109,7 @@ export function joinRoom(opts: JoinOptions): Room {
   session = joined;
   ride = createScooterRide(joined, () => performance.now());
   call.attach(joined);
-  const boombox = createOwnBoombox(opts, call, joined);
+  const boombox = createOwnBoombox(opts, audio, call, joined);
   const kick = () => {
     const { player } = opts;
     const angle = opts.aim();
@@ -215,11 +215,12 @@ function connectSession(
   return session;
 }
 
-function createOwnBoombox(opts: JoinOptions, call: Call, session: Session): Boombox {
+function createOwnBoombox(opts: JoinOptions, audio: AudioEngine, call: Call, session: Session): Boombox {
   const boombox = createBoombox({
     ctx: opts.audioCtx,
     container: opts.localMediaContainer,
     onTrack: (music) => call.setBoomboxTrack(music),
+    hearOwn: (node) => audio.playOwn(node),
     onChange(on) {
       if (on) {
         track({ name: 'boombox_started' });

@@ -1,5 +1,5 @@
 // Who lights or puts away a lighter, heard (lighter spec §3.5): a peer's lighter from where they stand, through the
-// voice path like the ball; the local player's own unplaced, as it is in their hand.
+// voice path like the ball; the local player's own centred, as it is in their hand, with the room's reverb.
 import type { HeldItem } from '@zoom3d/shared';
 import type { AudioEngine } from './engine';
 import { createLighterSound, type LighterSound } from './lighter-sound';
@@ -50,7 +50,7 @@ export function createLighterSounds(ctx: BaseAudioContext, engine: AudioEngine):
       }
       if (!ownSound) {
         ownSound = createLighterSound(ctx);
-        engine.playUnplaced(ownSound.output);
+        engine.playOwn(ownSound.output);
       }
       if (after === 'lighter') {
         ownSound.on();

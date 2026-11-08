@@ -10,7 +10,7 @@ import { createScooterSounds, ownLoad } from './scooter-sounds';
 function fakeEngine() {
   const attached = new Map<string, string>();
   const detached: string[] = [];
-  let unplaced = 0;
+  let own = 0;
   const engine = {
     attachNode(key: string, _node: AudioNode, owner = key) {
       attached.set(key, owner);
@@ -19,11 +19,11 @@ function fakeEngine() {
       attached.delete(key);
       detached.push(key);
     },
-    playUnplaced() {
-      unplaced++;
+    playOwn() {
+      own++;
     },
   } as unknown as AudioEngine;
-  return { engine, attached, detached, unplaced: () => unplaced };
+  return { engine, attached, detached, own: () => own };
 }
 
 const peer = (id: string, riding: string | null): RemotePeer => {
@@ -102,13 +102,13 @@ describe('the own sound', () => {
     expect(thuds(ctx)).toHaveLength(1);
   });
 
-  test('plays unplaced while riding, and stops on stepping off', () => {
+  test('plays through the room reverb while riding, and stops on stepping off', () => {
     const ctx = new FakeAudioContext();
-    const { engine, unplaced } = fakeEngine();
+    const { engine, own } = fakeEngine();
     const sounds = createScooterSounds(asAudioContext(ctx), engine);
     sounds.own(3, 'pulling', 0, true, DT);
     sounds.own(3, 'pulling', 0, true, DT);
-    expect(unplaced()).toBe(1);
+    expect(own()).toBe(1);
     sounds.own(0, 'coasting', 0, false, DT);
     const oscillators = ctx.byKind('oscillator') as unknown as { stoppedAt: number | null }[];
     expect(oscillators.every((o) => o.stoppedAt !== null)).toBe(true);
