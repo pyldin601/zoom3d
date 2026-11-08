@@ -514,3 +514,161 @@ test('joinBanner explains devices unavailable at Join', () => {
   ).toBe('Camera and mic unavailable — others see your picture or initials, you can listen only.');
   expect(joinBanner({ ...STATE, cam: false })).toBeNull();
 });
+
+const press = (key: string) => {
+  (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+};
+const cameraChevron = () => byLabel('Choose camera') as HTMLButtonElement;
+const cameraMenu = () => root.querySelector('[data-device="cam"] .device-menu') as HTMLElement;
+const focusedText = () => document.activeElement?.textContent;
+async function openCameraMenu() {
+  cameraChevron().click();
+  await flush();
+}
+
+test('the name field is named for screen readers, which skip a placeholder', () => {
+  show();
+  expect(nameInput().getAttribute('aria-label')).toBe('Your name');
+});
+
+test('errors are announced as they appear', () => {
+  show();
+  expect(root.querySelector('.error')?.getAttribute('role')).toBe('alert');
+});
+
+test('typing does not rewrite an unchanged error, which would announce it again', () => {
+  show({ media: fakeMedia({ mic: false, micProblem: 'blocked' }).controller });
+  const text = root.querySelector('.error')?.firstChild;
+  expect(text).toBeTruthy();
+  nameInput().value = 'Ada';
+  nameInput().dispatchEvent(new Event('input'));
+  expect(root.querySelector('.error')?.firstChild).toBe(text);
+});
+
+test('a device menu takes focus on the device in use', async () => {
+  show({ media: fakeMedia({}, { camId: 'c2' }).controller });
+  await openCameraMenu();
+  expect(focusedText()).toBe('Camera 2');
+});
+
+test('with no device chosen, a device menu takes focus on the first', async () => {
+  show();
+  await openCameraMenu();
+  expect(focusedText()).toBe('FaceTime HD');
+});
+
+test('arrow keys, Home and End move through a device menu, wrapping at its ends', async () => {
+  show();
+  await openCameraMenu();
+  press('ArrowDown');
+  expect(focusedText()).toBe('Camera 2');
+  press('ArrowDown');
+  expect(focusedText()).toBe('FaceTime HD');
+  press('ArrowUp');
+  expect(focusedText()).toBe('Camera 2');
+  press('Home');
+  expect(focusedText()).toBe('FaceTime HD');
+  press('End');
+  expect(focusedText()).toBe('Camera 2');
+});
+
+test('arrow keys in a device menu do not scroll the page', async () => {
+  show();
+  await openCameraMenu();
+  const arrow = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true });
+  document.activeElement?.dispatchEvent(arrow);
+  expect(arrow.defaultPrevented).toBe(true);
+});
+
+test('menu items are reached with the arrow keys, so Tab leaves the menu', async () => {
+  show();
+  await openCameraMenu();
+  const items = [...cameraMenu().querySelectorAll('button')];
+  expect(items.map((i) => i.tabIndex)).toEqual([-1, -1]);
+});
+
+test.each(['Escape', 'Tab'])('%s closes a device menu and hands focus back to its button', async (key) => {
+  show();
+  await openCameraMenu();
+  press(key);
+  expect(cameraMenu().hidden).toBe(true);
+  expect(document.activeElement).toBe(cameraChevron());
+});
+
+test('choosing a device hands focus back to the menu button', async () => {
+  show();
+  await openCameraMenu();
+  (document.activeElement as HTMLButtonElement).click();
+  expect(document.activeElement).toBe(cameraChevron());
+});
+
+test('Escape closes the picture menu and hands focus back to the pencil', () => {
+  show({ defaultAvatar: PIC, media: camOff() });
+  const pencil = byLabel('Change picture') as HTMLButtonElement;
+  pencil.click();
+  button('Remove').focus();
+  press('Escape');
+  expect((root.querySelector('.picture-menu') as HTMLElement).hidden).toBe(true);
+  expect(document.activeElement).toBe(pencil);
+});
+
+test('Escape with every menu closed leaves focus where it is', () => {
+  show();
+  nameInput().focus();
+  press('Escape');
+  expect(document.activeElement).toBe(nameInput());
+});
+
+test('a device menu button says whether its menu is open, however it closes', async () => {
+  show();
+  const expanded = () => cameraChevron().getAttribute('aria-expanded');
+  expect(expanded()).toBe('false');
+  await openCameraMenu();
+  expect(expanded()).toBe('true');
+  cameraChevron().click();
+  expect(expanded()).toBe('false');
+
+  await openCameraMenu();
+  press('Escape');
+  expect(expanded()).toBe('false');
+
+  await openCameraMenu();
+  document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  expect(expanded()).toBe('false');
+
+  await openCameraMenu();
+  byLabel('Choose microphone')?.click();
+  await flush();
+  expect(expanded()).toBe('false');
+
+  await openCameraMenu();
+  (document.activeElement as HTMLButtonElement).click();
+  expect(expanded()).toBe('false');
+});
+
+test('the pencil says whether the picture menu is open, however it closes', () => {
+  const { controller, set } = fakeMedia({ cam: false }, { cam: false });
+  show({ defaultAvatar: PIC, media: controller });
+  const pencil = byLabel('Change picture') as HTMLButtonElement;
+  const expanded = () => pencil.getAttribute('aria-expanded');
+  expect(expanded()).toBe('false');
+  pencil.click();
+  expect(expanded()).toBe('true');
+  button('Remove').click();
+  expect(expanded()).toBe('false');
+
+  pencil.click();
+  expect(expanded()).toBe('true');
+  set({ cam: true });
+  expect(expanded()).toBe('false');
+});
+
+test('after the lobby goes, Escape no longer reaches its menus', () => {
+  show({ defaultAvatar: PIC, media: camOff() });
+  (byLabel('Change picture') as HTMLButtonElement).click();
+  const picture = root.querySelector('.picture-menu') as HTMLElement;
+  dispose?.();
+  dispose = null;
+  press('Escape');
+  expect(picture.hidden).toBe(false);
+});

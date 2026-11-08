@@ -122,6 +122,32 @@ interface OpenableMenu {
   opener: HTMLElement;
 }
 
+function setMenuOpen({ menu, opener }: OpenableMenu, open: boolean): void {
+  menu.hidden = !open;
+  opener.setAttribute('aria-expanded', String(open));
+}
+
+function closeAndRefocus(menu: OpenableMenu): void {
+  setMenuOpen(menu, false);
+  menu.opener.focus();
+}
+
+/** Where a key moves focus in a list of menu items, if it is a key that does. `.at(-1)` wraps ArrowUp to the last. */
+function menuItemForKey(items: readonly HTMLElement[], focused: number, key: string): HTMLElement | undefined {
+  switch (key) {
+    case 'ArrowDown':
+      return items.at((focused + 1) % items.length);
+    case 'ArrowUp':
+      return items.at(focused - 1);
+    case 'Home':
+      return items.at(0);
+    case 'End':
+      return items.at(-1);
+    default:
+      return undefined;
+  }
+}
+
 interface Split extends OpenableMenu {
   root: HTMLElement;
   render(state: MediaState): void;
@@ -141,6 +167,9 @@ function splitButton(
   chevron.setAttribute('aria-haspopup', 'menu');
   const menu = el('div', { className: 'device-menu', hidden: true });
   menu.setAttribute('role', 'menu');
+  menu.setAttribute('aria-label', `Choose ${device.noun}`);
+  const openable: OpenableMenu = { menu, opener: chevron };
+  setMenuOpen(openable, false);
   const root = el('div', { className: 'split' }, toggle, chevron, menu);
   root.dataset.device = device.kind;
   /** null until the first render draws the icon. */
@@ -153,11 +182,11 @@ function splitButton(
     const inUse = device.chosenId(media.prefs()) ?? list[0]?.id;
     menu.replaceChildren(
       ...list.map((d) => {
-        const item = el('button', { type: 'button', textContent: d.label });
+        const item = el('button', { type: 'button', textContent: d.label, tabIndex: -1 });
         item.setAttribute('role', 'menuitemradio');
         item.setAttribute('aria-checked', String(d.id === inUse));
         item.addEventListener('click', () => {
-          menu.hidden = true;
+          closeAndRefocus(openable);
           menu.replaceChildren();
           void device.use(media, d.id);
         });
@@ -179,12 +208,27 @@ function splitButton(
   toggle.addEventListener('click', () => device.turn(media, !on));
   chevron.addEventListener('click', async () => {
     if (!menu.hidden) {
-      menu.hidden = true;
+      setMenuOpen(openable, false);
       return;
     }
     closeOthers(menu);
     await listDevices();
-    menu.hidden = false;
+    setMenuOpen(openable, true);
+    menu.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
+  });
+  menu.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab') {
+      // Tab's own move then goes on from the button, as if the menu had never opened.
+      closeAndRefocus(openable);
+      return;
+    }
+    const items = [...menu.querySelectorAll('button')];
+    const focused = items.findIndex((item) => item === document.activeElement);
+    const item = menuItemForKey(items, focused, e.key);
+    if (item) {
+      e.preventDefault();
+      item.focus();
+    }
   });
 
   return {
@@ -233,6 +277,8 @@ function createPicture(opts: LobbyOptions, closeOthers: (except: HTMLElement | n
   const choose = el('button', { type: 'button', textContent: 'Choose picture…' });
   const remove = el('button', { type: 'button', textContent: 'Remove' });
   const menu = el('div', { className: 'picture-menu', hidden: true }, choose, remove);
+  const openable: OpenableMenu = { menu, opener: pencil };
+  setMenuOpen(openable, false);
   const disc = el('div', { className: 'lobby-disc avatar' }, video, face, pencil, menu);
   const file = el('input', { type: 'file', accept: 'image/*', hidden: true });
   file.setAttribute('aria-label', 'Avatar picture');
@@ -264,17 +310,17 @@ function createPicture(opts: LobbyOptions, closeOthers: (except: HTMLElement | n
   };
 
   pencil.addEventListener('click', () => {
-    const open = menu.hidden;
+    const wasClosed = menu.hidden === true;
     closeOthers(null);
-    menu.hidden = !open;
+    setMenuOpen(openable, wasClosed);
     render();
   });
   choose.addEventListener('click', () => {
-    menu.hidden = true;
+    closeAndRefocus(openable);
     file.click();
   });
   remove.addEventListener('click', () => {
-    menu.hidden = true;
+    closeAndRefocus(openable);
     avatar = null;
     render();
   });
@@ -289,7 +335,7 @@ function createPicture(opts: LobbyOptions, closeOthers: (except: HTMLElement | n
   return {
     disc,
     file,
-    menu: { menu, opener: pencil } satisfies OpenableMenu,
+    menu: openable,
     get avatar() {
       return avatar;
     },
@@ -318,7 +364,7 @@ function createPicture(opts: LobbyOptions, closeOthers: (except: HTMLElement | n
       }
       pencil.hidden = camOn;
       if (camOn) {
-        menu.hidden = true;
+        setMenuOpen(openable, false);
       }
       remove.hidden = avatar === null;
     },
@@ -387,14 +433,30 @@ function createStallWatch(render: () => void) {
 function closeMenusOnOutsidePress(menus: readonly OpenableMenu[]): () => void {
   const onPress = (e: Event) => {
     const target = e.target as Node;
-    for (const { menu, opener } of menus) {
+    for (const openable of menus) {
+      const { menu, opener } = openable;
       if (!menu.hidden && !menu.contains(target) && !opener.contains(target)) {
-        menu.hidden = true;
+        setMenuOpen(openable, false);
       }
     }
   };
   document.addEventListener('pointerdown', onPress);
   return () => document.removeEventListener('pointerdown', onPress);
+}
+
+function closeMenusOnEscape(menus: readonly OpenableMenu[]): () => void {
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape') {
+      return;
+    }
+    for (const openable of menus) {
+      if (!openable.menu.hidden) {
+        closeAndRefocus(openable);
+      }
+    }
+  };
+  document.addEventListener('keydown', onKey);
+  return () => document.removeEventListener('keydown', onKey);
 }
 
 /** The mic's level in its button, redrawn only when its height changes. */
@@ -417,9 +479,9 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
   const { media } = opts;
   const menus: OpenableMenu[] = [];
   const closeOthers = (except: HTMLElement | null) => {
-    for (const { menu } of menus) {
-      if (menu !== except) {
-        menu.hidden = true;
+    for (const openable of menus) {
+      if (openable.menu !== except) {
+        setMenuOpen(openable, false);
       }
     }
   };
@@ -427,7 +489,8 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
   const cam = splitButton(CAMERA, media, closeOthers);
   const mic = splitButton(MICROPHONE, media, closeOthers);
   menus.push(picture.menu, cam, mic);
-  const stopClosingMenus = closeMenusOnOutsidePress(menus);
+  const stopClosingOnPress = closeMenusOnOutsidePress(menus);
+  const stopClosingOnEscape = closeMenusOnEscape(menus);
 
   const nameField = el('input', {
     name: 'name',
@@ -436,8 +499,16 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
     placeholder: 'Your name',
   });
   nameField.setAttribute('autocomplete', 'nickname');
+  nameField.setAttribute('aria-label', 'Your name');
   const join = el('button', { type: 'submit', textContent: 'Join' });
   const error = el('p', { className: 'error' });
+  error.setAttribute('role', 'alert');
+  // Rewriting the same text would announce it again, and render runs on every keystroke.
+  const showError = (text: string) => {
+    if (error.textContent !== text) {
+      error.textContent = text;
+    }
+  };
   const form = el('form', {}, nameField, join);
   const invite = createInviteButton(opts.inviteUrl, () => render());
   const stall = createStallWatch(() => render());
@@ -449,7 +520,7 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
     cam.render(state);
     mic.render(state);
     join.disabled = picture.encoding || state.pending;
-    error.textContent = picture.error || invite.error || problemLine(state) || (stall.stalled ? WAITING : '');
+    showError(picture.error || invite.error || problemLine(state) || (stall.stalled ? WAITING : ''));
   }
 
   nameField.addEventListener('input', render);
@@ -461,7 +532,7 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
     const name = sanitizeName(nameField.value);
     if (name === null) {
       picture.clearError();
-      error.textContent = `Enter a name (1–${NAME_MAX_CHARS} characters)`;
+      showError(`Enter a name (1–${NAME_MAX_CHARS} characters)`);
       return;
     }
     opts.onJoin(name, picture.avatar);
@@ -486,7 +557,8 @@ export function showLobby(root: HTMLElement, opts: LobbyOptions): () => void {
   const stopMeter = startMeter(media, opts.level, mic);
 
   return () => {
-    stopClosingMenus();
+    stopClosingOnPress();
+    stopClosingOnEscape();
     stopMeter();
     stall.stop();
     unsubscribe();
