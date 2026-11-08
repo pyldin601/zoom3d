@@ -112,10 +112,11 @@ describe('createScooterSound', () => {
     expect(housing?.gain.value).toBe(-3);
   });
 
-  test("the whiss's hiss is half the bench's: its band's gain is 1.5", () => {
+  test("the whiss's hiss is a tenth of what it was: its band's gain is 0.15", () => {
     createScooterSound(asAudioContext(ctx));
     const gains = (ctx.byKind('gain') as unknown as Gain[]).map((g) => g.gain.value);
-    expect(gains).toContain(1.5);
+    expect(gains).toContain(0.15);
+    expect(gains).not.toContain(1.5);
     expect(gains).not.toContain(3);
   });
 

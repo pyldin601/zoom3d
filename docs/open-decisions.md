@@ -957,7 +957,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
         up, 0.18 holding speed and 0.02 coasting.
       - A quiet motor tone climbed to 157 Hz at full speed (the owner added a pitched tone back and lowered it). The
         owner removed it later the same day, and halved the whiss's hiss
-        (its band's gain 3 → 1.5; 80% was still too loud).
+        (its band's gain 3 → 1.5; 80% was still too loud). On 2026-11-08 the owner cut it to a tenth (1.5 → 0.15).
       - **A magnetic motor whine** came back on 2026-11-08 (owner: like gears, but magnetic rather than physical
         teeth), tuned by ear on a second listening page. It is four sines at multiples of the magnet rate (210 Hz at
         full speed): ×1, ×2, a slot tone at ×2.22 and ×12. It pulses once per wheel turn (23 magnet pairs), drifts
