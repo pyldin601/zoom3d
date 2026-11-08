@@ -1,10 +1,9 @@
 import { RIDE_SPEED } from '@zoom3d/shared';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { asAudioContext, FakeAudioContext, type FakeNode, type FakeParam } from './fake-audio';
-import { createScooterSound, pwmLevel, SCOOTER_MASTER, wheelLevel } from './scooter-sound';
+import { createScooterSound, magnetHz, pwmLevel, SCOOTER_MASTER, wheelLevel, whineLevel } from './scooter-sound';
 
-// Scooter sound spec §4: the owner's tuned PWM whiss, wheels and bumps (the motor tone was
-// dropped by the owner).
+// Scooter sound spec §4: the owner's tuned PWM whiss, magnetic motor whine, wheels and bumps.
 let ctx: FakeAudioContext;
 beforeEach(() => {
   ctx = new FakeAudioContext();
@@ -12,8 +11,23 @@ beforeEach(() => {
 type Osc = FakeNode & { type: string; frequency: FakeParam; stoppedAt: number | null };
 type Filter = FakeNode & { frequency: FakeParam };
 type Gain = FakeNode & { gain: FakeParam };
+type Peaking = Filter & { type: string; gain: FakeParam };
+const DRIFT_CENTS = 6;
+/** The gain that carries the drift's cents to every whine tone's detune. */
+const driftGain = () => (ctx.byKind('gain') as unknown as Gain[]).find((g) => g.gain.value === DRIFT_CENTS);
+/** The whine's tones, which all drift: the oscillators whose detune the drift drives. */
+const whineTones = () =>
+  oscillators().filter((o) => driftGain()?.connections.includes((o as unknown as { detune: FakeNode }).detune));
+const whineTonesHz = () =>
+  whineTones()
+    .map((o) => o.frequency.value)
+    .sort((a, b) => a - b);
 const oscillators = () => ctx.byKind('oscillator') as unknown as Osc[];
-const filtersAt = (hz: number) => (ctx.byKind('biquad') as unknown as Filter[]).filter((f) => f.frequency.value === hz);
+/** Band-pass filters at `hz`: the seam's and the rattle's (the housing at 1500 Hz is a peaking one). */
+const filtersAt = (hz: number) =>
+  (ctx.byKind('biquad') as unknown as (Filter & { type: string })[]).filter(
+    (f) => f.type === 'bandpass' && f.frequency.value === hz
+  );
 
 describe('levels by load', () => {
   test('the whiss: loud speeding up, softer holding speed, almost gone coasting', () => {
@@ -22,6 +36,20 @@ describe('levels by load', () => {
     expect(pwmLevel('coasting', 1)).toBe(0.02);
     expect(pwmLevel('coasting', 0.15)).toBeCloseTo(0.01);
     expect(pwmLevel('coasting', 0)).toBe(0);
+  });
+
+  test('the whine follows the motor current: loud speeding up, softer holding speed, almost gone coasting', () => {
+    expect(whineLevel('pulling', 3)).toBe(0.1);
+    expect(whineLevel('cruising', RIDE_SPEED)).toBe(0.05);
+    expect(whineLevel('coasting', 1)).toBe(0.008);
+    expect(whineLevel('pulling', 0.15)).toBeCloseTo(0.05);
+    expect(whineLevel('pulling', 0)).toBe(0);
+  });
+
+  test('the magnets pass at 210 Hz at full speed, in step with the wheel', () => {
+    expect(magnetHz(RIDE_SPEED)).toBe(210);
+    expect(magnetHz(-RIDE_SPEED / 2)).toBe(105);
+    expect(magnetHz(0)).toBe(0);
   });
 
   test('the wheels are barely there and follow speed', () => {
@@ -45,9 +73,43 @@ describe('createScooterSound', () => {
     expect(whiss?.frequency.targets.every(([hz]) => hz === 7800)).toBe(true);
   });
 
-  test('no motor tone: the whiss is the only oscillator that runs', () => {
-    createScooterSound(asAudioContext(ctx)).set(RIDE_SPEED, 'pulling', 1 / 60);
-    expect(oscillators().map((o) => o.frequency.value)).toEqual([7800]);
+  test('the whine is four magnetic tones: ×1, ×2, the slot tone at ×2.22 and ×12, climbing with speed', () => {
+    const s = createScooterSound(asAudioContext(ctx));
+    s.set(RIDE_SPEED, 'pulling', 1 / 60);
+    const expected = [1, 2, 2.22, 12].map((order) => order * 210);
+    whineTonesHz().forEach((hz, i) => {
+      expect(hz).toBeCloseTo(expected.at(i) ?? Number.NaN);
+    });
+    expect(whineTonesHz()).toHaveLength(4);
+    s.set(RIDE_SPEED / 2, 'cruising', 1 / 60);
+    expect(whineTonesHz().at(0)).toBeCloseTo(105);
+  });
+
+  test("each tone has the owner's level, and speeding up brightens the slot tone and ×12 by 1.6", () => {
+    const s = createScooterSound(asAudioContext(ctx));
+    const gains = (ctx.byKind('gain') as unknown as Gain[]).map((g) => g.gain.value);
+    for (const level of [0.12, 0.08, 0.3, 0.06]) {
+      expect(gains).toContain(level);
+    }
+    s.set(3, 'pulling', 1 / 60);
+    const brightened = (ctx.byKind('gain') as unknown as Gain[]).filter((g) => g.gain.last?.[0] === 1.6);
+    expect(brightened).toHaveLength(1);
+    s.set(RIDE_SPEED, 'cruising', 1 / 60);
+    expect(brightened.at(0)?.gain.last?.[0]).toBe(1);
+  });
+
+  test('the whine shimmers once per wheel turn (23 magnet pairs) and drifts by 6 cents', () => {
+    const s = createScooterSound(asAudioContext(ctx));
+    s.set(RIDE_SPEED, 'cruising', 1 / 60);
+    expect(oscillators().some((o) => o.frequency.value === 210 / 23)).toBe(true);
+    expect(whineTones()).toHaveLength(4);
+  });
+
+  test('the housing cuts 3 dB round 1500 Hz', () => {
+    createScooterSound(asAudioContext(ctx));
+    const housing = (ctx.byKind('biquad') as unknown as Peaking[]).find((f) => f.type === 'peaking');
+    expect(housing?.frequency.value).toBe(1500);
+    expect(housing?.gain.value).toBe(-3);
   });
 
   test("the whiss's hiss is half the bench's: its band's gain is 1.5", () => {
@@ -91,7 +153,7 @@ describe('createScooterSound', () => {
     s.dispose();
     const layers = (ctx.byKind('gain') as unknown as Gain[]).filter((g) => g.gain.targets.length > 0);
     const faded = layers.filter((g) => g.gain.targets.at(-1)?.[0] === 0);
-    expect(faded.length).toBe(2);
+    expect(faded.length).toBe(3);
     for (const o of oscillators()) {
       expect(o.stoppedAt).toBeGreaterThan(ctx.currentTime);
     }
