@@ -9,6 +9,7 @@
 import { LEVEL1, parseMap, tileAt, wirePortals } from '@zoom3d/shared';
 import { createFramebuffer } from '../src/renderer/framebuffer';
 import { createPortalGlows, GLOW_RADIUS, type Glow } from '../src/renderer/glow';
+import { createHeadlightGlows, HEADLIGHT_REACH } from '../src/renderer/headlight';
 import { createLighterGlows, LIGHTER_REACH } from '../src/renderer/lighter';
 import {
   bakeLighting,
@@ -206,6 +207,54 @@ for (let round = 0; round < ROUNDS; round++) {
 }
 console.log(`both + lighters ${median(lighterTimes).toFixed(3)} ms/frame; pixel hash ${lighterHash}`);
 
+// A riding headlight's shadow table (scooter headlight spec), rebuilt at every lamp pose: what a rider pays per floor
+// cell ridden, about 48 times a second at full speed.
+const headlightShadow = newGlowShadow(HEADLIGHT_REACH);
+const headlightRebuildTimes: number[] = [];
+for (let round = 0; round < ROUNDS; round++) {
+  const start = performance.now();
+  for (const p of poses) {
+    fillGlowSeen(map, null, p.x, p.y, HEADLIGHT_REACH, null, headlightShadow);
+  }
+  headlightRebuildTimes.push((performance.now() - start) / poses.length);
+}
+console.log(`headlight shadow rebuild ${median(headlightRebuildTimes).toFixed(3)} ms`);
+
+// 'both + glow' with the eye and each nearby avatar riding, every table already filled: what a frame pays for the
+// headlights once nobody changes cell. Kept out of MODES, so their pixel hash stays as it was.
+const headlightGlowsAt = poses.map((p) => {
+  const riders = p.glows.map((g, i) => ({ key: `r${i}`, x: g.x, y: g.y, angle: p.angle + i }));
+  riders.push({ key: 'eye', x: p.x, y: p.y, angle: p.angle });
+  return [...p.glows, ...createHeadlightGlows().update(riders, map, null)];
+});
+let headlightHash = 0;
+const drawRiding = (i: number) => {
+  const p = poses.at(i);
+  room.eye = p ?? room.eye;
+  room.lighting = lighting;
+  room.reflections = 'both';
+  renderWalls(fb, room, headlightGlowsAt.at(i));
+};
+poses.forEach((_, i) => {
+  drawRiding(i);
+  for (const c of fb.pixels) {
+    headlightHash = (Math.imul(headlightHash, 31) + c) | 0;
+  }
+});
+const headlightTimes: number[] = [];
+for (let round = 0; round < ROUNDS; round++) {
+  const frames = poses.length * FRAMES_PER_POSE;
+  const start = performance.now();
+  for (let f = 0; f < frames; f++) {
+    drawRiding(f % poses.length);
+  }
+  headlightTimes.push((performance.now() - start) / frames);
+}
+const ridersPerPose = median(poses.map((p) => p.glows.length + 1));
+console.log(
+  `both + headlights (${ridersPerPose} riders) ${median(headlightTimes).toFixed(3)} ms/frame; pixel hash ${headlightHash}`
+);
+
 function draw(mode: Mode, p: Pose): void {
   room.eye = p;
   room.lighting = mode === 'unlit' ? null : lighting;
@@ -269,11 +318,12 @@ function posesNearLamps(): Pose[] {
             b: rand() * 0.6,
             cut: null,
             shadow: null,
+            cone: null,
             reach: GLOW_RADIUS,
           });
         }
       }
-      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null, shadow: null, reach: GLOW_RADIUS });
+      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null, shadow: null, reach: GLOW_RADIUS, cone: null });
       out.push({ x, y, angle: rand() * Math.PI * 2, glows });
     }
   }
@@ -300,6 +350,7 @@ function crowdGlows(): Glow[] {
         b: rand() * 0.6,
         cut: null,
         shadow: null,
+        cone: null,
         reach: GLOW_RADIUS,
       });
     }

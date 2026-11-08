@@ -12,7 +12,7 @@ import { createFramebuffer, rgb } from '../src/renderer/framebuffer';
 import { GLOW_RADIUS, type Glow } from '../src/renderer/glow';
 import { bakeLighting, bakePortalLighting, corridorLights } from '../src/renderer/lighting';
 import { BALL_MODEL } from '../src/renderer/models/ball';
-import { SCOOTER_DECK_TILES, SCOOTER_MODEL } from '../src/renderer/models/scooter';
+import { RIDDEN_SCOOTER_MODEL, SCOOTER_DECK_TILES, SCOOTER_MODEL } from '../src/renderer/models/scooter';
 import { VACUUM_MODEL } from '../src/renderer/models/vacuum';
 import { type PeopleAndObjects, renderSprites, type Sprite } from '../src/renderer/sprites';
 import { averageColour, makeTextures } from '../src/renderer/textures';
@@ -166,6 +166,8 @@ function drawWholeFrame(state: 'off' | 'on', s: Scene): void {
     ownGlow: null,
     lighters: [],
     ownLighter: null,
+    headlights: [],
+    ownHeadlight: null,
     lighterSeconds: 0,
     self: null,
     ownScooter: null,
@@ -263,7 +265,7 @@ function scooterHash(): number {
         sprites: [riding, ...scene.sprites.slice(1)],
         voxels: [
           ...scene.voxels,
-          { model: SCOOTER_MODEL, x: rider.x, y: rider.y, angle: scene.angle + 1, lift: 0 },
+          { model: RIDDEN_SCOOTER_MODEL, x: rider.x, y: rider.y, angle: scene.angle + 1, lift: 0 },
           { model: SCOOTER_MODEL, ...parked, angle: scene.angle - 0.5, lift: 0 },
         ],
       };
@@ -334,10 +336,11 @@ function scenesNearLamps(): Scene[] {
           b: rand() * 0.6,
           cut: null,
           shadow: null,
+          cone: null,
           reach: GLOW_RADIUS,
         });
       }
-      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null, shadow: null, reach: GLOW_RADIUS });
+      glows.push({ x, y, r: 0.3, g: 0.25, b: 0.2, cut: null, shadow: null, reach: GLOW_RADIUS, cone: null });
       const spot = ahead(0.6);
       const voxels = open(spot.x, spot.y)
         ? [{ model: VACUUM_MODEL, x: spot.x, y: spot.y, angle: rand() * 7, lift: 0 }]

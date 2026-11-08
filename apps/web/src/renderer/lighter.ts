@@ -55,7 +55,7 @@ export function createLighterGlows(): LighterGlows {
     let entry = held.get(key);
     if (!entry) {
       const shadow = newGlowShadow(LIGHTER_REACH);
-      const glow = { x: 0, y: 0, r: 0, g: 0, b: 0, reach: LIGHTER_REACH, cut: null, shadow };
+      const glow = { x: 0, y: 0, r: 0, g: 0, b: 0, reach: LIGHTER_REACH, cut: null, shadow, cone: null };
       // A cell no one stands in, so the first update fills the table.
       entry = { glow, phase: phaseOf(key), cellX: -1, cellY: -1, portals: null, stamp: 0 };
       held.set(key, entry);

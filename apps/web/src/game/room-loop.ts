@@ -75,6 +75,8 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     ownGlow: null,
     lighters: world.lighters,
     ownLighter: null,
+    headlights: world.headlights,
+    ownHeadlight: null,
     lighterSeconds: 0,
     self: null,
     ownScooter: null,
@@ -233,6 +235,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     scene.ownGlow = localPlayer.glow(now, ringColour);
     // Held only in the room: the lobby shows no hands.
     scene.ownLighter = isConnected(room) ? localPlayer.lighter() : null;
+    scene.ownHeadlight = isConnected(room) ? localPlayer.headlight() : null;
     // Only windows draw the own disc, and reading its face back stalls on the GPU: read it only while one shows it.
     scene.self = scene.portals && isConnected(room) ? localPlayer.avatar(now, ringColour, ownAvatarShown()) : null;
     scene.ownScooter = scene.self ? localPlayer.scooter() : null;

@@ -530,6 +530,7 @@ describe('renderWalls avatar glow', () => {
     b: GLOW_STRENGTH,
     cut: null,
     shadow: null,
+    cone: null,
     reach: GLOW_RADIUS,
   };
   const render = (glows: Glow[]) => {
@@ -759,6 +760,7 @@ describe('renderWalls ceiling reflections', () => {
       b: GLOW_STRENGTH,
       cut: null,
       shadow: null,
+      cone: null,
       reach: GLOW_RADIUS,
     };
     expect(brighterCeiling(dark).brighter).toBe(0);
@@ -871,6 +873,7 @@ describe('renderWalls voxel shadows', () => {
       b: GLOW_STRENGTH,
       cut: null,
       shadow: null,
+      cone: null,
       reach: GLOW_RADIUS,
     };
     const bare = render([]);

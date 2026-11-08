@@ -14,8 +14,9 @@ import {
 import { type Bob, createBob } from '../renderer/bob';
 import type { FirstPerson } from '../renderer/frame';
 import type { GlowSource } from '../renderer/glow';
+import type { HeadlightSource } from '../renderer/headlight';
 import type { LighterSource } from '../renderer/lighter';
-import { SCOOTER_DECK_TILES, SCOOTER_MODEL } from '../renderer/models/scooter';
+import { RIDDEN_SCOOTER_MODEL, SCOOTER_DECK_TILES } from '../renderer/models/scooter';
 import { createGestureClock, type GestureClock } from '../renderer/sip';
 import { ringRgb, type Sprite } from '../renderer/sprites';
 import type { VoxelInstance } from '../renderer/voxels';
@@ -77,6 +78,8 @@ export interface LocalPlayer {
   useFallbackFace(faceFor: (ringColour: string) => FallbackFace): void;
   /** In the camera's colour, else the ring's; null until the room gives the player a ring colour. */
   glow(now: number, ringColour: string | null): GlowSource | null;
+  /** Riding, the headlight: where the player stands and the scooter's heading, never the head's; null on foot. */
+  headlight(): HeadlightSource | null;
   /** The lighter in hand as a light, where the player stands; null while they hold anything else. */
   lighter(): LighterSource | null;
   /**
@@ -102,6 +105,7 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
   let fallbackColour: string | null = null;
   const glowSource = { x: 0, y: 0, face: null, color: 0 };
   const lighterSource = { key: OWN_SPRITE_KEY, x: 0, y: 0 };
+  const headlightSource = { key: OWN_SPRITE_KEY, x: 0, y: 0, angle: 0 };
   // The room measures no level of the own mic, so the own ring never brightens: `speaking` stays 0.
   const ownDisc = blankSprite(OWN_SPRITE_KEY);
   let riding = false;
@@ -110,7 +114,7 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
   let steer = 0;
   let head = 0;
   const eyePose: PlayerState = { x: 0, y: 0, angle: 0 };
-  const ownScooter: VoxelInstance = { model: SCOOTER_MODEL, x: 0, y: 0, angle: 0, lift: 0 };
+  const ownScooter: VoxelInstance = { model: RIDDEN_SCOOTER_MODEL, x: 0, y: 0, angle: 0, lift: 0 };
   const firstPersonView: FirstPerson = {
     held: null,
     boombox: false,
@@ -204,6 +208,15 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       glowSource.y = pose.y;
       glowSource.color = cameraColour(now) ?? ringRgb(ringColour);
       return glowSource;
+    },
+    headlight() {
+      if (!riding) {
+        return null;
+      }
+      headlightSource.x = pose.x;
+      headlightSource.y = pose.y;
+      headlightSource.angle = pose.angle;
+      return headlightSource;
     },
     lighter() {
       if (heldItem !== 'lighter' || riding) {

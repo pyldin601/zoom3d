@@ -1,7 +1,7 @@
 import { parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { twoDoorways } from '../../../../packages/shared/src/portals/test-doorways';
-import { SCOOTER_DECK_TILES, SCOOTER_MODEL } from '../renderer/models/scooter';
+import { RIDDEN_SCOOTER_MODEL, SCOOTER_DECK_TILES } from '../renderer/models/scooter';
 import { hexToRgb } from '../renderer/sprites';
 import { createLocalPlayer, OWN_SPRITE_KEY } from './local-player';
 
@@ -82,6 +82,15 @@ test('the own lighter: none with a drink or nothing in hand, else where the play
     x: localPlayer.pose.x,
     y: localPlayer.pose.y,
   });
+});
+
+test('on foot there is no headlight', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  expect(localPlayer.headlight()).toBeNull();
+  localPlayer.riding = true;
+  expect(localPlayer.headlight()).not.toBeNull();
+  localPlayer.riding = false;
+  expect(localPlayer.headlight()).toBeNull();
 });
 
 test('the own face is read only while a window shows the own disc, keeping the last one between', () => {
@@ -216,7 +225,7 @@ test('riding, the own disc glides a deck up with no step, and the own scooter st
   expect(disc).toMatchObject({ bob: 0, itemBob: 0, ride: SCOOTER_DECK_TILES });
   const scooter = localPlayer.scooter();
   expect(scooter).toMatchObject({
-    model: SCOOTER_MODEL,
+    model: RIDDEN_SCOOTER_MODEL,
     x: localPlayer.pose.x,
     y: localPlayer.pose.y,
     angle: 0.7,
@@ -295,6 +304,20 @@ describe('the head while riding', () => {
     expect(localPlayer.pose.angle).toBe(heading);
     expect(localPlayer.head).toBeCloseTo(0.5);
     expect(localPlayer.eye().angle).toBeCloseTo(heading + 0.5);
+  });
+
+  test('the headlight follows the heading, not the head', () => {
+    const localPlayer = riding();
+    const heading = localPlayer.pose.angle;
+    localPlayer.walk(MAP, STILL, 1, 0.016);
+    expect(localPlayer.head).toBeCloseTo(1);
+    expect(localPlayer.scooter()?.model).toBe(RIDDEN_SCOOTER_MODEL);
+    expect(localPlayer.headlight()).toEqual({
+      key: OWN_SPRITE_KEY,
+      x: localPlayer.pose.x,
+      y: localPlayer.pose.y,
+      angle: heading,
+    });
   });
 
   test('the head stops at 90° each way', () => {
