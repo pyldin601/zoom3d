@@ -57,6 +57,7 @@ Layers:
     0.15 was tried on 2026-11-08 and rolled back: the motor sounded weird.
     *Amended 2026-11-08 (owner):* the whole whiss is halved instead, tone 0.325 and hiss 0.75, so it keeps its
     character; its peak is now about 6 dB lower than the figure below.
+    *Amended 2026-11-09 (owner):* 30% lower again, tone 0.2275 and hiss 0.525: about 9 dB under the figure below.
   - Level 0.35 speeding up, 0.18 holding speed, and 0.02 × `min(1, speed / 0.3)` coasting.
 - **Motor tone:** *removed 2026-11-07 (owner).* It was a triangle, its second harmonic and a low-passed square at
   `max(30, 157 × speed / 6)` Hz, at levels 0.03, 0.02 and 0.01.

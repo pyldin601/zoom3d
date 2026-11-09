@@ -959,7 +959,7 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
         owner removed it later the same day, and halved the whiss's hiss
         (its band's gain 3 → 1.5; 80% was still too loud). A tenth of that (0.15) went live on 2026-11-08 and was
         rolled back the same day: the owner found the motor sounded weird without it. Instead the owner halved the whole
-        whiss, tone and hiss together (0.65 → 0.325, 1.5 → 0.75).
+        whiss, tone and hiss together (0.65 → 0.325, 1.5 → 0.75), and on 2026-11-09 took it 30% lower (0.2275, 0.525).
       - **A magnetic motor whine** came back on 2026-11-08 (owner: like gears, but magnetic rather than physical
         teeth), tuned by ear on a second listening page. It is four sines at multiples of the magnet rate (210 Hz at
         full speed): ×1, ×2, a slot tone at ×2.22 and ×12. It pulses once per wheel turn (23 magnet pairs), drifts
