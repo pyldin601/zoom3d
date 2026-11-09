@@ -119,6 +119,7 @@ export class FakeAudioContext {
       Object.assign(new FakeNode('buffer-source'), {
         buffer: null as unknown,
         loop: false,
+        playbackRate: new FakeParam(1),
         startedAt: null as number | null,
         stoppedAt: null as number | null,
         start(t = 0) {
@@ -127,6 +128,14 @@ export class FakeAudioContext {
         stop(t = 0) {
           this.stoppedAt = t;
         },
+      })
+    );
+  }
+  createWaveShaper() {
+    return this.track(
+      Object.assign(new FakeNode('waveshaper'), {
+        curve: null as Float32Array | null,
+        oversample: 'none' as OverSampleType,
       })
     );
   }

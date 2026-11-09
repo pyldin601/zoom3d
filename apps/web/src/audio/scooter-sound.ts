@@ -3,6 +3,11 @@
 // tick at each floor seam, and a thud with a rattle on a bump. The load (speeding up, holding speed, coasting) sets how
 // loud the whiss and the whine are. Synthesised like the vacuum's hum.
 //
+// The buzz and the roll (motor buzz spec, 2026-11-09, tuned by the owner on the Scooter Motor Buzz page): the whine is
+// driven into a soft clipper, harder the harder the motor pulls, so it grows harmonics and grit; and the wheels roll
+// instead of hissing: tiny random ticks from tread and floor, more the faster they turn, each striking three wheel
+// and deck resonances, the whole swelling once a turn.
+//
 // The whine (owner, 2026-11-08: like gears, but magnetic): magnets sweep past coil slots on every wheel turn, and each
 // pass is a small magnetic tug, so the motor sounds tones at fixed multiples of the magnet rate. The slot tone sits
 // between the harmonics, which makes it sound like teeth. A rotor never quite round pulses it once per turn, and its
@@ -33,7 +38,7 @@ const WHINE_TONES = [
   { order: 1, level: 0.12, upper: false },
   { order: 2, level: 0.08, upper: false },
   // The slot tone: coil slots per magnet pair.
-  { order: 2.22, level: 0.3, upper: true },
+  { order: 2.22, level: 0.24, upper: true },
   { order: 12, level: 0.06, upper: true },
 ] as const;
 const WHINE_LEVEL: Record<ScooterLoad, number> = { pulling: 0.1, cruising: 0.05, coasting: 0.008 };
@@ -46,9 +51,32 @@ const DRIFT_LOOP_S = 8;
 const HOUSING_HZ = 1500;
 const HOUSING_Q = 1.5;
 const HOUSING_DB = -3;
-const WHEEL_HZ = 1800;
-const WHEEL_Q = 0.8;
-const WHEEL_LEVEL = 0.12;
+const BUZZ_DRIVE_DB: Record<ScooterLoad, number> = { pulling: 14, cruising: 5, coasting: 0 };
+/** 0 is a round tanh; toward 1 the knee sharpens, for more high harmonics. */
+const BUZZ_HARDNESS = 0.28;
+/** Shifts the input so one side clips first: even harmonics, the hummier half of a motor buzz. */
+const BUZZ_ASYMMETRY = 0.19;
+const BUZZ_CURVE_RANGE = 4;
+const BUZZ_CURVE_POINTS = 4096;
+/** About the loudest the summed whine reaches into the clipper (pulling, upper bus ×1.6): the level match's mark. */
+const WHINE_PEAK = 0.75;
+/** Below the ear: takes away the offset the asymmetry adds. */
+const BUZZ_DC_HZ = 20;
+const BUZZ_TONE_HZ = 2310;
+const BUZZ_FILTER_Q = 0.7;
+const BUZZ_MAKEUP_DB = -5.5;
+const ROLL_LEVEL = 0.6;
+const TICKS_PER_S_AT_TOP = 900;
+const TICK_LOOP_S = 4;
+/** A slower tick rate never reaches 0: a buffer played at rate 0 would hang on one sample. */
+const MIN_TICK_RATE = 0.001;
+const ROLL_SWELL = 0.35;
+/** What each tick strikes: the wheel core and deck thump, the deck plate, the hard tread. */
+const WHEEL_MODES = [
+  { hz: 190, q: 9, level: 0.6 },
+  { hz: 460, q: 7, level: 0.35 },
+  { hz: 1150, q: 5, level: 0.15 },
+] as const;
 /** Coasting fades in over the first 0.3 tiles/s, and seams tick only above it: a scooter at rest is silent. */
 const MOVING_TILES_PER_S = 0.3;
 const SEAM_EVERY_TILES = 1;
@@ -87,8 +115,53 @@ export function magnetHz(speed: number): number {
   return MAGNET_HZ_AT_TOP * speedShare(speed);
 }
 
-export function wheelLevel(speed: number): number {
-  return WHEEL_LEVEL * speedShare(speed) ** 1.2;
+export function rollLevel(speed: number): number {
+  return ROLL_LEVEL * speedShare(speed) ** 1.2;
+}
+
+/** How fast the tick loop plays: in step with the wheels. */
+export function grainRate(speed: number): number {
+  return Math.max(MIN_TICK_RATE, speedShare(speed));
+}
+
+export function buzzDriveDb(load: ScooterLoad): number {
+  return BUZZ_DRIVE_DB[load];
+}
+
+/** The clipper: a tanh blended toward a harder knee by the hardness. */
+function clip(x: number): number {
+  const k = 1 + BUZZ_HARDNESS * 6;
+  const hard = Math.max(-1, Math.min(1, Math.tanh(k * x) / Math.tanh(k)));
+  return Math.tanh(x) * (1 - BUZZ_HARDNESS) + hard * BUZZ_HARDNESS;
+}
+
+/** The clipper shifted by the asymmetry and re-centred, so silence stays silent. */
+const shifted = (x: number) => clip(x + BUZZ_ASYMMETRY) - clip(BUZZ_ASYMMETRY);
+
+/** The `WaveShaperNode` curve: the shifted clipper over ±BUZZ_CURVE_RANGE. */
+export function buzzCurve(): Float32Array<ArrayBuffer> {
+  const curve = new Float32Array(BUZZ_CURVE_POINTS);
+  for (let i = 0; i < curve.length; i++) {
+    curve[i] = shifted(((i / (curve.length - 1)) * 2 - 1) * BUZZ_CURVE_RANGE);
+  }
+  return curve;
+}
+
+/** Lifts the clipped whine's peak back to where it was clean: the curve squashes a driven peak by this much. */
+export function buzzMakeup(driveGain: number): number {
+  const out = Math.abs(shifted(WHINE_PEAK * driveGain));
+  return out > 1e-6 ? WHINE_PEAK / out : 1;
+}
+
+/** Sparse ticks, Poisson-spaced at `perSecond`, with random heights (mostly small) and signs. */
+export function fillTicks(data: Float32Array, sampleRate: number, perSecond: number, random = Math.random): void {
+  for (let t = -Math.log(1 - random()) / perSecond; ; t += -Math.log(1 - random()) / perSecond) {
+    const i = Math.floor(t * sampleRate);
+    if (i >= data.length) {
+      return;
+    }
+    data[i] = Math.min(1, -Math.log(1 - random()) * 0.4) * (random() < 0.5 ? -1 : 1);
+  }
 }
 
 export interface ScooterSound {
@@ -112,6 +185,13 @@ function noiseBuffer(ctx: BaseAudioContext): AudioBuffer {
   for (let i = 0; i < data.length; i++) {
     data[i] = Math.random() * 2 - 1;
   }
+  return buffer;
+}
+
+/** The tick loop, at the full-speed rate. */
+function tickBuffer(ctx: BaseAudioContext): AudioBuffer {
+  const buffer = ctx.createBuffer(1, ctx.sampleRate * TICK_LOOP_S, ctx.sampleRate);
+  fillTicks(buffer.getChannelData(0), ctx.sampleRate, TICKS_PER_S_AT_TOP);
   return buffer;
 }
 
@@ -168,7 +248,8 @@ export function createScooterSound(ctx: BaseAudioContext): ScooterSound {
   const pwmHiss = loopedNoise();
   pwmHiss.connect(bandPass(PWM_HZ, PWM_HISS_Q)).connect(gainOf(PWM_HISS_GAIN)).connect(pwm);
 
-  // The whine: one sine per tone into a lower and an upper bus, pulsed once a turn, through the housing's dip.
+  // The whine: one sine per tone into a lower and an upper bus, pulsed once a turn, driven into the clipper, through
+  // the housing's dip.
   const whine = layer();
   const housing = ctx.createBiquadFilter();
   housing.type = 'peaking';
@@ -177,7 +258,20 @@ export function createScooterSound(ctx: BaseAudioContext): ScooterSound {
   housing.gain.value = HOUSING_DB;
   housing.connect(whine);
   const pulse = gainOf(1 - SHIMMER / 2);
-  pulse.connect(housing);
+  const drive = gainOf(1);
+  const shaper = ctx.createWaveShaper();
+  shaper.curve = buzzCurve();
+  shaper.oversample = '4x';
+  const dcBlock = ctx.createBiquadFilter();
+  dcBlock.type = 'highpass';
+  dcBlock.frequency.value = BUZZ_DC_HZ;
+  dcBlock.Q.value = BUZZ_FILTER_Q;
+  const buzzTone = ctx.createBiquadFilter();
+  buzzTone.type = 'lowpass';
+  buzzTone.frequency.value = BUZZ_TONE_HZ;
+  buzzTone.Q.value = BUZZ_FILTER_Q;
+  const makeup = gainOf(1);
+  pulse.connect(drive).connect(shaper).connect(dcBlock).connect(buzzTone).connect(makeup).connect(housing);
   const shimmer = ctx.createOscillator();
   shimmer.frequency.value = 0;
   shimmer.connect(gainOf(SHIMMER / 2)).connect(pulse.gain);
@@ -198,13 +292,24 @@ export function createScooterSound(ctx: BaseAudioContext): ScooterSound {
     return { osc, order: tone.order };
   });
 
-  // The wheels: rolling noise in a soft band.
+  // The wheels: ticks into the modes, swelling once a turn with the whine's pulse. A band-pass's ring from one tick
+  // is about 1/Q as tall, so each mode is lifted by 2Q: Q sets how long it rings, not how loud.
   const wheels = layer();
-  const roll = loopedNoise();
-  const rollBand = bandPass(WHEEL_HZ * 0.7, WHEEL_Q);
-  roll.connect(rollBand).connect(wheels);
+  const swell = gainOf(1 - ROLL_SWELL / 2);
+  swell.connect(wheels);
+  shimmer.connect(gainOf(ROLL_SWELL / 2)).connect(swell.gain);
+  const ticks = ctx.createBufferSource();
+  ticks.buffer = tickBuffer(ctx);
+  ticks.loop = true;
+  ticks.playbackRate.value = MIN_TICK_RATE;
+  for (const mode of WHEEL_MODES) {
+    ticks
+      .connect(bandPass(mode.hz, mode.q))
+      .connect(gainOf(2 * mode.q * mode.level))
+      .connect(swell);
+  }
 
-  const sources = [pwmTone, pwmHiss, shimmer, drift, ...tones.map((t) => t.osc), roll];
+  const sources = [pwmTone, pwmHiss, shimmer, drift, ...tones.map((t) => t.osc), ticks];
   for (const s of sources) {
     s.start(ctx.currentTime);
   }
@@ -237,8 +342,11 @@ export function createScooterSound(ctx: BaseAudioContext): ScooterSound {
       glide(shimmer.frequency, magnets / MAGNET_PAIRS);
       glide(upper.gain, load === 'pulling' ? PULLING_BRIGHTEN : 1);
       glide(whine.gain, whineLevel(load, speed));
-      glide(rollBand.frequency, WHEEL_HZ * (0.7 + 0.3 * speedShare(speed)));
-      glide(wheels.gain, wheelLevel(speed));
+      const driveGain = 10 ** (buzzDriveDb(load) / 20);
+      glide(drive.gain, driveGain);
+      glide(makeup.gain, buzzMakeup(driveGain) * 10 ** (BUZZ_MAKEUP_DB / 20));
+      glide(ticks.playbackRate, grainRate(speed));
+      glide(wheels.gain, rollLevel(speed));
       if (Math.abs(speed) <= MOVING_TILES_PER_S) {
         return;
       }

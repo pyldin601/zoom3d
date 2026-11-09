@@ -959,8 +959,15 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
         owner removed it later the same day, and halved the whiss's hiss
         (its band's gain 3 → 1.5; 80% was still too loud). A tenth of that (0.15) went live on 2026-11-08 and was
         rolled back the same day: the owner found the motor sounded weird without it. Instead the owner halved the whole
-        whiss, tone and hiss together (0.65 → 0.325, 1.5 → 0.75), and on 2026-11-09 took it 30% lower (0.2275, 0.525), then, still too loud, to 30% of that (0.06825,
-        0.1575).
+        whiss, tone and hiss together (0.65 → 0.325, 1.5 → 0.75), and on 2026-11-09 took it 30% lower (0.2275, 0.525),
+        then, still too loud, to 30% of that (0.06825, 0.1575).
+      - **A motor buzz and rolling wheels** (owner, 2026-11-09: "too clear, too FM-ish"; the rolling "sounds like white
+        noise"; spec [2026-11-09-scooter-motor-buzz-design.md](superpowers/specs/2026-11-09-scooter-motor-buzz-design.md)).
+        The whine is driven into a soft clipper by load (14, 5, 0 dB; hardness 0.28, asymmetry 0.19, 2310 Hz lowpass,
+        −5.5 dB on a level match), and its slot tone is 0.24. The wheels are 900 ticks a second at full speed into
+        modes at 190, 460 and 1150 Hz, swelling once a turn; the white-noise roll is gone. Chosen over frame
+        resonances (the buzz) and moving the noise low (the wheels). Tuned by the owner on the Scooter Motor Buzz page;
+        the wheels' values are the page's starting ones, which the owner kept.
       - **A magnetic motor whine** came back on 2026-11-08 (owner: like gears, but magnetic rather than physical
         teeth), tuned by ear on a second listening page. It is four sines at multiples of the magnet rate (210 Hz at
         full speed): ×1, ×2, a slot tone at ×2.22 and ×12. It pulses once per wheel turn (23 magnet pairs), drifts
