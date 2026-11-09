@@ -73,6 +73,8 @@ Layers:
   - Level 0.1 speeding up, 0.05 holding speed and 0.008 coasting, each × `min(1, speed / 0.3)`.
 - **Wheels:**
   - Rolling noise through a band-pass at `1800 × (0.7 + 0.3 × speed / 6)` Hz, Q 0.8, level `0.12 × (speed / 6)^1.2`.
+    *Replaced 2026-11-09 (owner):* rolling ticks into wheel modes, and the whine gets a load-driven buzz; see
+    [2026-11-09-scooter-motor-buzz-design.md](2026-11-09-scooter-motor-buzz-design.md).
   - Seam ticks: one per tile travelled while moving over 0.3 tiles/s. Each is a 50 ms burst of noise through a
     band-pass at 3200 Hz, Q 2, starting at `0.15 × (speed / 6) × 0.5` and decaying exponentially to silence within
     30 ms.
