@@ -55,6 +55,8 @@ Layers:
   - A sine at gain 0.65 (1 − 0.5 × 0.7), plus noise through a band-pass at 7800 Hz, Q 12, gain 3.0 (0.5 × 6).
     *Amended 2026-11-07 (owner):* the hiss's gain is 1.5, half of that (80% was still too loud).
     0.15 was tried on 2026-11-08 and rolled back: the motor sounded weird.
+    *Amended 2026-11-08 (owner):* the whole whiss is halved instead, tone 0.325 and hiss 0.75, so it keeps its
+    character; its peak is now about 6 dB lower than the figure below.
   - Level 0.35 speeding up, 0.18 holding speed, and 0.02 × `min(1, speed / 0.3)` coasting.
 - **Motor tone:** *removed 2026-11-07 (owner).* It was a triangle, its second harmonic and a low-passed square at
   `max(30, 157 × speed / 6)` Hz, at levels 0.03, 0.02 and 0.01.
