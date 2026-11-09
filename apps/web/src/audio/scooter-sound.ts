@@ -19,10 +19,10 @@ const PWM_LEVEL: Record<ScooterLoad, number> = { pulling: 0.35, cruising: 0.18, 
 /**
  * Tone and hiss go down together, never the hiss alone: cut to a tenth on its own, it left a bare whistle that
  * sounded weird (owner, 2026-11-08). From 0.65 and 1.5 (the hiss already half the bench's 3, owner, 2026-11-07), they
- * were halved (2026-11-08), then taken 30% lower (2026-11-09).
+ * were halved (2026-11-08), taken 30% lower (2026-11-09), then to 30% of that, still too loud (2026-11-09).
  */
-const PWM_TONE_GAIN = 0.2275;
-const PWM_HISS_GAIN = 0.525;
+const PWM_TONE_GAIN = 0.06825;
+const PWM_HISS_GAIN = 0.1575;
 const PWM_HISS_Q = 12;
 /** How many magnet pairs pass a coil each second at full speed. */
 const MAGNET_HZ_AT_TOP = 210;

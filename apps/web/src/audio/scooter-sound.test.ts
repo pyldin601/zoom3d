@@ -112,13 +112,13 @@ describe('createScooterSound', () => {
     expect(housing?.gain.value).toBe(-3);
   });
 
-  test('the whole whiss is 35% of what it was: its tone at 0.2275 and its band of hiss at 0.525, still 1 : 2.3', () => {
+  test('the whole whiss is 10.5% of what it was: its tone at 0.06825 and its band of hiss at 0.1575, still 1 : 2.3', () => {
     createScooterSound(asAudioContext(ctx));
     const gains = (ctx.byKind('gain') as unknown as Gain[]).map((g) => g.gain.value);
-    expect(gains).toContain(0.2275);
-    expect(gains).toContain(0.525);
-    expect(gains).not.toContain(0.325);
-    expect(gains).not.toContain(0.75);
+    expect(gains).toContain(0.06825);
+    expect(gains).toContain(0.1575);
+    expect(gains).not.toContain(0.2275);
+    expect(gains).not.toContain(0.525);
   });
 
   test('a floor seam ticks once per tile travelled', () => {
