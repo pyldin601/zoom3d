@@ -949,7 +949,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     within 20° of head-on stops it dead; scraping one slows it at the brake rate. Stepping on starts at rest.
     - **Items put away** (owner): a rider's drink, boombox and lighter light are hidden on every screen, never sent as
       `held: null`; the choice comes back on stepping off, the music keeps playing, and sip keys do nothing.
-    - **A handlebar in first person**, tilting and shifting with the steering keys. Riders never bob (the owner chose
+    - **A handlebar in first person**, tilting and shifting with the steering keys, with a fist on each grip
+      (owner, 2026-11-10; first person only, the owner's choice). Riders never bob (the owner chose
       motion over a flag for showing kicks; then the scooters went electric and kicks went).
     - **The sound, tuned by the owner by ear** (2026-11-07, on a listening page;
       [spec](superpowers/specs/2026-11-07-scooter-sound-design.md)). It replaced a first speed-pitched whine.

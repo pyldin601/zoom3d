@@ -104,6 +104,11 @@ means backing up). All values are starting values, to be tuned by playing.
 - Steering tilts it: the grips move up and down in opposite directions by up to 3 texels, and the whole bar shifts up
   to 2% of the width toward the turn, following the turn input with a short ease (about 0.1 s).
 - It never bobs.
+- *Amended 2026-11-10 (owner: the hands were missing):* a fist holds each grip. It is 4 × 5 texels in the floating
+  hand's three skin tones, knuckles up, and the right fist mirrors the left. The grips grew from 3 to 6 texels long
+  (the bar keeps its 20-texel width), and each fist sits in the middle of its grip, so the grip shows on both sides
+  of it (owner). It is drawn a column at a time like the bar, so it slopes with the tilt. Only the rider sees the
+  fists: others' view of a rider is unchanged.
 
 ### 4.4 The motor's whine (replaced)
 

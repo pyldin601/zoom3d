@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { createFramebuffer, type Framebuffer } from './framebuffer';
 import { renderOwnHandlebar } from './own-handlebar';
 import { ownTexel } from './own-held';
+import { hexToRgb } from './sprites';
 
 function drawn(steer: number, head = 0): { fb: Framebuffer; cols: number[]; rows: number[] } {
   const fb = createFramebuffer();
@@ -65,6 +66,64 @@ describe('renderOwnHandlebar', () => {
     const w = right.fb.width;
     expect(Math.min(...left.cols)).toBeCloseTo(w - 1 - Math.max(...right.cols), -1);
     expect(gripBottom(left, 'left')).toBe(gripBottom(right, 'right'));
+  });
+});
+
+const SKIN = ['#f2c29b', '#c98d6a', '#8a5236'].map(hexToRgb);
+const GRIP = ['#26262a', '#3d3d44'].map(hexToRgb);
+/** The drawn pixels in hand colours, left or right of the screen's middle. */
+function fistPixels(d: ReturnType<typeof drawn>, side: 'left' | 'right'): { cols: number[]; rows: number[] } {
+  const cols: number[] = [];
+  const rows: number[] = [];
+  d.fb.pixels.forEach((c, i) => {
+    const col = i % d.fb.width;
+    if (SKIN.includes(c) && (side === 'left') === col < d.fb.width / 2) {
+      cols.push(col);
+      rows.push(Math.floor(i / d.fb.width));
+    }
+  });
+  return { cols, rows };
+}
+
+/** The columns showing grip colours. */
+const gripCols = (d: ReturnType<typeof drawn>) =>
+  [...d.fb.pixels.keys()].filter((i) => GRIP.includes(d.fb.pixels[i] as number)).map((i) => i % d.fb.width);
+
+describe('the hands on the grips', () => {
+  test("a fist in the held items' hand colours holds each grip, the grip showing on both sides of it", () => {
+    const d = drawn(0);
+    for (const side of ['left', 'right'] as const) {
+      const fist = fistPixels(d, side).cols;
+      const [from, to] = [Math.min(...fist), Math.max(...fist)];
+      const grip = gripCols(d).filter((col) => (side === 'left') === col < d.fb.width / 2);
+      expect(grip.some((col) => col < from)).toBe(true);
+      expect(grip.some((col) => col > to)).toBe(true);
+    }
+  });
+
+  test('the fists are mirrored', () => {
+    const d = drawn(0);
+    const w = d.fb.width;
+    expect(Math.min(...fistPixels(d, 'left').cols)).toBeCloseTo(w - 1 - Math.max(...fistPixels(d, 'right').cols), -1);
+  });
+
+  test('no grip shows through a fist, tilted or not', () => {
+    for (const steer of [-1, -0.5, 0, 0.5, 1]) {
+      const d = drawn(steer);
+      for (const side of ['left', 'right'] as const) {
+        const fist = fistPixels(d, side).cols;
+        const [from, to] = [Math.min(...fist), Math.max(...fist)];
+        expect(gripCols(d).some((col) => col >= from && col <= to)).toBe(false);
+      }
+    }
+  });
+
+  test('steering right takes the right fist down and the left one up, with the grips', () => {
+    const straight = drawn(0);
+    const right = drawn(1);
+    const top = (d: ReturnType<typeof drawn>, side: 'left' | 'right') => Math.min(...fistPixels(d, side).rows);
+    expect(top(right, 'right')).toBeGreaterThan(top(straight, 'right'));
+    expect(top(right, 'left')).toBeLessThan(top(straight, 'left'));
   });
 });
 
