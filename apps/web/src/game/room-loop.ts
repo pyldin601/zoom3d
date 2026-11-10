@@ -22,6 +22,7 @@ import { createRemoteWorld, type PeerMedia } from './remote-world';
 import { isConnected, type Room } from './room';
 import { ridesNow } from './scooter-ride';
 import type { Screen } from './screen';
+import { chooseUse, type UseChoice, type UseState } from './use-key';
 
 export interface RoomLoopOptions {
   map: GameMap;
@@ -41,7 +42,7 @@ export interface RoomLoopOptions {
   /** Every frame: whether the local player can kick the ball (for the touch kick button). */
   ballInReach(inReach: boolean): void;
   /** Every frame: whether a parked scooter is in reach on foot, and whether the local player rides one. */
-  scooterState(inReach: boolean, riding: boolean): void;
+  useState(choice: UseChoice | null): void;
 }
 
 export interface RoomLoop {
@@ -132,6 +133,20 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   let roll = createBallRoll();
   /** The ball the roll belongs to, and where it was last drawn. */
   let rolling: { id: string; x: number; y: number } | null = null;
+
+  const using: UseState = { riding: false, dribbling: false, ballTiles: null, scooterTiles: null };
+  /** What E would do now (ball dribble spec §2.1). */
+  const useChoice = (room: Room): UseChoice | null => {
+    const { pose } = localPlayer;
+    const ball = room.ball.ball;
+    const ballTiles = ball && Math.hypot(ball.x - pose.x, ball.y - pose.y);
+    const ballLoose = !room.ball.holding && room.ball.heldBy === null;
+    using.riding = room.session.riding !== null;
+    using.dribbling = room.ball.holding;
+    using.ballTiles = ballLoose && ballTiles !== null && ballTiles <= BALL_KICK_REACH ? ballTiles : null;
+    using.scooterTiles = room.ride.nearestTiles(pose, apparent);
+    return chooseUse(using);
+  };
 
   /** Steps the predicted ball, rolls its pattern by how far it went, and plays what it hit. */
   const stepBall = (room: Room, now: number, dt: number) => {
@@ -278,11 +293,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
         followSequence(room, now);
         stepBall(room, now, dt);
         placeEveryoneElse(room, now, dt);
-        const connected = isConnected(room);
-        o.scooterState(
-          connected && room.ride.inReach(localPlayer.pose, apparent),
-          connected && room.session.riding !== null
-        );
+        o.useState(isConnected(room) ? useChoice(room) : null);
       } else {
         showCountdown(o.ui, null);
       }

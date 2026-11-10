@@ -34,7 +34,7 @@ describe('in the room', () => {
   });
 
   test('E steps on or off a scooter once per press, never as a browser shortcut or while reconnecting', () => {
-    expect(roomKey(press('KeyE'), IN_ROOM)).toEqual({ kind: 'ride' });
+    expect(roomKey(press('KeyE'), IN_ROOM)).toEqual({ kind: 'use' });
     expect(roomKey(press('KeyE', { repeat: true }), IN_ROOM)).toBeNull();
     expect(roomKey(press('KeyE', { ctrlKey: true }), IN_ROOM)).toBeNull();
     expect(roomKey(press('KeyE'), RECONNECTING)).toBeNull();

@@ -16,6 +16,8 @@ export interface ScooterRide {
    * every frame with where everything appears to the local player.
    */
   inReach(player: Point, apparent?: ReadonlyMap<string, Point>): boolean;
+  /** Like `inReach`, but how far the nearest one is, in tiles, or null: E picks the nearer of it and the ball. */
+  nearestTiles(player: Point, apparent?: ReadonlyMap<string, Point>): number | null;
   /** The server answered the local player's ask. */
   settled(): void;
   /**
@@ -84,6 +86,16 @@ export function createScooterRide(session: RideSession, now: () => number): Scoo
     inReach(player, apparent) {
       lastApparent = apparent;
       return session.riding === null && !pending() && nearest(player, apparent) !== null;
+    },
+    nearestTiles(player, apparent) {
+      lastApparent = apparent;
+      if (session.riding !== null || pending()) {
+        return null;
+      }
+      const id = nearest(player, apparent);
+      const info = id === null ? undefined : session.objects.get(id)?.info;
+      const at = info && (apparent?.get(keyOf(info.id)) ?? info);
+      return at ? Math.hypot(at.x - player.x, at.y - player.y) : null;
     },
     settled() {
       askedAt = Number.NEGATIVE_INFINITY;

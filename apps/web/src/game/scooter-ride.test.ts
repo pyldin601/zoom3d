@@ -93,6 +93,14 @@ describe('toggle', () => {
 });
 
 describe('speed and reach', () => {
+  test('the nearest scooter in reach is measured, for choosing between it and the ball', () => {
+    const r = ride();
+    expect(r.nearestTiles(player)).toBeCloseTo(0.6);
+    expect(r.nearestTiles({ x: -1.2, y: 0 })).toBeNull();
+    r.toggle(player);
+    expect(r.nearestTiles(player)).toBeNull();
+  });
+
   test('a scooter is in reach only on foot, with nothing pending', () => {
     const r = ride();
     expect(r.inReach(player)).toBe(true);
