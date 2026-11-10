@@ -1,7 +1,7 @@
 // The scooter's handlebar in first person while riding (electric scooter spec §4.3): the top of the stem comes up from
 // the bottom centre with the bar across it and a grip at each end. Steering tilts it (one grip up, the other down) and
 // shifts it toward the turn. It never bobs: an electric scooter glides. A fist holds each grip (owner, 2026-11-10: the
-// hands were missing), in the floating hand's colours, the grip's end showing past it, and tilts with its grip.
+// hands were missing), in the floating hand's colours, the grip showing on both sides of it, and tilts with its grip.
 import type { Framebuffer } from './framebuffer';
 import { blitHeldSprite, type HeldSprite, OVER_EVERYTHING, toHeldSprite } from './held-items';
 import { ownTexel } from './own-held';
@@ -19,11 +19,11 @@ const OUT_OF_VIEW_RAD = 0.6;
 const BAR_RISE_TEXELS = 4.5;
 
 const PALETTE: Readonly<Record<string, string>> = { m: '#aab0b8', M: '#6d737b', k: '#26262a', K: '#3d3d44' };
-const LEFT_HALF = ['kkk.......', 'kKkmmmmmmm', 'kkkMMMMMMM', 'kkk.......'];
+const LEFT_HALF = ['kkkkkk....', 'kKKKKkmmmm', 'kkkkkkMMMM', 'kkkkkk....'];
 const BAR_ROWS = LEFT_HALF.map((row) => row + [...row].reverse().join(''));
 const BAR_WIDTH = BAR_ROWS[0]?.length ?? 0;
 /** The left fist, knuckles up; the outer side is column 0. */
-const LEFT_FIST = ['ssss.', 'sllll', 'slllo', 'llloo', '.ooo.'];
+const LEFT_FIST = ['ssss', 'slll', 'sllo', 'lloo', '.oo.'];
 const FIST_WIDTH = LEFT_FIST[0]?.length ?? 0;
 const RIGHT_FIST = LEFT_FIST.map((row) => [...row].reverse().join(''));
 /** A sprite a column at a time, so it can slope with the bar like the bar's own columns. */
@@ -39,11 +39,11 @@ const BAR_COLUMNS = columnsOf(BAR_ROWS, PALETTE);
 const LEFT_FIST_COLUMNS = columnsOf(LEFT_FIST);
 const RIGHT_FIST_COLUMNS = columnsOf(RIGHT_FIST);
 /**
- * The bar column each fist's first column sits on: the grip's end cap shows past it (owner, 2026-11-10: the bar
- * should stay a bit visible), and the fist holds the rest of the grip and the start of the bar.
+ * The bar column each fist's first column sits on: the middle of its grip, which shows on both sides of the fist
+ * (owner, 2026-11-10).
  */
 const LEFT_FIST_U = 1;
-const RIGHT_FIST_U = BAR_WIDTH - 1 - FIST_WIDTH;
+const RIGHT_FIST_U = BAR_WIDTH - LEFT_FIST_U - FIST_WIDTH;
 
 /** Taller than any bar ever rises: the bottom edge crops it. */
 const STEM: HeldSprite = toHeldSprite(['mM', 'mM', 'mM', 'mM', 'mM', 'mM', 'mM'], PALETTE);

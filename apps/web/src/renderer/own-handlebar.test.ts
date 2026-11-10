@@ -90,16 +90,14 @@ const gripCols = (d: ReturnType<typeof drawn>) =>
   [...d.fb.pixels.keys()].filter((i) => GRIP.includes(d.fb.pixels[i] as number)).map((i) => i % d.fb.width);
 
 describe('the hands on the grips', () => {
-  test("a fist in the held items' hand colours holds each grip, the grip's end showing past it", () => {
+  test("a fist in the held items' hand colours holds each grip, the grip showing on both sides of it", () => {
     const d = drawn(0);
-    const texel = ownTexel(d.fb);
-    const fistLeft = Math.min(...fistPixels(d, 'left').cols);
-    const fistRight = Math.max(...fistPixels(d, 'right').cols);
-    expect(fistLeft - Math.min(...d.cols)).toBeCloseTo(texel, -1);
-    expect(Math.max(...d.cols) - fistRight).toBeCloseTo(texel, -1);
-    expect(gripCols(d).length).toBeGreaterThan(0);
-    for (const col of gripCols(d)) {
-      expect(col < fistLeft || col > fistRight).toBe(true);
+    for (const side of ['left', 'right'] as const) {
+      const fist = fistPixels(d, side).cols;
+      const [from, to] = [Math.min(...fist), Math.max(...fist)];
+      const grip = gripCols(d).filter((col) => (side === 'left') === col < d.fb.width / 2);
+      expect(grip.some((col) => col < from)).toBe(true);
+      expect(grip.some((col) => col > to)).toBe(true);
     }
   });
 
@@ -109,13 +107,13 @@ describe('the hands on the grips', () => {
     expect(Math.min(...fistPixels(d, 'left').cols)).toBeCloseTo(w - 1 - Math.max(...fistPixels(d, 'right').cols), -1);
   });
 
-  test('a tilted grip shows only its end past the fist', () => {
-    for (const steer of [-1, -0.5, 0.5, 1]) {
+  test('no grip shows through a fist, tilted or not', () => {
+    for (const steer of [-1, -0.5, 0, 0.5, 1]) {
       const d = drawn(steer);
-      const fistLeft = Math.min(...fistPixels(d, 'left').cols);
-      const fistRight = Math.max(...fistPixels(d, 'right').cols);
-      for (const col of gripCols(d)) {
-        expect(col < fistLeft || col > fistRight).toBe(true);
+      for (const side of ['left', 'right'] as const) {
+        const fist = fistPixels(d, side).cols;
+        const [from, to] = [Math.min(...fist), Math.max(...fist)];
+        expect(gripCols(d).some((col) => col >= from && col <= to)).toBe(false);
       }
     }
   });
