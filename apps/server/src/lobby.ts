@@ -8,6 +8,8 @@ import {
   type Apparent,
   apparentPosition,
   BALL_KICK_GAP_MS,
+  BALL_KICK_REACH,
+  BALL_RADIUS,
   type Ball,
   type BallBody,
   type BallCryChoice,
@@ -26,6 +28,7 @@ import {
   DRINK_GAP_MS,
   type GameMap,
   type HeldMessage,
+  holdSpot,
   isDrink,
   isPlausibleMove,
   isValidAvatar,
@@ -299,6 +302,10 @@ export class Lobby {
     string,
     { mind: BallMind; touch: BallTouch; pendingCry: BallCryChoice | null }
   >();
+  /** Who dribbles each room's ball, by room id (ball dribble spec §4.1). */
+  private readonly holders = new Map<string, string>();
+  /** Rooms whose ball was picked up or let go since its last broadcast, so the change goes out even if it is still. */
+  private readonly holdChanged = new Set<string>();
   /** A person's kick since the ball's last broadcast, echoed in it so the kicker recognises its own kick. */
   private readonly kicks = new Map<string, { conn: string; by: string; k: number }>();
   /** Each room's portals flag, when it last flipped and whether it was ever on; no entry is off and never flipped. */
@@ -469,7 +476,7 @@ export class Lobby {
     const found = this.peerOf(conn);
     const parked = found && this.scooters.get(found.roomId);
     const scooter = parked?.get(msg.id);
-    if (!found || !parked || !scooter || found.peer.riding !== null) {
+    if (!found || !parked || !scooter || found.peer.riding !== null || this.holds(found.roomId, found.peer)) {
       return;
     }
     const { roomId, room, peer } = found;
@@ -491,6 +498,39 @@ export class Lobby {
   }
 
   /**
+   * Picks the room's ball up into a dribble for a person on foot near it, if nobody holds it. Their screen already
+   * shows it in hand, so a refusal is said out loud. The mind starts again asleep and sleeps while held.
+   */
+  dribble(conn: string): void {
+    const found = this.peerOf(conn);
+    const ball = found && this.balls.get(found.roomId);
+    if (!found || !ball) {
+      return;
+    }
+    const dribbler = this.seenFrom(this.activePortals(found.roomId), ball, found.peer);
+    const near = Math.hypot(dribbler.x - ball.x, dribbler.y - ball.y) <= BALL_KICK_REACH + KICK_SLACK_TILES;
+    if (found.peer.riding !== null || this.holders.has(found.roomId) || !near) {
+      this.opts.out.send(conn, { type: 'dribble_refused' });
+      return;
+    }
+    this.holders.set(found.roomId, found.peer.id);
+    this.holdChanged.add(found.roomId);
+    const minded = this.ballMinds.get(found.roomId);
+    if (minded) {
+      minded.mind = createBallMind();
+      minded.pendingCry = null;
+    }
+  }
+
+  /** Lets go of the ball the person dribbles: it rolls on with how they were moving. */
+  release(conn: string): void {
+    const found = this.peerOf(conn);
+    if (found && this.holds(found.roomId, found.peer)) {
+      this.letGo(found.roomId);
+    }
+  }
+
+  /**
    * Kicks the room's ball from where the server last saw the kicker, if they're near enough and not kicking too often.
    * The kicker's screen already shows the kick, so a refusal is said out loud.
    */
@@ -508,6 +548,10 @@ export class Lobby {
     const slack = KICK_SLACK_TILES + Math.hypot(ball.vx, ball.vy) * KICK_SEEN_LATE_S;
     if (rested && kickBall(ball, kicker, angle, slack)) {
       found.peer.lastKickAt = now;
+      // The dribbler's kick is a throw from the hand; anyone else's steals it.
+      if (this.holders.has(found.roomId)) {
+        this.letGo(found.roomId);
+      }
       const minded = this.ballMinds.get(found.roomId);
       if (minded) {
         minded.pendingCry = kickBallMind(minded.mind, this.opts.rng) ?? minded.pendingCry;
@@ -766,6 +810,9 @@ export class Lobby {
   /** Removes a person whose grace ran out, and tells the room. */
   private expire(roomId: string, room: Room, peer: Peer): void {
     this.park(roomId, room, peer);
+    if (this.holds(roomId, peer)) {
+      this.letGo(roomId);
+    }
     room.delete(peer.id);
     if (peer.avatar !== null) {
       this.avatars.release(peer.avatar);
@@ -783,6 +830,8 @@ export class Lobby {
     this.vacuumVelocities.delete(roomId);
     this.balls.delete(roomId);
     this.ballMinds.delete(roomId);
+    this.holders.delete(roomId);
+    this.holdChanged.delete(roomId);
     this.scooters.delete(roomId);
     this.kicks.delete(roomId);
     this.portalModes.delete(roomId);
@@ -815,7 +864,7 @@ export class Lobby {
       livekit: this.opts.liveKitFor(roomId, self.id),
       objects: [
         ...(vacuum ? [vacuumInfo(vacuum)] : []),
-        ...(ball ? [{ ...ballInfo(ball), ...this.ballMood(roomId) }] : []),
+        ...(ball ? [{ ...ballInfo(ball), ...this.ballMood(roomId), ...this.ballHolder(roomId) }] : []),
         ...[...(this.scooters.get(roomId)?.values() ?? [])].map(scooterInfo),
       ],
       portals: this.portalModes.get(roomId)?.on === true,
@@ -980,6 +1029,47 @@ export class Lobby {
     }
   }
 
+  private ballHolder(roomId: string): { heldBy: string } | Record<string, never> {
+    const holder = this.holders.get(roomId);
+    return holder === undefined ? {} : { heldBy: holder };
+  }
+
+  private holds(roomId: string, peer: Peer): boolean {
+    return this.holders.get(roomId) === peer.id;
+  }
+
+  private letGo(roomId: string): void {
+    this.holders.delete(roomId);
+    this.holdChanged.add(roomId);
+  }
+
+  /**
+   * Puts a held ball at its dribbler's hand with their velocity, unless a walking person knocks it loose first.
+   * Returns whether it is still held, so it skips its mind and its physics.
+   */
+  private stepHeldBall(roomId: string, room: Room, ball: Ball, portals: Portals | null, now: number): boolean {
+    const dribbler = room.get(this.holders.get(roomId) ?? '');
+    if (!dribbler) {
+      this.letGo(roomId);
+      return false;
+    }
+    const moving = (p: Peer) => now - p.poseAt <= MOVING_POSE_MS && (p.vx !== 0 || p.vy !== 0);
+    for (const p of room.values()) {
+      if (p === dribbler || p.conn === null || !isPerson(p) || !moving(p)) {
+        continue;
+      }
+      const body = this.seenFrom(portals, ball, p);
+      if (Math.hypot(body.x - ball.x, body.y - ball.y) < PLAYER_RADIUS + BALL_RADIUS) {
+        this.letGo(roomId);
+        return false;
+      }
+    }
+    holdSpot(this.opts.map, portals, dribbler.x, dribbler.y, dribbler.angle, ball);
+    ball.vx = moving(dribbler) ? dribbler.vx : 0;
+    ball.vy = moving(dribbler) ? dribbler.vy : 0;
+    return true;
+  }
+
   private ballMood(roomId: string): { mood: BallMood } | Record<string, never> {
     const minded = this.ballMinds.get(roomId);
     return minded ? { mood: minded.mind.mood } : {};
@@ -1036,7 +1126,8 @@ export class Lobby {
       const moodBefore = minded?.mind.mood;
       let cry: BallCryChoice | null = null;
       const { x, y, vx, vy } = ball;
-      if (minded) {
+      const held = this.holders.has(roomId) && this.stepHeldBall(roomId, room, ball, portals, now);
+      if (minded && !held) {
         const people = [...room.values()].filter((p) => p.conn !== null && isPerson(p));
         const stepped = stepBallMind(
           this.opts.map,
@@ -1052,12 +1143,13 @@ export class Lobby {
         minded.touch.knocked = false;
         minded.touch.crossedPortal = false;
       }
-      const event = stepBall(this.opts.map, ball, dt, bodies, portals, minded?.touch ?? null);
+      const event = held ? null : stepBall(this.opts.map, ball, dt, bodies, portals, minded?.touch ?? null);
       const kick = this.kicks.get(roomId);
       this.kicks.delete(roomId);
       const changed = ball.x !== x || ball.y !== y || ball.vx !== vx || ball.vy !== vy;
       const moodChanged = minded?.mind.mood !== moodBefore;
-      if (!changed && !kick && !moodChanged && !cry && !ballMoving(ball)) {
+      const holdChanged = this.holdChanged.delete(roomId);
+      if (!changed && !kick && !moodChanged && !cry && !holdChanged && !ballMoving(ball)) {
         continue;
       }
       ball.seq++;
@@ -1075,6 +1167,7 @@ export class Lobby {
         ...said,
         ...this.ballMood(roomId),
         ...(cry ? { cry: cry.cry, cryVariant: cry.variant } : {}),
+        ...this.ballHolder(roomId),
       });
     }
   }
