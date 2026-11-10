@@ -982,6 +982,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
         change. The rider hears their own centred, from the throttle and the ride's head-on stop.
       - The rider's own goes into the room's reverb too (owner, 2026-11-08): `AudioEngine.playOwn`, like the own
         lighter, with the same send as a voice beside the listener. Not listened to in the game by the builder.
+      - The rider's own plays at half the level others hear a rider at (owner, 2026-11-10: `OWN_SCOOTER_GAIN` 0.5 on
+        its whole sound, before the reverb send).
     - **A glowing headlight** on the stem and a battery under the deck; looks only.
     - **Stepping on turns the view to the scooter** (owner, 2026-11-08):
       - **Heading:** the ride starts with the scooter's parked heading, which is kept from the ask, because the server

@@ -12,6 +12,8 @@ const BUMP_MIN_SPEED = 1.5;
 /** One bump at most in this long. */
 const BUMP_GAP_S = 0.3;
 const MIN_IMPACT = 0.15;
+/** The local player's own scooter, against how others hear a rider: half (owner, 2026-11-10). */
+export const OWN_SCOOTER_GAIN = 0.5;
 
 export interface ScooterSounds {
   /** Every frame (and from the hidden ticker), at `nowMs` on the session's clock: starts, feeds and stops the riders. */
@@ -48,6 +50,7 @@ export function createScooterSounds(ctx: BaseAudioContext, engine: AudioEngine):
   const keys = new Map<ScooterSound, string>();
   let rides = 0;
   let ownSound: ScooterSound | null = null;
+  let ownOutput: GainNode | null = null;
   let sinceOwnBumpS = BUMP_GAP_S;
 
   const stop = (id: string) => {
@@ -95,13 +98,18 @@ export function createScooterSounds(ctx: BaseAudioContext, engine: AudioEngine):
     },
     own(speed, load, bump, riding, dtSeconds) {
       if (!riding) {
-        ownSound?.dispose();
+        const output = ownOutput;
+        ownSound?.dispose(() => output?.disconnect());
         ownSound = null;
+        ownOutput = null;
         return;
       }
       if (!ownSound) {
         ownSound = createScooterSound(ctx);
-        engine.playOwn(ownSound.output);
+        ownOutput = ctx.createGain();
+        ownOutput.gain.value = OWN_SCOOTER_GAIN;
+        ownSound.output.connect(ownOutput);
+        engine.playOwn(ownOutput);
       }
       ownSound.set(speed, load, dtSeconds);
       sinceOwnBumpS += Math.max(dtSeconds, 0);
