@@ -116,6 +116,8 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
   let otherHolder: string | null = null;
   /** The kick that threw the local dribble, which a refusal undoes. */
   let throwK: number | null = null;
+  /** Whom a local kick stole it from, until its echo: states already on their way still name them. */
+  let stolenFrom: string | null = null;
   const lastSelf = { vx: 0, vy: 0 };
   const holding = () => own === 'asked' || own === 'held';
   const moodShown = () => (holding() || otherHolder !== null ? 'asleep' : (forcedMood ?? shownMood));
@@ -186,15 +188,31 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
   /** What a server state says about who dribbles it, against what this screen already did. */
   const followHolder = (holder: string | null, selfId: string | null, now: number) => {
     if (holder !== null && holder === selfId) {
-      if (own === 'asked') {
+      // States come in order, so one naming the local player after a settled let-go can't be stale: an ask the
+      // server took after the wait ran out, or a hold to take back.
+      if (own === 'asked' || own === 'none') {
+        if (own === 'none') {
+          startDribble();
+        }
         setOwn('held', now);
       }
       return;
     }
     if (holder !== null) {
+      if (holder === stolenFrom && unechoed !== null) {
+        return;
+      }
+      stolenFrom = null;
       otherHolder = holder;
+      if (holding()) {
+        // Someone else has it: the local hand lost it, or never got it.
+        setOwn('none', now);
+        holdUntil = now;
+        fallFromDribble();
+      }
       return;
     }
+    stolenFrom = null;
     if (otherHolder !== null) {
       otherHolder = null;
       fallFromDribble();
@@ -398,6 +416,7 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
       }
       if (otherHolder !== null) {
         // A steal: the ball leaves the other dribbler's hand here at once.
+        stolenFrom = otherHolder;
         otherHolder = null;
         fallFromDribble();
       }

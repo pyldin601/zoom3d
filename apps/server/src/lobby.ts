@@ -509,6 +509,11 @@ export class Lobby {
     }
     const dribbler = this.seenFrom(this.activePortals(found.roomId), ball, found.peer);
     const near = Math.hypot(dribbler.x - ball.x, dribbler.y - ball.y) <= BALL_KICK_REACH + KICK_SLACK_TILES;
+    if (this.holds(found.roomId, found.peer)) {
+      // Its screen gave up waiting for the answer: the next state tells it again.
+      this.holdChanged.add(found.roomId);
+      return;
+    }
     if (found.peer.riding !== null || this.holders.has(found.roomId) || !near) {
       this.opts.out.send(conn, { type: 'dribble_refused' });
       return;

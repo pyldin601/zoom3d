@@ -623,3 +623,38 @@ describe('the dribble (ball dribble spec §4.2)', () => {
     expect(p.heldBy).toBeNull();
   });
 });
+
+describe('the dribble against late and crossing server states (final review)', () => {
+  test("a steal's kick keeps flying through states still naming the old dribbler", () => {
+    const p = predicted(3, 3.5);
+    p.server(state(3, 3.5, { heldBy: 'other' }), 'me', 0);
+    const k = p.kick({ x: 2.6, y: 3.5 }, 0, 300);
+    expect(k).not.toBeNull();
+    p.server(state(3, 3.5, { heldBy: 'other' }), 'me', 320);
+    p.step(DT, 320, null);
+    expect(p.heldBy).toBeNull();
+    expect(ballOf(p).vx).toBeGreaterThan(7);
+  });
+
+  test('a pick-up the server accepts after the wait still ends in hand', () => {
+    const p = predicted(3, 3.5);
+    p.pickUp({ x: 2.5, y: 3.5 }, 0);
+    p.step(DT, 1100, still(2.5, 3.5), 0);
+    expect(p.holding).toBe(false);
+    p.server(state(3, 3.5, { heldBy: 'me' }), 'me', 1200);
+    expect(p.holding).toBe(true);
+  });
+
+  test('someone else named as holder takes it out of the local hand', () => {
+    const p = predicted(3, 3.5);
+    p.pickUp({ x: 2.5, y: 3.5 }, 0);
+    p.server(state(3, 3.5, { heldBy: 'me' }), 'me', 30);
+    p.server(state(4, 3.5, { heldBy: 'other' }), 'me', 100);
+    expect(p.holding).toBe(false);
+    expect(p.heldBy).toBe('other');
+  });
+
+  function still(x: number, y: number): BallBody {
+    return walker(x, y, 0);
+  }
+});

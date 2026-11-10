@@ -167,6 +167,17 @@ describe('picking it up', () => {
     expect(ballStates('A').every((s) => s.heldBy === undefined)).toBe(true);
   });
 
+  test('the dribbler asking again is no refusal', () => {
+    const { person, ball } = spawnSpot();
+    const [a] = setUp([person], ball);
+    lobby.dribble('A');
+    step();
+    lobby.dribble('A');
+    step();
+    expect(dribbleRefusals('A')).toHaveLength(0);
+    expect(lastBall('A').heldBy).toBe(a);
+  });
+
   test('a ball someone holds cannot be taken by another dribble', () => {
     const { person, ball } = spawnSpot();
     const [a] = setUp([person, { x: ball.x, y: ball.y + 0.5 }], ball);
