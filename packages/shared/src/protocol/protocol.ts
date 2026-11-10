@@ -5,7 +5,7 @@ import type { SequenceKind } from '../portals/sequence';
 /** People per room (bots don't count). To revisit after the 100-person load test (D21). */
 export const MAX_PEERS = 128;
 /** Sent in every join; a join without it, or with an older one, comes from a tab opened before an update. */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 /** Bots a room may be created with (opt-in via the room link's `?bots=N`), outside MAX_PEERS. */
 export const MAX_BOTS = 100;
 export const NAME_MAX_CHARS = 24;
@@ -97,6 +97,8 @@ export interface ObjectInfo {
   vy?: number;
   /** The ball's mood; absent means asleep, and on the vacuum. */
   mood?: BallMood;
+  /** The peer dribbling the ball (ball dribble spec §4.1); absent when it is loose. */
+  heldBy?: string;
 }
 
 /** Where and how a peer joins the room's LiveKit SFU (LiveKit spec §3). */
@@ -129,6 +131,10 @@ export type PortalsMessage = { type: 'portals' };
 /** Asks to step on parked scooter `id`. */
 export type RideMessage = { type: 'ride'; id: string };
 export type DismountMessage = { type: 'dismount' };
+/** Asks to pick the ball up into a dribble (ball dribble spec §4.1). */
+export type DribbleMessage = { type: 'dribble' };
+/** Lets go of the dribbled ball. */
+export type ReleaseMessage = { type: 'release' };
 export type ClientMessage =
   | JoinMessage
   | StateMessage
@@ -140,7 +146,9 @@ export type ClientMessage =
   | KickMessage
   | PortalsMessage
   | RideMessage
-  | DismountMessage;
+  | DismountMessage
+  | DribbleMessage
+  | ReleaseMessage;
 
 export type ErrorCode = 'room_full' | 'invalid_room' | 'invalid_name' | 'not_joined' | 'outdated';
 const ERROR_CODES: readonly ErrorCode[] = ['room_full', 'invalid_room', 'invalid_name', 'not_joined', 'outdated'];
@@ -204,10 +212,14 @@ export type ServerMessage =
       /** Something the ball voices, and which of that emotion's sounds. They come together or not at all. */
       cry?: BallCry;
       cryVariant?: number;
+      /** The peer dribbling the ball; absent when it is loose. */
+      heldBy?: string;
     }
   | { type: 'correction'; x: number; y: number; angle: number; seq: number }
   /** The sender's kick `k` didn't land, so its prediction can stop waiting for the echo. */
   | { type: 'kick_refused'; k: number }
+  /** The sender's dribble didn't start, so its prediction lets go. */
+  | { type: 'dribble_refused' }
   | { type: 'error'; code: ErrorCode; message: string };
 export type ObjectStateMessage = Extract<ServerMessage, { type: 'object_state' }>;
 export type PeerRideMessage = Extract<ServerMessage, { type: 'peer_ride' }>;
@@ -399,6 +411,12 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   if (m.type === 'dismount') {
     return { type: 'dismount' };
   }
+  if (m.type === 'dribble') {
+    return { type: 'dribble' };
+  }
+  if (m.type === 'release') {
+    return { type: 'release' };
+  }
   return null;
 }
 
@@ -445,12 +463,16 @@ export function parseObjectInfo(v: unknown): ObjectInfo | null {
     return null;
   }
   const p = pose(v);
-  return p && { id: v.id, kind: v.kind as ObjectKind, ...p, ...velocity(v), ...ballMood(v) };
+  return p && { id: v.id, kind: v.kind as ObjectKind, ...p, ...velocity(v), ...ballMood(v), ...holder(v) };
 }
 
 /** A ball's velocity, kept only when both parts are numbers. */
 function velocity(m: Obj): { vx: number; vy: number } | Record<string, never> {
   return isNum(m.vx) && isNum(m.vy) ? { vx: m.vx, vy: m.vy } : {};
+}
+
+function holder(m: Obj): { heldBy: string } | Record<string, never> {
+  return isStr(m.heldBy) ? { heldBy: m.heldBy } : {};
 }
 
 function ballMood(m: Obj): { mood: BallMood } | Record<string, never> {
@@ -564,12 +586,15 @@ export function parseServerMessage(raw: string): ServerMessage | null {
         ...echo,
         ...ballMood(m),
         ...ballCry(m),
+        ...holder(m),
       };
     }
     case 'correction': {
       const p = pose(m);
       return p && isSeq(m.seq) ? { type: 'correction', ...p, seq: m.seq } : null;
     }
+    case 'dribble_refused':
+      return { type: 'dribble_refused' };
     case 'kick_refused':
       return isSeq(m.k) ? { type: 'kick_refused', k: m.k } : null;
     case 'error':

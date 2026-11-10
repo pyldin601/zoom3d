@@ -23,6 +23,7 @@ import {
   type PeerInfo,
   PROTOCOL_VERSION,
   parseClientMessage,
+  parseObjectInfo,
   parseServerMessage,
   peerEntry,
   type ServerMessage,
@@ -230,6 +231,7 @@ describe('parseServerMessage', () => {
     { type: 'error', code: 'outdated', message: 'zoom3d was updated: reload the page' },
     { type: 'correction', x: 1, y: 2, angle: 3, seq: 4 },
     { type: 'kick_refused', k: 5 },
+    { type: 'dribble_refused' },
     { type: 'error', code: 'room_full', message: 'full' },
   ];
 
@@ -506,6 +508,26 @@ describe('the ball (ball spec §4)', () => {
     expect(parseServerMessage(json(kicked))).toEqual(kicked);
   });
 
+  test('object_state carries who dribbles the ball', () => {
+    const held = { ...state, heldBy: 'p1' };
+    expect(parseServerMessage(json(held))).toEqual(held);
+  });
+
+  test('a non-string holder is dropped', () => {
+    expect(parseServerMessage(json({ ...state, heldBy: 3 }))).toEqual(state);
+  });
+
+  test('a welcome object keeps its holder', () => {
+    const ball = { id: 'b', kind: 'ball', x: 1, y: 2, angle: 0, heldBy: 'p1' };
+    expect(parseObjectInfo(ball)).toEqual(ball);
+    expect(parseObjectInfo({ ...ball, heldBy: null })).toEqual({ id: 'b', kind: 'ball', x: 1, y: 2, angle: 0 });
+  });
+
+  test('parses dribble and release', () => {
+    expect(parseClientMessage(json({ type: 'dribble' }))).toEqual({ type: 'dribble' });
+    expect(parseClientMessage(json({ type: 'release' }))).toEqual({ type: 'release' });
+  });
+
   test("object_state carries the ball's mood and cry", () => {
     const crying = { ...state, mood: 'scared', cry: 'whimper', cryVariant: 2 };
     expect(parseServerMessage(json(crying))).toEqual(crying);
@@ -561,7 +583,7 @@ describe('server fan-out (6d)', () => {
     expect(NEAR_TILES).toBe(16);
     expect(FAR_INTERVAL_MS).toBe(500);
     expect(MAX_PEERS).toBe(128);
-    expect(PROTOCOL_VERSION).toBe(6);
+    expect(PROTOCOL_VERSION).toBe(7);
     expect(INTERP_DELAY_MS).toBe(150);
   });
 
