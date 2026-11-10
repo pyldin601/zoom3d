@@ -1048,6 +1048,10 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Ending** (owner): E lets go, Space throws (a kick from the hand), and another person's kick or moving body steals
     it. No dribbling while riding (owner); a dribbler's E always lets go first (designer's call).
   - **Asleep while held** (owner): no mind, no fear, the vacuum ignores it; it wakes fresh on release (designer's call).
+  - **Builder's calls:** E on the touch screen is one "use" button (ride, step off, dribble, let go), still classed
+    `scooter`; a resumed tab takes back its own dribble from the welcome; a refused throw puts the ball back in the
+    hand; the dribble's floor tap is its own tone at half a bounce's level, untuned by ear; a dribbler's boombox is put
+    away like a rider's.
 
 ## Resolved
 _(none yet)_
