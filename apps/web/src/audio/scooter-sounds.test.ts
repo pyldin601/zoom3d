@@ -5,25 +5,30 @@ import { PeerDelay } from '../net/peer-delay';
 import type { RemotePeer } from '../net/session';
 import type { AudioEngine } from './engine';
 import { asAudioContext, FakeAudioContext, type FakeNode, type FakeParam } from './fake-audio';
+import { SCOOTER_MASTER } from './scooter-sound';
 import { createScooterSounds, ownLoad } from './scooter-sounds';
 
 function fakeEngine() {
   const attached = new Map<string, string>();
   const detached: string[] = [];
   let own = 0;
+  const ownNodes: AudioNode[] = [];
+  const attachedNodes: AudioNode[] = [];
   const engine = {
-    attachNode(key: string, _node: AudioNode, owner = key) {
+    attachNode(key: string, node: AudioNode, owner = key) {
       attached.set(key, owner);
+      attachedNodes.push(node);
     },
     detach(key: string) {
       attached.delete(key);
       detached.push(key);
     },
-    playOwn() {
+    playOwn(node: AudioNode) {
       own++;
+      ownNodes.push(node);
     },
   } as unknown as AudioEngine;
-  return { engine, attached, detached, own: () => own };
+  return { engine, attached, detached, own: () => own, ownNodes, attachedNodes };
 }
 
 const peer = (id: string, riding: string | null): RemotePeer => {
@@ -112,6 +117,41 @@ describe('the own sound', () => {
     sounds.own(0, 'coasting', 0, false, DT);
     const oscillators = ctx.byKind('oscillator') as unknown as { stoppedAt: number | null }[];
     expect(oscillators.every((o) => o.stoppedAt !== null)).toBe(true);
+  });
+});
+
+describe('the own sound is half as loud as a rider heard by others', () => {
+  type Gain = FakeNode & { gain: FakeParam };
+
+  test("the own scooter's whole sound goes out through a 0.5 gain", () => {
+    const ctx = new FakeAudioContext();
+    const fake = fakeEngine();
+    createScooterSounds(asAudioContext(ctx), fake.engine).own(3, 'pulling', 0, true, DT);
+    const out = fake.ownNodes.at(0) as unknown as Gain | undefined;
+    expect(out?.gain.value).toBe(0.5);
+    const masters = (ctx.byKind('gain') as unknown as Gain[]).filter((g) => g.gain.value === SCOOTER_MASTER);
+    expect(masters.some((m) => m.connections.includes(out as FakeNode))).toBe(true);
+  });
+
+  test("others' scooters keep their level", () => {
+    const ctx = new FakeAudioContext();
+    const fake = fakeEngine();
+    const sounds = createScooterSounds(asAudioContext(ctx), fake.engine);
+    sounds.sync(new Map([['p', peer('p', 'scooter-1')]]), new Map([['p', { x: 1, y: 1 }]]), DT, 0);
+    expect((fake.attachedNodes.at(0) as unknown as Gain | undefined)?.gain.value).toBe(SCOOTER_MASTER);
+  });
+
+  test('stepping off lets go of the 0.5 gain once the fade is over', () => {
+    const ctx = new FakeAudioContext();
+    const fake = fakeEngine();
+    const sounds = createScooterSounds(asAudioContext(ctx), fake.engine);
+    sounds.own(3, 'pulling', 0, true, DT);
+    sounds.own(0, 'coasting', 0, false, DT);
+    const ended = ctx.byKind('oscillator').find((o) => typeof o.onended === 'function') as
+      | { onended: () => void }
+      | undefined;
+    ended?.onended();
+    expect((fake.ownNodes.at(0) as unknown as FakeNode).disconnected).toBe(true);
   });
 });
 

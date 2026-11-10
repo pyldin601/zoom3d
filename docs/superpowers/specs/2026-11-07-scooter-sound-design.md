@@ -17,7 +17,7 @@ same page the owner dropped two parts: the metal ring on a bump, and any sound f
 
 **Goals:**
 - Every value below is built into the game as tuned.
-- Everyone nearby hears a rider's motor, wheels and bumps from the rider's spot. The rider hears their own unplaced.
+- Everyone nearby hears a rider's motor, wheels and bumps from the rider's spot. The rider hears their own unplaced, at half that level (owner, 2026-11-10).
 
 **Non-goals:**
 - A scrape sound (dropped by the owner).
