@@ -446,3 +446,18 @@ describe('the head while riding', () => {
     expect(localPlayer.firstPerson(0).head).toBeCloseTo(-0.7);
   });
 });
+
+test('a dribble puts the held item and boombox away and takes the hands, and letting go brings them back', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  localPlayer.hold('lighter');
+  localPlayer.boombox = true;
+  localPlayer.dribbling = true;
+  expect(localPlayer.handsFree).toBe(false);
+  expect(localPlayer.lighter()).toBeNull();
+  expect(localPlayer.firstPerson(0)).toMatchObject({ held: null, boombox: false });
+  expect(localPlayer.avatar(0, '#e6194b', true)).toMatchObject({ held: null, boombox: false });
+  localPlayer.dribbling = false;
+  expect(localPlayer.handsFree).toBe(true);
+  expect(localPlayer.lighter()).not.toBeNull();
+  expect(localPlayer.firstPerson(0)).toMatchObject({ held: 'lighter', boombox: true });
+});

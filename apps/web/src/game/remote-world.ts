@@ -82,7 +82,7 @@ interface PeerRecord {
 }
 
 /** The ball as this client shows it: where it is predicted, its mood and how high it is drawn (BallPrediction). */
-export type ShownBall = Pick<BallPrediction, 'ball' | 'mood' | 'lift'>;
+export type ShownBall = Pick<BallPrediction, 'ball' | 'mood' | 'lift' | 'heldBy' | 'holdAt'>;
 
 const MODELS: Record<ObjectKind, VoxelModel> = { vacuum: VACUUM_MODEL, ball: BALL_MODEL, scooter: SCOOTER_MODEL };
 
@@ -124,6 +124,20 @@ export function createRemoteWorld(): RemoteWorld {
   };
 
   const shake = { x: 0, y: 0 };
+  /** Who dribbles the ball, from the last sample: their items are put away. */
+  let dribbler: string | null = null;
+
+  /** A dribbled ball is drawn from its dribbler's drawn pose, so the two can't drift apart. */
+  const placeHeldBall = (shown: ShownBall | null) => {
+    dribbler = shown?.heldBy ?? null;
+    const ball = shown?.ball ?? null;
+    const at = dribbler === null ? undefined : positions.get(dribbler);
+    const key = ball === null ? undefined : objectKeys.get(ball.id);
+    const pose = key === undefined ? undefined : objectPoses.get(key);
+    if (dribbler !== null && at && pose) {
+      shown?.holdAt(at.x, at.y, headings.get(dribbler) ?? 0, pose);
+    }
+  };
   const sampleObjects = (s: Session, now: number, shown: ShownBall | null) => {
     const ball = shown?.ball ?? null;
     // Objects come every tick; each peer is drawn as late as its updates need (6d spec §2.3).
@@ -219,8 +233,9 @@ export function createRemoteWorld(): RemoteWorld {
       }
       const { bob, sprite, label, lighter, headlight } = recordOf(id);
       bob.update(pos.x, pos.y, dt);
-      // Both hands are on the handlebar while riding: the lighter is put away.
-      if (peer.info.held === 'lighter' && peer.info.riding === null) {
+      // Both hands are on the handlebar while riding, or on the ball while dribbling: the lighter is put away.
+      const handsFull = peer.info.riding !== null || id === dribbler;
+      if (peer.info.held === 'lighter' && !handsFull) {
         lighter.x = pos.x;
         lighter.y = pos.y;
         lighters[lit++] = lighter;
@@ -231,7 +246,7 @@ export function createRemoteWorld(): RemoteWorld {
         headlight.angle = headings.get(id) ?? 0;
         headlights[riders++] = headlight;
       }
-      fillSprite(sprite, peer, pos, bob, media, now);
+      fillSprite(sprite, peer, pos, bob, media, now, handsFull);
       fillLabel(label, peer, pos, apparent?.get(id) ?? pos);
       sprites[n] = sprite;
       labels[n] = label;
@@ -286,6 +301,7 @@ export function createRemoteWorld(): RemoteWorld {
       forgetGone(s);
       sampleObjects(s, now, ball);
       samplePeers(s, player, now, portals);
+      placeHeldBall(ball);
     },
     collect(s, media, now, dt, apparent) {
       collectPeers(s, media, now, dt, apparent);
@@ -315,7 +331,15 @@ export function blankSprite(key: string): Sprite {
 }
 
 /** A peer's disc this frame: where they are, their face and ring, their step and what their drink is doing. */
-function fillSprite(sprite: Sprite, peer: RemotePeer, pos: Point, bob: Bob, media: PeerMedia, now: number): void {
+function fillSprite(
+  sprite: Sprite,
+  peer: RemotePeer,
+  pos: Point,
+  bob: Bob,
+  media: PeerMedia,
+  now: number,
+  handsFull: boolean
+): void {
   const { id, color, held, boombox } = peer.info;
   sprite.x = pos.x;
   sprite.y = pos.y;
@@ -332,8 +356,8 @@ function fillSprite(sprite: Sprite, peer: RemotePeer, pos: Point, bob: Bob, medi
   // stops.
   const shown = gesture && isDrink(held) ? gesture : null;
   gesturePose(shown ? shown.kind : null, shown ? now - shown.at : 0, sprite);
-  sprite.held = riding ? null : held;
-  sprite.boombox = riding ? false : boombox;
+  sprite.held = handsFull ? null : held;
+  sprite.boombox = handsFull ? false : boombox;
 }
 
 function fillLabel(label: PeerLabel, peer: RemotePeer, pos: Point, shown: Point): void {

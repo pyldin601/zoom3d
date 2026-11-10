@@ -144,6 +144,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     selfSeen = true;
     const connected = isConnected(room);
     const event = room.ball.step(dt, now, connected ? self : null, localPlayer.eye().angle);
+    localPlayer.dribbling = room.ball.holding;
     const ball = room.ball.ball;
     if (ball && room.ball.dribbleTouch) {
       room.objectSounds.dribble(ball.id);
