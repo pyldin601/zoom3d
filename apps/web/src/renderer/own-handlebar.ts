@@ -1,6 +1,7 @@
 // The scooter's handlebar in first person while riding (electric scooter spec §4.3): the top of the stem comes up from
 // the bottom centre with the bar across it and a grip at each end. Steering tilts it (one grip up, the other down) and
-// shifts it toward the turn. It never bobs: an electric scooter glides.
+// shifts it toward the turn. It never bobs: an electric scooter glides. A fist closes over each grip (owner, 2026-11-10:
+// the hands were missing), in the floating hand's colours, and tilts with its grip.
 import type { Framebuffer } from './framebuffer';
 import { blitHeldSprite, type HeldSprite, OVER_EVERYTHING, toHeldSprite } from './held-items';
 import { ownTexel } from './own-held';
@@ -28,6 +29,15 @@ const BAR_COLUMNS: readonly HeldSprite[] = Array.from({ length: BAR_WIDTH }, (_,
     PALETTE
   )
 );
+/** The left fist, knuckles up, a texel wider than its grip on each side; the outer side is column 0. */
+const LEFT_FIST = ['.sss.', 'sslll', 'slllo', 'llloo', '.ooo.'];
+const FIST_WIDTH = LEFT_FIST[0]?.length ?? 0;
+const LEFT_FIST_SPRITE = toHeldSprite(LEFT_FIST);
+const RIGHT_FIST_SPRITE = toHeldSprite(LEFT_FIST.map((row) => [...row].reverse().join('')));
+/** Each grip's middle column: its fist is centred on it. */
+const LEFT_GRIP_U = 1;
+const RIGHT_GRIP_U = BAR_WIDTH - 2;
+
 /** Taller than any bar ever rises: the bottom edge crops it. */
 const STEM: HeldSprite = toHeldSprite(['mM', 'mM', 'mM', 'mM', 'mM', 'mM', 'mM'], PALETTE);
 
@@ -49,13 +59,19 @@ export function renderOwnHandlebar(fb: Framebuffer, steer: number, head = 0): vo
   const half = (BAR_WIDTH - 1) / 2;
   const left = centre - (BAR_WIDTH / 2) * t;
   // A loop, not forEach: drawn every frame, and a callback would be a new closure each time.
+  // Steering right drops the right grip and lifts the left one, the bar sloping evenly between them.
+  const dropAt = (u: number) => (steer * HANDLEBAR_TILT_TEXELS * t * (u - half)) / half;
   for (let u = 0; u < BAR_COLUMNS.length; u++) {
     const column = BAR_COLUMNS.at(u);
     if (!column) {
       continue;
     }
-    // Steering right drops the right grip and lifts the left one, the bar sloping evenly between them.
-    const drop = (steer * HANDLEBAR_TILT_TEXELS * t * (u - half)) / half;
-    blitHeldSprite(fb, column, left + u * t, barTop + drop, t, OVER_EVERYTHING);
+    blitHeldSprite(fb, column, left + u * t, barTop + dropAt(u), t, OVER_EVERYTHING);
   }
+  const fistLeftOf = (gripU: number) => left + (gripU + 0.5 - FIST_WIDTH / 2) * t;
+  // A tilted grip's columns stand at different heights: the fist meets the highest, and its extra row below covers
+  // the lowest, so no grip shows round it.
+  const fistTopAt = (gripU: number) => barTop + Math.min(dropAt(gripU - 1), dropAt(gripU + 1));
+  blitHeldSprite(fb, LEFT_FIST_SPRITE, fistLeftOf(LEFT_GRIP_U), fistTopAt(LEFT_GRIP_U), t, OVER_EVERYTHING);
+  blitHeldSprite(fb, RIGHT_FIST_SPRITE, fistLeftOf(RIGHT_GRIP_U), fistTopAt(RIGHT_GRIP_U), t, OVER_EVERYTHING);
 }
