@@ -64,6 +64,8 @@ export interface SessionListener {
   objectState?(m: ObjectStateMessage): void;
   /** The server turned down the local player's kick `k`. */
   kickRefused?(k: number): void;
+  /** The server turned down the local player's pick-up of the ball. */
+  dribbleRefused?(): void;
   /** The room's objects as a welcome lists them, after the session has taken them. */
   objectsReset?(objects: readonly ObjectInfo[]): void;
   /** A peer (the local player included) stepped on `scooter`, or off one when it is null. */
@@ -98,6 +100,10 @@ export interface Session {
   /** Asks to step on parked scooter `id`; only the server's `peer_ride` puts the local player on it. */
   sendRide(id: string): void;
   sendDismount(): void;
+  /** Asks to pick the ball up into a dribble (ball dribble spec §4.1). */
+  sendDribble(): void;
+  /** Lets go of the dribbled ball. */
+  sendRelease(): void;
   selfId(): string | null;
   selfColor(): string | null;
   /** What takes this place back after a page reload; null until a welcome has given one. */
@@ -240,6 +246,9 @@ export function createSession(opts: SessionOptions): Session {
         break;
       case 'kick_refused':
         listener.kickRefused?.(m.k);
+        break;
+      case 'dribble_refused':
+        listener.dribbleRefused?.();
         break;
       case 'error':
         error = m.code;
@@ -479,6 +488,8 @@ export function createSession(opts: SessionOptions): Session {
     sendPortals: () => sendWhileOpen({ type: 'portals' }),
     sendRide: (id) => sendWhileOpen({ type: 'ride', id }),
     sendDismount: () => sendWhileOpen({ type: 'dismount' }),
+    sendDribble: () => sendWhileOpen({ type: 'dribble' }),
+    sendRelease: () => sendWhileOpen({ type: 'release' }),
     selfId: () => selfId,
     selfColor: () => color,
     resumeToken: () => resumeToken ?? null,

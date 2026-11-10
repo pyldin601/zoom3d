@@ -143,8 +143,11 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     self.y = pose.y;
     selfSeen = true;
     const connected = isConnected(room);
-    const event = room.ball.step(dt, now, connected ? self : null);
+    const event = room.ball.step(dt, now, connected ? self : null, localPlayer.eye().angle);
     const ball = room.ball.ball;
+    if (ball && room.ball.dribbleTouch) {
+      room.objectSounds.dribble(ball.id);
+    }
     o.ballInReach(connected && ball !== null && Math.hypot(ball.x - pose.x, ball.y - pose.y) <= BALL_KICK_REACH);
     if (!ball) {
       return;

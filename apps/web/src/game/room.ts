@@ -52,6 +52,8 @@ export interface Room {
   lighting(dark: boolean): Lighting | null;
   /** Kicks the ball the way the local player faces, if it is in reach: at once here, and on to the server. */
   kick(): void;
+  /** Picks the ball up into a dribble if it is in reach, or lets go of the one in hand (ball dribble spec §2). */
+  dribble(): void;
   /** Stepping on and off kick scooters, and the local player's speed on one. */
   readonly ride: ScooterRide;
 }
@@ -120,6 +122,15 @@ export function joinRoom(opts: JoinOptions): Room {
       objectSounds.localEvent(kicked.id, 'kick');
     }
   };
+  const dribble = () => {
+    const now = performance.now();
+    if (ball.holding) {
+      ball.letGo(now);
+      joined.sendRelease();
+    } else if (ball.pickUp(opts.player, now)) {
+      joined.sendDribble();
+    }
+  };
   function portals() {
     return joined.portals ? wiring : null;
   }
@@ -142,6 +153,7 @@ export function joinRoom(opts: JoinOptions): Room {
     switchSounds,
     lighting,
     kick,
+    dribble,
     ride,
   };
 }
@@ -202,12 +214,13 @@ function connectSession(
         }
       },
       kickRefused: (k) => ball.refused(k, performance.now()),
+      dribbleRefused: () => ball.dribbleRefused(performance.now()),
       peerRide: (id) => {
         if (id === session.selfId()) {
           ownRideSettled();
         }
       },
-      objectsReset: (objects) => ball.reset(objects.find((o) => o.kind === 'ball') ?? null),
+      objectsReset: (objects) => ball.reset(objects.find((o) => o.kind === 'ball') ?? null, session.selfId()),
     },
   });
   session.setHeld(opts.held);

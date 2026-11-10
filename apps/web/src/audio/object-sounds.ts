@@ -14,6 +14,8 @@ export interface ObjectSounds {
   event(id: string, e: ObjectEvent, by?: string): void;
   /** An event of the ball as this client predicts it: the local player's own kick, and every bounce on screen. */
   localEvent(id: string, e: ObjectEvent): void;
+  /** A dribbled ball, as this screen draws it, touched the floor. */
+  dribble(id: string): void;
   /** The ball voices one of an emotion's sounds, as the server chose. */
   cry(id: string, cry: BallCry, variant: number): void;
 }
@@ -101,6 +103,13 @@ export function createObjectSounds(
       const entry = sounds.get(id);
       if (entry?.kind === 'ball') {
         playBall(entry.sound, e);
+      }
+    },
+
+    dribble(id) {
+      const entry = sounds.get(id);
+      if (entry?.kind === 'ball') {
+        entry.sound.dribble();
       }
     },
 

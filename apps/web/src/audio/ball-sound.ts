@@ -12,16 +12,21 @@ interface Tone {
   decayTauS: number;
 }
 
+/** A dribble slaps the floor twice a second, so its tap is quieter than a bounce, to stay under voices. */
+export const DRIBBLE_TAP_SHARE = 0.5;
+const BOUNCE_TONES: readonly Tone[] = [
+  { hz: 140, peak: 0.5, decayTauS: 0.02 },
+  { hz: 330, peak: 0.2, decayTauS: 0.008 },
+];
+
 /** A kick is a low body with a short slap on top; a bounce is the same, smaller and higher. */
-export const BALL_TONES: Record<'kick' | 'bounce', readonly Tone[]> = {
+export const BALL_TONES: Record<'kick' | 'bounce' | 'dribble', readonly Tone[]> = {
   kick: [
     { hz: 90, peak: 1, decayTauS: 0.035 },
     { hz: 220, peak: 0.4, decayTauS: 0.012 },
   ],
-  bounce: [
-    { hz: 140, peak: 0.5, decayTauS: 0.02 },
-    { hz: 330, peak: 0.2, decayTauS: 0.008 },
-  ],
+  bounce: BOUNCE_TONES,
+  dribble: BOUNCE_TONES.map((tone) => ({ ...tone, peak: tone.peak * DRIBBLE_TAP_SHARE })),
 };
 /** Every tone rises this fast, so it doesn't click. */
 const ATTACK_S = 0.003;
@@ -35,6 +40,7 @@ export interface BallSound {
   output: AudioNode;
   kick(): void;
   bounce(): void;
+  dribble(): void;
   cry(sound: BallCrySound): void;
   dispose(): void;
 }
@@ -63,6 +69,7 @@ export function createBallSound(ctx: BaseAudioContext): BallSound {
     output: master,
     kick: () => play(BALL_TONES.kick),
     bounce: () => play(BALL_TONES.bounce),
+    dribble: () => play(BALL_TONES.dribble),
     cry(sound) {
       const start = ctx.currentTime;
       const end = start + sound.durationS;
