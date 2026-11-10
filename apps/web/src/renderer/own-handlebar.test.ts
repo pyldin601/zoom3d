@@ -85,26 +85,39 @@ function fistPixels(d: ReturnType<typeof drawn>, side: 'left' | 'right'): { cols
   return { cols, rows };
 }
 
-describe('the hands on the grips', () => {
-  test("a fist in the held items' hand colours closes over each grip, hiding it", () => {
-    const d = drawn(0);
-    expect(fistPixels(d, 'left').cols.length).toBeGreaterThan(0);
-    expect(fistPixels(d, 'right').cols.length).toBeGreaterThan(0);
-    expect([...d.fb.pixels].some((c) => GRIP.includes(c))).toBe(false);
-  });
+/** The columns showing grip colours. */
+const gripCols = (d: ReturnType<typeof drawn>) =>
+  [...d.fb.pixels.keys()].filter((i) => GRIP.includes(d.fb.pixels[i] as number)).map((i) => i % d.fb.width);
 
-  test('a tilted grip stays hidden under its fist', () => {
-    for (const steer of [-1, -0.5, 0.5, 1]) {
-      expect([...drawn(steer).fb.pixels].some((c) => GRIP.includes(c))).toBe(false);
+describe('the hands on the grips', () => {
+  test("a fist in the held items' hand colours holds each grip, the grip's end showing past it", () => {
+    const d = drawn(0);
+    const texel = ownTexel(d.fb);
+    const fistLeft = Math.min(...fistPixels(d, 'left').cols);
+    const fistRight = Math.max(...fistPixels(d, 'right').cols);
+    expect(fistLeft - Math.min(...d.cols)).toBeCloseTo(texel, -1);
+    expect(Math.max(...d.cols) - fistRight).toBeCloseTo(texel, -1);
+    expect(gripCols(d).length).toBeGreaterThan(0);
+    for (const col of gripCols(d)) {
+      expect(col < fistLeft || col > fistRight).toBe(true);
     }
   });
 
-  test('the fists sit at the ends of the bar, mirrored', () => {
+  test('the fists are mirrored', () => {
     const d = drawn(0);
     const w = d.fb.width;
-    expect(Math.min(...fistPixels(d, 'left').cols)).toBe(Math.min(...d.cols));
-    expect(Math.max(...fistPixels(d, 'right').cols)).toBe(Math.max(...d.cols));
     expect(Math.min(...fistPixels(d, 'left').cols)).toBeCloseTo(w - 1 - Math.max(...fistPixels(d, 'right').cols), -1);
+  });
+
+  test('a tilted grip shows only its end past the fist', () => {
+    for (const steer of [-1, -0.5, 0.5, 1]) {
+      const d = drawn(steer);
+      const fistLeft = Math.min(...fistPixels(d, 'left').cols);
+      const fistRight = Math.max(...fistPixels(d, 'right').cols);
+      for (const col of gripCols(d)) {
+        expect(col < fistLeft || col > fistRight).toBe(true);
+      }
+    }
   });
 
   test('steering right takes the right fist down and the left one up, with the grips', () => {
