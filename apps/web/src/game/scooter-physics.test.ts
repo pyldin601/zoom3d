@@ -74,10 +74,13 @@ describe('steering', () => {
     expect(heading).toBeCloseTo(pose.angle, 5);
   });
 
-  test('keys turn 60% as fast at full speed', () => {
+  test('keys turn half as fast as on foot once rolling, and 60% of that at full speed', () => {
+    const rolling = at(10);
+    stepRide(HALL, rolling, moving(0.5), input(0, 0, 1), DT, null);
+    expect(rolling.angle).toBeCloseTo(0.5 * TURN_SPEED * DT * (1 - (0.4 * 0.5) / RIDE_SPEED), 6);
     const fast = at(10);
     stepRide(HALL, fast, moving(RIDE_SPEED), input(0, 0, 1), DT, null);
-    expect(fast.angle).toBeCloseTo(0.6 * TURN_SPEED * DT);
+    expect(fast.angle).toBeCloseTo(0.5 * 0.6 * TURN_SPEED * DT, 6);
   });
 
   test('backing up, the same key swings the nose the other way, as the front wheel steers', () => {

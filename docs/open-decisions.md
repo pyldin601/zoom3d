@@ -944,8 +944,8 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Electric** (owner, 2026-11-07, the same day; [spec](superpowers/specs/2026-11-07-electric-scooter-riding-design.md)):
     the scooters have motors, so riding has its own physics (`game/scooter-physics.ts`, on the rider's screen only).
     W is the throttle (4 tiles/s², 0 to 6 in 1.5 s); let go, it coasts (−1.5 tiles/s², about 4 s from full speed); S
-    brakes (−10 tiles/s²), then backs up at up to 1 tile/s. No strafing: A/D steer like the arrows, 60% as fast at full
-    speed; the mouse turns only the head, up to ±90° from the heading, and it stays where it is left (owner, 2026-11-07, replacing an instant turn; spec §7): the camera, listener, labels and kicks follow the head, the pose sent keeps the heading, and stepping off faces the look. A wall
+    brakes (−10 tiles/s²), then backs up at up to 1 tile/s. No strafing: A/D steer like the arrows at half the walking turn rate (owner, 2026-11-11), 60% of that at
+    full speed; the mouse turns only the head, up to ±90° from the heading, and it stays where it is left (owner, 2026-11-07, replacing an instant turn; spec §7): the camera, listener, labels and kicks follow the head, the pose sent keeps the heading, and stepping off faces the look. A wall
     within 20° of head-on stops it dead; scraping one drags against the input, harder the steeper it rubs (10 tiles/s² at 45°; amended 2026-11-11, owner, after a shallow rub stuck it in a doorway). Stepping on starts at rest.
     - **Items put away** (owner): a rider's drink, boombox and lighter light are hidden on every screen, never sent as
       `held: null`; the choice comes back on stepping off, the music keeps playing, and sip keys do nothing.
