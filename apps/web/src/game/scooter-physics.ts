@@ -28,6 +28,8 @@ const REVERSE_SPEED = -1;
 const REVERSE = 3;
 /** At full speed the keys turn this much slower: the scooter can't take a corner sharply at speed. */
 const FULL_SPEED_TURN_LOSS = 0.4;
+/** The keys steer a scooter half as fast as they turn a walker (owner, 2026-11-11). */
+const STEER_SPEED = TURN_SPEED / 2;
 /** A scooter turns only by rolling: the keys fade in over this speed (tiles/s), and at a standstill do nothing. */
 const TURN_FADE_IN_SPEED = 0.5;
 /** A step whose free share is under sin 20° hit the wall all but head-on. */
@@ -71,7 +73,7 @@ export function stepRide(
 ): void {
   const t = Math.min(Math.max(dt, 0), MAX_STEP_S);
   const rolling = Math.min(1, Math.abs(ride.speed) / TURN_FADE_IN_SPEED);
-  const turnRate = rolling * TURN_SPEED * (1 - (FULL_SPEED_TURN_LOSS * Math.abs(ride.speed)) / RIDE_SPEED);
+  const turnRate = rolling * STEER_SPEED * (1 - (FULL_SPEED_TURN_LOSS * Math.abs(ride.speed)) / RIDE_SPEED);
   // The front wheel steers, so backing up the nose swings the other way, as on a car in reverse.
   const steering = ride.speed < 0 ? -1 : 1;
   pose.angle += steering * clamp(input.turn + input.strafe) * turnRate * t;

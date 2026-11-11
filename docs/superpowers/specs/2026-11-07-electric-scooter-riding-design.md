@@ -68,6 +68,7 @@ means backing up). All values are starting values, to be tuned by playing.
   - while riding, the input's `strafe` is added to `turn` (A/D steer), clamped to [−1, 1];
   - the keyboard turn rate is `min(1, |speed| / 0.5) × TURN_SPEED × (1 − 0.4 × |speed| / RIDE_SPEED)`, so none at a
     standstill and 60% at full speed, and its direction flips while backing up (front-wheel steering) (owner, 2026-11-07);
+    *Amended 2026-11-11 (owner):* half that: `TURN_SPEED / 2` in place of `TURN_SPEED`;
   - the mouse and touch drags turn the scooter instantly, as on foot (owner, 2026-11-07, over capping them at speed
     and over a separate look direction): the view and the scooter share one angle.
 - **Walls** (builder's call, after the builder check; frame-rate independent):
