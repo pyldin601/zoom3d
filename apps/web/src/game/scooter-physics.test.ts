@@ -127,6 +127,25 @@ describe('walls', () => {
       expect(state.speed).toBeCloseTo(3, 1);
     }
   });
+
+  test('throttling through a doorway while rubbing its side at 15° gets out the far side', () => {
+    const doorway = parseMap(
+      ['1111111111', '1S...1...1', '1....1...1', '1........1', '1....1...1', '1111111111'].join('\n')
+    );
+    const pose = at(3, 3.15, (15 * Math.PI) / 180);
+    const state = createRideState();
+    for (let i = 0; i < 120; i++) {
+      stepRide(doorway, pose, state, THROTTLE, DT, null);
+    }
+    expect(pose.x).toBeGreaterThan(7);
+  });
+
+  test('a steep scrape stops it even with the throttle held', () => {
+    const pose = at(10, 3.74, Math.PI / 3);
+    const state = moving(3);
+    ride(pose, state, THROTTLE, 0.5);
+    expect(state.speed).toBeLessThan(0.1);
+  });
 });
 
 test('speed carries through a portal', () => {

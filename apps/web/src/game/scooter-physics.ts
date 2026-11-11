@@ -32,6 +32,8 @@ const FULL_SPEED_TURN_LOSS = 0.4;
 const TURN_FADE_IN_SPEED = 0.5;
 /** A step whose free share is under sin 20° hit the wall all but head-on. */
 const HEAD_ON_SHARE = Math.sin((20 * Math.PI) / 180);
+/** Scraping drags at the brake rate at 45°, and less the shallower it rubs, so the throttle carries it along a doorway's side. */
+const SCRAPE_DRAG_PER_SHARE = BRAKE / Math.sin(Math.PI / 4);
 /** Riding along an axis leaves a rounding-error step on the other one, which never moves the pose: not a wall. */
 const NO_STEP = 1e-9;
 
@@ -56,8 +58,8 @@ function nextSpeed(speed: number, forward: number, dt: number): number {
 
 /**
  * One step of the ride: keys (and A/D, which steer on a scooter) turn it only while rolling, slower at
- * speed and the other way backing up; it moves along its heading, then the input sets the speed, unless a wall decided it: a head-on one stops it dead, scraping one slows it at the
- * brake rate. The mouse turns `pose.angle` before this, freely, as on foot.
+ * speed and the other way backing up; it moves along its heading, then the input sets the speed, unless a wall decided
+ * it: a head-on one stops it dead, and scraping one drags against the input, harder the steeper it rubs. The mouse turns `pose.angle` before this, freely, as on foot.
  */
 export function stepRide(
   map: GameMap,
@@ -89,11 +91,14 @@ export function stepRide(
   if (blockedX || blockedY) {
     const step = Math.hypot(dx, dy);
     const free = blockedX ? (blockedY ? 0 : Math.abs(dy)) : Math.abs(dx);
-    if (free / step < HEAD_ON_SHARE) {
+    const freeShare = free / step;
+    if (freeShare < HEAD_ON_SHARE) {
       ride.bump = Math.abs(ride.speed);
       ride.speed = 0;
     } else {
-      ride.speed = toward(ride.speed, 0, BRAKE * t);
+      const wallShare = Math.sqrt(1 - freeShare * freeShare);
+      const pushed = input.forward === 0 ? ride.speed : nextSpeed(ride.speed, input.forward, t);
+      ride.speed = toward(pushed, 0, SCRAPE_DRAG_PER_SHARE * wallShare * t);
     }
   } else {
     ride.speed = nextSpeed(ride.speed, input.forward, t);
