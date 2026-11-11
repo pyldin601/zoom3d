@@ -77,6 +77,9 @@ means backing up). All values are starting values, to be tuned by playing.
     the scooter stops dead: `speed = 0`;
   - otherwise, scraping along a wall (one axis blocked), the speed falls at the braking rate (10 tiles/s²) for as long
     as it scrapes, so a long scrape slows it to a stop;
+    *Amended 2026-11-11 (owner):* the input still works while scraping, against a drag that grows with how steeply it
+    rubs (10 tiles/s² at 45°, about 3.7 at 15°, in place of coasting). Ignoring the throttle stopped a scooter that
+    rubbed a doorway's side at a shallow angle inside the doorway, and at rest it could not steer off;
   - portals carry the rider as they do on foot (`carryThroughPortal`), and the speed carries over.
 - **Mounting and stepping off:** stepping on starts at speed 0. Stepping off drops the speed, and walking resumes at
   once, even at full speed.
