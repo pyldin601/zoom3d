@@ -5,6 +5,7 @@ import {
   type Apparent,
   apparentPosition,
   BALL_KICK_GAP_MS,
+  BALL_KICK_REACH,
   BALL_RADIUS,
   type Ball,
   type BallBody,
@@ -13,13 +14,16 @@ import {
   ballMoving,
   createBall,
   type GameMap,
+  holdSpot,
   kickBall,
   type ObjectInfo,
   type ObjectStateMessage,
+  type Point,
   type Portals,
   stepBall,
 } from '@zoom3d/shared';
-import { createBallHop, dropBallHop, kickBallHop, knockBallHop, stepBallHop } from './ball-hop';
+import { createBallDribble, stepBallDribble } from './ball-dribble';
+import { createBallHop, dropBallHop, dropBallHopFrom, kickBallHop, knockBallHop, stepBallHop } from './ball-hop';
 
 /** After the local player's last touch, server states are ignored this long: they can't include the touch yet. */
 const HOLD_MS = 300;
@@ -47,19 +51,36 @@ export interface BallPrediction {
   readonly ball: Ball | null;
   /** The mood to show, as of the last step: the server's, except that a local kick sleeps it until it is answered. */
   readonly mood: BallMood;
-  /** How high to draw it, in tiles: never part of where it is (game/ball-hop.ts). */
+  /** How high to draw it, in tiles: never part of where it is (game/ball-hop.ts, game/ball-dribble.ts). */
   readonly lift: number;
+  /** The local player dribbles it, as far as this screen knows: asked for and not refused, or the server says so. */
+  readonly holding: boolean;
+  /** Someone else dribbling it, by the server's last word; null when loose or the local player's. */
+  readonly heldBy: string | null;
+  /** The dribble touched the floor on the last step, for its sound. */
+  readonly dribbleTouch: boolean;
+  /** Picks it up into a dribble if it is in reach and loose; returns whether it did, so the ask goes out. */
+  pickUp(from: Point, now: number): boolean;
+  /** Lets go of the local dribble: it rolls on with how the local player moved. */
+  letGo(now: number): void;
+  /** The server turned the local pick-up down. */
+  dribbleRefused(now: number): void;
+  /** Where a player at (x, y) looking along `eyeAngle` holds it, written into `out`. */
+  holdAt(x: number, y: number, eyeAngle: number, out: Point): Point;
   /** Dev only: shows this mood whatever the server says, until lifted with null. */
   forceMood(mood: BallMood | null): void;
-  /** A welcome's ball (or none): adopts it outright, dropping any other id. */
-  reset(info: ObjectInfo | null): void;
+  /** A welcome's ball (or none): adopts it outright, dropping any other id. `selfId` recognises a resumed dribble. */
+  reset(info: ObjectInfo | null, selfId?: string | null): void;
   /** A server state for the ball; `selfId` recognises the local player's own kick echo. */
   server(m: ObjectStateMessage, selfId: string | null, now: number): void;
   /** The server turned down the local kick `k`: if it's the latest, the server's ball is right again. */
   refused(k: number, now: number): void;
-  /** Steps the ball with the local player as its only body; returns the local event, for sound. */
-  step(dt: number, now: number, self: BallBody | null): BallEvent | null;
-  /** A local kick: applies at once if in reach and returns the kick counter to send, else null. */
+  /**
+   * Steps the ball with the local player as its only body; returns the local event, for sound. A dribbled ball is put
+   * at the local player's hand, looking along `eyeAngle`.
+   */
+  step(dt: number, now: number, self: BallBody | null, eyeAngle?: number): BallEvent | null;
+  /** A local kick (a throw while dribbling): applies at once if in reach and returns the kick counter, else null. */
   kick(from: { x: number; y: number }, angle: number, now: number): number | null;
 }
 
@@ -84,7 +105,33 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
   let shownMood: BallMood = 'asleep';
   let forcedMood: BallMood | null = null;
   let hop = createBallHop();
-  const moodShown = () => forcedMood ?? shownMood;
+  const dribble = createBallDribble();
+  let dribbleTouch = false;
+  /**
+   * The local dribble: `asked` until the server's answer, `held` once it says so, `letGo` from a release or throw
+   * until a state without the local player as holder (the ones already on their way still name them).
+   */
+  let own: 'none' | 'asked' | 'held' | 'letGo' = 'none';
+  let ownSince = Number.NEGATIVE_INFINITY;
+  let otherHolder: string | null = null;
+  /** The kick that threw the local dribble, which a refusal undoes. */
+  let throwK: number | null = null;
+  /** Whom a local kick stole it from, until its echo: states already on their way still name them. */
+  let stolenFrom: string | null = null;
+  const lastSelf = { vx: 0, vy: 0 };
+  const holding = () => own === 'asked' || own === 'held';
+  const moodShown = () => (holding() || otherHolder !== null ? 'asleep' : (forcedMood ?? shownMood));
+  const setOwn = (next: typeof own, now: number) => {
+    own = next;
+    ownSince = now;
+  };
+  /** A dribble ended: the drawn ball falls from where it was bouncing. */
+  const fallFromDribble = () => dropBallHopFrom(hop, dribble.liftTiles);
+  const startDribble = () => {
+    const fresh = createBallDribble();
+    dribble.liftTiles = fresh.liftTiles;
+    dribble.phase = fresh.phase;
+  };
 
   /** Where `from` appears from the ball, turned into the ball's frame (the identity without portals). */
   const seenFromBall = (wiring: Portals | null, from: { x: number; y: number }): Apparent => {
@@ -138,6 +185,48 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
     b.vy = s.vy;
   };
 
+  /** What a server state says about who dribbles it, against what this screen already did. */
+  const followHolder = (holder: string | null, selfId: string | null, now: number) => {
+    if (holder !== null && holder === selfId) {
+      // States come in order, so one naming the local player after a settled let-go can't be stale: an ask the
+      // server took after the wait ran out, or a hold to take back.
+      if (own === 'asked' || own === 'none') {
+        if (own === 'none') {
+          startDribble();
+        }
+        setOwn('held', now);
+      }
+      return;
+    }
+    if (holder !== null) {
+      if (holder === stolenFrom && unechoed !== null) {
+        return;
+      }
+      stolenFrom = null;
+      otherHolder = holder;
+      if (holding()) {
+        // Someone else has it: the local hand lost it, or never got it.
+        setOwn('none', now);
+        holdUntil = now;
+        fallFromDribble();
+      }
+      return;
+    }
+    stolenFrom = null;
+    if (otherHolder !== null) {
+      otherHolder = null;
+      fallFromDribble();
+    }
+    if (own === 'held') {
+      // Knocked loose by someone else.
+      setOwn('none', now);
+      holdUntil = now;
+      fallFromDribble();
+    } else if (own === 'letGo') {
+      setOwn('none', now);
+    }
+  };
+
   return {
     get ball() {
       return ball;
@@ -148,14 +237,62 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
     },
 
     get lift() {
-      return hop.liftTiles;
+      return holding() || otherHolder !== null ? dribble.liftTiles : hop.liftTiles;
+    },
+
+    get holding() {
+      return holding();
+    },
+
+    get heldBy() {
+      return otherHolder;
+    },
+
+    get dribbleTouch() {
+      return dribbleTouch;
+    },
+
+    pickUp(from, now) {
+      if (!ball || holding() || otherHolder !== null) {
+        return false;
+      }
+      const dribbler = seenFromBall(portals(), from);
+      if (Math.hypot(dribbler.x - ball.x, dribbler.y - ball.y) > BALL_KICK_REACH) {
+        return false;
+      }
+      setOwn('asked', now);
+      startDribble();
+      return true;
+    },
+
+    letGo(now) {
+      if (!holding() || !ball) {
+        return;
+      }
+      setOwn('letGo', now);
+      ball.vx = lastSelf.vx;
+      ball.vy = lastSelf.vy;
+      holdUntil = now + ANSWER_WAIT_MS;
+      fallFromDribble();
+    },
+
+    dribbleRefused(now) {
+      if (own === 'asked') {
+        setOwn('none', now);
+        holdUntil = now;
+        fallFromDribble();
+      }
+    },
+
+    holdAt(x, y, eyeAngle, out) {
+      return holdSpot(map, portals(), x, y, eyeAngle, out);
     },
 
     forceMood(mood) {
       forcedMood = mood;
     },
 
-    reset(info) {
+    reset(info, selfId = null) {
       ball = info && {
         ...createBall(info.id, info.x, info.y),
         vx: info.vx ?? 0,
@@ -169,12 +306,19 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
       hop = createBallHop();
       serverMood = info?.mood ?? 'asleep';
       shownMood = serverMood;
+      const holder = info?.heldBy ?? null;
+      own = holder !== null && holder === selfId ? 'held' : 'none';
+      ownSince = Number.NEGATIVE_INFINITY;
+      otherHolder = holder !== null && holder !== selfId ? holder : null;
+      throwK = null;
+      startDribble();
     },
 
     server(m, selfId, now) {
       if (!ball || m.id !== ball.id) {
         return;
       }
+      followHolder(m.heldBy ?? null, selfId, now);
       server ??= createBall(m.id, m.x, m.y);
       Object.assign(server, { x: m.x, y: m.y, vx: m.vx ?? 0, vy: m.vy ?? 0, heading: m.angle });
       stepBall(map, server, LATENCY_S, NO_BODIES, portals());
@@ -192,6 +336,14 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
     },
 
     refused(k, now) {
+      if (throwK !== null && k === throwK && own === 'letGo') {
+        // The server kept it in the dribbler's hand.
+        setOwn('held', now);
+        throwK = null;
+        unechoed = null;
+        startDribble();
+        return;
+      }
       if (unechoed !== null && k >= unechoed) {
         unechoed = null;
         holdUntil = now;
@@ -199,13 +351,38 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
       }
     },
 
-    step(dt, now, self) {
+    step(dt, now, self, eyeAngle = 0) {
       shownMood = unechoed !== null && now < holdUntil ? 'asleep' : serverMood;
+      dribbleTouch = false;
       if (!ball) {
         return null;
       }
-      stepBallHop(hop, dt, moodShown());
+      if (own === 'asked' && now - ownSince > ANSWER_WAIT_MS) {
+        setOwn('none', now);
+        holdUntil = now;
+        fallFromDribble();
+      }
       const wiring = portals();
+      if (holding() || otherHolder !== null) {
+        dribbleTouch = stepBallDribble(dribble, dt);
+        if (server) {
+          stepBall(map, server, dt, NO_BODIES, wiring);
+        }
+        if (holding() && self) {
+          holdSpot(map, wiring, self.x, self.y, eyeAngle, ball);
+          ball.vx = self.vx;
+          ball.vy = self.vy;
+          lastSelf.vx = self.vx;
+          lastSelf.vy = self.vy;
+        } else if (!holding() && server) {
+          ball.x = server.x;
+          ball.y = server.y;
+          ball.vx = server.vx;
+          ball.vy = server.vy;
+        }
+        return null;
+      }
+      stepBallHop(hop, dt, moodShown());
       const body = self && bodySeenFromBall(wiring, self);
       if (body && pushing(body)) {
         holdUntil = Math.max(holdUntil, now + HOLD_MS);
@@ -227,15 +404,27 @@ export function createBallPrediction(map: GameMap, portals: () => Portals | null
       if (!ball || now - lastKickAt < BALL_KICK_GAP_MS) {
         return null;
       }
+      const throwing = holding();
       const kicker = seenFromBall(portals(), from);
       if (!kickBall(ball, kicker, angle + Math.atan2(kicker.sin, kicker.cos))) {
         return null;
       }
       lastKickAt = now;
+      if (throwing) {
+        setOwn('letGo', now);
+        fallFromDribble();
+      }
+      if (otherHolder !== null) {
+        // A steal: the ball leaves the other dribbler's hand here at once.
+        stolenFrom = otherHolder;
+        otherHolder = null;
+        fallFromDribble();
+      }
       kickBallHop(hop);
       shownMood = 'asleep';
       kicks++;
       unechoed = kicks;
+      throwK = throwing ? kicks : null;
       holdUntil = now + ANSWER_WAIT_MS;
       return kicks;
     },

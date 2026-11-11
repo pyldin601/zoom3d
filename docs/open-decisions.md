@@ -1039,5 +1039,19 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - **Measured** (2026-11-07): every existing `bench:walls` and `bench:sprites` hash is unchanged; the scooter scene
     (with the headlight) hashes 1461280563.
 
+### D37 — The ball dribbles like a basketball
+- *Resolved 2026-11-10* ([spec](superpowers/specs/2026-11-10-ball-dribble-design.md)): E near the ball (nearer than any
+  parked scooter) picks it up into a dribble. It bounces floor ↔ hand (drawn only, like D34) half a tile ahead of the
+  eye and a little right, following walking and turning.
+  - **The server holds it for the dribbler** (owner, approach A, over a client streaming the ball or a magnet force):
+    the ball's `heldBy` names them, and every screen places it from that person's drawn pose, so it can't trail the hand.
+  - **Ending** (owner): E lets go, Space throws (a kick from the hand), and another person's kick or moving body steals
+    it. No dribbling while riding (owner); a dribbler's E always lets go first (designer's call).
+  - **Asleep while held** (owner): no mind, no fear, the vacuum ignores it; it wakes fresh on release (designer's call).
+  - **Builder's calls:** E on the touch screen is one "use" button (ride, step off, dribble, let go), still classed
+    `scooter`; a resumed tab takes back its own dribble from the welcome; a refused throw puts the ball back in the
+    hand; the dribble's floor tap is its own tone at half a bounce's level, untuned by ear; a dribbler's boombox is put
+    away like a rider's.
+
 ## Resolved
 _(none yet)_

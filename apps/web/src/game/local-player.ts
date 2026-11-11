@@ -57,6 +57,8 @@ export interface LocalPlayer {
   boombox: boolean;
   /** On a scooter, as the session says: the room loop sets it every frame. Stepping on starts the ride at rest. */
   riding: boolean;
+  /** Dribbling the ball, as its prediction says: the room loop sets it every frame (ball dribble spec §2.2). */
+  dribbling: boolean;
   /** The scooter's motion while riding (scooter-physics.ts). */
   readonly ride: RideState;
   /**
@@ -71,7 +73,7 @@ export interface LocalPlayer {
   faceScooter(heading: number): void;
   /** Where the eye looks from: the pose with the head's turn. One object, refilled on each call. */
   eye(): PlayerState;
-  /** Off while riding: both hands are on the handlebar, so no sip or cheers may start, even from a press made on foot. */
+  /** Off while riding or dribbling: both hands are on the handlebar or the ball, so no sip or cheers may start, even from a press made on foot. */
   readonly handsFree: boolean;
   /** Takes `item` in hand, or empties it with null; anything but a drink ends any gesture. False if already held. */
   hold(item: HeldItem | null): boolean;
@@ -118,6 +120,9 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
   // The room measures no level of the own mic, so the own ring never brightens: `speaking` stays 0.
   const ownDisc = blankSprite(OWN_SPRITE_KEY);
   let riding = false;
+  let dribbling = false;
+  /** Riding or dribbling, the held item and the boombox are put away. */
+  const handsFull = () => riding || dribbling;
   const ride = createRideState();
   /** −1..1, eased toward the steering keys: how far the first-person handlebar is turned. */
   let steer = 0;
@@ -172,8 +177,14 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       eyePose.angle = pose.angle + head;
       return eyePose;
     },
+    get dribbling() {
+      return dribbling;
+    },
+    set dribbling(on) {
+      dribbling = on;
+    },
     get handsFree() {
-      return !riding;
+      return !handsFull();
     },
     hold(item) {
       if (item === heldItem) {
@@ -243,7 +254,7 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       return headlightSource;
     },
     lighter() {
-      if (heldItem !== 'lighter' || riding) {
+      if (heldItem !== 'lighter' || handsFull()) {
         return null;
       }
       lighterSource.x = pose.x;
@@ -278,8 +289,8 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       ownDisc.sip = sip;
       ownDisc.cheers = cheers;
       ownDisc.wobble = wobble;
-      ownDisc.held = riding ? null : heldItem;
-      ownDisc.boombox = riding ? false : localPlayer.boombox;
+      ownDisc.held = handsFull() ? null : heldItem;
+      ownDisc.boombox = handsFull() ? false : localPlayer.boombox;
       return ownDisc;
     },
     scooter() {
@@ -292,8 +303,8 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       return ownScooter;
     },
     firstPerson(now) {
-      firstPersonView.held = riding ? null : heldItem;
-      firstPersonView.boombox = riding ? false : localPlayer.boombox;
+      firstPersonView.held = handsFull() ? null : heldItem;
+      firstPersonView.boombox = handsFull() ? false : localPlayer.boombox;
       firstPersonView.riding = riding;
       firstPersonView.steer = steer;
       firstPersonView.head = head;

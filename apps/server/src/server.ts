@@ -245,6 +245,10 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         lobby.ride(conn, msg);
       } else if (msg.type === 'dismount') {
         lobby.dismount(conn);
+      } else if (msg.type === 'dribble') {
+        lobby.dribble(conn);
+      } else if (msg.type === 'release') {
+        lobby.release(conn);
       }
     });
     // The close reason is client-chosen text, so only the code is logged.

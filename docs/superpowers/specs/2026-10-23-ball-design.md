@@ -24,7 +24,8 @@ It is the first thing in the room that people act on, and something to do with y
 - It survives a server restart, like the vacuum.
 
 *Since 2026-11-02 (D33) it has a mind of its own between kicks, on top of this same physics:
-`2026-11-02-living-ball-design.md`.*
+`2026-11-02-living-ball-design.md`. Since 2026-11-10 (D37) E picks it up into a basketball dribble:
+`2026-11-10-ball-dribble-design.md`.*
 
 ### Non-goals
 

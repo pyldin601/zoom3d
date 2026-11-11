@@ -1,12 +1,20 @@
 // The room's touch controls (mobile spec §5): the move pad bottom-left, and bottom-right above the self-view a kick
-// button while the ball is in reach (ball spec §7), a scooter button while one is in reach or ridden (kick scooter
-// spec §4.3), a drink button (tap to sip, hold to cheers) and a ⋯ button whose
-// tray holds the occasional actions. DOM only: game/room-controls.ts
+// button while the ball is in reach (ball spec §7), a use button for a scooter in reach or ridden (kick scooter spec
+// §4.3) or the ball to dribble or let go (ball dribble spec §2.1), a drink button (tap to sip, hold to cheers) and a ⋯
+// button whose tray holds the occasional actions. DOM only: game/room-controls.ts
 // wires the handlers, and input/touch.ts reads the pad.
 import { type HeldItem, isDrink } from '@zoom3d/shared';
+import type { UseChoice } from '../game/use-key';
 import { touchIcon } from './icons';
 import { RENDER_MODE_NAMES, type RenderMode } from './render-settings';
 import { el } from './screens';
+
+const USE_LABELS: Record<UseChoice, string> = {
+  ride: 'Ride a scooter',
+  dismount: 'Step off the scooter',
+  dribble: 'Dribble the ball',
+  letGo: 'Let go of the ball',
+};
 
 export interface TouchControlsState {
   held: HeldItem | null;
@@ -15,8 +23,8 @@ export interface TouchControlsState {
   lighting: RenderMode;
   /** The ball is within kick reach: the kick button shows. */
   kick: boolean;
-  /** A parked scooter is in reach, or the local player rides one: the scooter button shows. */
-  scooter: boolean;
+  /** What the use button would do (ride, step off, dribble, let go), or null to hide it. */
+  use: UseChoice | null;
 }
 
 export interface TouchControlsOptions extends TouchControlsState {
@@ -30,7 +38,7 @@ export interface TouchControlsOptions extends TouchControlsState {
   /** Steps to the next lighting mode; the new mode comes back through `update`. */
   onLighting(): void;
   onKick(): void;
-  onScooter(): void;
+  onUse(): void;
 }
 
 export interface TouchControls {
@@ -63,8 +71,10 @@ export function showTouchControls(root: HTMLElement, opts: TouchControlsOptions)
   const kick = iconButton('kick', 'Kick the ball', touchIcon('ball'));
   // On the press, not the click: a kick should land the moment the thumb does.
   kick.addEventListener('pointerdown', () => opts.onKick());
-  const scooter = iconButton('scooter', 'Ride a scooter', touchIcon('scooter'));
-  scooter.addEventListener('pointerdown', () => opts.onScooter());
+  // Its class stays `scooter`: the scooter came first, and its e2e spec finds it by that.
+  const scooter = iconButton('scooter', USE_LABELS.ride, touchIcon('scooter'));
+  scooter.addEventListener('pointerdown', () => opts.onUse());
+  let iconShown: 'ball' | 'scooter' = 'scooter';
   const drink = createDrinkButton(opts);
   const tray = createTray(opts);
   const buttons = el('div', { className: 'touch-buttons' }, kick, scooter, drink.button, tray.more);
@@ -72,7 +82,15 @@ export function showTouchControls(root: HTMLElement, opts: TouchControlsOptions)
 
   const update = (s: TouchControlsState) => {
     kick.hidden = !s.kick;
-    scooter.hidden = !s.scooter;
+    scooter.hidden = s.use === null;
+    if (s.use !== null) {
+      scooter.setAttribute('aria-label', USE_LABELS[s.use]);
+      const wanted = s.use === 'dribble' || s.use === 'letGo' ? 'ball' : 'scooter';
+      if (wanted !== iconShown) {
+        iconShown = wanted;
+        scooter.replaceChildren(touchIcon(wanted));
+      }
+    }
     drink.update(s.held);
     tray.update(s);
   };

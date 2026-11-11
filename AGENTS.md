@@ -197,6 +197,13 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   added to its position; playing is real dashes. Hops (D34) are drawn too (`game/ball-hop.ts`): anything that projects a
   voxel object or tests sight past it honours `VoxelInstance.lift`. Its cries are data (`objects/ball/cries.ts`); the
   server picks one and everyone plays it. Dev: `__game.ballCry('yip', 0)` and `__game.forceBallMood('scared')`.
+- Dribble (D37, spec `docs/superpowers/specs/2026-11-10-ball-dribble-design.md`): E near the ball picks it up; the
+  server's `heldBy` names the dribbler, pauses the ball's physics and mind, and puts it at `holdSpot` (shared,
+  `objects/ball/hold.ts`) every tick. Every screen places it from the dribbler's pose, never from the ball's
+  interpolated buffer: the local player's from their pose in the present (`BallPrediction.holding`), others' from
+  their drawn pose (`remote-world.ts`). The bounce is drawn only (`game/ball-dribble.ts`). E's meaning is one pure
+  choice (`game/use-key.ts`): riding steps off, dribbling lets go, else the nearer of ball and scooter. A dribbler's
+  items are put away like a rider's (`LocalPlayer.dribbling`).
 - Lighter (D31, spec `docs/superpowers/specs/2026-10-31-lighter-design.md`):
   - **Item:** key 9 holds it. It is a `HeldItem` with no gestures, so `isDrink` guards every sip and cheers.
   - **Light:** a glow all round the holder with its own `reach`, plus a pooled shadow table refilled only per floor

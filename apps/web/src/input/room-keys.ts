@@ -1,6 +1,6 @@
 // The room's one-key shortcuts besides walking (keyboard.ts): ` the console, Tab the map, B the boombox (spec §3),
 // 0–3 and 9 what is in hand (held items spec §2.4), M and C the mic and camera (media-keys.ts), Space the kick
-// (ball spec §7), Y the portals (portal doorways spec §2.1), E a kick scooter (kick scooter spec §4.3).
+// (ball spec §7), Y the portals (portal doorways spec §2.1), E a kick scooter or the ball's dribble (ball dribble spec §2.1).
 // Pure: room-controls.ts listens and acts.
 import type { HeldItem } from '@zoom3d/shared';
 import { heldForKey } from '../ui/held-store';
@@ -16,7 +16,7 @@ export type RoomKey =
   | { kind: 'media'; control: 'mic' | 'cam' }
   | { kind: 'kick' }
   | { kind: 'portals' }
-  | { kind: 'ride' };
+  | { kind: 'use' };
 
 export interface RoomKeyState {
   /** In the room and connected; only the boombox key works while reconnecting (the music is local). */
@@ -54,7 +54,7 @@ export function roomKey(e: KeyEvent, state: RoomKeyState): RoomKey | null {
     return e.repeat || shortcut ? null : { kind: 'portals' };
   }
   if (e.code === 'KeyE') {
-    return e.repeat || shortcut ? null : { kind: 'ride' };
+    return e.repeat || shortcut ? null : { kind: 'use' };
   }
   const item = heldForKey(e.code);
   if (item !== undefined) {

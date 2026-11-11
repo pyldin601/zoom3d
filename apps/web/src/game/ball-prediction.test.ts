@@ -1,4 +1,4 @@
-import { type BallBody, type ObjectInfo, type ObjectStateMessage, parseMap } from '@zoom3d/shared';
+import { type BallBody, holdSpot, type ObjectInfo, type ObjectStateMessage, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { twoDoorways } from '../../../../packages/shared/src/portals/test-doorways';
 import { createBallPrediction } from './ball-prediction';
@@ -488,4 +488,173 @@ describe('the hop', () => {
     p.reset(info('b', 3, 3.5));
     expect(p.lift).toBe(0);
   });
+});
+
+describe('the dribble (ball dribble spec §4.2)', () => {
+  const still = (x: number, y: number): BallBody => walker(x, y, 0);
+  const hand = (x: number, y: number, angle: number) => holdSpot(MAP, null, x, y, angle, { x: 0, y: 0 });
+
+  test('a pick-up in reach holds it at once at the hand', () => {
+    const p = predicted(3, 3.5);
+    expect(p.pickUp({ x: 2.5, y: 3.5 }, 0)).toBe(true);
+    expect(p.holding).toBe(true);
+    p.step(DT, 0, still(2.5, 3.5), 0);
+    expect(ballOf(p).x).toBeCloseTo(hand(2.5, 3.5, 0).x);
+    expect(ballOf(p).y).toBeCloseTo(hand(2.5, 3.5, 0).y);
+  });
+
+  test('a pick-up out of reach does nothing', () => {
+    const p = predicted(6, 3.5);
+    expect(p.pickUp({ x: 2.5, y: 3.5 }, 0)).toBe(false);
+    expect(p.holding).toBe(false);
+  });
+
+  test('turning swings it round', () => {
+    const p = predicted(3, 3.5);
+    p.pickUp({ x: 2.5, y: 3.5 }, 0);
+    p.step(DT, 0, still(2.5, 3.5), 0);
+    p.step(DT, 16, still(2.5, 3.5), Math.PI / 2);
+    expect(ballOf(p).x).toBeCloseTo(hand(2.5, 3.5, Math.PI / 2).x);
+    expect(ballOf(p).y).toBeCloseTo(hand(2.5, 3.5, Math.PI / 2).y);
+  });
+
+  test('server states from before the pick-up do not pull it out of the hand', () => {
+    const p = predicted(3, 3.5);
+    p.pickUp({ x: 2.5, y: 3.5 }, 0);
+    p.server(state(3, 3.5), 'me', 30);
+    p.step(DT, 30, still(2.5, 3.5), 0);
+    expect(p.holding).toBe(true);
+    expect(ballOf(p).x).toBeCloseTo(hand(2.5, 3.5, 0).x);
+  });
+
+  test('a refusal falls back to the server ball', () => {
+    const p = predicted(3, 3.5);
+    p.pickUp({ x: 2.5, y: 3.5 }, 0);
+    p.step(DT, 0, still(2.5, 3.5), 0);
+    p.dribbleRefused(50);
+    expect(p.holding).toBe(false);
+    for (let i = 0; i < 60; i++) {
+      p.step(DT, 50 + i * 16, null);
+    }
+    expect(ballOf(p).x).toBeCloseTo(3, 1);
+  });
+
+  test('an unanswered pick-up lets go after a second', () => {
+    const p = predicted(3, 3.5);
+    p.pickUp({ x: 2.5, y: 3.5 }, 0);
+    p.step(DT, 1100, still(2.5, 3.5), 0);
+    expect(p.holding).toBe(false);
+  });
+
+  test("someone else's hold is reported and stops local pushes", () => {
+    const p = predicted(3, 3.5);
+    p.server(state(3, 3.5, { heldBy: 'other' }), 'me', 0);
+    expect(p.heldBy).toBe('other');
+    p.step(DT, 0, walker(2.6, 3.5, 3), 0);
+    expect(ballOf(p).x).toBeCloseTo(3);
+    p.server(state(3, 3.5), 'me', 100);
+    expect(p.heldBy).toBeNull();
+  });
+
+  test('a let-go rolls on with the local velocity, and stale held states do not take it back', () => {
+    const p = predicted(3, 3.5);
+    p.pickUp({ x: 2.5, y: 3.5 }, 0);
+    p.server(state(3, 3.5, { heldBy: 'me' }), 'me', 30);
+    p.step(DT, 30, walker(2.5, 3.5, 2), 0);
+    p.letGo(40);
+    expect(p.holding).toBe(false);
+    p.server(state(3, 3.7, { heldBy: 'me' }), 'me', 60);
+    p.step(DT, 60, null);
+    expect(p.holding).toBe(false);
+    expect(ballOf(p).vx).toBeGreaterThan(1);
+  });
+
+  test('being stolen lets go', () => {
+    const p = predicted(3, 3.5);
+    p.pickUp({ x: 2.5, y: 3.5 }, 0);
+    p.server(state(3, 3.5, { heldBy: 'me' }), 'me', 30);
+    p.server(state(3, 3.5, { vx: 4, event: 'kick', by: 'other', k: 1 }), 'me', 100);
+    expect(p.holding).toBe(false);
+  });
+
+  test('a throw leaves from the hand at kick speed and waits for its echo', () => {
+    const p = predicted(3, 3.5);
+    p.pickUp({ x: 2.5, y: 3.5 }, 0);
+    p.server(state(3, 3.5, { heldBy: 'me' }), 'me', 30);
+    p.step(DT, 30, still(2.5, 3.5), 0);
+    const k = p.kick({ x: 2.5, y: 3.5 }, 0, 300);
+    expect(k).not.toBeNull();
+    expect(p.holding).toBe(false);
+    expect(ballOf(p).vx).toBeGreaterThan(7);
+    p.server(state(3, 3.7, { heldBy: 'me' }), 'me', 320);
+    p.step(DT, 320, null);
+    expect(ballOf(p).vx).toBeGreaterThan(7);
+  });
+
+  test('a refused throw puts it back in the hand', () => {
+    const p = predicted(3, 3.5);
+    p.pickUp({ x: 2.5, y: 3.5 }, 0);
+    p.server(state(3, 3.5, { heldBy: 'me' }), 'me', 30);
+    const k = p.kick({ x: 2.5, y: 3.5 }, 0, 300);
+    p.refused(k ?? -1, 350);
+    expect(p.holding).toBe(true);
+  });
+
+  test('held, it is drawn bouncing and asleep; let go, it falls from where it was', () => {
+    const p = predicted(3, 3.5);
+    p.server(state(3, 3.5, { mood: 'playing' }), 'me', 0);
+    p.pickUp({ x: 2.5, y: 3.5 }, 0);
+    let touched = 0;
+    for (let i = 0; i < 60; i++) {
+      p.step(DT, i * 16, still(2.5, 3.5), 0);
+      touched += p.dribbleTouch ? 1 : 0;
+      expect(p.mood).toBe('asleep');
+    }
+    expect(touched).toBeGreaterThanOrEqual(1);
+    const before = p.lift;
+    p.letGo(1000);
+    expect(p.lift).toBeCloseTo(before);
+  });
+
+  test('a welcome naming the local player as holder resumes the hold', () => {
+    const p = createBallPrediction(MAP);
+    p.reset({ ...info('b', 3, 3.5), heldBy: 'me' }, 'me');
+    expect(p.holding).toBe(true);
+    expect(p.heldBy).toBeNull();
+  });
+});
+
+describe('the dribble against late and crossing server states (final review)', () => {
+  test("a steal's kick keeps flying through states still naming the old dribbler", () => {
+    const p = predicted(3, 3.5);
+    p.server(state(3, 3.5, { heldBy: 'other' }), 'me', 0);
+    const k = p.kick({ x: 2.6, y: 3.5 }, 0, 300);
+    expect(k).not.toBeNull();
+    p.server(state(3, 3.5, { heldBy: 'other' }), 'me', 320);
+    p.step(DT, 320, null);
+    expect(p.heldBy).toBeNull();
+    expect(ballOf(p).vx).toBeGreaterThan(7);
+  });
+
+  test('a pick-up the server accepts after the wait still ends in hand', () => {
+    const p = predicted(3, 3.5);
+    p.pickUp({ x: 2.5, y: 3.5 }, 0);
+    p.step(DT, 1100, still(2.5, 3.5), 0);
+    expect(p.holding).toBe(false);
+    p.server(state(3, 3.5, { heldBy: 'me' }), 'me', 1200);
+    expect(p.holding).toBe(true);
+  });
+
+  test('someone else named as holder takes it out of the local hand', () => {
+    const p = predicted(3, 3.5);
+    p.pickUp({ x: 2.5, y: 3.5 }, 0);
+    p.server(state(3, 3.5, { heldBy: 'me' }), 'me', 30);
+    p.server(state(4, 3.5, { heldBy: 'other' }), 'me', 100);
+    expect(p.holding).toBe(false);
+    expect(p.heldBy).toBe('other');
+  });
+
+  function still(x: number, y: number): BallBody {
+    return walker(x, y, 0);
+  }
 });

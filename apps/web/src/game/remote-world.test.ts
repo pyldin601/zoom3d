@@ -21,7 +21,17 @@ import { createRemoteWorld, type PeerMedia, type ShownBall } from './remote-worl
 
 const NOW = 10_000;
 const player = { x: 0, y: 0 };
-const shown = (ball: Ball, mood: BallMood = 'asleep', lift = 0): ShownBall => ({ ball, mood, lift });
+const shown = (ball: Ball, mood: BallMood = 'asleep', lift = 0, heldBy: string | null = null): ShownBall => ({
+  ball,
+  mood,
+  lift,
+  heldBy,
+  holdAt: (x, y, angle, out) => {
+    out.x = x + Math.cos(angle);
+    out.y = y + Math.sin(angle);
+    return out;
+  },
+});
 const FACE = new Uint32Array(4);
 const media: PeerMedia = { faceOf: (id) => (id === 'ada' ? FACE : null), speaking: (id) => (id === 'ada' ? 0.5 : 0) };
 
@@ -399,5 +409,42 @@ describe('items put away while riding', () => {
     world.collect(room.session, media, NOW, 0);
     expect(world.sprites.at(0)).toMatchObject({ held: 'lighter', boombox: true });
     expect(world.lighters).toHaveLength(1);
+  });
+});
+
+describe('a ball someone else dribbles (ball dribble spec §4.2)', () => {
+  test("it is drawn at the dribbler's hand from their drawn pose, not where the prediction has it", () => {
+    const world = createRemoteWorld();
+    room.addPeer('ada', 2, 3);
+    room.addObject('b1', 9, 9, 0, 'ball');
+    world.sample(room.session, player, NOW, shown(createBall('b1', 6, 7), 'asleep', 0.3, 'ada'));
+    world.collect(room.session, media, NOW, 0);
+    expect(world.voxels.find((v) => v.model === BALL_MODEL)).toMatchObject({ x: 3, y: 3, lift: 0.3 });
+  });
+
+  test('a holder who is not drawn (the local player) leaves it where the prediction has it', () => {
+    const world = createRemoteWorld();
+    room.addObject('b1', 9, 9, 0, 'ball');
+    world.sample(room.session, player, NOW, shown(createBall('b1', 6, 7), 'asleep', 0, 'me'));
+    world.collect(room.session, media, NOW, 0);
+    expect(world.voxels.find((v) => v.model === BALL_MODEL)).toMatchObject({ x: 6, y: 7 });
+  });
+
+  test('the dribbler shows no item, and letting go brings it back', () => {
+    const world = createRemoteWorld();
+    room.addPeer('ada', 2, 3);
+    room.addObject('b1', 9, 9, 0, 'ball');
+    const peer = room.peers.get('ada');
+    if (!peer) {
+      throw new Error('no peer');
+    }
+    peer.info.held = 'lighter';
+    world.sample(room.session, player, NOW, shown(createBall('b1', 6, 7), 'asleep', 0, 'ada'));
+    world.collect(room.session, media, NOW, 0);
+    expect(world.sprites.at(0)).toMatchObject({ held: null });
+    expect(world.lighters).toEqual([]);
+    world.sample(room.session, player, NOW, shown(createBall('b1', 6, 7)));
+    world.collect(room.session, media, NOW, 0);
+    expect(world.sprites.at(0)).toMatchObject({ held: 'lighter' });
   });
 });

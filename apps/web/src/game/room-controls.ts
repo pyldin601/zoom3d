@@ -11,6 +11,14 @@ import { el } from '../ui/screens';
 import { showTouchControls, type TouchControls } from '../ui/touch-controls';
 import type { LocalPlayer } from './local-player';
 import { isConnected, type Room } from './room';
+import type { UseChoice } from './use-key';
+
+/** Shown on the keyboard only; stepping off needs no hint. */
+const USE_HINTS: Record<Exclude<UseChoice, 'dismount'>, string> = {
+  ride: 'E: ride',
+  dribble: 'E: dribble',
+  letGo: 'E: let go',
+};
 
 export interface RoomControlsOptions {
   ui: HTMLElement;
@@ -32,8 +40,8 @@ export interface RoomControls {
   refresh(): void;
   /** Whether the ball is within kick reach; the touch controls change only when it flips. */
   setKickInReach(inReach: boolean): void;
-  /** Whether a parked scooter is in reach on foot, and whether one is ridden: the hint and the touch button. */
-  setScooterState(inReach: boolean, riding: boolean): void;
+  /** What E would do (ride, step off, dribble, let go), or null: the hint and the touch use button. */
+  setUse(choice: UseChoice | null): void;
 }
 
 export function createRoomControls(o: RoomControlsOptions): RoomControls {
@@ -41,29 +49,32 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
   let mapShown = false;
   let touchControls: TouchControls | null = null;
   let kickInReach = false;
-  let scooterInReach = false;
-  let riding = false;
+  let use: UseChoice | null = null;
   /** Shown on the keyboard only: touch mode's CSS hides it, where the scooter button says as much. */
   const rideHint = el('div', { className: 'ride-hint', textContent: 'E: ride' });
   rideHint.hidden = true;
   const inRoom = () => isConnected(o.room());
-  const scooterButtonShown = () => scooterInReach || riding;
-
-  const toggleRide = () => {
+  /** E or the touch use button: steps on or off a scooter, or picks up or lets go of the ball. */
+  const useNearest = () => {
     const room = o.room();
-    if (room && inRoom()) {
+    if (!room || !inRoom() || use === null) {
+      return;
+    }
+    if (use === 'ride' || use === 'dismount') {
       room.ride.toggle(localPlayer.pose);
+    } else {
+      room.dribble();
     }
   };
 
   const refresh = () =>
     touchControls?.update({
-      held: riding ? null : localPlayer.held,
+      held: localPlayer.handsFree ? localPlayer.held : null,
       boombox: localPlayer.boombox,
       map: mapShown,
       lighting: o.renderMode(),
       kick: kickInReach,
-      scooter: scooterButtonShown(),
+      use,
     });
 
   const toggleMap = () => {
@@ -104,8 +115,8 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
         e.preventDefault();
         if (heldKeyAction(key.item, localPlayer.held) === 'pick') {
           o.chooseHeld(key.item);
-        } else if (!localPlayer.riding) {
-          // Riding, the drink is put away: its key neither sips nor cheers.
+        } else if (localPlayer.handsFree) {
+          // Riding or dribbling, the drink is put away: its key neither sips nor cheers.
           drinkKey.down(e.timeStamp, key.code);
         }
         break;
@@ -117,9 +128,9 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
         e.preventDefault();
         togglePortals();
         break;
-      case 'ride':
+      case 'use':
         e.preventDefault();
-        toggleRide();
+        useNearest();
         break;
       case 'media':
         // The same as pressing the mic button or the self-view circle (feedback, a camera that can't start, a missing
@@ -134,20 +145,20 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
       return;
     }
     touchControls = showTouchControls(o.ui, {
-      held: riding ? null : localPlayer.held,
+      held: localPlayer.handsFree ? localPlayer.held : null,
       boombox: localPlayer.boombox,
       map: mapShown,
       lighting: o.renderMode(),
       kick: kickInReach,
-      scooter: scooterButtonShown(),
-      onScooter: toggleRide,
+      use,
+      onUse: useNearest,
       onPick(item) {
         if (inRoom()) {
           o.chooseHeld(item);
         }
       },
       onDrinkDown: (t) => {
-        if (inRoom() && !localPlayer.riding) {
+        if (inRoom() && localPlayer.handsFree) {
           drinkKey.down(t, 'touch');
         }
       },
@@ -204,16 +215,17 @@ export function createRoomControls(o: RoomControlsOptions): RoomControls {
         refresh();
       }
     },
-    setScooterState(inReach, isRiding) {
-      if (inReach === scooterInReach && isRiding === riding) {
+    setUse(choice) {
+      if (choice === use) {
         return;
       }
-      scooterInReach = inReach;
-      riding = isRiding;
+      use = choice;
       if (!rideHint.isConnected) {
         o.ui.append(rideHint);
       }
-      rideHint.hidden = !inReach;
+      const hint = choice === null || choice === 'dismount' ? null : USE_HINTS[choice];
+      rideHint.hidden = hint === null;
+      rideHint.textContent = hint ?? '';
       refresh();
     },
   };

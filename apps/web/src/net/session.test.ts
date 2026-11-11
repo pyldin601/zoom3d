@@ -696,6 +696,21 @@ test('a refused kick reaches the listener with its counter', () => {
   expect(refused).toEqual([4]);
 });
 
+test('sendDribble and sendRelease ask to pick up and let go', () => {
+  const { session, ws } = withVacuum();
+  session.sendDribble();
+  expect(ws.sent.at(-1)).toEqual({ type: 'dribble' });
+  session.sendRelease();
+  expect(ws.sent.at(-1)).toEqual({ type: 'release' });
+});
+
+test('a refused dribble reaches the listener', () => {
+  let refused = 0;
+  const { ws } = withVacuum({ dribbleRefused: () => refused++ });
+  ws.receive({ type: 'dribble_refused' });
+  expect(refused).toBe(1);
+});
+
 test("objectEvent carries a kick's kicker", () => {
   const seen: unknown[] = [];
   const { ws } = withVacuum({ objectEvent: (id, e, by) => seen.push([id, e, by]) });

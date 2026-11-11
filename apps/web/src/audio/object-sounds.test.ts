@@ -1,6 +1,7 @@
 import { BALL_CRIES, type ObjectInfo, parseMap, SnapshotBuffer } from '@zoom3d/shared';
 import { beforeEach, expect, test } from 'vitest';
 import { objectKey, type RemoteObject } from '../net/session';
+import { BALL_TONES, DRIBBLE_TAP_SHARE } from './ball-sound';
 import { createAudioEngine } from './engine';
 import { asAudioContext, FakeAudioContext, type FakeParam } from './fake-audio';
 import { createObjectSounds } from './object-sounds';
@@ -113,6 +114,14 @@ test("the server's bounces are left to the local ball, which plays its own", () 
   sounds.localEvent('b', 'kick');
   expect(taps()).toHaveLength(1);
   expect(thumps()).toHaveLength(1);
+});
+
+test("a dribble's floor touch is a tap at half a bounce's level", () => {
+  const sounds = ballSetup();
+  sounds.dribble('b');
+  expect(taps()).toHaveLength(1);
+  expect(BALL_TONES.dribble.map((t) => t.peak)).toEqual(BALL_TONES.bounce.map((t) => t.peak * DRIBBLE_TAP_SHARE));
+  expect(DRIBBLE_TAP_SHARE).toBe(0.5);
 });
 
 // Living ball spec §5: the server says which sound; everyone plays it, the kicker too.

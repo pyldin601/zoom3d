@@ -55,6 +55,14 @@ export function dropBallHop(hop: BallHop): void {
   }
 }
 
+/** A dribble let go of in mid-bounce: it falls from the height it was drawn at. */
+export function dropBallHopFrom(hop: BallHop, liftTiles: number): void {
+  hop.liftTiles = liftTiles;
+  hop.upTilesPerS = 0;
+  hop.apexTiles = liftTiles;
+  hop.restS = 0;
+}
+
 export function stepBallHop(hop: BallHop, dtS: number, mood: BallMood): void {
   if (mood !== 'playing') {
     hop.restS = 0;

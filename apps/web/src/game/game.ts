@@ -109,7 +109,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     roomLighting,
     showMap: () => controls.mapShown,
     ballInReach: (inReach) => controls.setKickInReach(inReach),
-    scooterState: (inReach, riding) => controls.setScooterState(inReach, riding),
+    useState: (choice) => controls.setUse(choice),
   });
   // rAF stops while the tab is hidden: keep voices (and newcomers) audible from a timer meanwhile.
   startHiddenTicker(roomLoop.whileHidden, () => document.hidden);
