@@ -5,7 +5,7 @@ import {
   FANOUT_TICK_MS,
   FAR_INTERVAL_MS,
   INTERP_DELAY_MS,
-  isNear,
+  isNearEitherWay,
   NEAR_TILES,
   type Point,
   type Portals,
@@ -20,14 +20,15 @@ const SLEW = 0.5;
 const peerAt: Point = { x: 0, y: 0 };
 
 /**
- * Whether the server sends this peer every tick: its rule (`isNear`), through the room's `portals` when they are on.
+ * Whether the server sends this peer every tick: its rule (`isNearEitherWay`), through the room's `portals` when
+ * they are on.
  * Judged a tile inside the server's line: near the line the server's view and ours differ, and drawing a near peer
  * late is smooth, while drawing a far peer early is choppy.
  */
 export function nearTier(portals: Portals | null, player: Point, x: number, y: number): boolean {
   peerAt.x = x;
   peerAt.y = y;
-  return isNear(portals, player, peerAt, NEAR_TILES - 1);
+  return isNearEitherWay(portals, player, peerAt, NEAR_TILES - 1);
 }
 
 /** How often the server sends a moving peer of this tier: far ones go out on the first tick FAR_INTERVAL_MS after. */

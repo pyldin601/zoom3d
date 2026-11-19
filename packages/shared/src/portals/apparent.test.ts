@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { hasLineOfSight } from '../geometry/los';
 import { LEVEL1 } from '../map/level1';
-import { type GameMap, parseMap } from '../map/map';
+import { type GameMap, isWallAt, parseMap } from '../map/map';
 import { NEAR_TILES } from '../protocol/protocol';
 import {
   type Apparent,
@@ -10,10 +10,11 @@ import {
   hasPortalLineOfSight,
   imagePosition,
   isNear,
+  isNearEitherWay,
 } from './apparent';
 import { twoDoorways } from './test-doorways';
 import { invert, type RigidTransform } from './transform';
-import { type Portal, type Portals, wirePortals } from './wiring';
+import { type Portal, type Portals, photonPortals, wirePortals } from './wiring';
 
 interface PortalSpec {
   x: number;
@@ -311,5 +312,40 @@ describe('hasLineOfSightThrough', () => {
 
   test("is false when the segment meets A's plane outside its opening", () => {
     expect(hasLineOfSightThrough(map, portals, 0, 1.5, 1.5, 1.5, 5.5)).toBe(false);
+  });
+});
+
+describe('isNearEitherWay', () => {
+  const map = parseMap(LEVEL1);
+  const classic = wirePortals(map, 'abc');
+  const photon = photonPortals(classic);
+  const spots: { x: number; y: number }[] = [];
+  for (let y = 1; y < map.height - 1; y += 2) {
+    for (let x = 1; x < map.width - 1; x += 2) {
+      if (!isWallAt(map, x + 0.5, y + 0.5)) {
+        spots.push(at(x + 0.5, y + 0.5));
+      }
+    }
+  }
+  const pairs = spots.flatMap((a) => spots.map((b) => [a, b] as const));
+
+  test('counts a pair near when only the photon set sees it near', () => {
+    const photonOnly: (typeof pairs)[number][] = [];
+    for (const pair of pairs) {
+      if (photonOnly.length < 20 && !isNear(classic, ...pair) && isNear(photon, ...pair)) {
+        photonOnly.push(pair);
+      }
+    }
+
+    expect(photonOnly.length).toBeGreaterThan(0);
+    for (const [a, b] of photonOnly) {
+      expect(isNearEitherWay(classic, a, b)).toBe(true);
+    }
+  });
+
+  test('without portals it is isNear', () => {
+    for (const [a, b] of pairs.slice(0, 50)) {
+      expect(isNearEitherWay(null, a, b)).toBe(isNear(null, a, b));
+    }
   });
 });
