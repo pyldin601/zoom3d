@@ -6,7 +6,7 @@ import type { GameMap } from '../map/map';
 import { NEAR_TILES } from '../protocol/protocol';
 import { crossedPortal, fractionAcrossPlane } from './crossing';
 import { applyPoint } from './transform';
-import type { Portal, Portals } from './wiring';
+import { type Portal, type Portals, photonPortals } from './wiring';
 
 /** As hasLineOfSight, but false when the straight segment crosses a plane front→back. */
 export function hasPortalLineOfSight(
@@ -144,6 +144,14 @@ export function isNear(p: Portals | null, from: Point, to: Point, rangeTiles: nu
   }
   apparentPosition(p.map, p, from, to, seenForRange);
   return distanceSquared(from.x, from.y, seenForRange.x, seenForRange.y) <= rangeSquared;
+}
+
+/**
+ * isNear under either portal look (D38): classic or realistic, each viewer's own choice, which the server never learns.
+ * Server fan-out and client delays both use this, so they agree whatever anyone chose.
+ */
+export function isNearEitherWay(p: Portals | null, from: Point, to: Point, rangeTiles: number = NEAR_TILES): boolean {
+  return isNear(p, from, to, rangeTiles) || (p !== null && isNear(photonPortals(p), from, to, rangeTiles));
 }
 
 function considerImages(

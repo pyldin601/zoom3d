@@ -4,7 +4,7 @@ import { LEVEL1 } from '../map/level1';
 import { parseMap } from '../map/map';
 import { castPortalRay, createPortalRayHit } from './ray';
 import { invert, type RigidTransform } from './transform';
-import type { Portal, Portals } from './wiring';
+import { type Portal, type Portals, photonPortals } from './wiring';
 
 // Two doorways in the wall row y = 3: A at x = 2 (front north, back south), B at x = 4 (front south, back north).
 const MAP = parseMap('1111111\n1.....1\n1..S..1\n11.1.11\n1.....1\n1.....1\n1111111');
@@ -139,5 +139,18 @@ describe('castPortalRay', () => {
       expect(hit.portal).toBe(1);
       expect(hit.distance).toBeCloseTo(5);
     });
+  });
+});
+
+describe('castPortalRay through the photon set', () => {
+  it('stops at a doorway seen from its classic back', () => {
+    const hit = castPortalRay(MAP, photonPortals(PORTALS), 2.5, 5.5, 0, -1, 0, createPortalRayHit());
+    expect(hit.portal).toBe(A);
+    expect(hit.distance).toBeCloseTo(2);
+    expect(castPortalRay(MAP, PORTALS, 2.5, 5.5, 0, -1, 0, createPortalRayHit()).portal).toBe(-1);
+  });
+
+  it('sees a doorway from its classic front as ordinary', () => {
+    expect(castPortalRay(MAP, photonPortals(PORTALS), 2.5, 1.5, 0, 1, 0, createPortalRayHit()).portal).toBe(-1);
   });
 });

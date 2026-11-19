@@ -1,4 +1,13 @@
-import { FAR_INTERVAL_MS, LEVEL1, NEAR_TILES, parseMap, wirePortals } from '@zoom3d/shared';
+import {
+  FAR_INTERVAL_MS,
+  isNear,
+  isWallAt,
+  LEVEL1,
+  NEAR_TILES,
+  parseMap,
+  photonPortals,
+  wirePortals,
+} from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { type SentLog, type Subject, selectBatch } from './fanout';
 
@@ -123,5 +132,41 @@ describe('selectBatch through portals', () => {
     selectBatch(self, [f], sent, 0, null);
     f.poseVersion++;
     expect(selectBatch(self, [f], sent, 66, null)).toEqual([]);
+  });
+});
+
+describe('selectBatch with realistic viewers about', () => {
+  const map = parseMap(LEVEL1);
+  const classic = wirePortals(map, 'abc');
+  /** A spot and a peer near only as realistic portals show them. */
+  const photonOnlyPair = () => {
+    const spots: { x: number; y: number }[] = [];
+    for (let y = 1; y < map.height - 1; y += 2) {
+      for (let x = 1; x < map.width - 1; x += 2) {
+        if (!isWallAt(map, x + 0.5, y + 0.5)) {
+          spots.push({ x: x + 0.5, y: y + 0.5 });
+        }
+      }
+    }
+    for (const a of spots) {
+      for (const b of spots) {
+        if (!isNear(classic, a, b) && isNear(photonPortals(classic), a, b)) {
+          return { a, b };
+        }
+      }
+    }
+    throw new Error('level1 has no pair near only through the photon set');
+  };
+
+  test('a peer near only through the photon set goes out every tick', () => {
+    const { a, b } = photonOnlyPair();
+    const sent: SentLog = new Map();
+    const peer = near({ x: b.x, y: b.y });
+    const viewer = { id: 'me', x: a.x, y: a.y };
+    expect(selectBatch(viewer, [peer], sent, 0, classic)).toHaveLength(1);
+    peer.poseVersion++;
+    peer.poseAt = 66;
+
+    expect(selectBatch(viewer, [peer], sent, 66, classic)).toHaveLength(1);
   });
 });

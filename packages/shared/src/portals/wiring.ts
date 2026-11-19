@@ -108,3 +108,38 @@ export function wirePortals(map: GameMap, roomId: string): Portals {
   }
   return { map, list, byTile };
 }
+
+const photonSets = new WeakMap<Portals, Portals>();
+
+/**
+ * The portals as realistic sight meets them (D38): light goes the way walkers go, so a view ray crossing a doorway
+ * back to front comes out of the doorway that leads into it. That is the same machinery with every front and back
+ * swapped and the loop run backwards. Memoised, so per-frame caches keyed by the set see one object.
+ */
+export function photonPortals(classic: Portals): Portals {
+  const known = photonSets.get(classic);
+  if (known) {
+    return known;
+  }
+  const sourceOf = new Int32Array(classic.list.length);
+  for (const [i, portal] of classic.list.entries()) {
+    sourceOf[portal.to] = i;
+  }
+  // 0 − n, not −n: a plain −0 would make the turned-round set differ from the classic one where nothing changed.
+  const list: Portal[] = classic.list.map((portal, i) => ({
+    ...portal,
+    nx: 0 - portal.nx,
+    ny: 0 - portal.ny,
+    to: sourceOf[i] ?? i,
+  }));
+  for (const portal of list) {
+    const destination = list.at(portal.to);
+    if (destination !== undefined) {
+      portal.toDest = transformBetween(portal, destination);
+      portal.fromDest = invert(portal.toDest);
+    }
+  }
+  const photon = { map: classic.map, list, byTile: classic.byTile };
+  photonSets.set(classic, photon);
+  return photon;
+}

@@ -20,7 +20,7 @@ import { loadBoomboxVolume, saveBoomboxVolume } from '../ui/boombox-store';
 import { loadHeld, saveHeld } from '../ui/held-store';
 import { saveName } from '../ui/name-store';
 import { showPortalNotice } from '../ui/portal-notice';
-import { loadRenderSettings, type RenderMode, saveRenderSettings } from '../ui/render-settings';
+import { loadRenderSettings, type RenderMode, type RenderSettings, saveRenderSettings } from '../ui/render-settings';
 import { showRoomScreen } from '../ui/room-screen';
 import { createStatusLine } from '../ui/room-status';
 import { botsParam, type Route } from '../ui/route';
@@ -48,8 +48,10 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
   const roomLightingFor = roomLightingByRoom(roomLighting, (roomId) => wirePortals(map, roomId));
   const screen = createScreen(page, flags);
   const frameRateMeter = createFrameRateMeter();
-  /** The lighting mode, chosen in the backtick console or the touch tray and kept per browser. */
+  /** The lighting mode and portal look, chosen in the backtick console (the mode also in the touch tray), per browser. */
   let renderSettings = loadRenderSettings(pageStorage());
+  /** The room whose lobby or visit is open, whose lighting a switch to realistic portals bakes. */
+  let currentRoomId: string | null = null;
 
   const localPlayer = createLocalPlayer(map, Math.random);
   const touch = createTouchInput({
@@ -74,7 +76,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
       render: {
         settings: renderSettings,
         onChange(s) {
-          setRenderMode(s.mode);
+          setRenderSettings(s);
           controls.refresh();
         },
       },
@@ -188,7 +190,11 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     openLobby({ page, localPlayer, entry, onJoin: (join) => enterRoom(roomId, resumeToken, join) });
     // Baked in an idle moment now: in the Join click, the two tables (about 0.4 s) would freeze the lobby and hold up
     // the connection.
+    currentRoomId = roomId;
     whenIdle(() => roomLightingFor(roomId));
+    if (renderSettings.portals === 'realistic') {
+      whenIdle(() => roomLightingFor(roomId).bakeRealistic());
+    }
   }
 
   function enterRoom(roomId: string, resumeToken: string | null, { name, avatar, local, audioCtx }: LobbyJoin): void {
@@ -220,6 +226,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
       },
       onPortalsChanged: (on) => showPortalNotice(page.ui, on),
       lighting: roomLightingFor,
+      portalLook: () => renderSettings.portals,
     });
     keepPlaceOnReload(roomId, room.session);
     showRoomScreen(page.ui, { call: room.call, local, name, avatar });
@@ -253,10 +260,19 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     return isConnected(room);
   }
 
-  /** The one path for changing the lighting mode, from the backtick console or the touch tray. */
+  /** The touch tray's path for changing the lighting mode. */
   function setRenderMode(mode: RenderMode): void {
-    renderSettings = { ...renderSettings, mode };
+    setRenderSettings({ ...renderSettings, mode });
+  }
+
+  /** The one path for changing the renderer's settings; realistic portals get their lighting baked when next idle. */
+  function setRenderSettings(s: RenderSettings): void {
+    renderSettings = s;
     saveRenderSettings(pageStorage(), renderSettings);
+    const roomId = currentRoomId;
+    if (s.portals === 'realistic' && roomId !== null) {
+      whenIdle(() => roomLightingFor(roomId).bakeRealistic());
+    }
   }
 
   /** The one path for changing what is in hand, from a number key or the touch tray. */

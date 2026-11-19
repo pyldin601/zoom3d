@@ -221,12 +221,12 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     for (const [id, pos] of world.positions) {
       placeThing(n++, id, pos);
     }
-    room.hums.sourcesOf(room.portals(), humSources);
+    room.hums.sourcesOf(room.sightPortals(), humSources);
     for (const [id, pos] of humSources) {
       placeThing(n++, id, pos);
     }
     things.length = n;
-    apparent = apparentWorld.update(o.map, room.portals(), localPlayer.eye(), things);
+    apparent = apparentWorld.update(o.map, room.sightPortals(), localPlayer.eye(), things);
   };
 
   const placeEveryoneElse = (room: Room, now: number, dt: number) => {
@@ -252,7 +252,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     scene.reflections = reflections ?? 'none';
     const room = o.room();
     scene.lighting = reflections === null ? null : (room?.lighting(room.sequence.dark) ?? o.roomLighting());
-    scene.portals = room?.portals() ?? null;
+    scene.portals = room?.sightPortals() ?? null;
     const portalSeconds = performance.now() / 1000;
     scene.portalPulse = portalPulse(portalSeconds);
     scene.portalTime = portalSeconds;
@@ -300,7 +300,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       const drawStart = performance.now();
       const shown = describeScene(drawStart);
       // The hum swells with the very pulse this frame's glow is drawn with.
-      room?.hums.sync(room.portals(), shown.portalPulse, localPlayer.eye(), apparent);
+      room?.hums.sync(room.sightPortals(), shown.portalPulse, localPlayer.eye(), apparent);
       renderView(screen.fb, shown, subscription.seen);
       screen.present();
       renderHud(o.hud, screen.fb, shown, o.showMap());
@@ -325,7 +325,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       room.scooterSounds.sync(room.session.peers, world.positions, HIDDEN_TICK_MS / 1000, now);
       // Hidden, the local player stands still, so their own motor is quiet.
       room.scooterSounds.own(0, 'coasting', 0, localPlayer.riding, HIDDEN_TICK_MS / 1000);
-      room.hums.sync(room.portals(), portalPulse(now / 1000), localPlayer.eye(), apparent);
+      room.hums.sync(room.sightPortals(), portalPulse(now / 1000), localPlayer.eye(), apparent);
       room.audio.update(now, localPlayer.eye(), apparent);
       chooseWhatToReceive(room, now, true);
     },

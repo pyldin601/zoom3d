@@ -6,7 +6,7 @@
 // behaviour must leave both hashes alone (docs/code-style.md, Refactoring). Then it does the same with portals on: the
 // bake time and hash of the portals-on table (D28), and the doorway and crowd frames timed and hashed with the room's
 // portals off (the plain table) and on (the portals-on table).
-import { LEVEL1, parseMap, tileAt, wirePortals } from '@zoom3d/shared';
+import { LEVEL1, parseMap, photonPortals, tileAt, wirePortals } from '@zoom3d/shared';
 import { createFramebuffer } from '../src/renderer/framebuffer';
 import { createPortalGlows, GLOW_RADIUS, type Glow } from '../src/renderer/glow';
 import { createHeadlightGlows, HEADLIGHT_REACH } from '../src/renderer/headlight';
@@ -128,6 +128,45 @@ console.log(`portals: ${doorwayPoses.length} doorway poses, pixel hash off ${por
 for (const state of ['off', 'on'] as const) {
   console.log(`both, portals ${state.padEnd(3)} ${median(portalTimes[state]).toFixed(3)} ms/frame`);
 }
+
+// Realistic portals (D38): the same doorways seen from their classic back, 1.5 tiles behind, looking in, where the
+// window now is, through the photon set and its own table; timed and hashed, after the classic numbers above.
+const photon = photonPortals(portals);
+const backPoses: Pose[] = portals.list.slice(0, 8).map((p) => ({
+  x: p.cx + p.nx * 1.5,
+  y: p.cy + p.ny * 1.5,
+  angle: Math.atan2(-p.ny, -p.nx),
+  glows: [],
+}));
+const photonBakeStart = performance.now();
+const photonLighting = bakePortalLighting(lighting, photon, FLOOR, CEILING);
+const photonBakeMs = performance.now() - photonBakeStart;
+const photonGlows = [...createPortalGlows().update(photon, 1, photonLighting.portalGlowSeen)];
+room.portals = photon;
+room.lighting = photonLighting;
+let photonHash = 0;
+for (const pose of backPoses) {
+  room.eye = pose;
+  renderWalls(fb, room, photonGlows);
+  for (const c of fb.pixels) {
+    photonHash = (Math.imul(photonHash, 31) + c) | 0;
+  }
+}
+const photonTimes: number[] = [];
+for (let round = 0; round < ROUNDS; round++) {
+  const start = performance.now();
+  const frames = backPoses.length * 20;
+  for (let f = 0; f < frames; f++) {
+    room.eye = backPoses.at(f % backPoses.length) ?? room.eye;
+    renderWalls(fb, room, photonGlows);
+  }
+  photonTimes.push((performance.now() - start) / frames);
+}
+console.log(
+  `realistic portals: bake ${photonBakeMs.toFixed(0)} ms (cold); lighting hash ${lightingHash(photonLighting)}; ` +
+    `${backPoses.length} back poses, pixel hash ${photonHash}`
+);
+console.log(`both, realistic portals ${median(photonTimes).toFixed(3)} ms/frame`);
 
 // The crowd with portals on: from the lamp poses (most show no window, so the floor tables need only what is in view)
 // and from the doorway poses (whose windows look anywhere), with portals off and on.

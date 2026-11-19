@@ -1053,5 +1053,33 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     hand; the dribble's floor tap is its own tone at half a bounce's level, untuned by ear; a dribbler's boombox is put
     away like a rider's.
 
+### D38 — Realistic portals: light goes the way walkers go
+- *Resolved 2026-11-19* ([spec](superpowers/specs/2026-11-19-realistic-portals-design.md)): a second way to see
+  portals, per person, in the backtick console (*Portals: Classic / Realistic*, saved with the renderer settings,
+  default classic). Classic's view follows the walker's path, so the light reaching an eye in front of a doorway has
+  gone against the one-way rule. Realistic lets light obey it, as photons would: a doorway's front (the entrance) looks
+  ordinary, onto the real room behind it, and its back (the exit) is a window onto the front room of the doorway that
+  leads into it. Lamp light, sound, labels, the self-image, the shimmer, the glow and the hum all follow.
+  - **Rejected (owner):** a black entrance with an exit adding both views (dramatic, but it makes light out of nothing
+    and needs a face that swallows light walkers pass through), and an energy-conserving mix of both views.
+  - **One machinery, two sets:** realistic is classic run on `photonPortals` (every normal reversed, every destination
+    its source; the wiring is one cycle, so each doorway has exactly one source), memoised per wiring. `room.portals()`
+    is for what moves (walking, the ball, scooters, the server) and is always classic; `room.sightPortals()` is for what
+    is seen and heard.
+  - **The look switches whole:** the realistic lamp and dark tables (`RoomLighting.bakeRealistic`, about 275 to 350 ms
+    cold) are baked in an idle moment only once someone chooses realistic; until then the room shows classic, sight and
+    light alike.
+  - **Near under either rule** (`isNearEitherWay`), on the server's fan-out and the client's delays alike, so the look
+    stays off the wire (no protocol change). Classic viewers get a few extra fast updates.
+  - **The walker's own crossing is a hard cut** (owner accepted): the entrance shows the real room up to the plane, then
+    the view jumps. Touch users stay classic: the tray's one renderer button cycles only the lighting.
+  - **Measured** (2026-11-19; LEVEL1 at 640×360, lit, reflections `both`, a loaded machine): every existing
+    `bench:walls` and `bench:sprites` hash is identical to `main`. `pnpm bench:tick` with portals on: 4 people `fanOut`
+    0.21 → 0.31–0.42 ms; 100 people 5.8–6.2 → 7.9–9.6 ms mean (p99 8.6–10.9 ms) of the 66 ms tick, under the 12 ms
+    budget. Realistic doorway frames from the 8 doorways' backs: 1.84–1.98 ms, as classic's from their fronts
+    (1.80–1.95 ms); lighting hash 1204522700, pixel hash 1301254187.
+  - Checked by eye in a local room: from a front, realistic shows the corridor behind; from a back, the source's front
+    room through a pink window. The hum and voices through a realistic window were not heard by the builder.
+
 ## Resolved
 _(none yet)_

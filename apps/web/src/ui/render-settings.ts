@@ -7,12 +7,19 @@ import type { ReflectionMode } from '../renderer/lighting';
  */
 export type RenderMode = 'flat' | 'shadows' | 'reflections' | 'reflections-only';
 
+/**
+ * How portal doorways are seen (D38): 'classic' shows where a walker going in comes out; 'realistic' lets light go only
+ * the way walkers go, so a doorway's front looks ordinary and its back shows the room that leads into it.
+ */
+export type PortalLook = 'classic' | 'realistic';
+
 export interface RenderSettings {
   mode: RenderMode;
+  portals: PortalLook;
 }
 
 export const RENDER_SETTINGS_KEY = 'zoom3d.render.v1';
-export const DEFAULT_RENDER_SETTINGS: RenderSettings = { mode: 'reflections' };
+export const DEFAULT_RENDER_SETTINGS: RenderSettings = { mode: 'reflections', portals: 'classic' };
 /** Every mode, in the order the console lists them. */
 export const RENDER_MODES: readonly RenderMode[] = ['flat', 'shadows', 'reflections', 'reflections-only'];
 
@@ -23,6 +30,11 @@ export const RENDER_MODE_NAMES: Record<RenderMode, string> = {
   reflections: 'Shadows and reflections',
   'reflections-only': 'Reflections only',
 };
+
+/** Every portal look, in the order the console lists them. */
+export const PORTAL_LOOKS: readonly PortalLook[] = ['classic', 'realistic'];
+
+export const PORTAL_LOOK_NAMES: Record<PortalLook, string> = { classic: 'Classic', realistic: 'Realistic' };
 
 /** The mode after `mode` in the console's order, wrapping from the last back to the first: the tray's one button. */
 export function nextRenderMode(mode: RenderMode): RenderMode {
@@ -46,9 +58,10 @@ export function litReflections(mode: RenderMode): ReflectionMode | null {
 
 /** Each setting is checked on its own, so one that's bad or missing (saved by an older version) falls back alone. */
 export function normalizeRenderSettings(raw: unknown): RenderSettings {
-  const stored = (raw ?? {}) as { mode?: unknown };
+  const stored = (raw ?? {}) as { mode?: unknown; portals?: unknown };
   return {
     mode: RENDER_MODES.find((m) => m === stored.mode) ?? DEFAULT_RENDER_SETTINGS.mode,
+    portals: PORTAL_LOOKS.find((look) => look === stored.portals) ?? DEFAULT_RENDER_SETTINGS.portals,
   };
 }
 

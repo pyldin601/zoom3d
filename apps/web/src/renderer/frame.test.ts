@@ -336,7 +336,7 @@ describe('renderView through a portal', () => {
   );
 
   test('in the dark both the main pass and the windows read the black table', () => {
-    const dark = createRoomLighting(lighting, portals).lighting(true, true);
+    const dark = createRoomLighting(lighting, portals).lighting(portals, true);
     const fb = createFramebuffer();
     renderView(fb, portalScene(map, portals, eye, [], dark));
     expect(pixelAt(fb, CENTRE_COL, EYE_ROW)).toBe(
@@ -348,7 +348,7 @@ describe('renderView through a portal', () => {
   });
 
   test('a face disc keeps its brightness in the dark', () => {
-    const dark = createRoomLighting(lighting, portals).lighting(true, true);
+    const dark = createRoomLighting(lighting, portals).lighting(portals, true);
     const someone = [plainPerson('someone', 2.5, 2.6)];
     const lit = createFramebuffer();
     renderView(lit, portalScene(map, portals, eye, someone, lighting));

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { LEVEL1 } from '../map/level1';
 import { parseMap } from '../map/map';
 import { applyDir, applyPoint } from './transform';
-import { wirePortals } from './wiring';
+import { photonPortals, wirePortals } from './wiring';
 
 const map = parseMap(LEVEL1);
 const point = { x: 0, y: 0 };
@@ -64,5 +64,53 @@ describe('wirePortals', () => {
       expect(byTile[portal.door.y * map.width + portal.door.x]).toBe(i);
     });
     expect(byTile.filter((i) => i >= 0)).toHaveLength(list.length);
+  });
+});
+
+describe('photonPortals', () => {
+  const classic = wirePortals(map, 'abc');
+  const photon = photonPortals(classic);
+
+  it('reverses every normal and sends each doorway to its classic source', () => {
+    photon.list.forEach((portal, i) => {
+      const before = classic.list.at(i);
+      expect(portal.nx + (before?.nx ?? Number.NaN)).toBe(0);
+      expect(portal.ny + (before?.ny ?? Number.NaN)).toBe(0);
+      expect(Math.abs(portal.nx) + Math.abs(portal.ny)).toBe(1);
+      expect(classic.list.at(portal.to)?.to).toBe(i);
+    });
+    expect(photon.list).toHaveLength(classic.list.length);
+  });
+
+  it('maps centre to destination centre and normal to destination normal', () => {
+    for (const portal of photon.list) {
+      const dest = photon.list.at(portal.to);
+      if (dest === undefined) {
+        throw new Error('portal has no destination');
+      }
+      const { toDest } = portal;
+      expect(Math.abs(toDest.cos) + Math.abs(toDest.sin)).toBe(1);
+      expect(applyPoint(toDest, portal.cx, portal.cy, point)).toEqual({ x: dest.cx, y: dest.cy });
+      expect(applyDir(toDest, portal.nx, portal.ny, point)).toEqual({ x: dest.nx, y: dest.ny });
+    }
+  });
+
+  it('keeps fromDest the inverse of toDest', () => {
+    for (const portal of photon.list) {
+      const there = applyPoint(portal.toDest, 12.3, 4.5, { x: 0, y: 0 });
+      const back = applyPoint(portal.fromDest, there.x, there.y, { x: 0, y: 0 });
+      expect(back.x).toBeCloseTo(12.3);
+      expect(back.y).toBeCloseTo(4.5);
+    }
+  });
+
+  it('is the same object every time, sharing map and byTile', () => {
+    expect(photonPortals(classic)).toBe(photon);
+    expect(photon.map).toBe(classic.map);
+    expect(photon.byTile).toBe(classic.byTile);
+  });
+
+  it('turned round twice gives the classic wiring back', () => {
+    expect(photonPortals(photon).list).toEqual(classic.list);
   });
 });
