@@ -4,6 +4,9 @@ import {
   litReflections,
   loadRenderSettings,
   nextRenderMode,
+  normalizeRenderSettings,
+  PORTAL_LOOK_NAMES,
+  PORTAL_LOOKS,
   RENDER_MODES,
   RENDER_SETTINGS_KEY,
   saveRenderSettings,
@@ -19,14 +22,14 @@ function memory() {
 }
 
 test('the renderer defaults to shadows and reflections', () => {
-  expect(DEFAULT_RENDER_SETTINGS).toEqual({ mode: 'reflections' });
+  expect(DEFAULT_RENDER_SETTINGS).toEqual({ mode: 'reflections', portals: 'classic' });
 });
 
 test('every mode is kept as it was saved', () => {
   const store = memory();
   for (const mode of RENDER_MODES) {
-    saveRenderSettings(store, { mode });
-    expect(loadRenderSettings(store)).toEqual({ mode });
+    saveRenderSettings(store, { mode, portals: 'classic' });
+    expect(loadRenderSettings(store)).toEqual({ mode, portals: 'classic' });
   }
   expect(RENDER_MODES).toEqual(['flat', 'shadows', 'reflections', 'reflections-only']);
 });
@@ -48,8 +51,8 @@ test('the next mode follows the console order and wraps around', () => {
 
 test('round-trips through storage', () => {
   const store = memory();
-  saveRenderSettings(store, { mode: 'shadows' });
-  expect(loadRenderSettings(store)).toEqual({ mode: 'shadows' });
+  saveRenderSettings(store, { mode: 'shadows', portals: 'realistic' });
+  expect(loadRenderSettings(store)).toEqual({ mode: 'shadows', portals: 'realistic' });
   expect(store.data.has(RENDER_SETTINGS_KEY)).toBe(true);
 });
 
@@ -77,5 +80,21 @@ test('settings saved with an option that no longer exists keep the rest', () => 
   const store = memory();
   // Saved while there was an ambient light switch.
   store.data.set(RENDER_SETTINGS_KEY, '{"mode":"flat","ambient":false}');
-  expect(loadRenderSettings(store)).toEqual({ mode: 'flat' });
+  expect(loadRenderSettings(store)).toEqual({ mode: 'flat', portals: 'classic' });
+});
+
+test('settings saved before the portal look load as classic, keeping their mode', () => {
+  expect(normalizeRenderSettings({ mode: 'shadows' })).toEqual({ mode: 'shadows', portals: 'classic' });
+});
+
+test('each setting is checked on its own', () => {
+  expect(normalizeRenderSettings({ mode: 'flat', portals: 'realistic' })).toEqual({
+    mode: 'flat',
+    portals: 'realistic',
+  });
+  expect(normalizeRenderSettings({ portals: 'weird' })).toEqual({ mode: 'reflections', portals: 'classic' });
+});
+
+test('the portal looks, in the console order, with their names', () => {
+  expect(PORTAL_LOOKS.map((look) => PORTAL_LOOK_NAMES[look])).toEqual(['Classic', 'Realistic']);
 });

@@ -6,7 +6,14 @@ import { frameRateBand, type RenderLoad, renderLoadBand } from '../game/frame-ra
 import type { FacesSent } from '../media/transport';
 import type { StatsSwitch } from '../telemetry/analytics';
 import { type BoomboxPanelOptions, showBoomboxPanel } from './boombox-panel';
-import { normalizeRenderSettings, RENDER_MODE_NAMES, RENDER_MODES, type RenderSettings } from './render-settings';
+import {
+  normalizeRenderSettings,
+  PORTAL_LOOK_NAMES,
+  PORTAL_LOOKS,
+  RENDER_MODE_NAMES,
+  RENDER_MODES,
+  type RenderSettings,
+} from './render-settings';
 import { el } from './screens';
 
 export interface ConsolePanelOptions {
@@ -75,7 +82,7 @@ export function showConsolePanel(root: HTMLElement, opts: ConsolePanelOptions | 
     renderLoadRow,
     faceRow,
     el('h2', { textContent: 'Renderer' }),
-    lightingRow(opts.render)
+    ...renderRows(opts.render)
   );
   if (opts.stats) {
     renderer.append(el('h2', { textContent: 'Usage stats' }), statsRow(opts.stats));
@@ -87,19 +94,34 @@ export function showConsolePanel(root: HTMLElement, opts: ConsolePanelOptions | 
   root.append(panel);
 }
 
-function lightingRow(opts: ConsolePanelOptions['render']): HTMLElement {
+/** The lighting mode and the portal look, sharing the settings each change starts from. */
+function renderRows(opts: ConsolePanelOptions['render']): HTMLElement[] {
   let current = opts.settings;
-  const mode = el('select');
-  for (const value of RENDER_MODES) {
-    mode.append(el('option', { value, textContent: RENDER_MODE_NAMES[value] }));
-  }
-  mode.value = current.mode;
-  mode.addEventListener('change', () => {
-    current = normalizeRenderSettings({ ...current, mode: mode.value });
+  const choose = (patch: Partial<Record<keyof RenderSettings, string>>) => {
+    current = normalizeRenderSettings({ ...current, ...patch });
     opts.onChange(current);
-  });
+  };
+  return [
+    selectRow('Lighting', RENDER_MODES, RENDER_MODE_NAMES, current.mode, (mode) => choose({ mode })),
+    selectRow('Portals', PORTAL_LOOKS, PORTAL_LOOK_NAMES, current.portals, (portals) => choose({ portals })),
+  ];
+}
+
+function selectRow<T extends string>(
+  label: string,
+  values: readonly T[],
+  names: Record<T, string>,
+  selected: T,
+  onChange: (value: string) => void
+): HTMLElement {
+  const select = el('select');
+  for (const value of values) {
+    select.append(el('option', { value, textContent: names[value] }));
+  }
+  select.value = selected;
+  select.addEventListener('change', () => onChange(select.value));
   const row = el('label');
-  row.append('Lighting', mode);
+  row.append(label, select);
   return row;
 }
 

@@ -13,7 +13,7 @@ const options = (overrides: Partial<ConsolePanelOptions> = {}): ConsolePanelOpti
   frameRate: () => null,
   renderLoad: () => null,
   facesSent: () => ({ 256: false, 128: false, 64: false }),
-  render: { settings: { mode: 'reflections' }, onChange: () => {} },
+  render: { settings: { mode: 'reflections', portals: 'classic' }, onChange: () => {} },
   stats: null,
   ...overrides,
 });
@@ -109,7 +109,10 @@ test('null removes the panel', () => {
 
 test('the renderer section switches the lighting mode', () => {
   const onRender = vi.fn();
-  showConsolePanel(root, options({ render: { settings: { mode: 'reflections' }, onChange: onRender } }));
+  showConsolePanel(
+    root,
+    options({ render: { settings: { mode: 'reflections', portals: 'classic' }, onChange: onRender } })
+  );
   expect(root.textContent).toContain('Renderer');
   const select = root.querySelector('.renderer select') as HTMLSelectElement;
   expect(select.parentElement?.textContent).toContain('Lighting');
@@ -122,7 +125,25 @@ test('the renderer section switches the lighting mode', () => {
   ]);
   select.value = 'reflections-only';
   select.dispatchEvent(new Event('change'));
-  expect(onRender).toHaveBeenLastCalledWith({ mode: 'reflections-only' });
+  expect(onRender).toHaveBeenLastCalledWith({ mode: 'reflections-only', portals: 'classic' });
+});
+
+test('the Portals row switches the look and keeps the lighting mode', () => {
+  const onRender = vi.fn();
+  showConsolePanel(
+    root,
+    options({ render: { settings: { mode: 'shadows', portals: 'classic' }, onChange: onRender } })
+  );
+  const select = root.querySelectorAll<HTMLSelectElement>('.renderer select').item(1);
+  expect(select.parentElement?.textContent).toContain('Portals');
+  expect(select.value).toBe('classic');
+  expect([...select.options].map((o) => [o.value, o.textContent])).toEqual([
+    ['classic', 'Classic'],
+    ['realistic', 'Realistic'],
+  ]);
+  select.value = 'realistic';
+  select.dispatchEvent(new Event('change'));
+  expect(onRender).toHaveBeenLastCalledWith({ mode: 'shadows', portals: 'realistic' });
 });
 
 describe('boombox column', () => {
