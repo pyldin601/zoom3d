@@ -1,6 +1,6 @@
 # Realistic portals: light goes the way walkers go
 
-Date: 2026-11-19. Status: draft for review. Builds on D27 (portal doorways), D28 (portal lamp light), D29 (glow,
+Date: 2026-11-19. Status: built (D38). Builds on D27 (portal doorways), D28 (portal lamp light), D29 (glow,
 shimmer, hum) and the portal self-image spec.
 
 ## 1. Intent

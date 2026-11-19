@@ -181,6 +181,8 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   from the room id (`wirePortals`), and only the room's on/off flag travels. A window is drawn by re-running the passes
   from the eye carried through the portal, so every pass takes a `Pass` (its columns and near limit) and a new pass
   must honour it. The vacuum ignores portals (ordinary doors).
+  Realistic portals (D38) are a per-person look: what is seen and heard goes through `room.sightPortals()` (classic
+  or `photonPortals`), what moves through `room.portals()` (always classic), and who is near through `isNearEitherWay`.
   Only window passes draw the local player's own disc (`RoomScene.self`) and label (`ownLabel`, kept out of `labels`,
   which the automap reads); the main pass never does.
   Y starts a timed sequence (D30); the server bends the space at its `bendAtMs`, and anything that should go dark reads
