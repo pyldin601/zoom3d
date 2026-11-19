@@ -20,8 +20,10 @@ import type { Lighting } from '../renderer/lighting';
 import type { RoomLighting } from '../renderer/room-lighting';
 import { track } from '../telemetry/analytics';
 import { createRoomTracker, type RoomTracker, withRoomTracker } from '../telemetry/room-tracker';
+import type { PortalLook } from '../ui/render-settings';
 import { botsParam } from '../ui/route';
 import { type BallPrediction, createBallPrediction } from './ball-prediction';
+import { shownPortals } from './portal-look';
 import { createPortalSequence, type PortalSequencePlayer } from './portal-sequence';
 import { createScooterRide, type ScooterRide } from './scooter-ride';
 
@@ -32,22 +34,27 @@ export interface Room {
   readonly objectSounds: ObjectSounds;
   /** Lighters lit and put away, the local player's own and everyone else's. */
   readonly lighterSounds: LighterSounds;
-  /** A hum from each portal doorway while `portals()` isn't null. */
+  /** A hum from each portal doorway while `sightPortals()` isn't null, heard from its window side. */
   readonly hums: PortalHums;
   /** The riders' motor whines, the local player's own among them. */
   readonly scooterSounds: ScooterSounds;
   readonly boombox: Boombox;
   readonly tracker: RoomTracker;
   readonly ball: BallPrediction;
-  /** The map's portal wiring while the room's portals are on, else null: today's doors. */
+  /**
+   * The map's portal wiring while the room's portals are on, else null: today's doors. What moves goes through these,
+   * and who is near is judged from them.
+   */
   portals(): Portals | null;
+  /** The portals the eye sees and hears through, in the chosen look (`shownPortals`); null while portals are off. */
+  sightPortals(): Portals | null;
   /** The room's running portal switch, moved on once per frame by the room loop. */
   readonly sequence: PortalSequencePlayer;
   /** The sequence's lights-off, portals-on and lights-on sounds. */
   readonly switchSounds: PortalSwitchSounds;
   /**
-   * The baked lamp light for this frame: the black table while `dark`, else the portals-on one while `portals()` isn't
-   * null, else the page's.
+   * The baked lamp light for this frame: the black table while `dark`, else the portals-on one for `sightPortals()`
+   * while it isn't null, else the page's.
    */
   lighting(dark: boolean): Lighting | null;
   /** Kicks the ball the way the local player faces, if it is in reach: at once here, and on to the server. */
@@ -79,6 +86,8 @@ export interface JoinOptions {
   onBoomboxChange(on: boolean): void;
   /** Someone flipped the room's portals (not called for the welcome's flag). */
   onPortalsChanged(on: boolean): void;
+  /** The portal look chosen in the console, read every frame. */
+  portalLook(): PortalLook;
   /** The room's wiring and lamp light tables, baked while its lobby was open if the page was idle, else now. */
   lighting: (roomId: string) => RoomLighting;
 }
@@ -134,7 +143,9 @@ export function joinRoom(opts: JoinOptions): Room {
   function portals() {
     return joined.portals ? wiring : null;
   }
-  const lighting = (dark: boolean) => roomLighting.lighting(portals(), dark);
+  const sightPortals = () =>
+    shownPortals(portals(), roomLighting.photon, opts.portalLook(), roomLighting.realisticReady());
+  const lighting = (dark: boolean) => roomLighting.lighting(sightPortals(), dark);
   const sequence = createPortalSequence();
   const switchSounds = createPortalSwitchSounds(opts.audioCtx, audio);
   return {
@@ -149,6 +160,7 @@ export function joinRoom(opts: JoinOptions): Room {
     tracker,
     ball,
     portals,
+    sightPortals,
     sequence,
     switchSounds,
     lighting,

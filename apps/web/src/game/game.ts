@@ -226,6 +226,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
       },
       onPortalsChanged: (on) => showPortalNotice(page.ui, on),
       lighting: roomLightingFor,
+      portalLook: () => renderSettings.portals,
     });
     keepPlaceOnReload(roomId, room.session);
     showRoomScreen(page.ui, { call: room.call, local, name, avatar });
