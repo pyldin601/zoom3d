@@ -134,7 +134,7 @@ export function joinRoom(opts: JoinOptions): Room {
   function portals() {
     return joined.portals ? wiring : null;
   }
-  const lighting = (dark: boolean) => roomLighting.lighting(portals() !== null, dark);
+  const lighting = (dark: boolean) => roomLighting.lighting(portals(), dark);
   const sequence = createPortalSequence();
   const switchSounds = createPortalSwitchSounds(opts.audioCtx, audio);
   return {

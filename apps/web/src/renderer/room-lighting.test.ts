@@ -1,3 +1,4 @@
+import { photonPortals } from '@zoom3d/shared';
 import { describe, expect, test, vi } from 'vitest';
 import { bakeLighting, bakePortalLighting } from './lighting';
 import { createRoomLighting, roomLightingByRoom } from './room-lighting';
@@ -13,17 +14,17 @@ const { map, portals } = portalHall();
 const plain = bakeLighting(map, [{ x: 3.5, y: 5.5, z: 0.85, radius: 4.5, r: 1, g: 0.9, b: 0.8 }], 0.3, FLOOR, CEILING);
 
 describe('createRoomLighting', () => {
-  test('lighting(true) is the portals-on table, lighting(false) the plain one', () => {
+  test('lighting(portals) is the portals-on table, lighting(null) the plain one', () => {
     const room = createRoomLighting(plain, portals);
 
-    expect(room.lighting(false, false)).toBe(plain);
-    expect(room.lighting(true, false)).not.toBe(plain);
-    expect(room.lighting(true, false)?.portals).toBe(portals);
-    expect(room.lighting(true, false)).toBe(room.lighting(true, false));
+    expect(room.lighting(null, false)).toBe(plain);
+    expect(room.lighting(portals, false)).not.toBe(plain);
+    expect(room.lighting(portals, false)?.portals).toBe(portals);
+    expect(room.lighting(portals, false)).toBe(room.lighting(portals, false));
   });
 
   test('the dark table has no lamps, and its floor, ceiling and walls are all black', () => {
-    const dark = createRoomLighting(plain, portals).lighting(false, true);
+    const dark = createRoomLighting(plain, portals).lighting(null, true);
 
     expect(dark).not.toBeNull();
     expect(dark?.lights).toEqual([]);
@@ -35,21 +36,62 @@ describe('createRoomLighting', () => {
 
   test('in the dark, with portals on or off, the table is the same one, keeping the portal glows’ shadows', () => {
     const room = createRoomLighting(plain, portals);
-    const dark = room.lighting(true, true);
+    const dark = room.lighting(portals, true);
 
-    expect(dark).not.toBe(room.lighting(true, false));
-    expect(room.lighting(false, true)).toBe(dark);
+    expect(dark).not.toBe(room.lighting(portals, false));
+    expect(room.lighting(null, true)).toBe(dark);
     expect(dark?.portals).toBe(portals);
-    expect(dark?.portalGlowSeen).toBe(room.lighting(true, false)?.portalGlowSeen);
+    expect(dark?.portalGlowSeen).toBe(room.lighting(portals, false)?.portalGlowSeen);
   });
 
   test('an unlit room has no lighting, with portals on or off, dark or not', () => {
     const room = createRoomLighting(null, portals);
 
-    for (const portalsOn of [false, true]) {
+    for (const sight of [null, portals]) {
       for (const dark of [false, true]) {
-        expect(room.lighting(portalsOn, dark)).toBeNull();
+        expect(room.lighting(sight, dark)).toBeNull();
       }
+    }
+  });
+
+  test('the photon table is baked only on bakeRealistic, once', () => {
+    vi.mocked(bakePortalLighting).mockClear();
+    const room = createRoomLighting(plain, portals);
+    expect(bakePortalLighting).toHaveBeenCalledTimes(1);
+    expect(room.realisticReady()).toBe(false);
+
+    room.bakeRealistic();
+    room.bakeRealistic();
+
+    expect(bakePortalLighting).toHaveBeenCalledTimes(2);
+    expect(room.realisticReady()).toBe(true);
+  });
+
+  test("lighting(photon) is the photon set's table", () => {
+    const room = createRoomLighting(plain, portals);
+    room.bakeRealistic();
+
+    expect(room.photon).toBe(photonPortals(portals));
+    expect(room.lighting(room.photon, false)?.portals).toBe(room.photon);
+    expect(room.lighting(room.photon, false)).not.toBe(room.lighting(portals, false));
+  });
+
+  test("in the dark, realistic keeps the photon glows' shadows", () => {
+    const room = createRoomLighting(plain, portals);
+    room.bakeRealistic();
+    const dark = room.lighting(room.photon, true);
+
+    expect(dark?.lights).toEqual([]);
+    expect(dark?.portalGlowSeen).toBe(room.lighting(room.photon, false)?.portalGlowSeen);
+    expect(dark?.portalGlowSeen).not.toBe(room.lighting(portals, false)?.portalGlowSeen);
+  });
+
+  test('an unlit room is ready for realistic at once and has no lighting', () => {
+    const room = createRoomLighting(null, portals);
+
+    expect(room.realisticReady()).toBe(true);
+    for (const dark of [false, true]) {
+      expect(room.lighting(room.photon, dark)).toBeNull();
     }
   });
 });
@@ -82,14 +124,14 @@ describe('roomLightingByRoom', () => {
 
     expect(b).not.toBe(a);
     expect(b.portals).toBe(wire('room-b'));
-    expect(b.lighting(true, false)?.portals).toBe(wire('room-b'));
+    expect(b.lighting(b.portals, false)?.portals).toBe(wire('room-b'));
   });
 
   test('nothing is baked for an unlit page', () => {
     vi.mocked(bakePortalLighting).mockClear();
     const lightingFor = roomLightingByRoom(() => null, wireByRoom());
 
-    expect(lightingFor('room-a').lighting(true, false)).toBeNull();
+    expect(lightingFor('room-a').lighting(lightingFor('room-a').portals, false)).toBeNull();
     expect(bakePortalLighting).not.toHaveBeenCalled();
   });
 });
