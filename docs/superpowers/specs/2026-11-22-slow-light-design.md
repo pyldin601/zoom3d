@@ -1,6 +1,6 @@
 # Slow light — design
 
-Date: 2026-11-22. Status: draft for the owner's approval. Decision: D39 (to be recorded in `docs/open-decisions.md`).
+Date: 2026-11-22. Status: built (2026-11-22). Decision: D39 in `docs/open-decisions.md`.
 
 ## 1. Intent
 

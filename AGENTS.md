@@ -226,6 +226,10 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   off (`ridesNow`). A rider's headlight (`renderer/headlight.ts`) is four cone glows pointed by `pose.angle`, never
   `eye()`: a white beam and a faint red, green and blue fringe (blue widest), sharing one lighter-style shadow table. The parked
   model's lamp is dark and `RIDDEN_SCOOTER_MODEL`'s glows.
+- Slow light (D39, spec `docs/superpowers/specs/2026-11-22-slow-light-design.md`) is a per-person look. With it on,
+  `renderView` draws the room into the bend's wide source frame (`renderer/slow-light.ts`) and resamples it, so anything
+  new in the room goes through `drawPass`, and anything held in first person is drawn after `bend.apply`, unbent. Light
+  delay goes through `seenAt` (`game/light-delay.ts`) in `RemoteWorld.sample`. The look off must stay pixel-identical.
 - Telemetry privacy: logs, metrics labels, Sentry and Amplitude never get names, resume tokens or IPs, nor raw room
   ids: a room link is the room's only key. Server logs use `roomRef()` (a short hash), and the browser Sentry
   `beforeSend` scrubs `/r/<id>`.

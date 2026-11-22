@@ -1081,5 +1081,27 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - Checked by eye in a local room: from a front, realistic shows the corridor behind; from a back, the source's front
     room through a pink window. The hum and voices through a realistic window were not heard by the builder.
 
+### D39 — Slow light: light about as fast as a scooter
+- *Resolved 2026-11-22* ([spec](superpowers/specs/2026-11-22-slow-light-design.md)): a fun look to play with, per
+  person, in the backtick console (*Light: Instant / Slow* and a *Speed of light* slider, 6–60 tiles/s, default 12,
+  saved with the renderer settings, default instant). With it on, remote people and objects are drawn where they were
+  when the light now reaching the eye left them, and the local player's own motion bends the view toward where they
+  go (aberration), tints it blue ahead and red behind (a stylised Doppler shift, not a spectral one) and brightens it
+  ahead (searchlight). Nothing goes on the wire; gameplay reads true positions.
+  - **A post-process (owner's pick):** the room is drawn into a 130° source frame twice the frame's width, then each
+    column is read from where aberration puts it, its height matched and its colour multiplied (`renderer/slow-light.ts`).
+    No pass changes, so the look off is today's frame pixel for pixel. Rejected: bending each column's ray in every pass
+    (physically complete, even behind the eye, but surgery on every renderer pass for a toy).
+  - **Soft is fine (owner):** at 2× the source leaves the centre at about 0.6× today's detail, even standing still;
+    `SOURCE_WIDTH_FACTOR` raises it (3.2× would match today at about 3× the cost). β is capped at half of c, so the
+    source never needs more than about 130°. No vertical aberration.
+  - **One delay per thing:** a thing seen directly and through a portal is drawn at one pose, from the image
+    `apparentPosition` picks; the own disc in a window from its image's distance. Sounds come from where things are
+    seen; face video and voices stay live. A ball held by anyone is not delayed (its dribbler's drawn pose places it).
+  - **Measured** (2026-11-22; LEVEL1 at 640×360, lit, reflections `both` with glows): every `bench:walls` and
+    `bench:sprites` hash identical to `main`; the bent frame 4.59 ms against 1.94 ms straight.
+  - Checked by eye in a local room: at rest the slow view matches the instant one, softer; walking forward the view
+    crowds ahead. Tint and brightness levels and the delay of far bots were not judged by the owner yet.
+
 ## Resolved
 _(none yet)_
