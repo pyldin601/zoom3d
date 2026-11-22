@@ -1,6 +1,6 @@
 # Slow light, made honest — design
 
-Date: 2026-11-22. Status: approved to build (owner: "design 1–3, then implement"). Decision: D40, building on D39
+Date: 2026-11-22. Status: built (2026-11-22; owner: "design 1–3, then implement"). Decision: D40, building on D39
 ([slow light](2026-11-22-slow-light-design.md)).
 
 ## 1. Intent

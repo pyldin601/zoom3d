@@ -1102,6 +1102,28 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
     `bench:sprites` hash identical to `main`; the bent frame 4.59 ms against 1.94 ms straight.
   - Checked by eye in a local room: at rest the slow view matches the instant one, softer; walking forward the view
     crowds ahead. Tint and brightness levels and the delay of far bots were not judged by the owner yet.
+  - **Superseded in part by D40** (the same day): the column stretch and painted tint gave way to exact aberration,
+    the correct Doppler factor and a shifted spectrum.
+
+### D40 — Slow light made honest: exact aberration, real Doppler, a shifted spectrum
+- *Resolved 2026-11-22* ([spec](superpowers/specs/2026-11-22-slow-light-honest-design.md)): D39's view read as a flat
+  stretch. The owner asked for something close to a real simulation; still a post-process, still per person.
+  - **Exact aberration on a grid:** every frame pixel reads the direction its light came from, in both axes, so the
+    view crowds toward the motion and straight lines bend. Exact at 8 px grid points, bilinear between (within half a
+    pixel). The source is fitted to what any motion at β 0.5 reads: 1280×502 at about 132° for the desktop frame.
+    Rejected: an exact table per pixel (too slow per frame), D39's column remap (lines can't bend).
+  - **Doppler and brightness:** D = 1/(γ(1 − β cos θ')) (D39's formula had side-on wrongly blue), and spectral
+    radiance per wavelength as D⁵. A soft tone shoulder (identity to 0.8) keeps the ratios readable instead of clipping.
+  - **Spectrum:** a colour is its spectrum sampled at 610/540/450 nm, joined linearly, with no ultraviolet below 400 nm
+    and an infrared tail (0.6 × its mean at 700 nm, gone by 1300) because warm lamps and paints are infrared-rich. The
+    eye samples the shifted spectrum at the same wavelengths: a 3×3 matrix per D, the identity at rest. Ahead: a
+    brightening blue-white glare; beside: colours slide toward red; behind: black. Rejected (builder): Gaussian bands
+    undone by a matrix inverse, which flickered in hue or swung negative.
+  - **Measured** (2026-11-22, a loaded machine): all `bench:walls` and `bench:sprites` hashes equal `main`; the bench's
+    bent frame (whole source, lit, glows) 15.2 ms against 3.1 ms straight, over the 8 ms aimed for. The game draws only
+    the source columns the frame reads. `SOURCE_WIDTH_FACTOR` (2) is the knob if it's too slow.
+  - Checked by eye in a local room at c = 6: walking, the corridor crowds forward, side walls turn purple and the lit
+    floor ahead pale green-white. Not judged by the owner yet.
 
 ## Resolved
 _(none yet)_

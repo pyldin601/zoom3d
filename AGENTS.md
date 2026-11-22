@@ -227,7 +227,8 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   `eye()`: a white beam and a faint red, green and blue fringe (blue widest), sharing one lighter-style shadow table. The parked
   model's lamp is dark and `RIDDEN_SCOOTER_MODEL`'s glows.
 - Slow light (D39, spec `docs/superpowers/specs/2026-11-22-slow-light-design.md`) is a per-person look. With it on,
-  `renderView` draws the room into the bend's wide source frame (`renderer/slow-light.ts`) and resamples it, so anything
+  `renderView` draws the room into the bend's wide, tall source frame (`renderer/slow-light.ts`) and resamples it per
+  pixel by exact aberration on a grid, shifting colours through `renderer/spectrum.ts` (D40), so anything
   new in the room goes through `drawPass`, and anything held in first person is drawn after `bend.apply`, unbent. Light
   delay goes through `seenAt` (`game/light-delay.ts`) in `RemoteWorld.sample`. The look off must stay pixel-identical.
 - Telemetry privacy: logs, metrics labels, Sentry and Amplitude never get names, resume tokens or IPs, nor raw room
