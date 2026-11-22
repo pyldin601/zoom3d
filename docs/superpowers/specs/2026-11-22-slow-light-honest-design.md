@@ -79,16 +79,15 @@ the eye row.
 Pixels are sRGB bytes; light is shifted in linear light. Tables built once: `SRGB_TO_LINEAR` (256 floats),
 `LINEAR_TO_SRGB` over the tone curve's output (4096 steps).
 
-The spectral model (`renderer/spectrum.ts`):
-- Three basis spectra, one per channel, Gaussian in wavelength: blue 450 nm, green 540 nm, red 610 nm, σ 35 nm. The
-  room is lit by warm lamps, rich in infrared and poor in ultraviolet, and most paints reflect infrared about as much
-  as they reflect light overall: every basis carries the same infrared tail past 700 nm, `IR_TAIL / 3` times a
-  half-Gaussian of σ 300 nm (`IR_TAIL = 0.6`), so a colour's infrared follows its brightness, whatever its hue. No basis
-  reaches below 400 nm: there is no ultraviolet.
-- The eye's sensitivities: the same three Gaussians without tails.
-- For a factor D, observed channel i = `D⁵ ∫ sens_i(λ) S(λ·D) dλ` (spectral radiance per wavelength goes as D⁵;
-  bolometric D⁴), over 300–1500 nm in 2 nm steps. Linear in the source RGB, so `A(D)_ij = D⁵ ∫ sens_i(λ) B_j(λ·D) dλ`
-  and `M(D) = A(1)⁻¹ A(D)`, so M(1) = I.
+The spectral model (`renderer/spectrum.ts`), as built (D40 ruling: the first model, Gaussian bands undone by a
+matrix inverse, was either jumpy in hue with narrow bands or swung negative with broad ones):
+- A colour's three linear values are its spectrum at 610 nm (red), 540 nm (green) and 450 nm (blue), joined by
+  straight lines; below 450 it falls to nothing at 400 nm (the room has no ultraviolet); past 610 it runs to
+  `IR_TAIL` (0.6) × the colour's mean at 700 nm and fades to nothing at 1300 nm. Warm lamps are rich in infrared and
+  paints reflect it about as much as light overall, so a colour's infrared follows its brightness, whatever its hue.
+- The eye samples the shifted spectrum at the same three wavelengths. Seen at λ, the light left at λ·D, and spectral
+  radiance per wavelength goes as D⁵: observed channel i = `D⁵ · S(λ_i · D)`. Linear in the colour, so a 3×3 matrix
+  M(D), exactly the identity at D = 1, no inverse.
 - Tabulated at `DOPPLER_STEPS = 256` values of ln D, evenly over [ln 0.5, ln 2] (β = 0.5 needs 0.577–1.732).
 
 Per pixel: `rgb_lin = SRGB_TO_LINEAR[byte]`, `out = M(D) · rgb_lin`, each channel through the tone curve, then
@@ -96,7 +95,8 @@ Per pixel: `rgb_lin = SRGB_TO_LINEAR[byte]`, `out = M(D) · rgb_lin`, each chann
 1 asymptotically. Negative channels (a matrix can produce them) clamp to 0.
 
 What this shows at β = 0.5: ahead, D ≈ 1.7, the eye sees the room's infrared shifted into view and brightened by D⁵:
-a pale blue-white glare toward the motion, everything in it as bright as it is overall, whatever its hue. Behind,
+a bright blue-white glare toward the motion, everything in it as bright as it is overall, whatever its hue (grey at
+0.3 is seen as about 1.1, 1.7, 2.4 linear). Behind,
 D ≈ 0.58, the visible comes from ultraviolet the room doesn't have: it goes black. Beside (D ≈ 0.87), colours slide
 toward red and dim. Walking (β = 0.25: 0.77–1.29) shows the same pattern gently.
 
@@ -118,7 +118,7 @@ first-person items drawn after `apply`. `tintOf`, `sourceAngle`, `dopplerFactor`
   axis maps to a curve (its source x varies with row).
 - Doppler: 1 at rest; at β = 0.5 ahead 1.732, behind 0.577, side-on (c' = 0) 0.866.
 - Spectrum: M(1) = I; grey brightens ahead (D = 1.5) and darkens behind (D = 0.6); ahead, a pure-blue source still
-  shows (from its infrared) and its light turns toward blue-white; behind, every source is darker than at rest; a
+  shows (from its infrared); behind, every source is darker than at rest; a
   colour sliding toward red beside (D = 0.87): green loses to red; tables finite, channels non-negative after clamping.
 - Tone curve: identity to 0.8, monotonic, below 1.
 - Source fit: the source covers every grid point's source pixel at β = 0.5, every motion direction, for 640×360 at
