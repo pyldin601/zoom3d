@@ -7,6 +7,11 @@ import type { FacesSent } from '../media/transport';
 import type { StatsSwitch } from '../telemetry/analytics';
 import { type BoomboxPanelOptions, showBoomboxPanel } from './boombox-panel';
 import {
+  LIGHT_LOOK_NAMES,
+  LIGHT_LOOKS,
+  LIGHT_SPEED_MAX,
+  LIGHT_SPEED_MIN,
+  METRES_PER_TILE,
   normalizeRenderSettings,
   PORTAL_LOOK_NAMES,
   PORTAL_LOOKS,
@@ -94,17 +99,40 @@ export function showConsolePanel(root: HTMLElement, opts: ConsolePanelOptions | 
   root.append(panel);
 }
 
-/** The lighting mode and the portal look, sharing the settings each change starts from. */
+/** The lighting mode, the portal look and the light, sharing the settings each change starts from. */
 function renderRows(opts: ConsolePanelOptions['render']): HTMLElement[] {
   let current = opts.settings;
-  const choose = (patch: Partial<Record<keyof RenderSettings, string>>) => {
+  const choose = (patch: Partial<RenderSettings>) => {
     current = normalizeRenderSettings({ ...current, ...patch });
     opts.onChange(current);
   };
   return [
     selectRow('Lighting', RENDER_MODES, RENDER_MODE_NAMES, current.mode, (mode) => choose({ mode })),
     selectRow('Portals', PORTAL_LOOKS, PORTAL_LOOK_NAMES, current.portals, (portals) => choose({ portals })),
+    selectRow('Light', LIGHT_LOOKS, LIGHT_LOOK_NAMES, current.light, (light) => choose({ light })),
+    lightSpeedRow(current.lightSpeed, (lightSpeed) => choose({ lightSpeed })),
   ];
+}
+
+const lightSpeedText = (tilesPerS: number) => `${tilesPerS} tiles/s (${(tilesPerS * METRES_PER_TILE).toFixed(1)} m/s)`;
+
+/** The text follows the slider while it moves; the speed is chosen when it is let go. */
+function lightSpeedRow(tilesPerS: number, onChange: (tilesPerS: number) => void): HTMLElement {
+  const range = el('input', {
+    type: 'range',
+    min: String(LIGHT_SPEED_MIN),
+    max: String(LIGHT_SPEED_MAX),
+    step: '1',
+    value: String(tilesPerS),
+  });
+  const text = el('span', { textContent: lightSpeedText(tilesPerS) });
+  range.addEventListener('input', () => {
+    text.textContent = lightSpeedText(Number(range.value));
+  });
+  range.addEventListener('change', () => onChange(Number(range.value)));
+  const row = el('label');
+  row.append('Speed of light', range, text);
+  return row;
 }
 
 function selectRow<T extends string>(
@@ -112,14 +140,19 @@ function selectRow<T extends string>(
   values: readonly T[],
   names: Record<T, string>,
   selected: T,
-  onChange: (value: string) => void
+  onChange: (value: T) => void
 ): HTMLElement {
   const select = el('select');
   for (const value of values) {
     select.append(el('option', { value, textContent: names[value] }));
   }
   select.value = selected;
-  select.addEventListener('change', () => onChange(select.value));
+  select.addEventListener('change', () => {
+    const chosen = values.find((value) => value === select.value);
+    if (chosen !== undefined) {
+      onChange(chosen);
+    }
+  });
   const row = el('label');
   row.append(label, select);
   return row;

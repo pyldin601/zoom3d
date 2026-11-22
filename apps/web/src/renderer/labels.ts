@@ -2,6 +2,7 @@
 import type { PlayerState } from '@zoom3d/shared';
 import { createView, setView } from './camera';
 import type { Framebuffer } from './framebuffer';
+import type { Bend, Shown } from './slow-light';
 import { type Projection, projectSprite } from './sprites';
 
 /** Names show only for people this close (6d spec §4): a crowd of 100 labels is unreadable. */
@@ -24,6 +25,7 @@ export interface NameLabel {
 
 const frameView = createView();
 const projection: Projection = { screenX: 0, depth: 0, size: 0 };
+const shown: Shown = { x: 0, y: 0, scale: 1 };
 
 export function inLabelRange(p: { x: number; y: number }, x: number, y: number): boolean {
   return Math.hypot(x - p.x, y - p.y) <= LABEL_TILES;
@@ -34,9 +36,12 @@ export function drawLabels(
   ctx: CanvasRenderingContext2D,
   fb: Framebuffer,
   p: PlayerState,
-  others: readonly NameLabel[]
+  others: readonly NameLabel[],
+  bend?: Bend | null
 ): void {
-  const view = setView(frameView, fb, p);
+  // Bent by slow light, the discs were drawn in the bend's source frame: project there, then follow the bend.
+  const drawn = bend ? bend.fit(fb) : fb;
+  const view = setView(frameView, drawn, p);
   const { width: hudW, height: hudH } = ctx.canvas;
   const hudPerPixel = hudW / fb.width;
   // The HUD's height, but at most 16/9 of its width: the same as the height on desktop, not huge on a tall phone frame.
@@ -50,12 +55,23 @@ export function drawLabels(
     if (
       !inLabelRange(p, o.shownX, o.shownY) ||
       !projectSprite(view, o.shownX, o.shownY, projection) ||
-      centreHidden(fb, projection)
+      centreHidden(drawn, projection)
     ) {
       continue;
     }
-    const x = projection.screenX * hudPerPixel;
-    const y = (fb.height / 2 - projection.size / 2) * hudPerPixel - sizingHeight * GAP_ABOVE_DISC;
+    // Through a bend the disc's centre shows somewhere else in the frame, and larger or smaller.
+    if (bend) {
+      if (!bend.toOutput(projection.screenX, drawn.height / 2, shown)) {
+        continue;
+      }
+    } else {
+      shown.x = projection.screenX;
+      shown.y = fb.height / 2;
+      shown.scale = 1;
+    }
+    const size = projection.size * shown.scale;
+    const x = shown.x * hudPerPixel;
+    const y = (shown.y - size / 2) * hudPerPixel - sizingHeight * GAP_ABOVE_DISC;
     const text = o.mic ? o.name : `🔇 ${o.name}`;
     ctx.strokeStyle = OUTLINE_COLOUR;
     ctx.strokeText(text, x, y);

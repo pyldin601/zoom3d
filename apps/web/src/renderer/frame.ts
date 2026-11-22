@@ -15,6 +15,7 @@ import { renderOwnHandlebar } from './own-handlebar';
 import { type HeldStep, renderOwnHeld } from './own-held';
 import { nextRippleDown, openingEdge, shimmerAndRim, startRippleDown, toSketchPx } from './portal-window';
 import type { HeldPose } from './sip';
+import type { Bend } from './slow-light';
 import { type PeopleAndObjects, renderSprites, type Sprite } from './sprites';
 import type { VoxelInstance } from './voxels';
 import { type Room, renderWalls, rowsCovered } from './walls';
@@ -105,17 +106,25 @@ let ownAvatarDrawn = false;
 /** The own label, as the one-entry list drawLabels takes. */
 const ownLabels: NameLabel[] = [];
 const frameView = createView();
+/** The main pass of a bent frame: the bend's source columns the frame reads. */
+const bentPass: Pass = { fromCol: 0, toCol: 0, nearDepth: null, lastLevel: false };
 
-/** `seen` gets, per person, how much of them this frame drew (dynamic subscription reads it). */
-export function renderView(fb: Framebuffer, scene: RoomScene, seen?: Map<string, PeerFacts>): void {
+/**
+ * `seen` gets, per person, how much of them this frame drew (dynamic subscription reads it). With `bend` (slow light,
+ * D39) the room is drawn into its wide source frame and resampled into `fb`; what is held in first person never bends.
+ */
+export function renderView(fb: Framebuffer, scene: RoomScene, seen?: Map<string, PeerFacts>, bend?: Bend | null): void {
+  const room = bend ? bend.fit(fb) : fb;
   const glows = gatherGlows(scene);
   if (scene.portals) {
-    fitWindowLevels(fb);
+    fitWindowLevels(room);
     seenThroughWindows.forEach(zeroFacts);
     listWindowPeople(scene.people, scene.self);
     listWindowObjects(scene.objects, scene.ownScooter);
   }
-  drawPass(fb, scene, glows, seen, 0);
+  scene.pass = bend ? bentPassOf(bend) : undefined;
+  drawPass(room, scene, glows, seen, 0);
+  bend?.apply(room, fb);
   const windowsCounted = scene.portals !== null && seen !== undefined;
   if (windowsCounted) {
     seenThroughWindows.forEach(addToSeen, seen);
@@ -349,6 +358,13 @@ function takeDepthsBeyondWindows(fb: Framebuffer, scene: PassScene, level: numbe
 
 const passOf = (scene: PassScene) => scene.pass ?? WHOLE_FRAME;
 
+/** Only the source columns the frame reads are drawn: the rest costs time and would count people off screen as seen. */
+function bentPassOf(bend: Bend): Pass {
+  bentPass.fromCol = bend.readFrom;
+  bentPass.toCol = bend.readTo;
+  return bentPass;
+}
+
 /** Makes the windows' frames match `fb`'s size and FOV: they are rebuilt only when it changes. */
 function fitWindowLevels(fb: Framebuffer): void {
   for (let i = 0; i < WINDOW_LEVELS; i++) {
@@ -390,14 +406,20 @@ function addToSeen(this: Map<string, PeerFacts>, through: PeerFacts, key: string
   f.drawnColumns += through.drawnColumns;
 }
 
-export function renderHud(hud: CanvasRenderingContext2D, fb: Framebuffer, scene: RoomScene, showMap: boolean): void {
+export function renderHud(
+  hud: CanvasRenderingContext2D,
+  fb: Framebuffer,
+  scene: RoomScene,
+  showMap: boolean,
+  bend?: Bend | null
+): void {
   const { width, height } = hud.canvas;
   hud.clearRect(0, 0, width, height);
-  drawLabels(hud, fb, scene.eye, scene.labels);
+  drawLabels(hud, fb, scene.eye, scene.labels, bend);
   // Apart from `labels`, which the automap also reads: there the arrow is the local player.
   if (scene.ownLabel) {
     ownLabels[0] = scene.ownLabel;
-    drawLabels(hud, fb, scene.eye, ownLabels);
+    drawLabels(hud, fb, scene.eye, ownLabels, bend);
   }
   if (showMap) {
     drawAutomap(hud, scene.map, scene.eye, scene.labels);

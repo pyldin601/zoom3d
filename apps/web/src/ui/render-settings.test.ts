@@ -1,6 +1,11 @@
 import { expect, test } from 'vitest';
 import {
+  DEFAULT_LIGHT_SPEED,
   DEFAULT_RENDER_SETTINGS,
+  LIGHT_LOOK_NAMES,
+  LIGHT_LOOKS,
+  LIGHT_SPEED_MAX,
+  LIGHT_SPEED_MIN,
   litReflections,
   loadRenderSettings,
   nextRenderMode,
@@ -12,6 +17,8 @@ import {
   saveRenderSettings,
 } from './render-settings';
 
+const LIGHT = { light: 'instant', lightSpeed: 12 } as const;
+
 function memory() {
   const data = new Map<string, string>();
   return {
@@ -22,14 +29,14 @@ function memory() {
 }
 
 test('the renderer defaults to shadows and reflections', () => {
-  expect(DEFAULT_RENDER_SETTINGS).toEqual({ mode: 'reflections', portals: 'classic' });
+  expect(DEFAULT_RENDER_SETTINGS).toEqual({ mode: 'reflections', portals: 'classic', ...LIGHT });
 });
 
 test('every mode is kept as it was saved', () => {
   const store = memory();
   for (const mode of RENDER_MODES) {
-    saveRenderSettings(store, { mode, portals: 'classic' });
-    expect(loadRenderSettings(store)).toEqual({ mode, portals: 'classic' });
+    saveRenderSettings(store, { mode, portals: 'classic', ...LIGHT });
+    expect(loadRenderSettings(store)).toEqual({ mode, portals: 'classic', ...LIGHT });
   }
   expect(RENDER_MODES).toEqual(['flat', 'shadows', 'reflections', 'reflections-only']);
 });
@@ -51,8 +58,8 @@ test('the next mode follows the console order and wraps around', () => {
 
 test('round-trips through storage', () => {
   const store = memory();
-  saveRenderSettings(store, { mode: 'shadows', portals: 'realistic' });
-  expect(loadRenderSettings(store)).toEqual({ mode: 'shadows', portals: 'realistic' });
+  saveRenderSettings(store, { mode: 'shadows', portals: 'realistic', ...LIGHT });
+  expect(loadRenderSettings(store)).toEqual({ mode: 'shadows', portals: 'realistic', ...LIGHT });
   expect(store.data.has(RENDER_SETTINGS_KEY)).toBe(true);
 });
 
@@ -80,21 +87,52 @@ test('settings saved with an option that no longer exists keep the rest', () => 
   const store = memory();
   // Saved while there was an ambient light switch.
   store.data.set(RENDER_SETTINGS_KEY, '{"mode":"flat","ambient":false}');
-  expect(loadRenderSettings(store)).toEqual({ mode: 'flat', portals: 'classic' });
+  expect(loadRenderSettings(store)).toEqual({ mode: 'flat', portals: 'classic', ...LIGHT });
 });
 
 test('settings saved before the portal look load as classic, keeping their mode', () => {
-  expect(normalizeRenderSettings({ mode: 'shadows' })).toEqual({ mode: 'shadows', portals: 'classic' });
+  expect(normalizeRenderSettings({ mode: 'shadows' })).toEqual({ mode: 'shadows', portals: 'classic', ...LIGHT });
 });
 
 test('each setting is checked on its own', () => {
-  expect(normalizeRenderSettings({ mode: 'flat', portals: 'realistic' })).toEqual({
+  expect(normalizeRenderSettings({ mode: 'flat', portals: 'realistic', ...LIGHT })).toEqual({
     mode: 'flat',
     portals: 'realistic',
+    ...LIGHT,
   });
-  expect(normalizeRenderSettings({ portals: 'weird' })).toEqual({ mode: 'reflections', portals: 'classic' });
+  expect(normalizeRenderSettings({ portals: 'weird' })).toEqual({ mode: 'reflections', portals: 'classic', ...LIGHT });
 });
 
 test('the portal looks, in the console order, with their names', () => {
   expect(PORTAL_LOOKS.map((look) => PORTAL_LOOK_NAMES[look])).toEqual(['Classic', 'Realistic']);
+});
+
+test('light defaults to instant at 12 tiles/s', () => {
+  const s = normalizeRenderSettings(null);
+  expect(s.light).toBe('instant');
+  expect(s.lightSpeed).toBe(12);
+  expect(DEFAULT_LIGHT_SPEED).toBe(12);
+  expect([LIGHT_SPEED_MIN, LIGHT_SPEED_MAX]).toEqual([6, 60]);
+});
+
+test('keeps a stored slow look and its speed', () => {
+  expect(normalizeRenderSettings({ light: 'slow', lightSpeed: 20 })).toMatchObject({ light: 'slow', lightSpeed: 20 });
+});
+
+test('a bad light or speed falls back alone', () => {
+  expect(normalizeRenderSettings({ mode: 'shadows', light: 'warp', lightSpeed: 'fast' })).toEqual({
+    mode: 'shadows',
+    portals: 'classic',
+    light: 'instant',
+    lightSpeed: 12,
+  });
+});
+
+test("the speed is rounded and clamped into the slider's range", () => {
+  const speed = (lightSpeed: unknown) => normalizeRenderSettings({ lightSpeed }).lightSpeed;
+  expect([speed(2), speed(500), speed(12.6), speed(Number.NaN)]).toEqual([6, 60, 13, 12]);
+});
+
+test('the light looks, in the console order, with their names', () => {
+  expect(LIGHT_LOOKS.map((look) => LIGHT_LOOK_NAMES[look])).toEqual(['Instant', 'Slow']);
 });

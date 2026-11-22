@@ -1081,5 +1081,49 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - Checked by eye in a local room: from a front, realistic shows the corridor behind; from a back, the source's front
     room through a pink window. The hum and voices through a realistic window were not heard by the builder.
 
+### D39 — Slow light: light about as fast as a scooter
+- *Resolved 2026-11-22* ([spec](superpowers/specs/2026-11-22-slow-light-design.md)): a fun look to play with, per
+  person, in the backtick console (*Light: Instant / Slow* and a *Speed of light* slider, 6–60 tiles/s, default 12,
+  saved with the renderer settings, default instant). With it on, remote people and objects are drawn where they were
+  when the light now reaching the eye left them, and the local player's own motion bends the view toward where they
+  go (aberration), tints it blue ahead and red behind (a stylised Doppler shift, not a spectral one) and brightens it
+  ahead (searchlight). Nothing goes on the wire; gameplay reads true positions.
+  - **A post-process (owner's pick):** the room is drawn into a 130° source frame twice the frame's width, then each
+    column is read from where aberration puts it, its height matched and its colour multiplied (`renderer/slow-light.ts`).
+    No pass changes, so the look off is today's frame pixel for pixel. Rejected: bending each column's ray in every pass
+    (physically complete, even behind the eye, but surgery on every renderer pass for a toy).
+  - **Soft is fine (owner):** at 2× the source leaves the centre at about 0.6× today's detail, even standing still;
+    `SOURCE_WIDTH_FACTOR` raises it (3.2× would match today at about 3× the cost). β is capped at half of c, so the
+    source never needs more than about 130°. No vertical aberration.
+  - **One delay per thing:** a thing seen directly and through a portal is drawn at one pose, from the image
+    `apparentPosition` picks; the own disc in a window from its image's distance. Sounds come from where things are
+    seen; face video and voices stay live. A ball held by anyone is not delayed (its dribbler's drawn pose places it).
+  - **Measured** (2026-11-22; LEVEL1 at 640×360, lit, reflections `both` with glows): every `bench:walls` and
+    `bench:sprites` hash identical to `main`; the bent frame 4.59 ms against 1.94 ms straight.
+  - Checked by eye in a local room: at rest the slow view matches the instant one, softer; walking forward the view
+    crowds ahead. Tint and brightness levels and the delay of far bots were not judged by the owner yet.
+  - **Superseded in part by D40** (the same day): the column stretch and painted tint gave way to exact aberration,
+    the correct Doppler factor and a shifted spectrum.
+
+### D40 — Slow light made honest: exact aberration, real Doppler, a shifted spectrum
+- *Resolved 2026-11-22* ([spec](superpowers/specs/2026-11-22-slow-light-honest-design.md)): D39's view read as a flat
+  stretch. The owner asked for something close to a real simulation; still a post-process, still per person.
+  - **Exact aberration on a grid:** every frame pixel reads the direction its light came from, in both axes, so the
+    view crowds toward the motion and straight lines bend. Exact at 8 px grid points, bilinear between (within half a
+    pixel). The source is fitted to what any motion at β 0.5 reads: 1280×502 at about 132° for the desktop frame.
+    Rejected: an exact table per pixel (too slow per frame), D39's column remap (lines can't bend).
+  - **Doppler and brightness:** D = 1/(γ(1 − β cos θ')) (D39's formula had side-on wrongly blue), and spectral
+    radiance per wavelength as D⁵. A soft tone shoulder (identity to 0.8) keeps the ratios readable instead of clipping.
+  - **Spectrum:** a colour is its spectrum sampled at 610/540/450 nm, joined linearly, with no ultraviolet below 400 nm
+    and an infrared tail (0.6 × its mean at 700 nm, gone by 1300) because warm lamps and paints are infrared-rich. The
+    eye samples the shifted spectrum at the same wavelengths: a 3×3 matrix per D, the identity at rest. Ahead: a
+    brightening blue-white glare; beside: colours slide toward red; behind: black. Rejected (builder): Gaussian bands
+    undone by a matrix inverse, which flickered in hue or swung negative.
+  - **Measured** (2026-11-22, a loaded machine): all `bench:walls` and `bench:sprites` hashes equal `main`; the bench's
+    bent frame (whole source, lit, glows) 15.2 ms against 3.1 ms straight, over the 8 ms aimed for. The game draws only
+    the source columns the frame reads. `SOURCE_WIDTH_FACTOR` (2) is the knob if it's too slow.
+  - Checked by eye in a local room at c = 6: walking, the corridor crowds forward, side walls turn purple and the lit
+    floor ahead pale green-white. Not judged by the owner yet.
+
 ## Resolved
 _(none yet)_

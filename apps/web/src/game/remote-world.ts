@@ -9,6 +9,7 @@ import {
   type PlayerState,
   type Point,
   type Portals,
+  type SnapshotBuffer,
 } from '@zoom3d/shared';
 import { nearTier } from '../net/peer-delay';
 import { objectKey, type RemotePeer, type Session } from '../net/session';
@@ -23,6 +24,7 @@ import { ringRgb, type Sprite } from '../renderer/sprites';
 import type { VoxelInstance, VoxelModel } from '../renderer/voxels';
 import type { BallPrediction } from './ball-prediction';
 import { ballShake } from './ball-shake';
+import { createTrail, type SeenLight, seenAt } from './light-delay';
 
 /** A peer's name label and automap dot. */
 export interface PeerLabel {
@@ -49,6 +51,8 @@ export interface PeerMedia {
 export interface RemoteWorld {
   /** Where each peer (by id) and each world object (by objectKey) is now; the same objects from frame to frame. */
   readonly positions: ReadonlyMap<string, Point>;
+  /** Where the ball is seen, without its tremble (its pattern rolls by this), or null with no ball. Reused. */
+  readonly ballSeen: Point | null;
   /** Each world object's pose now, by objectKey: the same objects as in `positions`. */
   readonly objectPoses: ReadonlyMap<string, PlayerState>;
   /** This frame's discs, labels and voxel models, from `collect`; reused objects, so read them before the next. */
@@ -62,9 +66,17 @@ export interface RemoteWorld {
   /**
    * Samples every peer's and object's position at `now`: every frame, and from the hidden-tab ticker. The ball is the
    * one object not drawn from its buffer: it is where the client's prediction has it, in the present (ball spec §3.3).
-   * `portals` (the room's wiring while they are on) decides, as on the server, which peers are near.
+   * `portals` (the room's wiring while they are on) decides, as on the server, which peers are near. With `light`
+   * (slow light, D39), each is drawn where it was when the light reaching the eye now left it.
    */
-  sample(session: Session, player: Point, now: number, ball?: ShownBall | null, portals?: Portals | null): void;
+  sample(
+    session: Session,
+    player: Point,
+    now: number,
+    ball?: ShownBall | null,
+    portals?: Portals | null,
+    light?: SeenLight | null
+  ): void;
   /**
    * Builds this frame's sprites, labels and voxels from the last sample; `dt` (seconds) walks the bobs. `apparent`
    * places the labels; a person it doesn't list is labelled where they are.
@@ -91,6 +103,9 @@ interface ObjectPose extends PlayerState {
   lift: number;
 }
 
+const BALL_LOOK_SETTLE_MS = 20;
+const BALL_LOOK_CAPACITY = 400;
+
 export function createRemoteWorld(): RemoteWorld {
   const positions = new Map<string, Point>();
   /** Each peer's drawn heading, by id, beside its position: a ridden scooter points the way its rider faces. */
@@ -106,6 +121,20 @@ export function createRemoteWorld(): RemoteWorld {
   const voxels: VoxelInstance[] = [];
   const at = { x: 0, y: 0, angle: 0 };
   let atLift = 0;
+  /** Where the ball was shown, frame by frame: with slow light it is drawn from here, as late as its light. */
+  const ballTrail = createTrail();
+  /**
+   * How the ball looked, frame by frame: x its lift, y how strongly it trembled (0..1). Finer than its trail, since a
+   * hop lasts under half a second; 400 entries keep the 8 s light takes to cross the room at the slowest c.
+   */
+  const ballLookTrail = createTrail(BALL_LOOK_SETTLE_MS, BALL_LOOK_CAPACITY);
+  const ballLook = { x: 0, y: 0, angle: 0 };
+  const ballSeenAt = { x: 0, y: 0 };
+  let ballSeen: Point | null = null;
+
+  /** Samples `buffer` into `at` at `drawnAt`, or as late as its light with `light`. */
+  const sampleSeen = (buffer: SnapshotBuffer, drawnAt: number, light: SeenLight | null) =>
+    light === null ? buffer.sample(drawnAt, at) : !Number.isNaN(seenAt(buffer, light, drawnAt, at));
 
   /** Drops the positions of objects and peers the session no longer has. */
   const forgetGone = (s: Session) => {
@@ -138,8 +167,32 @@ export function createRemoteWorld(): RemoteWorld {
       shown?.holdAt(at.x, at.y, headings.get(dribbler) ?? 0, pose);
     }
   };
-  const sampleObjects = (s: Session, now: number, shown: ShownBall | null) => {
+  /**
+   * Puts where the ball is seen in `at` and its tremble in `shake`, and returns its lift: with `light`, all as late as
+   * its light. A held ball is at someone's hand: the local player's in the present, anyone else's from their drawn pose.
+   */
+  const seeBall = (ball: Point, shown: ShownBall | null, now: number, light: SeenLight | null): number => {
+    const mood = shown?.mood ?? 'asleep';
+    const lift = shown?.lift ?? 0;
+    if (light === null || shown?.heldBy) {
+      at.x = ball.x;
+      at.y = ball.y;
+      ballShake(mood, now, shake);
+      return lift;
+    }
+    ballTrail.push(now, ball.x, ball.y, 0);
+    const lightLeftAt = seenAt(ballTrail.buffer, light, now, at);
+    ballLookTrail.push(now, lift, mood === 'scared' ? 1 : 0, 0);
+    ballLookTrail.buffer.sample(lightLeftAt, ballLook);
+    ballShake('scared', lightLeftAt, shake);
+    shake.x *= ballLook.y;
+    shake.y *= ballLook.y;
+    return ballLook.x;
+  };
+
+  const sampleObjects = (s: Session, now: number, shown: ShownBall | null, light: SeenLight | null) => {
     const ball = shown?.ball ?? null;
+    ballSeen = null;
     // Objects come every tick; each peer is drawn as late as its updates need (6d spec §2.3).
     const drawnAt = now - INTERP_DELAY_MS;
     for (const obj of s.objects.values()) {
@@ -148,13 +201,15 @@ export function createRemoteWorld(): RemoteWorld {
         if (ball?.id !== id) {
           continue;
         }
+        atLift = seeBall(ball, shown, now, light);
+        ballSeenAt.x = at.x;
+        ballSeenAt.y = at.y;
+        ballSeen = ballSeenAt;
+        at.x += shake.x;
+        at.y += shake.y;
         // Its pattern rolls in world axes (models/ball.ts), so the model itself never turns.
-        ballShake(shown?.mood ?? 'asleep', now, shake);
-        at.x = ball.x + shake.x;
-        at.y = ball.y + shake.y;
         at.angle = 0;
-        atLift = shown?.lift ?? 0;
-      } else if (obj.buffer.sample(drawnAt, at)) {
+      } else if (sampleSeen(obj.buffer, drawnAt, light)) {
         atLift = 0;
       } else {
         continue;
@@ -178,10 +233,10 @@ export function createRemoteWorld(): RemoteWorld {
     }
   };
 
-  const samplePeers = (s: Session, player: Point, now: number, portals: Portals | null) => {
+  const samplePeers = (s: Session, player: Point, now: number, portals: Portals | null, light: SeenLight | null) => {
     for (const peer of s.peers.values()) {
       const delay = peer.delay.update(now, nearTier(portals, player, peer.info.x, peer.info.y));
-      if (!peer.buffer.sample(now - delay, at)) {
+      if (!sampleSeen(peer.buffer, now - delay, light)) {
         continue;
       }
       const pos = positions.get(peer.info.id);
@@ -291,16 +346,19 @@ export function createRemoteWorld(): RemoteWorld {
 
   return {
     positions,
+    get ballSeen() {
+      return ballSeen;
+    },
     objectPoses,
     sprites,
     labels,
     voxels,
     lighters,
     headlights,
-    sample(s, player, now, ball = null, portals = null) {
+    sample(s, player, now, ball = null, portals = null, light = null) {
       forgetGone(s);
-      sampleObjects(s, now, ball);
-      samplePeers(s, player, now, portals);
+      sampleObjects(s, now, ball, light);
+      samplePeers(s, player, now, portals, light);
       placeHeldBall(ball);
     },
     collect(s, media, now, dt, apparent) {

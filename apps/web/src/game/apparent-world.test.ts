@@ -96,6 +96,13 @@ describe('placeOwnLabel', () => {
     expect(label.shownY).toBeCloseTo(5.5);
   });
 
+  test("given a spot, the own label sits at that spot's image as the eye sees it", () => {
+    const label = blankLabel();
+    expect(placeOwnLabel(LOOP, loopBack(), { x: 2.5, y: 1.5 }, label, { x: 2.8, y: 1.5 })).toBe(true);
+    expect(Math.abs(label.shownX - 2.5)).toBeCloseTo(0.3);
+    expect(label.shownY).toBeCloseTo(5.5);
+  });
+
   test('no own label with portals off', () => {
     expect(placeOwnLabel(LOOP, null, { x: 2.5, y: 1.5 }, blankLabel())).toBe(false);
   });

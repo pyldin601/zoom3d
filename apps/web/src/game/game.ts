@@ -108,6 +108,7 @@ export function createGame(page: PageElements, flags: PageFlags): Game {
     statusLine: createStatusLine(page.ui),
     room: () => room,
     renderMode: () => renderSettings.mode,
+    slowLight: () => (renderSettings.light === 'slow' ? renderSettings.lightSpeed : null),
     roomLighting,
     showMap: () => controls.mapShown,
     ballInReach: (inReach) => controls.setKickInReach(inReach),

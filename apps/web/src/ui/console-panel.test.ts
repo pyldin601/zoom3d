@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { PROGRESS_MS } from './boombox-panel';
 import { type ConsolePanelOptions, setConsolePanelBoombox, showConsolePanel } from './console-panel';
 
+const LIGHT = { light: 'instant', lightSpeed: 12 } as const;
+
 let root: HTMLElement;
 beforeEach(() => {
   document.body.innerHTML = '<div id="ui"></div>';
@@ -13,7 +15,7 @@ const options = (overrides: Partial<ConsolePanelOptions> = {}): ConsolePanelOpti
   frameRate: () => null,
   renderLoad: () => null,
   facesSent: () => ({ 256: false, 128: false, 64: false }),
-  render: { settings: { mode: 'reflections', portals: 'classic' }, onChange: () => {} },
+  render: { settings: { mode: 'reflections', portals: 'classic', ...LIGHT }, onChange: () => {} },
   stats: null,
   ...overrides,
 });
@@ -23,7 +25,7 @@ test('the frame rate comes first, then the renderer options, with no audio tunin
   const column = root.querySelector('.console-panel > .renderer') as HTMLElement;
   expect(column.firstElementChild?.className).toBe('frame-rate');
   expect(column.textContent).toContain('Lighting');
-  expect(root.querySelector('input[type=range]')).toBeNull();
+  expect(root.querySelectorAll('input[type=range]').length).toBe(1);
   expect(root.querySelector('.levels')).toBeNull();
 });
 
@@ -111,7 +113,7 @@ test('the renderer section switches the lighting mode', () => {
   const onRender = vi.fn();
   showConsolePanel(
     root,
-    options({ render: { settings: { mode: 'reflections', portals: 'classic' }, onChange: onRender } })
+    options({ render: { settings: { mode: 'reflections', portals: 'classic', ...LIGHT }, onChange: onRender } })
   );
   expect(root.textContent).toContain('Renderer');
   const select = root.querySelector('.renderer select') as HTMLSelectElement;
@@ -125,14 +127,14 @@ test('the renderer section switches the lighting mode', () => {
   ]);
   select.value = 'reflections-only';
   select.dispatchEvent(new Event('change'));
-  expect(onRender).toHaveBeenLastCalledWith({ mode: 'reflections-only', portals: 'classic' });
+  expect(onRender).toHaveBeenLastCalledWith({ mode: 'reflections-only', portals: 'classic', ...LIGHT });
 });
 
 test('the Portals row switches the look and keeps the lighting mode', () => {
   const onRender = vi.fn();
   showConsolePanel(
     root,
-    options({ render: { settings: { mode: 'shadows', portals: 'classic' }, onChange: onRender } })
+    options({ render: { settings: { mode: 'shadows', portals: 'classic', ...LIGHT }, onChange: onRender } })
   );
   const select = root.querySelectorAll<HTMLSelectElement>('.renderer select').item(1);
   expect(select.parentElement?.textContent).toContain('Portals');
@@ -143,7 +145,41 @@ test('the Portals row switches the look and keeps the lighting mode', () => {
   ]);
   select.value = 'realistic';
   select.dispatchEvent(new Event('change'));
-  expect(onRender).toHaveBeenLastCalledWith({ mode: 'shadows', portals: 'realistic' });
+  expect(onRender).toHaveBeenLastCalledWith({ mode: 'shadows', portals: 'realistic', ...LIGHT });
+});
+
+test('the Light row switches the look and keeps the rest', () => {
+  const onRender = vi.fn();
+  showConsolePanel(
+    root,
+    options({ render: { settings: { mode: 'shadows', portals: 'classic', ...LIGHT }, onChange: onRender } })
+  );
+  const select = root.querySelectorAll<HTMLSelectElement>('.renderer select').item(2);
+  expect(select.parentElement?.textContent).toContain('Light');
+  expect([...select.options].map((o) => [o.value, o.textContent])).toEqual([
+    ['instant', 'Instant'],
+    ['slow', 'Slow'],
+  ]);
+  select.value = 'slow';
+  select.dispatchEvent(new Event('change'));
+  expect(onRender).toHaveBeenLastCalledWith({ mode: 'shadows', portals: 'classic', light: 'slow', lightSpeed: 12 });
+});
+
+test('the speed of light slider shows tiles/s and m/s and sets the speed', () => {
+  const onRender = vi.fn();
+  showConsolePanel(
+    root,
+    options({ render: { settings: { mode: 'shadows', portals: 'classic', ...LIGHT }, onChange: onRender } })
+  );
+  const range = root.querySelector('.renderer input[type=range]') as HTMLInputElement;
+  expect([range.min, range.max, range.step, range.value]).toEqual(['6', '60', '1', '12']);
+  expect(range.parentElement?.textContent).toContain('Speed of light');
+  expect(range.parentElement?.textContent).toContain('12 tiles/s (5.6 m/s)');
+  range.value = '30';
+  range.dispatchEvent(new Event('input'));
+  expect(range.parentElement?.textContent).toContain('30 tiles/s (14.1 m/s)');
+  range.dispatchEvent(new Event('change'));
+  expect(onRender).toHaveBeenLastCalledWith({ mode: 'shadows', portals: 'classic', light: 'instant', lightSpeed: 30 });
 });
 
 describe('boombox column', () => {

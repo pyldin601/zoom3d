@@ -25,6 +25,7 @@ import {
   SnapshotBuffer,
   STATE_INTERVAL_MS,
 } from '@zoom3d/shared';
+import { HISTORY_CAPACITY } from '../game/light-delay';
 import { type ConnStatus, connect } from './connection';
 import { holdBefore, nearTier, PeerDelay, tierInterval } from './peer-delay';
 
@@ -168,7 +169,7 @@ export function createSession(opts: SessionOptions): Session {
     g !== null && now() - g.at < (g.kind === 'sip' ? SIP_MS : CHEERS_MS);
 
   const addPeer = (info: PeerInfo) => {
-    const buffer = new SnapshotBuffer();
+    const buffer = new SnapshotBuffer(HISTORY_CAPACITY);
     buffer.push({ t: now(), x: info.x, y: info.y, angle: info.angle });
     const peer: RemotePeer = { info: { ...info }, buffer, delay: new PeerDelay(), gesture: null };
     peers.set(info.id, peer);
@@ -184,7 +185,7 @@ export function createSession(opts: SessionOptions): Session {
   };
 
   const addObject = (info: ObjectInfo) => {
-    const buffer = new SnapshotBuffer();
+    const buffer = new SnapshotBuffer(HISTORY_CAPACITY);
     buffer.push({ t: now(), x: info.x, y: info.y, angle: info.angle });
     objects.set(info.id, { info: { ...info }, buffer, lastSeq: -1 });
   };

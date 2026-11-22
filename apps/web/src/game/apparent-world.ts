@@ -48,12 +48,19 @@ const ownImage: Apparent = { x: 0, y: 0, sees: false, through: 0, cos: 1, sin: 0
 /**
  * Moves the local player's own label to where their own spot appears to their eye: its nearest image seen through one
  * or two portals, never the spot itself, where the eye stands. False when no portal shows it, portals off included.
+ * `spot` is where the own disc is drawn: the eye, or where it stood when the light left it (slow light, D39).
  */
-export function placeOwnLabel(map: GameMap, portals: Portals | null, eye: Point, label: NameLabel): boolean {
+export function placeOwnLabel(
+  map: GameMap,
+  portals: Portals | null,
+  eye: Point,
+  label: NameLabel,
+  spot: Point = eye
+): boolean {
   if (portals === null) {
     return false;
   }
-  imagePosition(map, portals, eye, eye, ownImage);
+  imagePosition(map, portals, eye, spot, ownImage);
   if (ownImage.through === 0 || !ownImage.sees) {
     return false;
   }
