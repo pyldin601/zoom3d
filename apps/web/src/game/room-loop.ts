@@ -10,7 +10,6 @@ import {
   JUMP_TILES,
   PLAYER_RADIUS,
   type PlayerState,
-  SnapshotBuffer,
 } from '@zoom3d/shared';
 import { ownLoad } from '../audio/scooter-sounds';
 import { HIDDEN_TICK_MS } from '../audio/ticker';

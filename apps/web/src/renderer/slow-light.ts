@@ -1,56 +1,108 @@
-// Slow light's bend (D39): the room is drawn into a wide source frame, then each column of the frame is read from
-// where aberration puts it and tinted by its Doppler factor. Vertical aberration is left out: only heights are matched.
+// Slow light's bend (D39, made exact in D40): the room is drawn into a wide source frame, then every pixel of the frame
+// is read from the direction its light really came from (aberration, in both axes) and its colour seen through the
+// Doppler shift of its spectrum. The map is smooth, so it is exact on a coarse grid and interpolated in between.
 import { createFramebuffer, type Framebuffer } from './framebuffer';
-import {
-  dopplerFactor,
-  type Motion,
-  type Rgb,
-  SOURCE_FOV,
-  SOURCE_WIDTH_FACTOR,
-  sourceAngle,
-  tintOf,
-} from './slow-light-math';
+import { aberrate, type Dir, dopplerAlong, MAX_BETA, type Motion, SOURCE_WIDTH_FACTOR } from './slow-light-math';
+import { DOPPLER_STEPS, dopplerIndex, linearToSrgbByte, SHIFT_MATRICES, SRGB_TO_LINEAR } from './spectrum';
+
+/** Grid points are this many frame pixels apart: the map is exact there and bilinear in between. */
+export const GRID_PX = 8;
+/** The source is fitted to the widest direction any motion at MAX_BETA reads, plus this much. */
+const FIT_MARGIN = 1.02;
+/** Motion directions tried when fitting, degrees apart. */
+const FIT_STEP_DEG = 5;
+
+/** Where a source point shows in the frame, and how much larger it is drawn there. */
+export interface Shown {
+  x: number;
+  y: number;
+  scale: number;
+}
 
 export interface Bend {
-  /** Per frame column: the source column it reads. */
-  readonly sourceCol: Int32Array;
-  /** Per frame column: how much taller things are drawn than in the source (k). */
-  readonly rowScale: Float64Array;
-  readonly gainR: Float32Array;
-  readonly gainG: Float32Array;
-  readonly gainB: Float32Array;
+  /** Grid points per row and per column: `gridCols × gridRows`, row-major. */
+  readonly gridCols: number;
+  readonly gridRows: number;
+  /** Per grid point: the source pixel position (fractional) it reads, and its Doppler factor's table index. */
+  readonly gridX: Float32Array;
+  readonly gridY: Float32Array;
+  readonly gridD: Float32Array;
   /** The source columns [readFrom, readTo) the frame reads: the room need be drawn only there. */
   readonly readFrom: number;
   readonly readTo: number;
   /** The source frame for `output`: the same object until the output's size or FOV changes. */
   fit(output: Framebuffer): Framebuffer;
-  /** Fills the column tables for `output` and `motion`; a no-op when neither changed. */
+  /** Fills the grid for `output` and `motion`; a no-op when neither changed. */
   aim(output: Framebuffer, motion: Motion): void;
-  /** Draws `source`, bent and tinted, into `output`. */
+  /** Draws `source`, bent and shifted in colour, into `output`. */
   apply(source: Framebuffer, output: Framebuffer): void;
-  /** The frame x (columns, fractional) a source x lands at; outside [0, width) when the frame doesn't show it. */
-  toOutputX(sourceX: number): number;
-  /** The height scale at frame x. */
-  scaleAt(outputX: number): number;
+  /** Where source point (x, y) shows in the frame; false when the frame doesn't show it. */
+  toOutput(sourceX: number, sourceY: number, out: Shown): boolean;
 }
 
 const projOf = (fb: Pick<Framebuffer, 'width' | 'fov'>) => fb.width / 2 / Math.tan(fb.fov / 2);
 
+/** The direction frame pixel position (x, y) looks along, for a frame of this size and projection. */
+function lookAlong(x: number, y: number, width: number, height: number, proj: number, out: Dir): Dir {
+  const dy = (x - width / 2) / proj;
+  const dz = (y - height / 2) / proj;
+  const length = Math.hypot(1, dy, dz);
+  out.x = 1 / length;
+  out.y = dy / length;
+  out.z = dz / length;
+  return out;
+}
+
+/** The grid's positions along one axis of `size` pixels: every GRID_PX, and the far edge. */
+function gridPositions(size: number): Float32Array {
+  const count = Math.ceil(size / GRID_PX) + 1;
+  return Float32Array.from({ length: count }, (_, i) => Math.min(i * GRID_PX, size));
+}
+
 export function createBend(): Bend {
   let source: Framebuffer | null = null;
   let fittedTo = { width: 0, height: 0, fov: 0 };
-  let sourceCol = new Int32Array(0);
-  /** The source x each frame column's centre reads, unrounded: toOutputX searches it. */
-  let sourceX = new Float64Array(0);
-  let rowScale = new Float64Array(0);
-  let gainR = new Float32Array(0);
-  let gainG = new Float32Array(0);
-  let gainB = new Float32Array(0);
+  let projOut = 1;
+  let projSrc = 1;
+  let colsAt: Float32Array = new Float32Array(0);
+  let rowsAt: Float32Array = new Float32Array(0);
+  let gridX = new Float32Array(0);
+  let gridY = new Float32Array(0);
+  let gridD = new Float32Array(0);
+  /** Per frame column: the source column read at the eye row, for the frame's zbuffer. */
+  let zbufferCol = new Int32Array(0);
+  /** One row of grid values, interpolated down to the pixel row being drawn. */
+  let rowX = new Float32Array(0);
+  let rowY = new Float32Array(0);
+  let rowD = new Float32Array(0);
   let readFrom = 0;
   let readTo = 0;
   let aimedBeta = Number.NaN;
   let aimedAngle = Number.NaN;
-  const gain: Rgb = { r: 1, g: 1, b: 1 };
+  const seen: Dir = { x: 0, y: 0, z: 0 };
+  const from: Dir = { x: 0, y: 0, z: 0 };
+
+  /** The widest |y/x| and |z/x| of the source directions any motion at MAX_BETA reads along the frame's border. */
+  const widestRead = (width: number, height: number, proj: number) => {
+    let across = 0;
+    let down = 0;
+    for (let deg = 0; deg < 360; deg += FIT_STEP_DEG) {
+      const angle = (deg * Math.PI) / 180;
+      for (let t = 0; t <= 1; t += 1 / 64) {
+        for (const [x, y] of [
+          [t * width, 0],
+          [t * width, height],
+          [0, t * height],
+          [width, t * height],
+        ] as const) {
+          aberrate(lookAlong(x, y, width, height, proj, seen), angle, MAX_BETA, from);
+          across = Math.max(across, Math.abs(from.y / from.x));
+          down = Math.max(down, Math.abs(from.z / from.x));
+        }
+      }
+    }
+    return { across: across * FIT_MARGIN, down: down * FIT_MARGIN };
+  };
 
   const fit = (output: Framebuffer): Framebuffer => {
     const same =
@@ -61,34 +113,43 @@ export function createBend(): Bend {
     if (same && source) {
       return source;
     }
-    const fitted = createFramebuffer(output.width * SOURCE_WIDTH_FACTOR, output.height, SOURCE_FOV);
+    projOut = projOf(output);
+    const widest = widestRead(output.width, output.height, projOut);
+    const width = output.width * SOURCE_WIDTH_FACTOR;
+    projSrc = width / 2 / widest.across;
+    const height = Math.ceil(2 * projSrc * widest.down);
+    const fitted = createFramebuffer(width, height, 2 * Math.atan(widest.across));
     source = fitted;
     fittedTo = { width: output.width, height: output.height, fov: output.fov };
-    sourceCol = new Int32Array(output.width);
-    sourceX = new Float64Array(output.width);
-    rowScale = new Float64Array(output.width);
-    gainR = new Float32Array(output.width);
-    gainG = new Float32Array(output.width);
-    gainB = new Float32Array(output.width);
+    colsAt = gridPositions(output.width);
+    rowsAt = gridPositions(output.height);
+    const points = colsAt.length * rowsAt.length;
+    gridX = new Float32Array(points);
+    gridY = new Float32Array(points);
+    gridD = new Float32Array(points);
+    zbufferCol = new Int32Array(output.width);
+    rowX = new Float32Array(colsAt.length);
+    rowY = new Float32Array(colsAt.length);
+    rowD = new Float32Array(colsAt.length);
     aimedBeta = Number.NaN;
     return fitted;
   };
 
   const bend: Bend = {
-    get sourceCol() {
-      return sourceCol;
+    get gridCols() {
+      return colsAt.length;
     },
-    get rowScale() {
-      return rowScale;
+    get gridRows() {
+      return rowsAt.length;
     },
-    get gainR() {
-      return gainR;
+    get gridX() {
+      return gridX;
     },
-    get gainG() {
-      return gainG;
+    get gridY() {
+      return gridY;
     },
-    get gainB() {
-      return gainB;
+    get gridD() {
+      return gridD;
     },
     get readFrom() {
       return readFrom;
@@ -104,82 +165,120 @@ export function createBend(): Bend {
       }
       aimedBeta = motion.beta;
       aimedAngle = motion.angle;
-      const projOut = projOf(output);
-      const projSrc = projOf(src);
-      const halfOut = output.width / 2;
-      const halfSrc = src.width / 2;
-      readFrom = src.width;
-      readTo = 0;
+      let lowest = src.width;
+      let highest = 0;
+      const cols = colsAt.length;
+      for (let j = 0; j < rowsAt.length; j++) {
+        for (let i = 0; i < cols; i++) {
+          const x = colsAt[i] as number;
+          const y = rowsAt[j] as number;
+          lookAlong(x, y, output.width, output.height, projOut, seen);
+          aberrate(seen, motion.angle, motion.beta, from);
+          const sx = src.width / 2 + (projSrc * from.y) / from.x;
+          gridX[j * cols + i] = sx;
+          gridY[j * cols + i] = src.height / 2 + (projSrc * from.z) / from.x;
+          gridD[j * cols + i] = dopplerIndex(dopplerAlong(seen, motion.angle, motion.beta));
+          lowest = Math.min(lowest, sx);
+          highest = Math.max(highest, sx);
+        }
+      }
+      readFrom = Math.max(0, Math.floor(lowest) - 1);
+      readTo = Math.min(src.width, Math.ceil(highest) + 2);
       for (let col = 0; col < output.width; col++) {
-        const seen = Math.atan((col + 0.5 - halfOut) / projOut);
-        const from = sourceAngle(seen, motion.angle, motion.beta);
-        const x = halfSrc + Math.tan(from) * projSrc;
-        sourceX[col] = x;
-        const read = Math.min(src.width - 1, Math.max(0, Math.floor(x)));
-        sourceCol[col] = read;
-        readFrom = Math.min(readFrom, read);
-        readTo = Math.max(readTo, read + 1);
-        rowScale[col] = (projOut * Math.cos(from)) / (projSrc * Math.cos(seen));
-        tintOf(dopplerFactor(seen, motion.angle, motion.beta), gain);
-        gainR[col] = gain.r;
-        gainG[col] = gain.g;
-        gainB[col] = gain.b;
+        lookAlong(col + 0.5, output.height / 2, output.width, output.height, projOut, seen);
+        aberrate(seen, motion.angle, motion.beta, from);
+        const sx = src.width / 2 + (projSrc * from.y) / from.x;
+        zbufferCol[col] = Math.min(src.width - 1, Math.max(0, Math.floor(sx)));
       }
     },
     apply(src, output) {
       const { width, height } = output;
-      const half = height / 2;
-      const lastRow = src.height - 1;
+      const cols = colsAt.length;
+      const lastSrcX = src.width - 1;
+      const lastSrcY = src.height - 1;
+      const srcPixels = src.pixels;
       const out = output.pixels;
-      const pixels = src.pixels;
+      const shifting = aimedBeta !== 0;
       for (let col = 0; col < width; col++) {
-        output.zbuffer[col] = src.zbuffer[sourceCol[col] as number] as number;
+        output.zbuffer[col] = src.zbuffer[zbufferCol[col] as number] as number;
       }
       for (let y = 0; y < height; y++) {
-        const fromMiddle = y + 0.5 - half;
+        const centreY = y + 0.5;
+        const j = Math.min(rowsAt.length - 2, Math.floor(centreY / GRID_PX));
+        const top = rowsAt[j] as number;
+        const ty = (centreY - top) / ((rowsAt[j + 1] as number) - top);
+        for (let i = 0; i < cols; i++) {
+          const a = j * cols + i;
+          const b = a + cols;
+          rowX[i] = (gridX[a] as number) + ((gridX[b] as number) - (gridX[a] as number)) * ty;
+          rowY[i] = (gridY[a] as number) + ((gridY[b] as number) - (gridY[a] as number)) * ty;
+          rowD[i] = (gridD[a] as number) + ((gridD[b] as number) - (gridD[a] as number)) * ty;
+        }
         const row = y * width;
-        for (let col = 0; col < width; col++) {
-          const sy = Math.floor(half + fromMiddle / (rowScale[col] as number));
-          const srcRow = sy < 0 ? 0 : sy > lastRow ? lastRow : sy;
-          const c = pixels[srcRow * src.width + (sourceCol[col] as number)] as number;
-          const r = Math.min(255, (c & 0xff) * (gainR[col] as number));
-          const g = Math.min(255, ((c >>> 8) & 0xff) * (gainG[col] as number));
-          const b = Math.min(255, ((c >>> 16) & 0xff) * (gainB[col] as number));
-          out[row + col] = ((c & 0xff000000) | (b << 16) | (g << 8) | r) >>> 0;
+        for (let x = 0; x < width; x++) {
+          const centreX = x + 0.5;
+          const i = Math.min(cols - 2, Math.floor(centreX / GRID_PX));
+          const left = colsAt[i] as number;
+          const tx = (centreX - left) / ((colsAt[i + 1] as number) - left);
+          const sx = Math.floor((rowX[i] as number) + ((rowX[i + 1] as number) - (rowX[i] as number)) * tx);
+          const sy = Math.floor((rowY[i] as number) + ((rowY[i + 1] as number) - (rowY[i] as number)) * tx);
+          const c = srcPixels[
+            (sy < 0 ? 0 : sy > lastSrcY ? lastSrcY : sy) * src.width + (sx < 0 ? 0 : sx > lastSrcX ? lastSrcX : sx)
+          ] as number;
+          if (!shifting) {
+            out[row + x] = c;
+            continue;
+          }
+          const d = Math.round((rowD[i] as number) + ((rowD[i + 1] as number) - (rowD[i] as number)) * tx);
+          const m = (d < 0 ? 0 : d >= DOPPLER_STEPS ? DOPPLER_STEPS - 1 : d) * 9;
+          const r = SRGB_TO_LINEAR[c & 0xff] as number;
+          const g = SRGB_TO_LINEAR[(c >>> 8) & 0xff] as number;
+          const b = SRGB_TO_LINEAR[(c >>> 16) & 0xff] as number;
+          const outR = linearToSrgbByte(
+            (SHIFT_MATRICES[m] as number) * r +
+              (SHIFT_MATRICES[m + 1] as number) * g +
+              (SHIFT_MATRICES[m + 2] as number) * b
+          );
+          const outG = linearToSrgbByte(
+            (SHIFT_MATRICES[m + 3] as number) * r +
+              (SHIFT_MATRICES[m + 4] as number) * g +
+              (SHIFT_MATRICES[m + 5] as number) * b
+          );
+          const outB = linearToSrgbByte(
+            (SHIFT_MATRICES[m + 6] as number) * r +
+              (SHIFT_MATRICES[m + 7] as number) * g +
+              (SHIFT_MATRICES[m + 8] as number) * b
+          );
+          out[row + x] = ((c & 0xff000000) | (outB << 16) | (outG << 8) | outR) >>> 0;
         }
       }
     },
-    toOutputX(x) {
-      const n = sourceX.length;
-      if (n < 2) {
-        return Number.NaN;
+    toOutput(sourceX, sourceY, out) {
+      if (source === null || Number.isNaN(aimedBeta)) {
+        return false;
       }
-      const first = sourceX[0] as number;
-      const last = sourceX[n - 1] as number;
-      // Past either end the table runs on at its end's slope, so what the frame doesn't show lands outside it.
-      if (x <= first) {
-        return 0.5 + (x - first) / ((sourceX[1] as number) - first);
+      const { width, height } = fittedTo;
+      const place = (x: number, y: number) => {
+        lookAlong(x, y, source?.width ?? 0, source?.height ?? 0, projSrc, from);
+        aberrate(from, aimedAngle, -aimedBeta, seen);
+        return seen.x > 0;
+      };
+      if (!place(sourceX, sourceY)) {
+        return false;
       }
-      if (x >= last) {
-        return n - 0.5 + (x - last) / (last - (sourceX[n - 2] as number));
+      out.x = width / 2 + (projOut * seen.y) / seen.x;
+      out.y = height / 2 + (projOut * seen.z) / seen.x;
+      if (!(out.x >= 0 && out.x < width)) {
+        return false;
       }
-      let lo = 0;
-      let hi = n - 1;
-      while (hi - lo > 1) {
-        const mid = (lo + hi) >> 1;
-        if ((sourceX[mid] as number) <= x) {
-          lo = mid;
-        } else {
-          hi = mid;
-        }
-      }
-      const a = sourceX[lo] as number;
-      const b = sourceX[hi] as number;
-      return lo + 0.5 + (x - a) / (b - a);
-    },
-    scaleAt(x) {
-      const col = Math.min(rowScale.length - 1, Math.max(0, Math.floor(x)));
-      return rowScale[col] ?? 1;
+      const shownX = out.x;
+      const shownY = out.y;
+      // How much taller things are drawn here: one source row further down, in frame rows.
+      place(sourceX, sourceY + 1);
+      out.scale = Math.abs(height / 2 + (projOut * seen.z) / seen.x - shownY);
+      out.x = shownX;
+      out.y = shownY;
+      return true;
     },
   };
   return bend;

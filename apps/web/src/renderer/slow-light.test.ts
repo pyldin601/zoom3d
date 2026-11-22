@@ -1,63 +1,45 @@
 import { FOV_TALL, FOV_WIDE } from '@zoom3d/shared';
 import { expect, test } from 'vitest';
 import { createFramebuffer, rgb } from './framebuffer';
-import { createBend } from './slow-light';
-import { type Motion, SOURCE_FOV } from './slow-light-math';
+import { createBend, GRID_PX, type Shown } from './slow-light';
+import { aberrate, type Dir, type Motion } from './slow-light-math';
 
 const still: Motion = { beta: 0, angle: 0 };
-const proj = (width: number, fov: number) => width / 2 / Math.tan(fov / 2);
 const channels = (c: number) => ({ r: c & 0xff, g: (c >>> 8) & 0xff, b: (c >>> 16) & 0xff });
+const wide = () => createFramebuffer(640, 360, FOV_WIDE);
 
-test('fit keeps one source frame until the output changes', () => {
+test('fit keeps one source frame until the output changes, taller and wider than the frame', () => {
   const bend = createBend();
-  const out = createFramebuffer(640, 360, FOV_WIDE);
+  const out = wide();
   const source = bend.fit(out);
   expect(bend.fit(out)).toBe(source);
-  expect([source.width, source.height, source.fov]).toEqual([1280, 360, SOURCE_FOV]);
-  expect(bend.fit(createFramebuffer(640, 360, FOV_TALL))).not.toBe(source);
+  expect(source.width).toBe(1280);
+  expect(source.height).toBeGreaterThan(360);
+  expect(source.fov).toBeGreaterThan(FOV_WIDE);
+  expect(bend.fit(createFramebuffer(360, 640, FOV_TALL))).not.toBe(source);
 });
 
-test('at rest the tables only widen the view', () => {
-  const bend = createBend();
-  const out = createFramebuffer(640, 360, FOV_WIDE);
-  bend.aim(out, still);
-  for (let col = 0; col < 640; col++) {
-    expect([bend.gainR.at(col), bend.gainG.at(col), bend.gainB.at(col)]).toEqual([1, 1, 1]);
-    if (col > 0) {
-      expect(bend.sourceCol.at(col)).toBeGreaterThanOrEqual(bend.sourceCol.at(col - 1) ?? 0);
-    }
-  }
-  expect(Math.abs((bend.sourceCol.at(320) ?? 0) - 640)).toBeLessThanOrEqual(1);
-  expect(bend.rowScale.at(320)).toBeCloseTo(proj(640, FOV_WIDE) / proj(1280, SOURCE_FOV), 2);
-});
-
-test('moving forward reads the edges from further out', () => {
-  const bend = createBend();
-  const out = createFramebuffer(640, 360, FOV_WIDE);
-  bend.aim(out, still);
-  const atRest = bend.sourceCol.at(639) ?? 0;
-  bend.aim(out, { beta: 0.5, angle: 0 });
-  expect(bend.sourceCol.at(639)).toBeGreaterThan(atRest);
-});
-
-test('the tables stay inside the source frame at the cap, whichever way the motion points', () => {
-  for (const fov of [FOV_WIDE, FOV_TALL]) {
+test('every grid point reads inside the source at the cap, whichever way the motion points', () => {
+  for (const out of [wide(), createFramebuffer(360, 640, FOV_TALL)]) {
     const bend = createBend();
-    const out = createFramebuffer(640, 360, fov);
-    const width = bend.fit(out).width;
+    const source = bend.fit(out);
     for (let deg = 0; deg < 360; deg += 15) {
       bend.aim(out, { beta: 0.5, angle: (deg * Math.PI) / 180 });
-      for (const sc of bend.sourceCol) {
-        expect(sc).toBeGreaterThanOrEqual(0);
-        expect(sc).toBeLessThan(width);
+      for (const x of bend.gridX) {
+        expect(x).toBeGreaterThanOrEqual(0);
+        expect(x).toBeLessThan(source.width);
+      }
+      for (const y of bend.gridY) {
+        expect(y).toBeGreaterThanOrEqual(0);
+        expect(y).toBeLessThan(source.height);
       }
     }
   }
 });
 
-test('apply copies a flat source unchanged at rest', () => {
+test('at rest a flat source is copied unchanged', () => {
   const bend = createBend();
-  const out = createFramebuffer(640, 360, FOV_WIDE);
+  const out = wide();
   const source = bend.fit(out);
   const colour = rgb(90, 140, 200);
   source.pixels.fill(colour);
@@ -66,44 +48,93 @@ test('apply copies a flat source unchanged at rest', () => {
   expect(out.pixels.every((p) => p === colour)).toBe(true);
 });
 
-test('apply tints ahead blue and behind red', () => {
+test('between grid points the source position is within half a pixel of the exact map', () => {
   const bend = createBend();
-  const out = createFramebuffer(640, 360, FOV_WIDE);
+  const out = wide();
   const source = bend.fit(out);
-  source.pixels.fill(rgb(120, 120, 120));
-  const centre = 180 * 640 + 320;
-  bend.aim(out, { beta: 0.5, angle: 0 });
-  bend.apply(source, out);
-  const ahead = channels(out.pixels.at(centre) ?? 0);
-  expect(ahead.b).toBeGreaterThan(ahead.r);
-  bend.aim(out, { beta: 0.5, angle: Math.PI });
-  bend.apply(source, out);
-  const behind = channels(out.pixels.at(centre) ?? 0);
-  expect(behind.r).toBeGreaterThan(behind.b);
-});
-
-test('toOutputX inverts the column table', () => {
-  const bend = createBend();
-  const out = createFramebuffer(640, 360, FOV_WIDE);
-  bend.aim(out, { beta: 0.4, angle: 0.7 });
-  for (const col of [5, 100, 320, 500, 630]) {
-    expect(Math.abs(bend.toOutputX((bend.sourceCol.at(col) ?? 0) + 0.5) - (col + 0.5))).toBeLessThanOrEqual(1.5);
+  const motion = { beta: 0.5, angle: 0.6 };
+  bend.aim(out, motion);
+  const projOut = 320 / Math.tan(FOV_WIDE / 2);
+  const projSrc = source.width / 2 / Math.tan(source.fov / 2);
+  const cols = bend.gridCols;
+  for (const [i, j] of [
+    [3, 4],
+    [40, 22],
+    [70, 40],
+  ] as const) {
+    const x = i * GRID_PX + GRID_PX / 2;
+    const y = j * GRID_PX + GRID_PX / 2;
+    const l = Math.hypot(1, (x - 320) / projOut, (y - 180) / projOut);
+    const n: Dir = aberrate(
+      { x: 1 / l, y: (x - 320) / projOut / l, z: (y - 180) / projOut / l },
+      motion.angle,
+      motion.beta,
+      { x: 0, y: 0, z: 0 }
+    );
+    const exactX = source.width / 2 + (projSrc * n.y) / n.x;
+    const at = (k: number) => bend.gridX.at(k) ?? 0;
+    const k = j * cols + i;
+    const interpolated = (at(k) + at(k + 1) + at(k + cols) + at(k + cols + 1)) / 4;
+    expect(Math.abs(interpolated - exactX)).toBeLessThan(0.5);
   }
 });
 
-test('toOutputX puts a source x the frame does not show outside the frame', () => {
+test('straight vertical lines bend: one frame column reads different source columns up and down', () => {
   const bend = createBend();
-  const out = createFramebuffer(640, 360, FOV_WIDE);
-  const width = bend.fit(out).width;
-  bend.aim(out, still);
-  expect(bend.toOutputX(0)).toBeLessThan(0);
-  expect(bend.toOutputX(width - 1)).toBeGreaterThanOrEqual(640);
+  bend.aim(wide(), { beta: 0.5, angle: 0 });
+  const cols = bend.gridCols;
+  const column = 10;
+  const top = bend.gridX.at(column) ?? 0;
+  const middle = bend.gridX.at(Math.floor(bend.gridRows / 2) * cols + column) ?? 0;
+  expect(Math.abs(top - middle)).toBeGreaterThan(2);
 });
 
-test('the source columns read span only what the frame shows', () => {
+test('ahead is brighter and bluer than behind, and a white source stays a valid colour', () => {
   const bend = createBend();
-  const out = createFramebuffer(640, 360, FOV_WIDE);
-  bend.aim(out, { beta: 0.3, angle: 0.4 });
-  expect(bend.readFrom).toBe(Math.min(...bend.sourceCol));
-  expect(bend.readTo).toBe(Math.max(...bend.sourceCol) + 1);
+  const out = wide();
+  const source = bend.fit(out);
+  const centre = 180 * 640 + 320;
+  source.pixels.fill(rgb(110, 110, 110));
+  bend.aim(out, { beta: 0.5, angle: 0 });
+  bend.apply(source, out);
+  const ahead = channels(out.pixels.at(centre) ?? 0);
+  bend.aim(out, { beta: 0.5, angle: Math.PI });
+  bend.apply(source, out);
+  const behind = channels(out.pixels.at(centre) ?? 0);
+  expect(ahead.r + ahead.g + ahead.b).toBeGreaterThan(behind.r + behind.g + behind.b);
+  expect(ahead.b).toBeGreaterThan(ahead.r);
+  source.pixels.fill(rgb(255, 255, 255));
+  bend.aim(out, { beta: 0.5, angle: 0 });
+  bend.apply(source, out);
+  const white = channels(out.pixels.at(centre) ?? 0);
+  expect(Math.max(white.r, white.g, white.b)).toBeLessThanOrEqual(255);
+  expect(white.b).toBeGreaterThan(200);
+});
+
+test('toOutput sends a grid point’s source back to it, and the unseen corner nowhere', () => {
+  const bend = createBend();
+  const out = wide();
+  bend.fit(out);
+  bend.aim(out, { beta: 0.4, angle: 0.7 });
+  const shown: Shown = { x: 0, y: 0, scale: 0 };
+  const cols = bend.gridCols;
+  for (const [i, j] of [
+    [5, 5],
+    [40, 22],
+    [75, 40],
+  ] as const) {
+    const k = j * cols + i;
+    expect(bend.toOutput(bend.gridX.at(k) ?? 0, bend.gridY.at(k) ?? 0, shown)).toBe(true);
+    expect(Math.abs(shown.x - i * GRID_PX)).toBeLessThan(1);
+    expect(Math.abs(shown.y - j * GRID_PX)).toBeLessThan(1);
+    expect(shown.scale).toBeGreaterThan(0);
+  }
+  expect(bend.toOutput(0, 0, shown)).toBe(false);
+});
+
+test('the read range spans the grid’s source columns', () => {
+  const bend = createBend();
+  bend.aim(wide(), { beta: 0.3, angle: 0.4 });
+  expect(bend.readFrom).toBeLessThanOrEqual(Math.min(...bend.gridX));
+  expect(bend.readTo).toBeGreaterThan(Math.max(...bend.gridX));
 });

@@ -2,7 +2,7 @@
 import type { PlayerState } from '@zoom3d/shared';
 import { createView, setView } from './camera';
 import type { Framebuffer } from './framebuffer';
-import type { Bend } from './slow-light';
+import type { Bend, Shown } from './slow-light';
 import { type Projection, projectSprite } from './sprites';
 
 /** Names show only for people this close (6d spec §4): a crowd of 100 labels is unreadable. */
@@ -25,6 +25,7 @@ export interface NameLabel {
 
 const frameView = createView();
 const projection: Projection = { screenX: 0, depth: 0, size: 0 };
+const shown: Shown = { x: 0, y: 0, scale: 1 };
 
 export function inLabelRange(p: { x: number; y: number }, x: number, y: number): boolean {
   return Math.hypot(x - p.x, y - p.y) <= LABEL_TILES;
@@ -58,13 +59,15 @@ export function drawLabels(
     ) {
       continue;
     }
-    const screenX = bend ? bend.toOutputX(projection.screenX) : projection.screenX;
-    if (bend && !(screenX >= 0 && screenX < fb.width)) {
+    // Through a bend the disc's centre shows somewhere else in the frame, and larger or smaller.
+    if (bend && !bend.toOutput(projection.screenX, drawn.height / 2, shown)) {
       continue;
     }
-    const size = bend ? projection.size * bend.scaleAt(screenX) : projection.size;
+    const screenX = bend ? shown.x : projection.screenX;
+    const centreY = bend ? shown.y : fb.height / 2;
+    const size = bend ? projection.size * shown.scale : projection.size;
     const x = screenX * hudPerPixel;
-    const y = (fb.height / 2 - size / 2) * hudPerPixel - sizingHeight * GAP_ABOVE_DISC;
+    const y = (centreY - size / 2) * hudPerPixel - sizingHeight * GAP_ABOVE_DISC;
     const text = o.mic ? o.name : `🔇 ${o.name}`;
     ctx.strokeStyle = OUTLINE_COLOUR;
     ctx.strokeText(text, x, y);
