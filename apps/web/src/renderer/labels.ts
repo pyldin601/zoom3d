@@ -60,14 +60,18 @@ export function drawLabels(
       continue;
     }
     // Through a bend the disc's centre shows somewhere else in the frame, and larger or smaller.
-    if (bend && !bend.toOutput(projection.screenX, drawn.height / 2, shown)) {
-      continue;
+    if (bend) {
+      if (!bend.toOutput(projection.screenX, drawn.height / 2, shown)) {
+        continue;
+      }
+    } else {
+      shown.x = projection.screenX;
+      shown.y = fb.height / 2;
+      shown.scale = 1;
     }
-    const screenX = bend ? shown.x : projection.screenX;
-    const centreY = bend ? shown.y : fb.height / 2;
-    const size = bend ? projection.size * shown.scale : projection.size;
-    const x = screenX * hudPerPixel;
-    const y = (centreY - size / 2) * hudPerPixel - sizingHeight * GAP_ABOVE_DISC;
+    const size = projection.size * shown.scale;
+    const x = shown.x * hudPerPixel;
+    const y = (shown.y - size / 2) * hudPerPixel - sizingHeight * GAP_ABOVE_DISC;
     const text = o.mic ? o.name : `🔇 ${o.name}`;
     ctx.strokeStyle = OUTLINE_COLOUR;
     ctx.strokeText(text, x, y);

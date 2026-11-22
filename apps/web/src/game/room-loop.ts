@@ -10,6 +10,7 @@ import {
   JUMP_TILES,
   PLAYER_RADIUS,
   type PlayerState,
+  type Point,
 } from '@zoom3d/shared';
 import { ownLoad } from '../audio/scooter-sounds';
 import { HIDDEN_TICK_MS } from '../audio/ticker';
@@ -158,12 +159,12 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   };
 
   const ownLabel: NameLabel = { shownX: 0, shownY: 0, name: '', mic: false };
-  /** The own label, named as the others see it, where a portal shows the own spot; else null. */
-  const labelOwnImage = (room: Room | null): NameLabel | null => {
+  /** The own label, named as the others see it, where a portal shows the own `spot`; else null. */
+  const labelOwnImage = (room: Room | null, spot: Point): NameLabel | null => {
     if (
       scene.self === null ||
       room === null ||
-      !placeOwnLabel(o.map, scene.portals ?? null, localPlayer.eye(), ownLabel, ownSeen)
+      !placeOwnLabel(o.map, scene.portals ?? null, localPlayer.eye(), ownLabel, spot)
     ) {
       return null;
     }
@@ -341,8 +342,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     // Only windows draw the own disc, and reading its face back stalls on the GPU: read it only while one shows it.
     scene.self = scene.portals && isConnected(room) ? localPlayer.avatar(now, ringColour, ownAvatarShown()) : null;
     scene.ownScooter = scene.self ? localPlayer.scooter() : null;
-    delayOwnImage(now);
-    scene.ownLabel = labelOwnImage(room);
+    scene.ownLabel = labelOwnImage(room, delayOwnImage(now));
     scene.firstPerson = isConnected(room) ? localPlayer.firstPerson(now) : null;
     return scene;
   };

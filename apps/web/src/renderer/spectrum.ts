@@ -32,8 +32,8 @@ function basis(j: number, nm: number): number {
     [IR_END_NM, 0],
   ];
   for (let k = 1; k < nodes.length; k++) {
-    const [x0, y0] = nodes[k - 1] as readonly [number, number];
-    const [x1, y1] = nodes[k] as readonly [number, number];
+    const [x0, y0] = nodes.at(k - 1) ?? [0, 0];
+    const [x1, y1] = nodes.at(k) ?? [0, 0];
     if (nm >= x0 && nm <= x1) {
       return y0 + ((y1 - y0) * (nm - x0)) / (x1 - x0);
     }
@@ -49,7 +49,7 @@ function basis(j: number, nm: number): number {
 export function shiftMatrix(d: number, out: Float32Array): Float32Array {
   const gain = d ** 5;
   for (let i = 0; i < 3; i++) {
-    const from = (SAMPLE_NM[i as 0 | 1 | 2] as number) * d;
+    const from = (SAMPLE_NM.at(i) ?? 0) * d;
     for (let j = 0; j < 3; j++) {
       out[i * 3 + j] = gain * basis(j, from);
     }

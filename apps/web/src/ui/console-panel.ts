@@ -102,7 +102,7 @@ export function showConsolePanel(root: HTMLElement, opts: ConsolePanelOptions | 
 /** The lighting mode, the portal look and the light, sharing the settings each change starts from. */
 function renderRows(opts: ConsolePanelOptions['render']): HTMLElement[] {
   let current = opts.settings;
-  const choose = (patch: Partial<Record<keyof RenderSettings, string | number>>) => {
+  const choose = (patch: Partial<RenderSettings>) => {
     current = normalizeRenderSettings({ ...current, ...patch });
     opts.onChange(current);
   };
@@ -140,14 +140,19 @@ function selectRow<T extends string>(
   values: readonly T[],
   names: Record<T, string>,
   selected: T,
-  onChange: (value: string) => void
+  onChange: (value: T) => void
 ): HTMLElement {
   const select = el('select');
   for (const value of values) {
     select.append(el('option', { value, textContent: names[value] }));
   }
   select.value = selected;
-  select.addEventListener('change', () => onChange(select.value));
+  select.addEventListener('change', () => {
+    const chosen = values.find((value) => value === select.value);
+    if (chosen !== undefined) {
+      onChange(chosen);
+    }
+  });
   const row = el('label');
   row.append(label, select);
   return row;

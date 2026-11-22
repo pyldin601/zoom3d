@@ -152,7 +152,7 @@ test('coming to rest changes nothing: a nearly still frame and a still one look 
   const nearlyStill = channels(out.pixels.at(180 * 640 + 320) ?? 0);
   bend.aim(out, still);
   bend.apply(source, out);
-  const still_ = channels(out.pixels.at(180 * 640 + 320) ?? 0);
-  expect(Math.abs(nearlyStill.r - still_.r)).toBeLessThanOrEqual(1);
-  expect(Math.abs(nearlyStill.b - still_.b)).toBeLessThanOrEqual(1);
+  const atRest = channels(out.pixels.at(180 * 640 + 320) ?? 0);
+  expect(Math.abs(nearlyStill.r - atRest.r)).toBeLessThanOrEqual(1);
+  expect(Math.abs(nearlyStill.b - atRest.b)).toBeLessThanOrEqual(1);
 });

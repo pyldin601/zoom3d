@@ -2,9 +2,11 @@
 // is read from the direction its light really came from (aberration, in both axes) and its colour seen through the
 // Doppler shift of its spectrum. The map is smooth, so it is exact on a coarse grid and interpolated in between.
 import { createFramebuffer, type Framebuffer } from './framebuffer';
-import { aberrate, type Dir, dopplerAlong, MAX_BETA, type Motion, SOURCE_WIDTH_FACTOR } from './slow-light-math';
+import { aberrate, type Dir, dopplerAlong, MAX_BETA, type Motion } from './slow-light-math';
 import { DOPPLER_STEPS, dopplerIndex, linearToSrgbByte, SHIFT_MATRICES, SRGB_TO_LINEAR } from './spectrum';
 
+/** The source frame is this many times the frame's width; soft is fine (owner, 2026-11-22). */
+const SOURCE_WIDTH_FACTOR = 2;
 /** Grid points are this many frame pixels apart: the map is exact there and bilinear in between. */
 export const GRID_PX = 8;
 /** The source is fitted to the widest direction any motion at MAX_BETA reads, plus this much. */
@@ -79,11 +81,18 @@ export function createBend(): Bend {
   let readTo = 0;
   let aimedBeta = Number.NaN;
   let aimedAngle = Number.NaN;
-  const seen: Dir = { x: 0, y: 0, z: 0 };
-  const from: Dir = { x: 0, y: 0, z: 0 };
+  /** Scratch directions: the one a pixel looks along, and the one its light came from. */
+  const lookDir: Dir = { x: 0, y: 0, z: 0 };
+  const sourceDir: Dir = { x: 0, y: 0, z: 0 };
+
+  /** Where light seen at frame position (x, y) came from, into `sourceDir`, for motion at `beta` toward `angle`. */
+  const readDirection = (x: number, y: number, width: number, height: number, angle: number, beta: number): Dir =>
+    aberrate(lookAlong(x, y, width, height, projOut, lookDir), angle, beta, sourceDir);
+  /** The source column a direction lands on, fractional. */
+  const sourceColumn = (dir: Dir, sourceWidth: number) => sourceWidth / 2 + (projSrc * dir.y) / dir.x;
 
   /** The widest |y/x| and |z/x| of the source directions any motion at MAX_BETA reads along the frame's border. */
-  const widestRead = (width: number, height: number, proj: number) => {
+  const widestRead = (width: number, height: number) => {
     let across = 0;
     let down = 0;
     for (let deg = 0; deg < 360; deg += FIT_STEP_DEG) {
@@ -95,9 +104,9 @@ export function createBend(): Bend {
           [0, t * height],
           [width, t * height],
         ] as const) {
-          aberrate(lookAlong(x, y, width, height, proj, seen), angle, MAX_BETA, from);
-          across = Math.max(across, Math.abs(from.y / from.x));
-          down = Math.max(down, Math.abs(from.z / from.x));
+          const dir = readDirection(x, y, width, height, angle, MAX_BETA);
+          across = Math.max(across, Math.abs(dir.y / dir.x));
+          down = Math.max(down, Math.abs(dir.z / dir.x));
         }
       }
     }
@@ -105,21 +114,17 @@ export function createBend(): Bend {
   };
 
   const fit = (output: Framebuffer): Framebuffer => {
-    const same =
-      source !== null &&
-      fittedTo.width === output.width &&
-      fittedTo.height === output.height &&
-      fittedTo.fov === output.fov;
-    if (same && source) {
+    const fitted = fittedTo.width === output.width && fittedTo.height === output.height && fittedTo.fov === output.fov;
+    if (source !== null && fitted) {
       return source;
     }
     projOut = projOf(output);
-    const widest = widestRead(output.width, output.height, projOut);
+    const widest = widestRead(output.width, output.height);
     const width = output.width * SOURCE_WIDTH_FACTOR;
     projSrc = width / 2 / widest.across;
     const height = Math.ceil(2 * projSrc * widest.down);
-    const fitted = createFramebuffer(width, height, 2 * Math.atan(widest.across));
-    source = fitted;
+    const made = createFramebuffer(width, height, 2 * Math.atan(widest.across));
+    source = made;
     fittedTo = { width: output.width, height: output.height, fov: output.fov };
     colsAt = gridPositions(output.width);
     rowsAt = gridPositions(output.height);
@@ -132,7 +137,36 @@ export function createBend(): Bend {
     rowY = new Float32Array(colsAt.length);
     rowD = new Float32Array(colsAt.length);
     aimedBeta = Number.NaN;
-    return fitted;
+    return made;
+  };
+
+  /** The frame's zbuffer, read from the source column each frame column shows at the eye row. */
+  const copyZbuffer = (src: Framebuffer, output: Framebuffer) => {
+    for (let col = 0; col < output.width; col++) {
+      output.zbuffer[col] = src.zbuffer[zbufferCol[col] as number] as number;
+    }
+  };
+
+  /** Fills rowX, rowY and rowD with the grid's values interpolated down to frame row `y`. */
+  const interpolateGridRow = (y: number) => {
+    const cols = colsAt.length;
+    const centreY = y + 0.5;
+    const j = Math.min(rowsAt.length - 2, Math.floor(centreY / GRID_PX));
+    const top = rowsAt[j] as number;
+    const ty = (centreY - top) / ((rowsAt[j + 1] as number) - top);
+    for (let i = 0; i < cols; i++) {
+      const a = j * cols + i;
+      const b = a + cols;
+      rowX[i] = (gridX[a] as number) + ((gridX[b] as number) - (gridX[a] as number)) * ty;
+      rowY[i] = (gridY[a] as number) + ((gridY[b] as number) - (gridY[a] as number)) * ty;
+      rowD[i] = (gridD[a] as number) + ((gridD[b] as number) - (gridD[a] as number)) * ty;
+    }
+  };
+
+  /** Where light from source point (x, y) is seen, into `lookDir`; false when it is behind the eye. */
+  const seenFrom = (src: Framebuffer, x: number, y: number) => {
+    aberrate(lookAlong(x, y, src.width, src.height, projSrc, sourceDir), aimedAngle, -aimedBeta, lookDir);
+    return lookDir.x > 0;
   };
 
   const bend: Bend = {
@@ -172,12 +206,11 @@ export function createBend(): Bend {
         for (let i = 0; i < cols; i++) {
           const x = colsAt[i] as number;
           const y = rowsAt[j] as number;
-          lookAlong(x, y, output.width, output.height, projOut, seen);
-          aberrate(seen, motion.angle, motion.beta, from);
-          const sx = src.width / 2 + (projSrc * from.y) / from.x;
+          const dir = readDirection(x, y, output.width, output.height, motion.angle, motion.beta);
+          const sx = sourceColumn(dir, src.width);
           gridX[j * cols + i] = sx;
-          gridY[j * cols + i] = src.height / 2 + (projSrc * from.z) / from.x;
-          gridD[j * cols + i] = dopplerIndex(dopplerAlong(seen, motion.angle, motion.beta));
+          gridY[j * cols + i] = src.height / 2 + (projSrc * dir.z) / dir.x;
+          gridD[j * cols + i] = dopplerIndex(dopplerAlong(lookDir, motion.angle, motion.beta));
           lowest = Math.min(lowest, sx);
           highest = Math.max(highest, sx);
         }
@@ -185,10 +218,8 @@ export function createBend(): Bend {
       readFrom = Math.max(0, Math.floor(lowest) - 1);
       readTo = Math.min(src.width, Math.ceil(highest) + 2);
       for (let col = 0; col < output.width; col++) {
-        lookAlong(col + 0.5, output.height / 2, output.width, output.height, projOut, seen);
-        aberrate(seen, motion.angle, motion.beta, from);
-        const sx = src.width / 2 + (projSrc * from.y) / from.x;
-        zbufferCol[col] = Math.min(src.width - 1, Math.max(0, Math.floor(sx)));
+        const dir = readDirection(col + 0.5, output.height / 2, output.width, output.height, motion.angle, motion.beta);
+        zbufferCol[col] = Math.min(src.width - 1, Math.max(0, Math.floor(sourceColumn(dir, src.width))));
       }
     },
     apply(src, output) {
@@ -198,21 +229,9 @@ export function createBend(): Bend {
       const lastSrcY = src.height - 1;
       const srcPixels = src.pixels;
       const out = output.pixels;
-      for (let col = 0; col < width; col++) {
-        output.zbuffer[col] = src.zbuffer[zbufferCol[col] as number] as number;
-      }
+      copyZbuffer(src, output);
       for (let y = 0; y < height; y++) {
-        const centreY = y + 0.5;
-        const j = Math.min(rowsAt.length - 2, Math.floor(centreY / GRID_PX));
-        const top = rowsAt[j] as number;
-        const ty = (centreY - top) / ((rowsAt[j + 1] as number) - top);
-        for (let i = 0; i < cols; i++) {
-          const a = j * cols + i;
-          const b = a + cols;
-          rowX[i] = (gridX[a] as number) + ((gridX[b] as number) - (gridX[a] as number)) * ty;
-          rowY[i] = (gridY[a] as number) + ((gridY[b] as number) - (gridY[a] as number)) * ty;
-          rowD[i] = (gridD[a] as number) + ((gridD[b] as number) - (gridD[a] as number)) * ty;
-        }
+        interpolateGridRow(y);
         const row = y * width;
         for (let x = 0; x < width; x++) {
           const centreX = x + 0.5;
@@ -249,30 +268,19 @@ export function createBend(): Bend {
       }
     },
     toOutput(sourceX, sourceY, out) {
-      if (source === null || Number.isNaN(aimedBeta)) {
+      const src = source;
+      if (src === null || Number.isNaN(aimedBeta) || !seenFrom(src, sourceX, sourceY)) {
         return false;
       }
       const { width, height } = fittedTo;
-      const place = (x: number, y: number) => {
-        lookAlong(x, y, source?.width ?? 0, source?.height ?? 0, projSrc, from);
-        aberrate(from, aimedAngle, -aimedBeta, seen);
-        return seen.x > 0;
-      };
-      if (!place(sourceX, sourceY)) {
-        return false;
-      }
-      out.x = width / 2 + (projOut * seen.y) / seen.x;
-      out.y = height / 2 + (projOut * seen.z) / seen.x;
+      out.x = width / 2 + (projOut * lookDir.y) / lookDir.x;
+      out.y = height / 2 + (projOut * lookDir.z) / lookDir.x;
       if (!(out.x >= 0 && out.x < width)) {
         return false;
       }
-      const shownX = out.x;
-      const shownY = out.y;
       // How much taller things are drawn here: one source row further down, in frame rows.
-      place(sourceX, sourceY + 1);
-      out.scale = Math.abs(height / 2 + (projOut * seen.z) / seen.x - shownY);
-      out.x = shownX;
-      out.y = shownY;
+      seenFrom(src, sourceX, sourceY + 1);
+      out.scale = Math.abs(height / 2 + (projOut * lookDir.z) / lookDir.x - out.y);
       return true;
     },
   };

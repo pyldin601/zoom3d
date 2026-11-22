@@ -3,8 +3,6 @@
 
 /** Beyond half of c the source view would need more than about 132° by 82°. */
 export const MAX_BETA = 0.5;
-/** The source frame is this many times the frame's width; soft is fine (owner, 2026-11-22). */
-export const SOURCE_WIDTH_FACTOR = 2;
 
 /** How fast the eye moves, as a fraction of c, and which way, in radians from its facing (positive to the right). */
 export interface Motion {
@@ -38,22 +36,22 @@ export interface Dir {
 export function aberrate(n: Dir, motionAngle: number, beta: number, out: Dir): Dir {
   const vx = Math.cos(motionAngle);
   const vy = Math.sin(motionAngle);
-  const seen = n.x * vx + n.y * vy;
-  const px = n.x - seen * vx;
-  const py = n.y - seen * vy;
+  const cosSeen = n.x * vx + n.y * vy;
+  const px = n.x - cosSeen * vx;
+  const py = n.y - cosSeen * vy;
   const pz = n.z;
-  const across = Math.hypot(px, py, pz);
-  if (beta === 0 || across < 1e-12) {
+  const offMotion = Math.hypot(px, py, pz);
+  if (beta === 0 || offMotion < 1e-12) {
     out.x = n.x;
     out.y = n.y;
     out.z = n.z;
     return out;
   }
-  const along = clamp((seen - beta) / (1 - beta * seen), -1, 1);
-  const side = Math.sqrt(1 - along * along) / across;
-  out.x = along * vx + side * px;
-  out.y = along * vy + side * py;
-  out.z = side * pz;
+  const cosFrom = clamp((cosSeen - beta) / (1 - beta * cosSeen), -1, 1);
+  const offScale = Math.sqrt(1 - cosFrom * cosFrom) / offMotion;
+  out.x = cosFrom * vx + offScale * px;
+  out.y = cosFrom * vy + offScale * py;
+  out.z = offScale * pz;
   return out;
 }
 

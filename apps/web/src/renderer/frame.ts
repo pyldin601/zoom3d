@@ -122,17 +122,9 @@ export function renderView(fb: Framebuffer, scene: RoomScene, seen?: Map<string,
     listWindowPeople(scene.people, scene.self);
     listWindowObjects(scene.objects, scene.ownScooter);
   }
-  if (bend) {
-    // Only the source columns the frame reads are drawn: the rest costs time and would count people off screen as seen.
-    bentPass.fromCol = bend.readFrom;
-    bentPass.toCol = bend.readTo;
-    scene.pass = bentPass;
-    drawPass(room, scene, glows, seen, 0);
-    scene.pass = undefined;
-    bend.apply(room, fb);
-  } else {
-    drawPass(room, scene, glows, seen, 0);
-  }
+  scene.pass = bend ? bentPassOf(bend) : undefined;
+  drawPass(room, scene, glows, seen, 0);
+  bend?.apply(room, fb);
   const windowsCounted = scene.portals !== null && seen !== undefined;
   if (windowsCounted) {
     seenThroughWindows.forEach(addToSeen, seen);
@@ -365,6 +357,13 @@ function takeDepthsBeyondWindows(fb: Framebuffer, scene: PassScene, level: numbe
 }
 
 const passOf = (scene: PassScene) => scene.pass ?? WHOLE_FRAME;
+
+/** Only the source columns the frame reads are drawn: the rest costs time and would count people off screen as seen. */
+function bentPassOf(bend: Bend): Pass {
+  bentPass.fromCol = bend.readFrom;
+  bentPass.toCol = bend.readTo;
+  return bentPass;
+}
 
 /** Makes the windows' frames match `fb`'s size and FOV: they are rebuilt only when it changes. */
 function fitWindowLevels(fb: Framebuffer): void {
