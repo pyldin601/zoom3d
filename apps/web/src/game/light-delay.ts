@@ -58,8 +58,9 @@ export interface Trail {
   push(t: number, x: number, y: number, angle: number): void;
 }
 
-export function createTrail(): Trail {
-  const buffer = new SnapshotBuffer(HISTORY_CAPACITY);
+/** A trail whose newest entry settles every `settleMs`, keeping `capacity` of them. */
+export function createTrail(settleMs = FANOUT_TICK_MS, capacity = HISTORY_CAPACITY): Trail {
+  const buffer = new SnapshotBuffer(capacity);
   const entry = { t: 0, x: 0, y: 0, angle: 0 };
   /** When the entry before the newest was made. */
   let settledAt = Number.NEGATIVE_INFINITY;
@@ -67,7 +68,7 @@ export function createTrail(): Trail {
     buffer,
     push(t, x, y, angle) {
       const head = buffer.latest();
-      if (head && t >= head.t && t - settledAt < FANOUT_TICK_MS) {
+      if (head && t >= head.t && t - settledAt < settleMs) {
         head.t = t;
         head.x = x;
         head.y = y;

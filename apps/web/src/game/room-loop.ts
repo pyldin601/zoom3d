@@ -217,7 +217,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     return chooseUse(using);
   };
 
-  /** Steps the predicted ball, rolls its pattern by how far it went, and plays what it hit. */
+  /** Steps the predicted ball and plays what it hit. */
   const stepBall = (room: Room, now: number, dt: number) => {
     const { pose } = localPlayer;
     const walked = selfSeen && dt > 0 && Math.hypot(pose.x - self.x, pose.y - self.y) <= JUMP_TILES;
@@ -234,25 +234,31 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       room.objectSounds.dribble(ball.id);
     }
     o.ballInReach(connected && ball !== null && Math.hypot(ball.x - pose.x, ball.y - pose.y) <= BALL_KICK_REACH);
-    if (!ball) {
-      return;
-    }
-    if (rolling?.id !== ball.id) {
-      roll = createBallRoll();
-      rolling = { id: ball.id, x: ball.x, y: ball.y };
-      recolourBall(BALL_MODEL, roll);
-    }
-    const movedTiles = Math.hypot(ball.x - rolling.x, ball.y - rolling.y);
-    // A move longer than a jump went through a portal: the ball came out elsewhere, it didn't roll there.
-    if (movedTiles > 0 && movedTiles <= JUMP_TILES) {
-      rollBy(roll, ball.x - rolling.x, ball.y - rolling.y);
-      recolourBall(BALL_MODEL, roll);
-    }
-    rolling.x = ball.x;
-    rolling.y = ball.y;
-    if (event) {
+    if (ball && event) {
       room.objectSounds.localEvent(ball.id, event);
     }
+  };
+
+  /** Rolls the ball's pattern by how far it went where it is seen: with slow light, as late as its light. */
+  const rollBallPattern = (room: Room) => {
+    const id = room.ball.ball?.id;
+    const seen = world.ballSeen;
+    if (id === undefined || seen === null) {
+      return;
+    }
+    if (rolling?.id !== id) {
+      roll = createBallRoll();
+      rolling = { id, x: seen.x, y: seen.y };
+      recolourBall(BALL_MODEL, roll);
+    }
+    const movedTiles = Math.hypot(seen.x - rolling.x, seen.y - rolling.y);
+    // A move longer than a jump went through a portal: the ball came out elsewhere, it didn't roll there.
+    if (movedTiles > 0 && movedTiles <= JUMP_TILES) {
+      rollBy(roll, seen.x - rolling.x, seen.y - rolling.y);
+      recolourBall(BALL_MODEL, roll);
+    }
+    rolling.x = seen.x;
+    rolling.y = seen.y;
   };
 
   const stepLocalPlayer = (dt: number) => {
@@ -301,6 +307,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   const placeEveryoneElse = (room: Room, now: number, dt: number) => {
     const { session } = room;
     world.sample(session, localPlayer.pose, now, room.ball, room.portals(), light);
+    rollBallPattern(room);
     placeApparently(room);
     world.collect(session, peerMedia, now, dt, apparent);
     room.objectSounds.sync(session.objects, world.objectPoses, dt);
@@ -393,6 +400,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       stepBall(room, now, HIDDEN_TICK_MS / 1000);
       light = updateLight(room, HIDDEN_TICK_MS / 1000);
       world.sample(room.session, localPlayer.pose, now, room.ball, room.portals(), light);
+      rollBallPattern(room);
       placeApparently(room);
       room.objectSounds.sync(room.session.objects, world.objectPoses, HIDDEN_TICK_MS / 1000);
       room.scooterSounds.sync(room.session.peers, world.positions, HIDDEN_TICK_MS / 1000, now);
