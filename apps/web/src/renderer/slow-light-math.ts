@@ -68,3 +68,46 @@ export function tintOf(d: number, out: Rgb): Rgb {
   out.b = clamp(blue * brightness, MIN_GAIN, MAX_GAIN);
   return out;
 }
+
+/** A unit direction in camera space: x along the facing, y to the right (the camera plane), z down (rows grow down). */
+export interface Dir {
+  x: number;
+  y: number;
+  z: number;
+}
+
+/**
+ * Where light seen along `n` came from in the room's frame, with the eye moving at `beta` toward `motionAngle` (in the
+ * horizontal plane, radians from the facing, right positive). With −beta, the other way round: where light from `n`
+ * is seen. The direction turns within the plane it shares with the motion. Writes `out`, which may be `n`.
+ */
+export function aberrate(n: Dir, motionAngle: number, beta: number, out: Dir): Dir {
+  const vx = Math.cos(motionAngle);
+  const vy = Math.sin(motionAngle);
+  const seen = n.x * vx + n.y * vy;
+  const px = n.x - seen * vx;
+  const py = n.y - seen * vy;
+  const pz = n.z;
+  const across = Math.hypot(px, py, pz);
+  if (beta === 0 || across < 1e-12) {
+    out.x = n.x;
+    out.y = n.y;
+    out.z = n.z;
+    return out;
+  }
+  const along = clamp((seen - beta) / (1 - beta * seen), -1, 1);
+  const side = Math.sqrt(1 - along * along) / across;
+  out.x = along * vx + side * px;
+  out.y = along * vy + side * py;
+  out.z = side * pz;
+  return out;
+}
+
+/** The Doppler factor of light seen along `n`: above 1 toward the motion, below behind, 1/γ side-on. */
+export function dopplerAlong(n: Dir, motionAngle: number, beta: number): number {
+  if (beta === 0) {
+    return 1;
+  }
+  const gamma = 1 / Math.sqrt(1 - beta * beta);
+  return 1 / (gamma * (1 - beta * (n.x * Math.cos(motionAngle) + n.y * Math.sin(motionAngle))));
+}
