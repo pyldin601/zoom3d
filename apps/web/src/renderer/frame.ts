@@ -106,6 +106,8 @@ let ownAvatarDrawn = false;
 /** The own label, as the one-entry list drawLabels takes. */
 const ownLabels: NameLabel[] = [];
 const frameView = createView();
+/** The main pass of a bent frame: the bend's source columns the frame reads. */
+const bentPass: Pass = { fromCol: 0, toCol: 0, nearDepth: null, lastLevel: false };
 
 /**
  * `seen` gets, per person, how much of them this frame drew (dynamic subscription reads it). With `bend` (slow light,
@@ -120,9 +122,16 @@ export function renderView(fb: Framebuffer, scene: RoomScene, seen?: Map<string,
     listWindowPeople(scene.people, scene.self);
     listWindowObjects(scene.objects, scene.ownScooter);
   }
-  drawPass(room, scene, glows, seen, 0);
   if (bend) {
+    // Only the source columns the frame reads are drawn: the rest costs time and would count people off screen as seen.
+    bentPass.fromCol = bend.readFrom;
+    bentPass.toCol = bend.readTo;
+    scene.pass = bentPass;
+    drawPass(room, scene, glows, seen, 0);
+    scene.pass = undefined;
     bend.apply(room, fb);
+  } else {
+    drawPass(room, scene, glows, seen, 0);
   }
   const windowsCounted = scene.portals !== null && seen !== undefined;
   if (windowsCounted) {

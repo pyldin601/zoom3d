@@ -8,7 +8,7 @@ import {
   SnapshotBuffer,
 } from '@zoom3d/shared';
 import { expect, test } from 'vitest';
-import { HISTORY_CAPACITY, type SeenLight, seenAt } from './light-delay';
+import { createTrail, HISTORY_CAPACITY, type SeenLight, seenAt } from './light-delay';
 
 const open = parseMap(
   ['11111111111111111111', ...Array.from({ length: 8 }, () => `1${'.'.repeat(18)}1`), '11111111111111111111']
@@ -86,4 +86,17 @@ test('through a portal the delay follows the image, not the straight line', () =
 
 test('an empty buffer is not seen', () => {
   expect(seenAt(new SnapshotBuffer(), light(12), 10_000, pose())).toBeNaN();
+});
+
+test('a trail pushed every frame at 144 Hz still holds several seconds', () => {
+  const trail = createTrail();
+  for (let t = 0; t <= 6000; t += 7) {
+    trail.push(t, t / 1000, 0, 0);
+  }
+  const out = pose();
+  trail.buffer.sample(1000, out);
+  expect(out.x).toBeCloseTo(1, 1);
+  // The newest entry follows the present: the last push, at t = 5999.
+  trail.buffer.sample(5999, out);
+  expect(out.x).toBeCloseTo(5.999, 6);
 });

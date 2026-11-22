@@ -169,6 +169,17 @@ describe('slow light (D39)', () => {
     expect(world.positions.get(objectKey('v1'))?.x).toBeLessThan(13);
   });
 
+  test('at 144 Hz a far rolling ball is still drawn as late as its light', () => {
+    room.addObject('b1', 2, 2, 0, 'ball');
+    const world = createRemoteWorld();
+    // Still at (14, 2), 12 tiles off, for 3 s: at c = 6 its light takes 2 s, then it rolls on at 6 tiles/s.
+    for (let t = NOW - 3000; t <= NOW; t += 7) {
+      const x = t < NOW - 1000 ? 14 : 14 + (6 * (t - (NOW - 1000))) / 1000;
+      world.sample(room.session, eye, t, shown(createBall('b1', x, 2)), null, slow(6));
+    }
+    expect(world.positions.get(objectKey('b1'))?.x).toBeCloseTo(14, 1);
+  });
+
   test('a rolling ball is drawn where it was; a held one in the present', () => {
     room.addObject('b1', 2, 2, 0, 'ball');
     const world = createRemoteWorld();

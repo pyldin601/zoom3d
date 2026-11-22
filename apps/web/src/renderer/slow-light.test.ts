@@ -90,3 +90,20 @@ test('toOutputX inverts the column table', () => {
     expect(Math.abs(bend.toOutputX((bend.sourceCol.at(col) ?? 0) + 0.5) - (col + 0.5))).toBeLessThanOrEqual(1.5);
   }
 });
+
+test('toOutputX puts a source x the frame does not show outside the frame', () => {
+  const bend = createBend();
+  const out = createFramebuffer(640, 360, FOV_WIDE);
+  const width = bend.fit(out).width;
+  bend.aim(out, still);
+  expect(bend.toOutputX(0)).toBeLessThan(0);
+  expect(bend.toOutputX(width - 1)).toBeGreaterThanOrEqual(640);
+});
+
+test('the source columns read span only what the frame shows', () => {
+  const bend = createBend();
+  const out = createFramebuffer(640, 360, FOV_WIDE);
+  bend.aim(out, { beta: 0.3, angle: 0.4 });
+  expect(bend.readFrom).toBe(Math.min(...bend.sourceCol));
+  expect(bend.readTo).toBe(Math.max(...bend.sourceCol) + 1);
+});

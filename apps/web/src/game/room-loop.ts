@@ -26,7 +26,7 @@ import { litReflections, type RenderMode } from '../ui/render-settings';
 import { type StatusLine, statusText } from '../ui/room-status';
 import { createApparentWorld, placeOwnLabel } from './apparent-world';
 import type { FrameRateMeter } from './frame-rate';
-import { HISTORY_CAPACITY, type SeenLight } from './light-delay';
+import { createTrail, type SeenLight } from './light-delay';
 import type { LocalPlayer } from './local-player';
 import { createOwnMotion } from './own-motion';
 import { portalPulse } from './portal-pulse';
@@ -108,7 +108,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   const ownMotion = createOwnMotion();
   const seenLight: SeenLight = { map: o.map, portals: null, eye: { x: 0, y: 0 }, lightSpeed: 1 };
   /** Where the local player stood, frame by frame: through a portal their own disc is seen as late as its light. */
-  const ownTrail = new SnapshotBuffer(HISTORY_CAPACITY);
+  const ownTrail = createTrail();
   const ownSeen: PlayerState = { x: 0, y: 0, angle: 0 };
   const ownImage: Apparent = { x: 0, y: 0, sees: false, through: 0, cos: 1, sin: 0 };
   /** This frame's slow light, or null while light is instant. */
@@ -128,7 +128,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     seenLight.lightSpeed = lightSpeed;
     const { pose } = localPlayer;
     bend.aim(screen.fb, ownMotion.update(pose.x, pose.y, eye.angle, dt, lightSpeed));
-    ownTrail.push({ t: performance.now(), x: pose.x, y: pose.y, angle: pose.angle });
+    ownTrail.push(performance.now(), pose.x, pose.y, pose.angle);
     return seenLight;
   };
 
@@ -145,7 +145,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     }
     imagePosition(o.map, light.portals, eye, eye, ownImage);
     const distance = Math.hypot(ownImage.x - eye.x, ownImage.y - eye.y);
-    ownTrail.sample(now - (distance / light.lightSpeed) * 1000, ownSeen);
+    ownTrail.buffer.sample(now - (distance / light.lightSpeed) * 1000, ownSeen);
     if (scene.self) {
       scene.self.x = ownSeen.x;
       scene.self.y = ownSeen.y;

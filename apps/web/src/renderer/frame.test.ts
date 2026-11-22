@@ -666,6 +666,23 @@ describe('first person', () => {
     expect(changed.every(([, row]) => row > on.height / 2)).toBe(true);
   });
 
+  test('through a bend only what the frame shows counts as seen', () => {
+    const hall = parseMap(
+      ['111111111111', ...Array.from({ length: 10 }, () => `1${'.'.repeat(10)}1`), '111111111111']
+        .join('\n')
+        .replace('.', 'S')
+    );
+    const at = { x: 3.5, y: 6.5, angle: 0 };
+    const offSide = plainPerson('off', at.x + 3, at.y - 3);
+    const ahead = plainPerson('ahead', at.x + 4, at.y);
+    const bend = createBend();
+    bend.aim(createFramebuffer(), { beta: 0, angle: 0 });
+    const seen = new Map<string, PeerFacts>();
+    renderView(createFramebuffer(), portalScene(hall, null, at, [offSide, ahead]), seen, bend);
+    expect(seen.get('off')?.drawnColumns ?? 0).toBe(0);
+    expect(seen.get('ahead')?.drawnColumns).toBeGreaterThan(0);
+  });
+
   test('through a bend at rest the room is redrawn, the handlebar is not bent', () => {
     const on = createFramebuffer();
     renderView(on, { ...portalScene(map, null, eye), firstPerson: hands(true) });

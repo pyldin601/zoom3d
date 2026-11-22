@@ -19,13 +19,16 @@ export interface Bend {
   readonly gainR: Float32Array;
   readonly gainG: Float32Array;
   readonly gainB: Float32Array;
+  /** The source columns [readFrom, readTo) the frame reads: the room need be drawn only there. */
+  readonly readFrom: number;
+  readonly readTo: number;
   /** The source frame for `output`: the same object until the output's size or FOV changes. */
   fit(output: Framebuffer): Framebuffer;
   /** Fills the column tables for `output` and `motion`; a no-op when neither changed. */
   aim(output: Framebuffer, motion: Motion): void;
   /** Draws `source`, bent and tinted, into `output`. */
   apply(source: Framebuffer, output: Framebuffer): void;
-  /** The frame x (columns, fractional) a source x lands at. */
+  /** The frame x (columns, fractional) a source x lands at; outside [0, width) when the frame doesn't show it. */
   toOutputX(sourceX: number): number;
   /** The height scale at frame x. */
   scaleAt(outputX: number): number;
@@ -43,6 +46,8 @@ export function createBend(): Bend {
   let gainR = new Float32Array(0);
   let gainG = new Float32Array(0);
   let gainB = new Float32Array(0);
+  let readFrom = 0;
+  let readTo = 0;
   let aimedBeta = Number.NaN;
   let aimedAngle = Number.NaN;
   const gain: Rgb = { r: 1, g: 1, b: 1 };
@@ -85,6 +90,12 @@ export function createBend(): Bend {
     get gainB() {
       return gainB;
     },
+    get readFrom() {
+      return readFrom;
+    },
+    get readTo() {
+      return readTo;
+    },
     fit,
     aim(output, motion) {
       const src = fit(output);
@@ -97,12 +108,17 @@ export function createBend(): Bend {
       const projSrc = projOf(src);
       const halfOut = output.width / 2;
       const halfSrc = src.width / 2;
+      readFrom = src.width;
+      readTo = 0;
       for (let col = 0; col < output.width; col++) {
         const seen = Math.atan((col + 0.5 - halfOut) / projOut);
         const from = sourceAngle(seen, motion.angle, motion.beta);
         const x = halfSrc + Math.tan(from) * projSrc;
         sourceX[col] = x;
-        sourceCol[col] = Math.min(src.width - 1, Math.max(0, Math.floor(x)));
+        const read = Math.min(src.width - 1, Math.max(0, Math.floor(x)));
+        sourceCol[col] = read;
+        readFrom = Math.min(readFrom, read);
+        readTo = Math.max(readTo, read + 1);
         rowScale[col] = (projOut * Math.cos(from)) / (projSrc * Math.cos(seen));
         tintOf(dopplerFactor(seen, motion.angle, motion.beta), gain);
         gainR[col] = gain.r;
@@ -135,11 +151,17 @@ export function createBend(): Bend {
     },
     toOutputX(x) {
       const n = sourceX.length;
-      if (n === 0 || x <= (sourceX[0] as number)) {
-        return 0;
+      if (n < 2) {
+        return Number.NaN;
       }
-      if (x >= (sourceX[n - 1] as number)) {
-        return n;
+      const first = sourceX[0] as number;
+      const last = sourceX[n - 1] as number;
+      // Past either end the table runs on at its end's slope, so what the frame doesn't show lands outside it.
+      if (x <= first) {
+        return 0.5 + (x - first) / ((sourceX[1] as number) - first);
+      }
+      if (x >= last) {
+        return n - 0.5 + (x - last) / (last - (sourceX[n - 2] as number));
       }
       let lo = 0;
       let hi = n - 1;

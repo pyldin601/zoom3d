@@ -2,10 +2,11 @@
 import {
   type Apparent,
   apparentPosition,
+  FANOUT_TICK_MS,
   type GameMap,
   type PlayerState,
   type Portals,
-  type SnapshotBuffer,
+  SnapshotBuffer,
 } from '@zoom3d/shared';
 
 type Point = { x: number; y: number };
@@ -45,4 +46,40 @@ export function seenAt(
   }
   buffer.sample(t, out);
   return t;
+}
+
+/**
+ * A pose history filled every frame (the ball, the local player) that holds as long as a peer's: its newest entry
+ * follows the present, and becomes history once a server tick has passed since the one before it. Pushed every frame,
+ * a 144 Hz screen would fill HISTORY_CAPACITY in under a second.
+ */
+export interface Trail {
+  readonly buffer: SnapshotBuffer;
+  push(t: number, x: number, y: number, angle: number): void;
+}
+
+export function createTrail(): Trail {
+  const buffer = new SnapshotBuffer(HISTORY_CAPACITY);
+  const entry = { t: 0, x: 0, y: 0, angle: 0 };
+  /** When the entry before the newest was made. */
+  let settledAt = Number.NEGATIVE_INFINITY;
+  return {
+    buffer,
+    push(t, x, y, angle) {
+      const head = buffer.latest();
+      if (head && t >= head.t && t - settledAt < FANOUT_TICK_MS) {
+        head.t = t;
+        head.x = x;
+        head.y = y;
+        head.angle = angle;
+        return;
+      }
+      settledAt = head?.t ?? t;
+      entry.t = t;
+      entry.x = x;
+      entry.y = y;
+      entry.angle = angle;
+      buffer.push(entry);
+    },
+  };
 }

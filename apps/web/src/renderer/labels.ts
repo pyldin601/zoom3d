@@ -59,6 +59,9 @@ export function drawLabels(
       continue;
     }
     const screenX = bend ? bend.toOutputX(projection.screenX) : projection.screenX;
+    if (bend && !(screenX >= 0 && screenX < fb.width)) {
+      continue;
+    }
     const size = bend ? projection.size * bend.scaleAt(screenX) : projection.size;
     const x = screenX * hudPerPixel;
     const y = (fb.height / 2 - size / 2) * hudPerPixel - sizingHeight * GAP_ABOVE_DISC;

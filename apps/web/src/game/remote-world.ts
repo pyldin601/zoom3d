@@ -9,7 +9,7 @@ import {
   type PlayerState,
   type Point,
   type Portals,
-  SnapshotBuffer,
+  type SnapshotBuffer,
 } from '@zoom3d/shared';
 import { nearTier } from '../net/peer-delay';
 import { objectKey, type RemotePeer, type Session } from '../net/session';
@@ -24,7 +24,7 @@ import { ringRgb, type Sprite } from '../renderer/sprites';
 import type { VoxelInstance, VoxelModel } from '../renderer/voxels';
 import type { BallPrediction } from './ball-prediction';
 import { ballShake } from './ball-shake';
-import { HISTORY_CAPACITY, type SeenLight, seenAt } from './light-delay';
+import { createTrail, type SeenLight, seenAt } from './light-delay';
 
 /** A peer's name label and automap dot. */
 export interface PeerLabel {
@@ -117,7 +117,7 @@ export function createRemoteWorld(): RemoteWorld {
   const at = { x: 0, y: 0, angle: 0 };
   let atLift = 0;
   /** Where the ball was shown, frame by frame: with slow light it is drawn from here, as late as its light. */
-  const ballTrail = new SnapshotBuffer(HISTORY_CAPACITY);
+  const ballTrail = createTrail();
 
   /** Samples `buffer` into `at` at `drawnAt`, or as late as its light with `light`. */
   const sampleSeen = (buffer: SnapshotBuffer, drawnAt: number, light: SeenLight | null) =>
@@ -171,8 +171,8 @@ export function createRemoteWorld(): RemoteWorld {
           at.x = ball.x;
           at.y = ball.y;
         } else {
-          ballTrail.push({ t: now, x: ball.x, y: ball.y, angle: 0 });
-          seenAt(ballTrail, light, now, at);
+          ballTrail.push(now, ball.x, ball.y, 0);
+          seenAt(ballTrail.buffer, light, now, at);
         }
         at.x += shake.x;
         at.y += shake.y;
