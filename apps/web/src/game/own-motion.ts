@@ -1,12 +1,6 @@
 // The local player's own velocity, as slow light (D39) bends their view by it.
 import { JUMP_TILES } from '@zoom3d/shared';
-import { betaOf } from '../renderer/slow-light-math';
-
-/** How fast the eye moves, as a fraction of c, and which way, in radians from its facing (positive to the right). */
-export interface Motion {
-  beta: number;
-  angle: number;
-}
+import { betaOf, type Motion } from '../renderer/slow-light-math';
 
 export interface OwnMotion {
   /** One pooled Motion, refilled from where the local player stands this frame. */

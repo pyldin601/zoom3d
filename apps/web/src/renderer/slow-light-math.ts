@@ -17,6 +17,12 @@ const TINT_PER_LOG = 0.8;
 const MIN_GAIN = 0.35;
 const MAX_GAIN = 1.8;
 
+/** How fast the eye moves, as a fraction of c, and which way, in radians from its facing (positive to the right). */
+export interface Motion {
+  beta: number;
+  angle: number;
+}
+
 export interface Rgb {
   r: number;
   g: number;
