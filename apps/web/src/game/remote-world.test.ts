@@ -17,6 +17,7 @@ import { BALL_MODEL } from '../renderer/models/ball';
 import { RIDDEN_SCOOTER_MODEL, SCOOTER_DECK_TILES, SCOOTER_MODEL } from '../renderer/models/scooter';
 import { VACUUM_MODEL } from '../renderer/models/vacuum';
 import { hexToRgb } from '../renderer/sprites';
+import type { SeenLight } from './light-delay';
 import { createRemoteWorld, type PeerMedia, type ShownBall } from './remote-world';
 
 const NOW = 10_000;
@@ -131,6 +132,52 @@ describe('sample', () => {
     room.addPeer('ada', other.cx + other.nx, other.cy + other.ny);
     createRemoteWorld().sample(room.session, eye, NOW);
     expect(room.peers.get('ada')?.delay.value).toBe(FAR_DELAY_MS);
+  });
+});
+
+describe('slow light (D39)', () => {
+  const OPEN = parseMap(
+    ['11111111111111111111', ...Array.from({ length: 8 }, () => `1${'.'.repeat(18)}1`), '11111111111111111111']
+      .join('\n')
+      .replace('.', 'S')
+  );
+  const eye = { x: 2, y: 2 };
+  const slow = (lightSpeed = 12): SeenLight => ({ map: OPEN, portals: null, eye, lightSpeed });
+  /** A walk along x from (2, 2) at 6 tiles/s, half of c, ending at (14, 2) at `endT`, sent every 66 ms. */
+  const walkTo14 = (buffer: SnapshotBuffer, endT: number) => {
+    for (let t = endT - 2000; t <= endT; t += 66) {
+      buffer.push({ t, x: 14 - (6 * (endT - t)) / 1000, y: 2, angle: 0 });
+    }
+    buffer.push({ t: endT, x: 14, y: 2, angle: 0 });
+  };
+
+  test('a far peer that stopped a moment ago is still drawn on its way, where its light left it', () => {
+    room.addPeer('ada', 2, 2);
+    walkTo14(room.peers.get('ada')?.buffer as SnapshotBuffer, NOW - 600);
+    const world = createRemoteWorld();
+    world.sample(room.session, eye, NOW, null, null);
+    expect(world.positions.get('ada')?.x).toBeCloseTo(14, 6);
+    world.sample(room.session, eye, NOW, null, null, slow());
+    expect(world.positions.get('ada')?.x).toBeLessThan(13);
+  });
+
+  test('the vacuum is drawn late too', () => {
+    room.addObject('v1', 2, 2, 0);
+    walkTo14(room.objects.get('v1')?.buffer as SnapshotBuffer, NOW - 600);
+    const world = createRemoteWorld();
+    world.sample(room.session, eye, NOW, null, null, slow());
+    expect(world.positions.get(objectKey('v1'))?.x).toBeLessThan(13);
+  });
+
+  test('a rolling ball is drawn where it was; a held one in the present', () => {
+    room.addObject('b1', 2, 2, 0, 'ball');
+    const world = createRemoteWorld();
+    for (let t = NOW - 2000; t <= NOW; t += 16) {
+      world.sample(room.session, eye, t, shown(createBall('b1', 14 - (6 * (NOW - t)) / 1000, 2)), null, slow());
+    }
+    expect(world.positions.get(objectKey('b1'))?.x).toBeLessThan(13);
+    world.sample(room.session, eye, NOW, shown(createBall('b1', 14, 2), 'asleep', 0, 'me'), null, slow());
+    expect(world.positions.get(objectKey('b1'))?.x).toBeCloseTo(14, 6);
   });
 });
 
