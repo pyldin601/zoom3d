@@ -88,17 +88,26 @@ const linearToSrgb = (c: number) => (c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (
 
 export const SRGB_TO_LINEAR: Float32Array = Float32Array.from({ length: 256 }, (_, byte) => srgbToLinear(byte / 255));
 
-/** Indexed by √(toned light), so the dark end, where sRGB is steep, gets the finest steps. */
-const ENCODE_STEPS = 4096;
-const ENCODE = Uint8Array.from({ length: ENCODE_STEPS }, (_, i) => {
-  const toned = (i / (ENCODE_STEPS - 1)) ** 2;
-  return Math.round(linearToSrgb(toned) * 255);
-});
+/**
+ * Linear light to a toned sRGB byte by table, with no maths per pixel: a fine table for the dark end, where sRGB is
+ * steep, and a coarse one above it. Past MAX_LIGHT the tone curve has reached 1.
+ */
+const FINE_TO = 1 / 16;
+const FINE_PER_UNIT = 65536;
+const MAX_LIGHT = 16;
+const COARSE_PER_UNIT = 1024;
+const encode = (x: number) => Math.round(linearToSrgb(toneCurve(x)) * 255);
+const FINE = Uint8Array.from({ length: FINE_TO * FINE_PER_UNIT }, (_, i) => encode((i + 0.5) / FINE_PER_UNIT));
+const COARSE = Uint8Array.from({ length: MAX_LIGHT * COARSE_PER_UNIT }, (_, i) => encode((i + 0.5) / COARSE_PER_UNIT));
+const BRIGHTEST = encode(MAX_LIGHT);
 
 /** Linear light, through the tone curve, as an sRGB byte. Negative light (a matrix can make it) is black. */
 export function linearToSrgbByte(x: number): number {
   if (!(x > 0)) {
     return 0;
   }
-  return ENCODE[Math.round(Math.sqrt(toneCurve(x)) * (ENCODE_STEPS - 1))] as number;
+  if (x < FINE_TO) {
+    return FINE[(x * FINE_PER_UNIT) | 0] as number;
+  }
+  return x < MAX_LIGHT ? (COARSE[(x * COARSE_PER_UNIT) | 0] as number) : BRIGHTEST;
 }

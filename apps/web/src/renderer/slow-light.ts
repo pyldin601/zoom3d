@@ -217,11 +217,11 @@ export function createBend(): Bend {
         const row = y * width;
         for (let x = 0; x < width; x++) {
           const centreX = x + 0.5;
-          const i = Math.min(cols - 2, Math.floor(centreX / GRID_PX));
+          const i = Math.min(cols - 2, (centreX / GRID_PX) | 0);
           const left = colsAt[i] as number;
           const tx = (centreX - left) / ((colsAt[i + 1] as number) - left);
-          const sx = Math.floor((rowX[i] as number) + ((rowX[i + 1] as number) - (rowX[i] as number)) * tx);
-          const sy = Math.floor((rowY[i] as number) + ((rowY[i + 1] as number) - (rowY[i] as number)) * tx);
+          const sx = ((rowX[i] as number) + ((rowX[i + 1] as number) - (rowX[i] as number)) * tx) | 0;
+          const sy = ((rowY[i] as number) + ((rowY[i + 1] as number) - (rowY[i] as number)) * tx) | 0;
           const c = srcPixels[
             (sy < 0 ? 0 : sy > lastSrcY ? lastSrcY : sy) * src.width + (sx < 0 ? 0 : sx > lastSrcX ? lastSrcX : sx)
           ] as number;
@@ -229,7 +229,7 @@ export function createBend(): Bend {
             out[row + x] = c;
             continue;
           }
-          const d = Math.round((rowD[i] as number) + ((rowD[i + 1] as number) - (rowD[i] as number)) * tx);
+          const d = ((rowD[i] as number) + ((rowD[i + 1] as number) - (rowD[i] as number)) * tx + 0.5) | 0;
           const m = (d < 0 ? 0 : d >= DOPPLER_STEPS ? DOPPLER_STEPS - 1 : d) * 9;
           const r = SRGB_TO_LINEAR[c & 0xff] as number;
           const g = SRGB_TO_LINEAR[(c >>> 8) & 0xff] as number;
