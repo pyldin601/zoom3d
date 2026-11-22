@@ -1,7 +1,17 @@
 // The room's frame: the local player steps, then the ball the client predicts, everyone else and the world objects are
 // placed and heard, the view and the HUD are drawn, then the subscription picks whose media to receive. While the tab is hidden rAF stops, so a timer
 // keeps the sound and the subscription going instead.
-import { type Apparent, BALL_KICK_REACH, type BallBody, type GameMap, JUMP_TILES, PLAYER_RADIUS } from '@zoom3d/shared';
+import {
+  type Apparent,
+  BALL_KICK_REACH,
+  type BallBody,
+  type GameMap,
+  imagePosition,
+  JUMP_TILES,
+  PLAYER_RADIUS,
+  type PlayerState,
+  SnapshotBuffer,
+} from '@zoom3d/shared';
 import { ownLoad } from '../audio/scooter-sounds';
 import { HIDDEN_TICK_MS } from '../audio/ticker';
 import type { Input } from '../input/keyboard';
@@ -10,12 +20,15 @@ import { ownAvatarShown, type RoomScene, renderHud, renderView } from '../render
 import type { NameLabel } from '../renderer/labels';
 import type { Lighting } from '../renderer/lighting';
 import { BALL_MODEL, createBallRoll, recolourBall, rollBy } from '../renderer/models/ball';
+import { createBend } from '../renderer/slow-light';
 import { showCountdown } from '../ui/portal-countdown';
 import { litReflections, type RenderMode } from '../ui/render-settings';
 import { type StatusLine, statusText } from '../ui/room-status';
 import { createApparentWorld, placeOwnLabel } from './apparent-world';
 import type { FrameRateMeter } from './frame-rate';
+import { HISTORY_CAPACITY, type SeenLight } from './light-delay';
 import type { LocalPlayer } from './local-player';
+import { createOwnMotion } from './own-motion';
 import { portalPulse } from './portal-pulse';
 import type { SequenceCues } from './portal-sequence';
 import { createRemoteWorld, type PeerMedia } from './remote-world';
@@ -37,6 +50,8 @@ export interface RoomLoopOptions {
   statusLine: StatusLine;
   room(): Room | null;
   renderMode(): RenderMode;
+  /** The speed of light in tiles/s while the console's slow light look is on (D39), else null. */
+  slowLight(): number | null;
   roomLighting(): Lighting | null;
   showMap(): boolean;
   /** Every frame: whether the local player can kick the ball (for the touch kick button). */
@@ -88,13 +103,68 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     portals: null,
   };
 
+  // Slow light (D39): the bend, the own motion that aims it, and what the light delay is measured from.
+  const bend = createBend();
+  const ownMotion = createOwnMotion();
+  const seenLight: SeenLight = { map: o.map, portals: null, eye: { x: 0, y: 0 }, lightSpeed: 1 };
+  /** Where the local player stood, frame by frame: through a portal their own disc is seen as late as its light. */
+  const ownTrail = new SnapshotBuffer(HISTORY_CAPACITY);
+  const ownSeen: PlayerState = { x: 0, y: 0, angle: 0 };
+  const ownImage: Apparent = { x: 0, y: 0, sees: false, through: 0, cos: 1, sin: 0 };
+  /** This frame's slow light, or null while light is instant. */
+  let light: SeenLight | null = null;
+
+  /** Refills the slow light for this frame from the console's setting; null, and the motion forgotten, while off. */
+  const updateLight = (room: Room | null, dt: number): SeenLight | null => {
+    const lightSpeed = o.slowLight();
+    if (lightSpeed === null) {
+      ownMotion.reset();
+      return null;
+    }
+    const eye = localPlayer.eye();
+    seenLight.portals = room?.sightPortals() ?? null;
+    seenLight.eye.x = eye.x;
+    seenLight.eye.y = eye.y;
+    seenLight.lightSpeed = lightSpeed;
+    const { pose } = localPlayer;
+    bend.aim(screen.fb, ownMotion.update(pose.x, pose.y, eye.angle, dt, lightSpeed));
+    ownTrail.push({ t: performance.now(), x: pose.x, y: pose.y, angle: pose.angle });
+    return seenLight;
+  };
+
+  /**
+   * Moves the own disc, its scooter and label's spot to where the local player stood when the light their image shows
+   * left: one step, from the image's distance now.
+   */
+  const delayOwnImage = (now: number): PlayerState => {
+    const eye = localPlayer.eye();
+    if (light === null || light.portals === null) {
+      ownSeen.x = eye.x;
+      ownSeen.y = eye.y;
+      return ownSeen;
+    }
+    imagePosition(o.map, light.portals, eye, eye, ownImage);
+    const distance = Math.hypot(ownImage.x - eye.x, ownImage.y - eye.y);
+    ownTrail.sample(now - (distance / light.lightSpeed) * 1000, ownSeen);
+    if (scene.self) {
+      scene.self.x = ownSeen.x;
+      scene.self.y = ownSeen.y;
+    }
+    if (scene.ownScooter) {
+      scene.ownScooter.x = ownSeen.x;
+      scene.ownScooter.y = ownSeen.y;
+      scene.ownScooter.angle = ownSeen.angle;
+    }
+    return ownSeen;
+  };
+
   const ownLabel: NameLabel = { shownX: 0, shownY: 0, name: '', mic: false };
   /** The own label, named as the others see it, where a portal shows the own spot; else null. */
   const labelOwnImage = (room: Room | null): NameLabel | null => {
     if (
       scene.self === null ||
       room === null ||
-      !placeOwnLabel(o.map, scene.portals ?? null, localPlayer.eye(), ownLabel)
+      !placeOwnLabel(o.map, scene.portals ?? null, localPlayer.eye(), ownLabel, ownSeen)
     ) {
       return null;
     }
@@ -231,7 +301,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
 
   const placeEveryoneElse = (room: Room, now: number, dt: number) => {
     const { session } = room;
-    world.sample(session, localPlayer.pose, now, room.ball, room.portals());
+    world.sample(session, localPlayer.pose, now, room.ball, room.portals(), light);
     placeApparently(room);
     world.collect(session, peerMedia, now, dt, apparent);
     room.objectSounds.sync(session.objects, world.objectPoses, dt);
@@ -265,6 +335,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     // Only windows draw the own disc, and reading its face back stalls on the GPU: read it only while one shows it.
     scene.self = scene.portals && isConnected(room) ? localPlayer.avatar(now, ringColour, ownAvatarShown()) : null;
     scene.ownScooter = scene.self ? localPlayer.scooter() : null;
+    delayOwnImage(now);
     scene.ownLabel = labelOwnImage(room);
     scene.firstPerson = isConnected(room) ? localPlayer.firstPerson(now) : null;
     return scene;
@@ -288,6 +359,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       stepLocalPlayer(dt);
       const now = performance.now();
       const room = o.room();
+      light = updateLight(room, dt);
       if (room) {
         room.call.update(now);
         followSequence(room, now);
@@ -301,9 +373,10 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       const shown = describeScene(drawStart);
       // The hum swells with the very pulse this frame's glow is drawn with.
       room?.hums.sync(room.sightPortals(), shown.portalPulse, localPlayer.eye(), apparent);
-      renderView(screen.fb, shown, subscription.seen);
+      const bent = light === null ? null : bend;
+      renderView(screen.fb, shown, subscription.seen, bent);
       screen.present();
-      renderHud(o.hud, screen.fb, shown, o.showMap());
+      renderHud(o.hud, screen.fb, shown, o.showMap(), bent);
       const drawnAt = performance.now();
       // dt comes from rAF's timestamps, which fall on the screen's refreshes.
       o.frameRate.frame(drawnAt, dt * 1000, drawnAt - drawStart);
@@ -319,7 +392,8 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       const now = performance.now();
       followSequence(room, now);
       stepBall(room, now, HIDDEN_TICK_MS / 1000);
-      world.sample(room.session, localPlayer.pose, now, room.ball, room.portals());
+      light = updateLight(room, HIDDEN_TICK_MS / 1000);
+      world.sample(room.session, localPlayer.pose, now, room.ball, room.portals(), light);
       placeApparently(room);
       room.objectSounds.sync(room.session.objects, world.objectPoses, HIDDEN_TICK_MS / 1000);
       room.scooterSounds.sync(room.session.peers, world.positions, HIDDEN_TICK_MS / 1000, now);

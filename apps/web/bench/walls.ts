@@ -19,6 +19,7 @@ import {
   type Lighting,
   newGlowShadow,
 } from '../src/renderer/lighting';
+import { createBend } from '../src/renderer/slow-light';
 import { averageColour, makeTextures } from '../src/renderer/textures';
 import { CEILING, FLOOR, type Room, renderWalls } from '../src/renderer/walls';
 
@@ -293,6 +294,43 @@ const ridersPerPose = median(poses.map((p) => p.glows.length + 1));
 console.log(
   `both + headlights (${ridersPerPose} riders) ${median(headlightTimes).toFixed(3)} ms/frame; pixel hash ${headlightHash}`
 );
+
+// Slow light (D39): the lit room with glows drawn into the bend's wide source frame, then bent into the frame at half of
+// c, beside the same frame drawn straight. Timed only: the bend is new, so there is no earlier hash to keep.
+{
+  const bend = createBend();
+  const source = bend.fit(fb);
+  bend.aim(fb, { beta: 0.5, angle: 0 });
+  const frames = poses.length * FRAMES_PER_POSE;
+  const timed = (bent: boolean) => {
+    const start = performance.now();
+    for (let f = 0; f < frames; f++) {
+      const pose = poses.at(f % poses.length);
+      if (pose) {
+        room.eye = pose;
+        room.lighting = lighting;
+        room.reflections = 'both';
+        renderWalls(bent ? source : fb, room, pose.glows);
+        if (bent) {
+          bend.apply(source, fb);
+        }
+      }
+    }
+    return (performance.now() - start) / frames;
+  };
+  timed(false);
+  timed(true);
+  const straight: number[] = [];
+  const bent: number[] = [];
+  for (let round = 0; round < ROUNDS; round++) {
+    straight.push(timed(false));
+    bent.push(timed(true));
+  }
+  console.log(
+    `slow light: both + glow ${median(straight).toFixed(3)} ms/frame straight, ${median(bent).toFixed(3)} ms/frame ` +
+      `bent (${source.width}×${source.height} source)`
+  );
+}
 
 function draw(mode: Mode, p: Pose): void {
   room.eye = p;

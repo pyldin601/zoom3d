@@ -2,6 +2,7 @@
 import type { PlayerState } from '@zoom3d/shared';
 import { createView, setView } from './camera';
 import type { Framebuffer } from './framebuffer';
+import type { Bend } from './slow-light';
 import { type Projection, projectSprite } from './sprites';
 
 /** Names show only for people this close (6d spec §4): a crowd of 100 labels is unreadable. */
@@ -34,9 +35,12 @@ export function drawLabels(
   ctx: CanvasRenderingContext2D,
   fb: Framebuffer,
   p: PlayerState,
-  others: readonly NameLabel[]
+  others: readonly NameLabel[],
+  bend?: Bend | null
 ): void {
-  const view = setView(frameView, fb, p);
+  // Bent by slow light, the discs were drawn in the bend's source frame: project there, then follow the bend.
+  const drawn = bend ? bend.fit(fb) : fb;
+  const view = setView(frameView, drawn, p);
   const { width: hudW, height: hudH } = ctx.canvas;
   const hudPerPixel = hudW / fb.width;
   // The HUD's height, but at most 16/9 of its width: the same as the height on desktop, not huge on a tall phone frame.
@@ -50,12 +54,14 @@ export function drawLabels(
     if (
       !inLabelRange(p, o.shownX, o.shownY) ||
       !projectSprite(view, o.shownX, o.shownY, projection) ||
-      centreHidden(fb, projection)
+      centreHidden(drawn, projection)
     ) {
       continue;
     }
-    const x = projection.screenX * hudPerPixel;
-    const y = (fb.height / 2 - projection.size / 2) * hudPerPixel - sizingHeight * GAP_ABOVE_DISC;
+    const screenX = bend ? bend.toOutputX(projection.screenX) : projection.screenX;
+    const size = bend ? projection.size * bend.scaleAt(screenX) : projection.size;
+    const x = screenX * hudPerPixel;
+    const y = (fb.height / 2 - size / 2) * hudPerPixel - sizingHeight * GAP_ABOVE_DISC;
     const text = o.mic ? o.name : `🔇 ${o.name}`;
     ctx.strokeStyle = OUTLINE_COLOUR;
     ctx.strokeText(text, x, y);

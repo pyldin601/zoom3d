@@ -21,6 +21,7 @@ import { SCOOTER_MODEL } from './models/scooter';
 import { VACUUM_MODEL } from './models/vacuum';
 import { shimmerAndRim, toSketchPx, windowRipple } from './portal-window';
 import { createRoomLighting } from './room-lighting';
+import { createBend } from './slow-light';
 import type { Sprite } from './sprites';
 import { firstDifference } from './test-helpers';
 import { makeTextures } from './textures';
@@ -663,5 +664,24 @@ describe('first person', () => {
     const changed = differences(on, plain);
     expect(changed.length).toBeGreaterThan(0);
     expect(changed.every(([, row]) => row > on.height / 2)).toBe(true);
+  });
+
+  test('through a bend at rest the room is redrawn, the handlebar is not bent', () => {
+    const on = createFramebuffer();
+    renderView(on, { ...portalScene(map, null, eye), firstPerson: hands(true) });
+    const plain = createFramebuffer();
+    renderView(plain, portalScene(map, null, eye));
+    const bend = createBend();
+    bend.aim(plain, { beta: 0, angle: 0 });
+    const bentOn = createFramebuffer();
+    renderView(bentOn, { ...portalScene(map, null, eye), firstPerson: hands(true) }, undefined, bend);
+    const bentPlain = createFramebuffer();
+    renderView(bentPlain, portalScene(map, null, eye), undefined, bend);
+    expect(differences(bentPlain, plain).length).toBeGreaterThan(0);
+    const handlebar = differences(on, plain);
+    expect(differences(bentOn, bentPlain)).toEqual(handlebar);
+    for (const [col, row] of handlebar) {
+      expect(pixelAt(bentOn, col, row)).toBe(pixelAt(on, col, row));
+    }
   });
 });
