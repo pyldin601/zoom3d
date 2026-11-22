@@ -14,9 +14,13 @@ export interface Motion {
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-/** The local player's speed as a fraction of c, capped at MAX_BETA. */
+/** Below this fraction of c the eye is at rest: an eased speed would otherwise take a minute to reach exactly 0. */
+const REST_BETA = 0.01;
+
+/** The local player's speed as a fraction of c, capped at MAX_BETA, and 0 near rest. */
 export function betaOf(speedTilesPerS: number, lightSpeed: number): number {
-  return clamp(speedTilesPerS / lightSpeed, 0, MAX_BETA);
+  const beta = clamp(speedTilesPerS / lightSpeed, 0, MAX_BETA);
+  return beta < REST_BETA ? 0 : beta;
 }
 
 /** A unit direction in camera space: x along the facing, y to the right (the camera plane), z down (rows grow down). */

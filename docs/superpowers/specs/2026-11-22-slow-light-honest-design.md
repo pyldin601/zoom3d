@@ -76,8 +76,8 @@ the eye row.
 
 ### 4.4 Colour
 
-Pixels are sRGB bytes; light is shifted in linear light. Tables built once: `SRGB_TO_LINEAR` (256 floats),
-`LINEAR_TO_SRGB` over the tone curve's output (4096 steps).
+Pixels are sRGB bytes; light is shifted in linear light. Tables built once: `SRGB_TO_LINEAR` (256 floats), and
+linear light to toned sRGB bytes by two tables (fine below 1/16, coarse up to 16; no maths per pixel).
 
 The spectral model (`renderer/spectrum.ts`), as built (D40 ruling: the first model, Gaussian bands undone by a
 matrix inverse, was either jumpy in hue with narrow bands or swung negative with broad ones):
@@ -88,10 +88,11 @@ matrix inverse, was either jumpy in hue with narrow bands or swung negative with
 - The eye samples the shifted spectrum at the same three wavelengths. Seen at λ, the light left at λ·D, and spectral
   radiance per wavelength goes as D⁵: observed channel i = `D⁵ · S(λ_i · D)`. Linear in the colour, so a 3×3 matrix
   M(D), exactly the identity at D = 1, no inverse.
-- Tabulated at `DOPPLER_STEPS = 256` values of ln D, evenly over [ln 0.5, ln 2] (β = 0.5 needs 0.577–1.732).
+- Tabulated at `DOPPLER_STEPS = 257` (odd, so D = 1 is an entry) values of ln D, evenly over [ln 0.5, ln 2] (β = 0.5 needs 0.577–1.732).
 
-Per pixel: `rgb_lin = SRGB_TO_LINEAR[byte]`, `out = M(D) · rgb_lin`, each channel through the tone curve, then
-`LINEAR_TO_SRGB`. Tone curve: `t(x) = x` for x ≤ 0.8, above it `0.8 + 0.2 · (1 − e^{−(x − 0.8)/0.2})`, so it reaches
+Per pixel, whenever the look is on (at rest too, so coming to rest never changes the exposure):
+`rgb_lin = SRGB_TO_LINEAR[byte]`, `out = M(D) · rgb_lin`, each channel through the tone curve to an sRGB byte.
+Below 1% of c the eye counts as at rest (β = 0): the eased speed would otherwise take a minute to reach 0. Tone curve: `t(x) = x` for x ≤ 0.8, above it `0.8 + 0.2 · (1 − e^{−(x − 0.8)/0.2})`, so it reaches
 1 asymptotically. Negative channels (a matrix can produce them) clamp to 0.
 
 What this shows at β = 0.5: ahead, D ≈ 1.7, the eye sees the room's infrared shifted into view and brightened by D⁵:

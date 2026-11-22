@@ -52,10 +52,11 @@ test('dopplerIndex clamps outside the table', () => {
   expect(dopplerIndex(Number.NaN)).toBe(dopplerIndex(1));
 });
 
-test('the table holds the identity at D = 1 and finite numbers everywhere', () => {
+test('the table holds exactly the identity at D = 1 and finite numbers everywhere', () => {
   const rest = dopplerIndex(1) * 9;
-  expect(SHIFT_MATRICES.at(rest)).toBeCloseTo(1, 1);
-  expect(SHIFT_MATRICES.at(rest + 4)).toBeCloseTo(1, 1);
+  [1, 0, 0, 0, 1, 0, 0, 0, 1].forEach((v, i) => {
+    expect(SHIFT_MATRICES.at(rest + i)).toBeCloseTo(v, 6);
+  });
   expect(SHIFT_MATRICES.every(Number.isFinite)).toBe(true);
 });
 

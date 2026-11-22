@@ -45,7 +45,10 @@ test('at rest a flat source is copied unchanged', () => {
   source.pixels.fill(colour);
   bend.aim(out, still);
   bend.apply(source, out);
-  expect(out.pixels.every((p) => p === colour)).toBe(true);
+  // Through the colour path: within a byte of the source, below the tone shoulder.
+  const at = channels(out.pixels.at(1000) ?? 0);
+  expect(Math.abs(at.r - 90) + Math.abs(at.g - 140) + Math.abs(at.b - 200)).toBeLessThanOrEqual(3);
+  expect(new Set(out.pixels).size).toBe(1);
 });
 
 test('between grid points the source position is within half a pixel of the exact map', () => {
@@ -137,4 +140,19 @@ test('the read range spans the grid’s source columns', () => {
   bend.aim(wide(), { beta: 0.3, angle: 0.4 });
   expect(bend.readFrom).toBeLessThanOrEqual(Math.min(...bend.gridX));
   expect(bend.readTo).toBeGreaterThan(Math.max(...bend.gridX));
+});
+
+test('coming to rest changes nothing: a nearly still frame and a still one look the same', () => {
+  const bend = createBend();
+  const out = wide();
+  const source = bend.fit(out);
+  source.pixels.fill(rgb(255, 255, 255));
+  bend.aim(out, { beta: 0.0001, angle: 0 });
+  bend.apply(source, out);
+  const nearlyStill = channels(out.pixels.at(180 * 640 + 320) ?? 0);
+  bend.aim(out, still);
+  bend.apply(source, out);
+  const still_ = channels(out.pixels.at(180 * 640 + 320) ?? 0);
+  expect(Math.abs(nearlyStill.r - still_.r)).toBeLessThanOrEqual(1);
+  expect(Math.abs(nearlyStill.b - still_.b)).toBeLessThanOrEqual(1);
 });

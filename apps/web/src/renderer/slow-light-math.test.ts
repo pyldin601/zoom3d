@@ -5,6 +5,8 @@ test('beta clamps at half the speed of light', () => {
   expect(betaOf(6, 6)).toBe(0.5);
   expect(betaOf(3, 12)).toBe(0.25);
   expect(betaOf(0, 12)).toBe(0);
+  // Below a hundredth of c is rest: the view stops being recomputed.
+  expect(betaOf(0.1, 12)).toBe(0);
 });
 
 describe('in three dimensions', () => {

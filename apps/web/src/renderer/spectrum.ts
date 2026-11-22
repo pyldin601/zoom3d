@@ -1,8 +1,8 @@
 // Slow light's colour shift (D40): each pixel's colour is a spectrum, shifted in wavelength by the Doppler factor D and
 // seen through the eye's red, green and blue. The model is linear in RGB, so a shift is a 3×3 matrix, tabulated by D.
 
-/** Doppler factors are tabulated at this many values of ln D, evenly over [MIN_LN_D, MAX_LN_D]. */
-export const DOPPLER_STEPS = 256;
+/** Doppler factors are tabulated at this many values of ln D, evenly over [MIN_LN_D, MAX_LN_D]: odd, so D = 1 is one. */
+export const DOPPLER_STEPS = 257;
 /** At the β cap of 0.5, D runs from 0.577 to 1.732. */
 export const MIN_LN_D = Math.log(0.5);
 export const MAX_LN_D = Math.log(2);

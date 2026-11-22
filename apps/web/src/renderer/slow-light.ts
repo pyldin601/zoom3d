@@ -198,7 +198,6 @@ export function createBend(): Bend {
       const lastSrcY = src.height - 1;
       const srcPixels = src.pixels;
       const out = output.pixels;
-      const shifting = aimedBeta !== 0;
       for (let col = 0; col < width; col++) {
         output.zbuffer[col] = src.zbuffer[zbufferCol[col] as number] as number;
       }
@@ -225,10 +224,6 @@ export function createBend(): Bend {
           const c = srcPixels[
             (sy < 0 ? 0 : sy > lastSrcY ? lastSrcY : sy) * src.width + (sx < 0 ? 0 : sx > lastSrcX ? lastSrcX : sx)
           ] as number;
-          if (!shifting) {
-            out[row + x] = c;
-            continue;
-          }
           const d = ((rowD[i] as number) + ((rowD[i + 1] as number) - (rowD[i] as number)) * tx + 0.5) | 0;
           const m = (d < 0 ? 0 : d >= DOPPLER_STEPS ? DOPPLER_STEPS - 1 : d) * 9;
           const r = SRGB_TO_LINEAR[c & 0xff] as number;
