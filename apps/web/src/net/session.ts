@@ -39,6 +39,8 @@ export interface RemotePeer {
   delay: PeerDelay;
   /** This peer's last sip or cheers, by when it arrived (now()); null before any or once the drink is put down. */
   gesture: { kind: 'sip' | 'cheers'; at: number } | null;
+  /** When they joined (now()), for slow light (D41); absent for anyone a welcome found already here. */
+  since?: number;
 }
 
 /** A server-driven world object, like the robot vacuum (robot vacuum spec §4). Not a peer. */
@@ -46,6 +48,8 @@ export interface RemoteObject {
   info: ObjectInfo;
   buffer: SnapshotBuffer;
   lastSeq: number;
+  /** When it appeared (now()), for slow light (D41); absent for anything a welcome found already here. */
+  since?: number;
 }
 
 /** Key of an object in shared position and audio maps, never colliding with a peer id. */
@@ -168,10 +172,13 @@ export function createSession(opts: SessionOptions): Session {
   const gesturePlaying = (g: RemotePeer['gesture']) =>
     g !== null && now() - g.at < (g.kind === 'sip' ? SIP_MS : CHEERS_MS);
 
-  const addPeer = (info: PeerInfo) => {
+  const addPeer = (info: PeerInfo, joined: boolean) => {
     const buffer = new SnapshotBuffer(HISTORY_CAPACITY);
     buffer.push({ t: now(), x: info.x, y: info.y, angle: info.angle });
     const peer: RemotePeer = { info: { ...info }, buffer, delay: new PeerDelay(), gesture: null };
+    if (joined) {
+      peer.since = now();
+    }
     peers.set(info.id, peer);
     bySlot.set(info.slot, peer);
   };
@@ -184,10 +191,14 @@ export function createSession(opts: SessionOptions): Session {
     peers.delete(id);
   };
 
-  const addObject = (info: ObjectInfo) => {
+  const addObject = (info: ObjectInfo, appeared: boolean) => {
     const buffer = new SnapshotBuffer(HISTORY_CAPACITY);
     buffer.push({ t: now(), x: info.x, y: info.y, angle: info.angle });
-    objects.set(info.id, { info: { ...info }, buffer, lastSeq: -1 });
+    const obj: RemoteObject = { info: { ...info }, buffer, lastSeq: -1 };
+    if (appeared) {
+      obj.since = now();
+    }
+    objects.set(info.id, obj);
   };
 
   const sendWhileOpen = (message: ClientMessage) => {
@@ -204,7 +215,7 @@ export function createSession(opts: SessionOptions): Session {
         applyWelcome(m);
         break;
       case 'peer_joined':
-        addPeer(m.peer);
+        addPeer(m.peer, true);
         listener.peerJoined?.(m.peer);
         break;
       case 'peer_left':
@@ -273,12 +284,12 @@ export function createSession(opts: SessionOptions): Session {
     peers.clear();
     bySlot.clear();
     for (const p of m.peers) {
-      addPeer(p);
+      addPeer(p, false);
     }
     // A restarted server counts each object's seq from 1 again: start every object afresh.
     objects.clear();
     for (const o of m.objects) {
-      addObject(o);
+      addObject(o, false);
     }
     listener.objectsReset?.(m.objects);
     // The local pose goes out on the next tick: after a resume the server only has the one from before the outage
@@ -290,7 +301,7 @@ export function createSession(opts: SessionOptions): Session {
 
   const applyPeerRide = (m: PeerRideMessage) => {
     if (m.scooter === null) {
-      addObject(m.parked);
+      addObject(m.parked, true);
     } else {
       objects.delete(m.scooter);
     }
