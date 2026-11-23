@@ -2,10 +2,13 @@ import { expect, test } from 'vitest';
 import {
   DOPPLER_STEPS,
   dopplerIndex,
+  encodeShift,
   linearToSrgbByte,
   SHIFT_MATRICES,
   SRGB_TO_LINEAR,
   shiftMatrix,
+  shiftOf,
+  shiftSteps,
   toneCurve,
 } from './spectrum';
 
@@ -69,4 +72,28 @@ test('linear to sRGB round-trips bytes at rest, below the shoulder', () => {
   }
   expect(linearToSrgbByte(-1)).toBe(0);
   expect(linearToSrgbByte(50)).toBeLessThanOrEqual(255);
+});
+
+test('the table reaches a quarter and four times, D = 1 one of its steps', () => {
+  expect(dopplerIndex(4)).toBe(DOPPLER_STEPS - 1);
+  expect(dopplerIndex(0.25)).toBe(0);
+  expect(dopplerIndex(1)).toBe((DOPPLER_STEPS - 1) / 2);
+});
+
+test('a thing’s shift rides in the alpha byte: none is 0xFF, every step reads back', () => {
+  const colour = 0xff336699;
+  expect(encodeShift(colour, 0)).toBe(colour);
+  expect(shiftOf(colour)).toBe(0);
+  for (let steps = -127; steps <= 127; steps++) {
+    const pixel = encodeShift(colour, steps);
+    expect(shiftOf(pixel)).toBe(steps);
+    expect(pixel & 0xffffff).toBe(colour & 0xffffff);
+  }
+});
+
+test('shiftSteps counts table steps of ln D: 0 at rest, its sign by the shift, within a byte', () => {
+  expect(shiftSteps(1)).toBe(0);
+  expect(shiftSteps(Math.sqrt(3))).toBe(dopplerIndex(Math.sqrt(3)) - dopplerIndex(1));
+  expect(shiftSteps(1 / Math.sqrt(3))).toBe(-shiftSteps(Math.sqrt(3)));
+  expect(shiftSteps(1000)).toBe(127);
 });

@@ -17,6 +17,7 @@ import {
   type Lighting,
 } from './lighting';
 import type { FloorMirror } from './mirror';
+import { encodeShift } from './spectrum';
 
 export interface VoxelModel {
   /** Voxel edge in tiles. */
@@ -59,6 +60,10 @@ export interface VoxelInstance {
   angle: number;
   /** Tiles above the floor. */
   lift: number;
+  /** Slow light (D41): its own motion's Doppler shift, in table steps (spectrum.ts); 0 or absent at rest. */
+  shift?: number;
+  /** Slow light (D41): its Terrell turn, radians, added where the model and its floor image are drawn, not its shadow. */
+  turn?: number;
 }
 
 /** A model's size in voxels along its x (front), y and z (up). */
@@ -208,8 +213,10 @@ export function renderVoxel(
     lightDirections(lighting, v, glows);
   }
   projectFaces(view, v, 'upright');
+  const shift = v.shift ?? 0;
   for (const f of faceOrder) {
-    fillFace(fb, f, lighting ? litColor(model, f, directionLight) : (model.colors[f] as number), pass);
+    const colour = lighting ? litColor(model, f, directionLight) : (model.colors[f] as number);
+    fillFace(fb, f, encodeShift(colour, shift), pass);
   }
 }
 
@@ -270,8 +277,9 @@ function projectFaces(view: View, v: VoxelInstance, side: 'upright' | 'mirrored'
   const { dirX, dirY, planeX, planeY, invDet, proj, halfWidth, half } = view;
   const { corners, normals, faceCount } = v.model;
   const { lift } = v;
-  const cos = Math.cos(v.angle);
-  const sin = Math.sin(v.angle);
+  const seenAngle = v.angle + (v.turn ?? 0);
+  const cos = Math.cos(seenAngle);
+  const sin = Math.sin(seenAngle);
   const up = side === 'upright' ? 1 : -1;
   let count = 0;
   // One loop: with the back-face test and the corner projection as functions it measured 1% slower (bench:sprites).

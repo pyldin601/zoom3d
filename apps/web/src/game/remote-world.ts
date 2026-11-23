@@ -21,6 +21,8 @@ import { BALL_MODEL } from '../renderer/models/ball';
 import { RIDDEN_SCOOTER_MODEL, SCOOTER_DECK_TILES, SCOOTER_MODEL } from '../renderer/models/scooter';
 import { VACUUM_MODEL } from '../renderer/models/vacuum';
 import { gesturePose } from '../renderer/sip';
+import { sourceDoppler, terrellTurn } from '../renderer/slow-light-math';
+import { shiftSteps } from '../renderer/spectrum';
 import { ringRgb, type Sprite } from '../renderer/sprites';
 import type { VoxelInstance, VoxelModel } from '../renderer/voxels';
 import type { BallPrediction } from './ball-prediction';
@@ -179,6 +181,36 @@ export function createRemoteWorld(): RemoteWorld {
   );
   const holderNow = { by: null as string | null };
   const before = { x: 0, y: 0, angle: 0 };
+  /** The last sample's slow light: the eye and c a thing's own motion is judged from. */
+  let lastLight: SeenLight | null = null;
+  const ownMotion = { shift: 0, turn: 0 };
+
+  /**
+   * How a thing's own motion changes its look (D41): its Doppler shift and its model's Terrell turn, judged where its
+   * image is (through a portal, its velocity turned with it). Nothing at rest or with slow light off.
+   */
+  const seeOwnMotion = (key: string, pos: Point, image: Apparent | undefined) => {
+    ownMotion.shift = 0;
+    ownMotion.turn = 0;
+    const record = lastLight === null ? undefined : seen.get(key);
+    if (lastLight === null || record === undefined || (record.vx === 0 && record.vy === 0)) {
+      return ownMotion;
+    }
+    const cos = image?.cos ?? 1;
+    const sin = image?.sin ?? 0;
+    const vx = record.vx * cos - record.vy * sin;
+    const vy = record.vx * sin + record.vy * cos;
+    const dx = lastLight.eye.x - (image?.x ?? pos.x);
+    const dy = lastLight.eye.y - (image?.y ?? pos.y);
+    const distance = Math.hypot(dx, dy);
+    if (distance < 1e-6) {
+      return ownMotion;
+    }
+    const c = lastLight.lightSpeed;
+    ownMotion.shift = shiftSteps(sourceDoppler(vx, vy, dx / distance, dy / distance, c));
+    ownMotion.turn = terrellTurn(vx, vy, dx / distance, dy / distance, c);
+    return ownMotion;
+  };
 
   /** The seen record of `key`, made once. */
   const seenRecord = (key: string): Seen => {
@@ -510,6 +542,7 @@ export function createRemoteWorld(): RemoteWorld {
     }
     const seenNow = lightOn ? (seenNows.get(id) ?? now) : now;
     fillSprite(sprite, peer, look, pos, bob, media, seenNow, handsFull);
+    sprite.shift = seeOwnMotion(id, pos, apparent?.get(id)).shift;
     fillLabel(label, peer, look, pos, apparent?.get(id) ?? pos);
     sprites[drawn] = sprite;
     labels[drawn] = label;
@@ -552,38 +585,42 @@ export function createRemoteWorld(): RemoteWorld {
     v.y = y;
     v.angle = angle;
     v.lift = lift;
+    v.shift = ownMotion.shift;
+    v.turn = ownMotion.turn;
     voxels[n] = v;
   };
 
   let models = 0;
-  const collectObject = (obj: RemoteObject) => {
+  const collectObject = (obj: RemoteObject, apparent: ReadonlyMap<string, Apparent> | undefined) => {
     const key = objectKeys.get(obj.info.id);
     const pose = key === undefined ? undefined : objectPoses.get(key);
-    if (pose) {
+    if (key !== undefined && pose) {
+      seeOwnMotion(key, pose, apparent?.get(key));
       placeVoxel(models++, MODELS[obj.info.kind], pose.x, pose.y, pose.angle, pose.lift);
     }
   };
   /** A ridden scooter is drawn from its rider's own drawn pose, so the two can't drift apart. */
-  const collectRide = (peer: RemotePeer) => {
+  const collectRide = (peer: RemotePeer, apparent: ReadonlyMap<string, Apparent> | undefined) => {
     const pos = lookOf(peer).riding === null ? undefined : positions.get(peer.info.id);
     if (pos) {
+      seeOwnMotion(peer.info.id, pos, apparent?.get(peer.info.id));
       placeVoxel(models++, RIDDEN_SCOOTER_MODEL, pos.x, pos.y, headings.get(peer.info.id) ?? 0, 0);
     }
   };
 
-  const collectVoxels = (s: Session) => {
+  const collectVoxels = (s: Session, apparent: ReadonlyMap<string, Apparent> | undefined) => {
     models = 0;
     for (const obj of s.objects.values()) {
-      collectObject(obj);
+      collectObject(obj, apparent);
     }
     for (const { thing } of departedObjects.values()) {
-      collectObject(thing);
+      collectObject(thing, apparent);
     }
     for (const peer of s.peers.values()) {
-      collectRide(peer);
+      collectRide(peer, apparent);
     }
     for (const { thing } of departedPeers.values()) {
-      collectRide(thing);
+      collectRide(thing, apparent);
     }
     voxels.length = models;
   };
@@ -602,6 +639,7 @@ export function createRemoteWorld(): RemoteWorld {
     seenOf: (key) => (lightOn ? seen.get(key) : undefined),
     sample(s, player, now, ball = null, portals = null, light = null) {
       lightOn = light !== null;
+      lastLight = light;
       noteDepartures(s, now);
       forgetGone();
       sampleObjects(s, now, ball, light);
@@ -610,7 +648,7 @@ export function createRemoteWorld(): RemoteWorld {
     },
     collect(s, media, now, dt, apparent) {
       collectPeers(s, media, now, dt, apparent);
-      collectVoxels(s);
+      collectVoxels(s, apparent);
     },
   };
 }

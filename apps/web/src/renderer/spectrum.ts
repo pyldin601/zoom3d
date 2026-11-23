@@ -2,10 +2,15 @@
 // seen through the eye's red, green and blue. The model is linear in RGB, so a shift is a 3×3 matrix, tabulated by D.
 
 /** Doppler factors are tabulated at this many values of ln D, evenly over [MIN_LN_D, MAX_LN_D]: odd, so D = 1 is one. */
-export const DOPPLER_STEPS = 257;
-/** At the β cap of 0.5, D runs from 0.577 to 1.732. */
-export const MIN_LN_D = Math.log(0.5);
-export const MAX_LN_D = Math.log(2);
+export const DOPPLER_STEPS = 513;
+/**
+ * At the β cap of 0.5 the eye's D runs from 0.577 to 1.732, and so does a moving thing's (D41): their product stays
+ * within ¼..4.
+ */
+export const MIN_LN_D = Math.log(0.25);
+export const MAX_LN_D = Math.log(4);
+/** One table step, in ln D. */
+const LN_D_STEP = (MAX_LN_D - MIN_LN_D) / (DOPPLER_STEPS - 1);
 
 /** The wavelengths (nm) the eye samples for red, green and blue: a colour's three values are its spectrum there. */
 const SAMPLE_NM = [610, 540, 450] as const;
@@ -110,4 +115,22 @@ export function linearToSrgbByte(x: number): number {
     return FINE[(x * FINE_PER_UNIT) | 0] as number;
   }
   return x < MAX_LIGHT ? (COARSE[(x * COARSE_PER_UNIT) | 0] as number) : BRIGHTEST;
+}
+
+/** A moving thing's Doppler factor as whole table steps, the bend adds it to its own index: 0 at rest, within ±127. */
+export function shiftSteps(d: number): number {
+  return Math.max(-127, Math.min(127, Math.round(Math.log(d) / LN_D_STEP)));
+}
+
+/**
+ * A source pixel carries the shift of the thing drawn there in its alpha byte (D41), 0xFF meaning none: the bend
+ * writes every output pixel itself, so the byte is free in the source frame, and window rows copy it along.
+ */
+export function encodeShift(colour: number, steps: number): number {
+  return steps === 0 ? colour : ((colour & 0xffffff) | (((0xff + steps) & 0xff) << 24)) >>> 0;
+}
+
+/** The shift encodeShift put in `pixel`, in table steps. */
+export function shiftOf(pixel: number): number {
+  return (((pixel >>> 24) + 1) << 24) >> 24;
 }

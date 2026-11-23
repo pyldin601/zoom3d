@@ -22,6 +22,7 @@ import {
 import type { Lighting } from './lighting';
 import type { FloorMirror } from './mirror';
 import { type HeldPose, poseBlend } from './sip';
+import { encodeShift } from './spectrum';
 import { renderVoxel, type VoxelInstance, voxelDepth } from './voxels';
 
 /** In tiles. */
@@ -74,6 +75,8 @@ export interface Sprite {
   held: HeldItem | null;
   /** A boombox carried in a hand on the viewer's left of the disc (boombox spec §2.1). */
   boombox: boolean;
+  /** Slow light (D41): its own motion's Doppler shift, in table steps (spectrum.ts); 0 or absent at rest. */
+  shift?: number;
 }
 
 /** Who and what renderSprites draws in the room, seen from `eye`. */
@@ -437,9 +440,11 @@ function drawAvatar(fb: Framebuffer, s: Sprite, projection: Projection, pass: Pa
 /** The disc, lifted by the walking bob and depth-tested per column: the face (or flat colour) inside the ring. */
 function drawDisc(fb: Framebuffer, s: Sprite, { screenX, depth, size }: Projection, pass: Pass): void {
   const { width: w, height: h, pixels, zbuffer } = fb;
-  const { color, face } = s;
+  const { face } = s;
   const faceSize = FACE_SIZE;
-  const ring = ringColour(s);
+  const shift = s.shift ?? 0;
+  const ring = encodeShift(ringColour(s), shift);
+  const color = encodeShift(s.color, shift);
   const r = size / 2;
   const r2 = r * r;
   const faceR2 = r2 * FACE_RADIUS * FACE_RADIUS;
@@ -467,7 +472,8 @@ function drawDisc(fb: Framebuffer, s: Sprite, { screenX, depth, size }: Projecti
       if (d2 > faceR2) {
         pixels[row * w + col] = ring;
       } else if (face) {
-        pixels[row * w + col] = face[faceTexel(dy, faceR, faceSize) * faceSize + u] as number;
+        const texel = face[faceTexel(dy, faceR, faceSize) * faceSize + u] as number;
+        pixels[row * w + col] = shift === 0 ? texel : encodeShift(texel, shift);
       } else {
         pixels[row * w + col] = color;
       }
@@ -540,14 +546,14 @@ function drawHeld(fb: Framebuffer, s: Sprite, item: HeldItem, { screenX, depth, 
   const r = size / 2;
   const left = screenX + heldLeft(item, s) * r;
   const top = fb.height / 2 - (heldTop(item, s) + itemLift(s)) * r;
-  blitHeldSprite(fb, HELD_SPRITES[item], left, top, HELD_TEXEL * r, depth, pass);
+  blitHeldSprite(fb, HELD_SPRITES[item], left, top, HELD_TEXEL * r, depth, pass, s.shift ?? 0);
 }
 
 /** The boombox in the hand on the viewer's left, bobbing with the step. */
 function drawBoombox(fb: Framebuffer, s: Sprite, { screenX, depth, size }: Projection, pass: Pass): void {
   const r = size / 2;
   const top = fb.height / 2 - (BOOMBOX_TOP + itemLift(s)) * r;
-  blitHeldSprite(fb, BOOMBOX_SPRITE, screenX + BOOMBOX_LEFT * r, top, HELD_TEXEL * r, depth, pass);
+  blitHeldSprite(fb, BOOMBOX_SPRITE, screenX + BOOMBOX_LEFT * r, top, HELD_TEXEL * r, depth, pass, s.shift ?? 0);
 }
 
 /** The held item's left edge in `pose`, in disc radii right of the disc's centre. */

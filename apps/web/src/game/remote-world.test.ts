@@ -335,6 +335,31 @@ describe('slow light (D39)', () => {
       expect(world.sprites.at(0)).toMatchObject({ held: null });
     });
 
+    test('someone walking toward the eye is shifted up, away down, and a crossing scooter is turned', () => {
+      const world = createRemoteWorld();
+      room.addPeer('ada', 8, 2);
+      room.addPeer('bob', 8, 3);
+      room.addObject('s1', 8, 6, 0, 'scooter');
+      const walk = (buffer: SnapshotBuffer, x0: number, y0: number, vx: number, vy: number) => {
+        for (let t = NOW - 1900; t <= NOW; t += 66) {
+          buffer.push({ t, x: x0 + (vx * (t - NOW)) / 1000, y: y0 + (vy * (t - NOW)) / 1000, angle: 0 });
+        }
+      };
+      walk(peer('ada').buffer, 8, 2, -2, 0);
+      walk(peer('bob').buffer, 8, 3, 2, 0);
+      walk(room.objects.get('s1')?.buffer as SnapshotBuffer, 8, 6, 3, 0);
+      frame(world, NOW);
+      expect(world.sprites.find((s) => s.key === 'ada')?.shift).toBeGreaterThan(0);
+      expect(world.sprites.find((s) => s.key === 'bob')?.shift).toBeLessThan(0);
+      const scooter = world.voxels.find((v) => v.model === SCOOTER_MODEL);
+      expect(scooter?.turn).not.toBe(0);
+      expect(scooter?.shift).toBeLessThan(0);
+      world.sample(room.session, eye, NOW, null, null, null);
+      world.collect(room.session, media, NOW, 0);
+      expect(world.sprites.map((s) => s.shift ?? 0)).toEqual([0, 0]);
+      expect(world.voxels.map((v) => v.turn ?? 0)).toEqual([0]);
+    });
+
     test('off, the live state shows at once', () => {
       const world = createRemoteWorld();
       room.addPeer('ada', 8, 2);

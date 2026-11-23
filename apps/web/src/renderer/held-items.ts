@@ -5,6 +5,7 @@ import type { Drink, HeldItem } from '@zoom3d/shared';
 import { MOUTH_Y_IN_CROP } from '../media/framing';
 import { WHOLE_FRAME } from './camera';
 import { type Framebuffer, rgb } from './framebuffer';
+import { encodeShift } from './spectrum';
 
 /**
  * Item geometry in disc radii: texel size, left edge right of the disc centre, top above the horizon
@@ -151,7 +152,8 @@ export function blitHeldSprite(
   top: number,
   texelPx: number,
   depth: number,
-  pass = WHOLE_FRAME
+  pass = WHOLE_FRAME,
+  shift = 0
 ): void {
   const { width: w, height: h, pixels, zbuffer } = fb;
   const { w: tw, h: th, texels } = sprite;
@@ -175,7 +177,7 @@ export function blitHeldSprite(
       }
       const c = texels[v * tw + u] as number;
       if (c !== 0) {
-        pixels[row * w + col] = c;
+        pixels[row * w + col] = shift === 0 ? c : encodeShift(c, shift);
       }
     }
   }

@@ -3,7 +3,7 @@
 // Doppler shift of its spectrum. The map is smooth, so it is exact on a coarse grid and interpolated in between.
 import { createFramebuffer, type Framebuffer } from './framebuffer';
 import { aberrate, type Dir, dopplerAlong, MAX_BETA, type Motion } from './slow-light-math';
-import { DOPPLER_STEPS, dopplerIndex, linearToSrgbByte, SHIFT_MATRICES, SRGB_TO_LINEAR } from './spectrum';
+import { DOPPLER_STEPS, dopplerIndex, linearToSrgbByte, SHIFT_MATRICES, SRGB_TO_LINEAR, shiftOf } from './spectrum';
 
 /** The source frame is this many times the frame's width; soft is fine (owner, 2026-11-22). */
 const SOURCE_WIDTH_FACTOR = 2;
@@ -243,7 +243,8 @@ export function createBend(): Bend {
           const c = srcPixels[
             (sy < 0 ? 0 : sy > lastSrcY ? lastSrcY : sy) * src.width + (sx < 0 ? 0 : sx > lastSrcX ? lastSrcX : sx)
           ] as number;
-          const d = ((rowD[i] as number) + ((rowD[i + 1] as number) - (rowD[i] as number)) * tx + 0.5) | 0;
+          const eyeD = (rowD[i] as number) + ((rowD[i + 1] as number) - (rowD[i] as number)) * tx;
+          const d = (eyeD + shiftOf(c) + 0.5) | 0;
           const m = (d < 0 ? 0 : d >= DOPPLER_STEPS ? DOPPLER_STEPS - 1 : d) * 9;
           const r = SRGB_TO_LINEAR[c & 0xff] as number;
           const g = SRGB_TO_LINEAR[(c >>> 8) & 0xff] as number;
@@ -263,7 +264,7 @@ export function createBend(): Bend {
               (SHIFT_MATRICES[m + 7] as number) * g +
               (SHIFT_MATRICES[m + 8] as number) * b
           );
-          out[row + x] = ((c & 0xff000000) | (outB << 16) | (outG << 8) | outR) >>> 0;
+          out[row + x] = (0xff000000 | (outB << 16) | (outG << 8) | outR) >>> 0;
         }
       }
     },
