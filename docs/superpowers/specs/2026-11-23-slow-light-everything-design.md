@@ -1,6 +1,6 @@
 # Slow light for everything — design
 
-Date: 2026-11-23. Status: proposed. Decision: D41 in `docs/open-decisions.md` (once approved). Builds on D39 and D40
+Date: 2026-11-23. Status: built (2026-11-23). Decision: D41 in `docs/open-decisions.md`. Builds on D39 and D40
 ([slow light](2026-11-22-slow-light-design.md), [honest slow light](2026-11-22-slow-light-honest-design.md)).
 
 ## 1. Intent

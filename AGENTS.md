@@ -231,6 +231,9 @@ scripts/smoke-image.sh server|web IMG  # smoke-test a built image (CI runs this 
   pixel by exact aberration on a grid, shifting colours through `renderer/spectrum.ts` (D40), so anything
   new in the room goes through `drawPass`, and anything held in first person is drawn after `bend.apply`, unbent. Light
   delay goes through `seenAt` (`game/light-delay.ts`) in `RemoteWorld.sample`. The look off must stay pixel-identical.
+  One rule for everything (D41): anything new a remote thing shows (state, face, look) is read at its light time
+  (`RemoteWorld.seenOf`, a stamped ring), never live; a thing's motion shift rides in the source pixel's alpha byte, so
+  anything drawing a moving thing writes it with `encodeShift`; anything new lit by lamps honours `Lighting.wave`.
 - Telemetry privacy: logs, metrics labels, Sentry and Amplitude never get names, resume tokens or IPs, nor raw room
   ids: a room link is the room's only key. Server logs use `roomRef()` (a short hash), and the browser Sentry
   `beforeSend` scrubs `/r/<id>`.
