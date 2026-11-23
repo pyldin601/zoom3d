@@ -21,6 +21,7 @@ import {
   FACE_NORMALS,
   FLOOR_NORMAL,
   FLOOR_SUB,
+  type Light,
   type Lighting,
   type Normal,
   REFLECTION_LAMPS,
@@ -156,7 +157,7 @@ let rowShineLamp = new Int32Array(0);
 /** The row aimFloorRow last aimed at. */
 const floorRow: FloorRow = { x: 0, y: 0, stepX: 0, stepY: 0 };
 
-let reflectionColoursFor: { lm: Lighting; textures: Uint32Array[] } | null = null;
+let reflectionColoursFor: { lights: readonly Light[]; textures: Uint32Array[] } | null = null;
 let reflectionColourTable = new Float64Array(0);
 let blackTables: FloorTables | null = null;
 
@@ -211,6 +212,8 @@ let frameTables:
   | (FloorTables &
       PatchedFloor & {
         lm: Lighting;
+        /** `lm.version` when the copies were made. */
+        version: number | undefined;
         touched: Uint8Array;
         /** A typed array and a count, not an array emptied each frame: V8 drops an array's storage at `length = 0`. */
         dirty: Int32Array;
@@ -396,7 +399,8 @@ function fitScratchToFrame(fb: Framebuffer): void {
  * OKLab per texel row would cost too much, and a texture's texels share a hue.
  */
 function reflectionColoursOf(textures: Uint32Array[], lm: Lighting): Float64Array {
-  if (reflectionColoursFor?.lm === lm && reflectionColoursFor.textures === textures) {
+  // By lamp list, not table: slow light's wave keeps one table whose lamps change (D41).
+  if (reflectionColoursFor?.lights === lm.lights && reflectionColoursFor.textures === textures) {
     return reflectionColourTable;
   }
   const lights = lm.lights.length;
@@ -412,7 +416,7 @@ function reflectionColoursOf(textures: Uint32Array[], lm: Lighting): Float64Arra
       reflectionColourTable.set(reflectedColour(mean, l, tint), (tile * lights + i) * 3);
     });
   });
-  reflectionColoursFor = { lm, textures };
+  reflectionColoursFor = { lights: lm.lights, textures };
   return reflectionColourTable;
 }
 
@@ -748,6 +752,7 @@ function putBackFrameTables(lm: Lighting): NonNullable<typeof frameTables> {
     const light = new Float32Array(lm.floor.length * 3);
     const t: NonNullable<typeof frameTables> = {
       lm,
+      version: lm.version,
       floor: lm.floor.slice(),
       ceiling: lm.ceiling.slice(),
       floorLampSeen: lm.floorLampSeen.slice(),
@@ -766,6 +771,15 @@ function putBackFrameTables(lm: Lighting): NonNullable<typeof frameTables> {
     frameTables = t;
   }
   const t = frameTables;
+  if (t.version !== lm.version) {
+    // Refilled in place by slow light's wave: copy it all again, into the same arrays.
+    t.version = lm.version;
+    t.floor.set(lm.floor);
+    t.ceiling.set(lm.ceiling);
+    t.floorLampSeen.set(lm.floorLampSeen);
+    t.touched.fill(0);
+    t.dirtyCount = 0;
+  }
   for (let j = 0; j < t.dirtyCount; j++) {
     const i = t.dirty[j] as number;
     t.floor[i] = lm.floor[i] as number;

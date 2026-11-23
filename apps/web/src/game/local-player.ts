@@ -291,6 +291,8 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       ownDisc.wobble = wobble;
       ownDisc.held = handsFull() ? null : heldItem;
       ownDisc.boombox = handsFull() ? false : localPlayer.boombox;
+      // Slow light (D41) shifts it while a window shows it late; every frame starts at rest.
+      ownDisc.shift = 0;
       return ownDisc;
     },
     scooter() {
@@ -300,6 +302,8 @@ export function createLocalPlayer(map: GameMap, random: () => number): LocalPlay
       ownScooter.x = pose.x;
       ownScooter.y = pose.y;
       ownScooter.angle = pose.angle;
+      ownScooter.shift = 0;
+      ownScooter.turn = 0;
       return ownScooter;
     },
     firstPerson(now) {

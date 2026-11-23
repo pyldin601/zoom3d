@@ -461,3 +461,19 @@ test('a dribble puts the held item and boombox away and takes the hands, and let
   expect(localPlayer.lighter()).not.toBeNull();
   expect(localPlayer.firstPerson(0)).toMatchObject({ held: 'lighter', boombox: true });
 });
+
+test('the own disc and scooter start every frame unshifted and unturned: slow light off leaves none behind (D41)', () => {
+  const localPlayer = createLocalPlayer(MAP, () => 0.5);
+  const disc = localPlayer.avatar(0, '#ff0000', true);
+  if (disc) {
+    disc.shift = 3;
+  }
+  expect(localPlayer.avatar(16, '#ff0000', true)?.shift).toBe(0);
+  localPlayer.riding = true;
+  const scooter = localPlayer.scooter();
+  if (scooter) {
+    scooter.shift = 3;
+    scooter.turn = 0.4;
+  }
+  expect(localPlayer.scooter()).toMatchObject({ shift: 0, turn: 0 });
+});

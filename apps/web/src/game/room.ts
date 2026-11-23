@@ -57,6 +57,8 @@ export interface Room {
    * while it isn't null, else the page's.
    */
   lighting(dark: boolean): Lighting | null;
+  /** The lit tables the room can show in the chosen look: the page's, and its portals-on one (slow light, D41). */
+  litTables(): readonly Lighting[];
   /** Kicks the ball the way the local player faces, if it is in reach: at once here, and on to the server. */
   kick(): void;
   /** Picks the ball up into a dribble if it is in reach, or lets go of the one in hand (ball dribble spec §2). */
@@ -146,6 +148,10 @@ export function joinRoom(opts: JoinOptions): Room {
   const sightPortals = () =>
     shownPortals(portals(), roomLighting.photon, opts.portalLook(), roomLighting.realisticReady());
   const lighting = (dark: boolean) => roomLighting.lighting(sightPortals(), dark);
+  const litTables = () => {
+    const on = shownPortals(wiring, roomLighting.photon, opts.portalLook(), roomLighting.realisticReady());
+    return [roomLighting.lighting(null, false), roomLighting.lighting(on, false)].filter((t) => t !== null);
+  };
   const sequence = createPortalSequence();
   const switchSounds = createPortalSwitchSounds(opts.audioCtx, audio);
   return {
@@ -164,6 +170,7 @@ export function joinRoom(opts: JoinOptions): Room {
     sequence,
     switchSounds,
     lighting,
+    litTables,
     kick,
     dribble,
     ride,

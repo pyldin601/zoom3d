@@ -40,9 +40,9 @@ export const FLOOR_SUB = 8;
 /** Light multipliers are packed 0xBBGGRR with 128 = 1.0, so a lamp can overbright up to 2×. */
 const ONE = 128;
 /** Ceiling cells within this distance (tiles) of a lamp show the lamp itself. */
-const FIXTURE_RADIUS = 0.18;
+export const FIXTURE_RADIUS = 0.18;
 /** The colour a lamp's fixture shows on the ceiling. */
-const FIXTURE = rgb(255, 236, 190);
+export const FIXTURE = rgb(255, 236, 190);
 /**
  * A lamp casts shadows as a disc this wide (radius, tiles), its fixture's size: a wall's edge hides part of it, so
  * shadows fade in over a few cells instead of stepping.
@@ -158,6 +158,34 @@ export interface Lighting {
   /** The floor and ceiling tables' size: cells across (a row's length) and rows. */
   stride: number;
   rows: number;
+  /**
+   * Only on slow light's wave table (D41, light-wave.ts): which lamps a point sees lit, and its ambient, as the light
+   * now reaching the eye shows them. Absent on every baked table.
+   */
+  wave?: LightAtPoint;
+  /**
+   * Bumped each time slow light's wave refills this table in place (D41), so a copy made from it knows to be made
+   * again; absent on every baked table, which never changes.
+   */
+  version?: number;
+}
+
+/** What a thing standing at a point is lit by, while slow light's wave runs (D41). */
+export interface LightAtPoint {
+  /** Whether lamp `index` (in the table's `lights`) is seen lit at (x, y). */
+  lampLit(index: number, x: number, y: number): boolean;
+  ambientInto(x: number, y: number, out: Float64Array): void;
+}
+
+/**
+ * Takes each lamp's own share of a bake as it is summed (D41, light-wave.ts): sample is a wall face's sample column
+ * (faceOffset / WALL_V + u), cell a floor and ceiling cell; `path` is the lamp's distance from the lit point.
+ */
+export interface ShareSink {
+  wallAmbient(sample: number, x: number, y: number, r: number, g: number, b: number): void;
+  wallLamp(sample: number, lamp: number, path: number, k: Float64Array): void;
+  cellAmbient(cell: number, r: number, g: number, b: number): void;
+  cellLamp(cell: number, lamp: number, path: number, floor: number, ceiling: number, fixture: boolean): void;
 }
 
 /** A surface's unit normal. */
@@ -186,12 +214,12 @@ interface Eye {
   readonly y: number;
 }
 
-function pack(r: number, g: number, b: number): number {
+export function pack(r: number, g: number, b: number): number {
   const q = (v: number) => Math.max(0, Math.min(255, Math.round(v * ONE)));
   return (q(b) << 16) | (q(g) << 8) | q(r);
 }
 
-function tint(colour: number, r: number, g: number, b: number): number {
+export function tint(colour: number, r: number, g: number, b: number): number {
   const c = (v: number, k: number) => Math.min(255, Math.round(v * k));
   return rgb(c(colour & 0xff, r), c((colour >>> 8) & 0xff, g), c((colour >>> 16) & 0xff, b));
 }
@@ -429,6 +457,10 @@ function bakeSurfaces(input: BakeInput, floorColour: number, ceilingColour: numb
 
 /** The ambient light, r, g, b into `out`, at (x, y): the bare ambient plus any bounce light there. */
 export function ambientAt(lm: Lighting, x: number, y: number, out: Float64Array): void {
+  if (lm.wave) {
+    lm.wave.ambientInto(x, y, out);
+    return;
+  }
   ambientInto(lm.map, lm.ambient, lm.bounce, x, y, out);
 }
 
@@ -446,6 +478,8 @@ interface BakeInput {
   bounce: Float32Array | null;
   /** bakeLampSight's table. */
   sight: Uint8Array;
+  /** Takes each lamp's share as it is summed, for slow light's wave (D41); absent in an ordinary bake. */
+  shares?: ShareSink;
 }
 
 /** Numbers every wall face with floor in front of it: faceOffset per wall cell × face (−1 for none), and the count. */
@@ -520,7 +554,8 @@ function bakeWalls(
   const wallLampSeen = new Uint8Array(wallLamp.length);
   const list = createLampList();
   const around = new Float64Array(3);
-  // The lamps' light down the sample column, per WALL_V sample.
+  // The lamps' light down the sample column, per WALL_V sample, and one lamp's share of it.
+  const shareK = new Float64Array(WALL_V);
   const r = new Float64Array(WALL_V);
   const g = new Float64Array(WALL_V);
   const b = new Float64Array(WALL_V);
@@ -541,6 +576,7 @@ function bakeWalls(
           const ar = (around[0] as number) * shade;
           const ag = (around[1] as number) * shade;
           const ab = (around[2] as number) * shade;
+          input.shares?.wallAmbient(base / WALL_V + u, px, py, ar, ag, ab);
           r.fill(0);
           g.fill(0);
           b.fill(0);
@@ -572,10 +608,12 @@ function bakeWalls(
               const dz = l.z - (1 - (v + 0.5) / WALL_V);
               const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
               const k = falloff(dist, l.radius) * (facing / dist) * seen;
+              shareK[v] = k;
               r[v] = (r[v] as number) + l.r * k;
               g[v] = (g[v] as number) + l.g * k;
               b[v] = (b[v] as number) + l.b * k;
             }
+            input.shares?.wallLamp(base / WALL_V + u, i, Math.hypot(flat, l.z - 0.5), shareK);
           }
           wallLamp.set(list.lamps, (base / WALL_V + u) * REFLECTION_LAMPS);
           wallLampSeen.set(list.seen, (base / WALL_V + u) * REFLECTION_LAMPS);
@@ -625,6 +663,7 @@ function bakeFloorAndCeiling(
         continue;
       }
       ambientInto(map, ambient, input.bounce, px, py, around);
+      input.shares?.cellAmbient(sy * stride + sx, around[0] as number, around[1] as number, around[2] as number);
       let fr = around[0] as number;
       let fg = around[1] as number;
       let fb = around[2] as number;
@@ -653,7 +692,8 @@ function bakeFloorAndCeiling(
         if (!lit) {
           continue;
         }
-        if (flat < FIXTURE_RADIUS && l.through === undefined) {
+        const showsFixture = flat < FIXTURE_RADIUS && l.through === undefined;
+        if (showsFixture) {
           fixture = true;
         }
         const kf = floorLampLight(l, px, py) * seen;
@@ -664,6 +704,7 @@ function bakeFloorAndCeiling(
         const dc = Math.sqrt(flat * flat + up * up);
         // The ceiling sees the lamp almost edge-on; lift it a little so the pool still reads.
         const kc = falloff(dc, l.radius) * Math.max(0.35, up / dc) * seen;
+        input.shares?.cellLamp(sy * stride + sx, i, Math.hypot(flat, l.z), kf, kc, showsFixture);
         cr += l.r * kc;
         cg += l.g * kc;
         cb += l.b * kc;
@@ -1053,13 +1094,14 @@ export function directLight(lm: Lighting, x: number, y: number, z: number, angle
   out.fill(0);
   const ca = Math.cos(angle);
   const sa = Math.sin(angle);
-  for (const l of lm.lights) {
+  for (let i = 0; i < lm.lights.length; i++) {
+    const l = lm.lights[i] as Light;
     const dx = l.x - x;
     const dy = l.y - y;
     const dz = l.z - z;
     const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
     const k = falloff(dist, l.radius);
-    if (k === 0 || !seesLamp(lm.map, lm.portals, l, x, y, l.x, l.y)) {
+    if (k === 0 || (lm.wave && !lm.wave.lampLit(i, x, y)) || !seesLamp(lm.map, lm.portals, l, x, y, l.x, l.y)) {
       continue;
     }
     // The lamp's direction in model space: rotate the horizontal part by −angle.
@@ -1131,4 +1173,21 @@ export function corridorLights(map: GameMap, spacing = 5, radius = 4.5): Light[]
     }
   }
   return lights;
+}
+
+/**
+ * Re-runs `lm`'s bake handing each lamp's share to `shares` (D41): the same sums its tables were made of, so a wave
+ * re-summed from them with every lamp lit is `lm` again. About as long as `lm`'s own bake.
+ */
+export function bakeShares(lm: Lighting, floorColour: number, ceilingColour: number, shares: ShareSink): void {
+  const input: BakeInput = {
+    map: lm.map,
+    portals: lm.portals,
+    lights: lm.lights,
+    ambient: lm.ambient,
+    bounce: lm.bounce,
+    sight: bakeLampSight(lm.map, lm.portals, lm.lights),
+    shares,
+  };
+  bakeSurfaces(input, floorColour, ceilingColour);
 }

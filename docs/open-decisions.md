@@ -1125,5 +1125,30 @@ Format: **ID — question** · options · recommendation. Move to *Resolved* wit
   - Checked by eye in a local room at c = 6: walking, the corridor crowds forward, side walls turn purple and the lit
     floor ahead pale green-white. Not judged by the owner yet.
 
+### D41 — Slow light for everything: one rule for every thing, and the lamps' light over its whole path
+- *Resolved 2026-11-23* ([spec](superpowers/specs/2026-11-23-slow-light-everything-design.md)): the owner asked that
+  the speed of light apply to other players, all objects, shadows and lights alike, "everything in sync", and that
+  scooter, ball and vacuum share one logic. With slow light on:
+  - **Seen state:** a peer's held item (the lighter's light too), boombox, mic badge, riding, sips and cheers, who holds
+    the ball, arrivals and departures are seen at the thing's light time (small stamped rings in `RemoteWorld`;
+    `game/seen-state.ts`). Stepping on a scooter swaps parked for ridden at one light time.
+  - **Faces** are seen late too (owner: faces only, voices stay live, so lips lag): a face keeps 128² frames for about
+    a second and 64² for about eight (`media/face-history.ts`), about 4 MB per camera peer while the look is on.
+  - **Moving things:** a thing's own velocity Doppler-shifts its colour and brightness, carried in the source pixel's
+    alpha byte and added to the bend's own shift (table widened to D ¼..4), and turns voxel models by the Terrell
+    rotation; discs stay round (Penrose–Terrell). Lamp shadows keep the true angle; the floor mirror is turned, not
+    shifted.
+  - **Lights-out wave (owner):** each lamp's light at a place is seen as the change has travelled lamp → place → eye,
+    so the dark grows out of each lamp. The room loop keeps a timeline of what the instant frame showed; a wave table
+    is re-summed from each lamp's own share of the baked tables (`renderer/light-wave.ts`, `bakeShares`). Bounce light
+    follows a place's brightest lamp. Doorways open or close when their own light arrives (`openOnly`, `Portals.open`).
+  - **The own image** through a portal follows the same rule (`game/own-image.ts`).
+  - Not covered: sounds stay live; moving lights (glows, lighter, headlight) light the room from their one seen pose;
+    labels and hums follow the live portals; places seen through a window go dark by their own distance.
+  - **Measured** (2026-11-23, LEVEL1): look off, every `bench:walls` and `bench:sprites` hash equal to `main`; bent
+    frame ~10 ms as before; the lamp shares bake in ~400 ms when slow light first runs in a room; the wave costs
+    3–5 ms a frame while it spreads. Checked in a local room at c = 6 with 12 bots: Y's dark spreads out from the eye,
+    doorways open as their light arrives, no errors. Colours of passing things not judged by the owner yet.
+
 ## Resolved
 _(none yet)_

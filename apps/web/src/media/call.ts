@@ -8,11 +8,17 @@ import type { LocalMediaController } from './local-media';
 import type { RemoteMedia } from './remote-media';
 import { type FacesSent, type MediaTransport, NO_FACES_SENT, type TransportOptions } from './transport';
 
+/** How long a leaver's face is kept with slow light on (D41): the face history's length, about 8 s. */
+const LEAVER_SEEN_MS = 8000;
+
 export interface Call {
   /** Pass to createSession, then call attach() with the session. */
   listener: SessionListener;
   attach(session: Session): void;
-  faceOf(peerId: string): Uint32Array | null;
+  /** A peer's face texels, any square size; with `lateMs`, as their face showed that long ago (slow light, D41). */
+  faceOf(peerId: string, lateMs?: number): Uint32Array | null;
+  /** Whether faces keep their last seconds of video, for slow light (D41). */
+  setFaceHistory(on: boolean): void;
   isLive(peerId: string): boolean;
   stats(peerId: string): Promise<{ bytesReceived: number; boomboxBytesReceived: number } | null>;
   /** Which of our face sizes someone receives now; none before the media room is up. */
@@ -96,6 +102,19 @@ export function createCall(opts: CallOptions): Call {
     opts.audio?.attach(key, stream, peerId);
   };
 
+  let faceHistory = false;
+  /** Faces of people who left, kept while slow light may still show them: up to the face history's length. */
+  const leaving = new Map<string, { face: FaceSource; at: number }>();
+  let lastUpdate = 0;
+  const forgetLeaving = (before: number) => {
+    for (const [id, { face, at }] of leaving) {
+      if (at <= before) {
+        face.dispose();
+        leaving.delete(id);
+      }
+    }
+  };
+
   const ensureFace = (peer: PeerInfo) => {
     const face = faces.get(peer.id) ?? createPeerFace(peer);
     face.setCam(peer.cam);
@@ -109,6 +128,7 @@ export function createCall(opts: CallOptions): Call {
       document: opts.document,
     });
     faces.set(peer.id, face);
+    face.history(faceHistory);
     const want = wantedFrom.get(peer.id);
     if (want) {
       face.setPaused(want.video === 'off');
@@ -139,7 +159,13 @@ export function createCall(opts: CallOptions): Call {
     remote.detach(boomboxKey(peerId));
     opts.audio?.detach(peerId);
     opts.audio?.detach(boomboxKey(peerId));
-    faces.get(peerId)?.dispose();
+    const face = faces.get(peerId);
+    // With slow light a leaver is still seen for their light time (D41): their face history goes later.
+    if (face && faceHistory) {
+      leaving.set(peerId, { face, at: lastUpdate });
+    } else {
+      face?.dispose();
+    }
     faces.delete(peerId);
     early.delete(peerId);
     wantedFrom.delete(peerId);
@@ -244,7 +270,22 @@ export function createCall(opts: CallOptions): Call {
       session = s;
       tellSessionOwnMedia();
     },
-    faceOf: (id) => faces.get(id)?.texels ?? null,
+    faceOf: (id, lateMs = 0) => {
+      const face = faces.get(id) ?? (lateMs > 0 ? leaving.get(id)?.face : undefined);
+      return face === undefined ? null : lateMs > 0 ? face.seen(lateMs) : face.texels;
+    },
+    setFaceHistory(on) {
+      if (on === faceHistory) {
+        return;
+      }
+      faceHistory = on;
+      for (const face of faces.values()) {
+        face.history(on);
+      }
+      if (!on) {
+        forgetLeaving(Number.POSITIVE_INFINITY);
+      }
+    },
     isLive: (id) => faces.get(id)?.live() ?? false,
     stats: async (id) => (transport ? transport.stats(id) : null),
     sendingFaces: () => transport?.sendingFaces() ?? NO_FACES_SENT,
@@ -270,9 +311,11 @@ export function createCall(opts: CallOptions): Call {
     },
     localState: () => ({ ...ownMedia }),
     update(now) {
+      lastUpdate = now;
       for (const face of faces.values()) {
         face.update(now);
       }
+      forgetLeaving(now - LEAVER_SEEN_MS);
     },
     dispose() {
       unsubscribe();

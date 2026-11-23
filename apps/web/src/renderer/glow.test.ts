@@ -1,4 +1,4 @@
-import { type GameMap, type Portals, parseMap } from '@zoom3d/shared';
+import { type GameMap, openOnly, type Portals, parseMap } from '@zoom3d/shared';
 import { describe, expect, test } from 'vitest';
 import { FACE_SIZE } from '../media/faces';
 import { rgb } from './framebuffer';
@@ -184,6 +184,12 @@ describe('createPortalGlows', () => {
 
   test('no portals, no portal glows', () => {
     expect(createPortalGlows().update(null, 1, null)).toHaveLength(0);
+  });
+
+  test('a doorway not yet seen open has no glow (slow light, D41)', () => {
+    const { portals } = portalHall();
+    const closed = openOnly(portals, new Uint8Array(portals.list.length));
+    expect(createPortalGlows().update(closed, 1, null)).toHaveLength(0);
   });
 });
 

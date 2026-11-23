@@ -1,7 +1,7 @@
 // Avatars as lights: each disc glows like a small screen, its face's average colour, lighting the floor and walls
 // around it as it moves. Drawn per frame; an avatar's glow casts no shadows: its reach is short. A portal's glow
 // never moves, so its shadows are baked with the room's portals-on lighting (`GlowShadow`).
-import type { Portal, Portals } from '@zoom3d/shared';
+import { isOpen, type Portal, type Portals } from '@zoom3d/shared';
 import { PORTAL_PINK } from '../game/portal-pulse';
 import { EYE_HEIGHT } from './camera';
 
@@ -299,14 +299,19 @@ export function createPortalGlows(): PortalGlows {
     update(portals, pulse, shadows) {
       const strength = PORTAL_GLOW_STRENGTH * (0.25 + 0.75 * pulse);
       let count = 0;
-      for (const portal of portals?.list ?? NO_PORTALS) {
+      const list = portals?.list ?? NO_PORTALS;
+      for (let index = 0; index < list.length; index++) {
+        const portal = list[index] as Portal;
+        if (portals && !isOpen(portals, index)) {
+          continue;
+        }
         let g = pool.at(count);
         if (!g) {
           g = newPortalGlow();
           pool.push(g);
         }
         placePortalGlow(g, portal);
-        g.shadow = shadows?.at(count) ?? null;
+        g.shadow = shadows?.at(index) ?? null;
         g.r = PORTAL_PINK.r * strength;
         g.g = PORTAL_PINK.g * strength;
         g.b = PORTAL_PINK.b * strength;

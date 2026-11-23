@@ -11,6 +11,7 @@ import {
   PLAYER_RADIUS,
   type PlayerState,
   type Point,
+  type Portals,
 } from '@zoom3d/shared';
 import { ownLoad } from '../audio/scooter-sounds';
 import { HIDDEN_TICK_MS } from '../audio/ticker';
@@ -18,6 +19,7 @@ import type { Input } from '../input/keyboard';
 import { createSubscription } from '../media/subscription';
 import { ownAvatarShown, type RoomScene, renderHud, renderView } from '../renderer/frame';
 import type { NameLabel } from '../renderer/labels';
+import { createLightWave } from '../renderer/light-wave';
 import type { Lighting } from '../renderer/lighting';
 import { BALL_MODEL, createBallRoll, recolourBall, rollBy } from '../renderer/models/ball';
 import { createBend } from '../renderer/slow-light';
@@ -27,7 +29,9 @@ import { type StatusLine, statusText } from '../ui/room-status';
 import { createApparentWorld, placeOwnLabel } from './apparent-world';
 import type { FrameRateMeter } from './frame-rate';
 import { createTrail, type SeenLight } from './light-delay';
+import { createLightTimeline, createSeenPortals } from './light-timeline';
 import type { LocalPlayer } from './local-player';
+import { createOwnImage } from './own-image';
 import { createOwnMotion } from './own-motion';
 import { portalPulse } from './portal-pulse';
 import type { SequenceCues } from './portal-sequence';
@@ -72,11 +76,14 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   const apparentWorld = createApparentWorld();
   /** The remote things (people, world objects and portal hums) with their places, reused from frame to frame. */
   let apparent: ReadonlyMap<string, Apparent> = new Map();
+  /** The same places through the doorways as seen while a slow light change spreads (D41): labels go there. */
+  const seenApparentWorld = createApparentWorld();
+  let labelled: ReadonlyMap<string, Apparent> = apparent;
   const things: { id: string; x: number; y: number }[] = [];
   /** Where each portal doorway's hum plays from, reused from frame to frame. */
   const humSources = new Map<string, { x: number; y: number }>();
   const peerMedia: PeerMedia = {
-    faceOf: (id) => o.room()?.call.faceOf(id) ?? null,
+    faceOf: (id, lateMs) => o.room()?.call.faceOf(id, lateMs) ?? null,
     speaking: (id) => o.room()?.audio.speaking(id) ?? 0,
   };
   const scene: RoomScene = {
@@ -111,8 +118,64 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   const ownTrail = createTrail();
   const ownSeen: PlayerState = { x: 0, y: 0, angle: 0 };
   const ownImage: Apparent = { x: 0, y: 0, sees: false, through: 0, cos: 1, sin: 0 };
+  /** What the own disc held, did and showed, frame by frame: a window shows it as late as its light (D41). */
+  const ownImageLook = createOwnImage();
   /** This frame's slow light, or null while light is instant. */
   let light: SeenLight | null = null;
+
+  // The lights-out wave (D41): what the instant frame showed of the room's light, change by change, replayed per place.
+  const timeline = createLightTimeline();
+  let wave = createLightWave();
+  /** The room the wave's lamp shares were baked for: baked once per room, however often the look is turned on. */
+  let waveRoom: Room | null = null;
+  const seenPortals = createSeenPortals();
+  /** The sight portals the last frame drew, doorway by doorway as seen: the light delay looks through them too. */
+  let drawnSight: Portals | null = null;
+  /** Whether a change is still on its way somewhere: the wave and the doorways are drawn as seen. */
+  let spreading = false;
+  /** The room and the light the timeline was last fed: a new room, look or slow light on starts it again. */
+  let fedRoom: Room | null = null;
+  let fedLighting: Lighting | null = null;
+  let fedSight: Portals | null = null;
+  /** Long enough for any change to have travelled lamp → place → eye across the whole map. */
+  const longestPath = 2 * Math.hypot(o.map.width, o.map.height);
+
+  /** Whether going from what was fed to (lighting, sight) is this person's setting, not the room's light changing. */
+  const lookChanged = (lighting: Lighting | null, sight: Portals | null) =>
+    (lighting === null) !== (fedLighting === null) || (sight !== null && fedSight !== null && sight !== fedSight);
+
+  /** The frame's lighting with slow light: the wave while a change is still on its way somewhere, else `instant`. */
+  const seenLighting = (room: Room | null, instant: Lighting | null, sight: Portals | null): Lighting | null => {
+    if (light === null || room === null || instant === null) {
+      fedRoom = null;
+      spreading = false;
+      return instant;
+    }
+    const now = performance.now();
+    if (fedRoom !== room || lookChanged(instant, sight)) {
+      if (waveRoom !== room) {
+        wave = createLightWave();
+        waveRoom = room;
+      }
+      for (const table of room.litTables()) {
+        wave.prepare(table);
+      }
+      timeline.reset(now, instant, sight);
+    } else {
+      timeline.record(now, instant, sight);
+    }
+    fedRoom = room;
+    fedLighting = instant;
+    fedSight = sight;
+    spreading = timeline.changedSince(now - (longestPath / light.lightSpeed) * 1000);
+    return spreading ? wave.update(timeline, light.eye, now, light.lightSpeed) : instant;
+  };
+
+  /** The sight portals to draw: doorway by doorway as their light shows them while a change spreads, else `live`. */
+  const seenSight = (live: Portals | null): Portals | null =>
+    light !== null && fedRoom !== null && spreading
+      ? seenPortals.update(timeline, light.eye, performance.now(), light.lightSpeed)
+      : live;
 
   /** Refills the slow light for this frame from the console's setting; null, and the motion forgotten, while off. */
   const updateLight = (room: Room | null, dt: number): SeenLight | null => {
@@ -122,7 +185,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       return null;
     }
     const eye = localPlayer.eye();
-    seenLight.portals = room?.sightPortals() ?? null;
+    seenLight.portals = spreading ? drawnSight : (room?.sightPortals() ?? null);
     seenLight.eye.x = eye.x;
     seenLight.eye.y = eye.y;
     seenLight.lightSpeed = lightSpeed;
@@ -139,13 +202,19 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   const delayOwnImage = (now: number): PlayerState => {
     const eye = localPlayer.eye();
     if (light === null || light.portals === null) {
+      ownImageLook.clear();
       ownSeen.x = eye.x;
       ownSeen.y = eye.y;
       return ownSeen;
     }
     imagePosition(o.map, light.portals, eye, eye, ownImage);
     const distance = Math.hypot(ownImage.x - eye.x, ownImage.y - eye.y);
-    ownTrail.buffer.sample(now - (distance / light.lightSpeed) * 1000, ownSeen);
+    const lateMs = (distance / light.lightSpeed) * 1000;
+    ownTrail.buffer.sample(now - lateMs, ownSeen);
+    if (scene.self) {
+      ownImageLook.record(now, scene.self);
+      ownImageLook.see(scene.self, scene.ownScooter, ownTrail.buffer, ownImage, eye, now, lateMs, light.lightSpeed);
+    }
     if (scene.self) {
       scene.self.x = ownSeen.x;
       scene.self.y = ownSeen.y;
@@ -303,6 +372,8 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     }
     things.length = n;
     apparent = apparentWorld.update(o.map, room.sightPortals(), localPlayer.eye(), things);
+    // Sounds come through the live doorways; what is drawn, through those seen open.
+    labelled = spreading ? seenApparentWorld.update(o.map, drawnSight, localPlayer.eye(), things) : apparent;
   };
 
   const placeEveryoneElse = (room: Room, now: number, dt: number) => {
@@ -310,7 +381,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     world.sample(session, localPlayer.pose, now, room.ball, room.portals(), light);
     rollBallPattern(room);
     placeApparently(room);
-    world.collect(session, peerMedia, now, dt, apparent);
+    world.collect(session, peerMedia, now, dt, labelled);
     room.objectSounds.sync(session.objects, world.objectPoses, dt);
     room.scooterSounds.sync(session.peers, world.positions, dt, now);
     const { speed, bump } = localPlayer.ride;
@@ -328,8 +399,11 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     const reflections = litReflections(o.renderMode());
     scene.reflections = reflections ?? 'none';
     const room = o.room();
-    scene.lighting = reflections === null ? null : (room?.lighting(room.sequence.dark) ?? o.roomLighting());
-    scene.portals = room?.sightPortals() ?? null;
+    const sight = room?.sightPortals() ?? null;
+    const instant = reflections === null ? null : (room?.lighting(room.sequence.dark) ?? o.roomLighting());
+    scene.lighting = seenLighting(room, instant, sight);
+    scene.portals = seenSight(sight);
+    drawnSight = scene.portals;
     const portalSeconds = performance.now() / 1000;
     scene.portalPulse = portalPulse(portalSeconds);
     scene.portalTime = portalSeconds;
@@ -367,6 +441,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       const room = o.room();
       light = updateLight(room, dt);
       if (room) {
+        room.call.setFaceHistory(light !== null);
         room.call.update(now);
         followSequence(room, now);
         stepBall(room, now, dt);

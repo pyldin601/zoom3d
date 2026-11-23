@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { aberrate, betaOf, type Dir, dopplerAlong } from './slow-light-math';
+import { aberrate, betaOf, type Dir, dopplerAlong, sourceDoppler, terrellTurn } from './slow-light-math';
 
 test('beta clamps at half the speed of light', () => {
   expect(betaOf(6, 6)).toBe(0.5);
@@ -57,5 +57,30 @@ describe('in three dimensions', () => {
     expect(dopplerAlong({ x: 1, y: 0, z: 0 }, 0, 0.5)).toBeCloseTo(1.732, 3);
     expect(dopplerAlong({ x: -1, y: 0, z: 0 }, 0, 0.5)).toBeCloseTo(0.577, 3);
     expect(dopplerAlong({ x: 0, y: 0, z: 1 }, 0, 0.5)).toBeCloseTo(0.866, 3);
+  });
+});
+
+describe('a thing’s own motion (D41)', () => {
+  test('its Doppler factor is 1 at rest, above 1 coming toward the eye, below going away', () => {
+    expect(sourceDoppler(0, 0, 1, 0, 6)).toBe(1);
+    expect(sourceDoppler(3, 0, 1, 0, 6)).toBeGreaterThan(1);
+    expect(sourceDoppler(-3, 0, 1, 0, 6)).toBeLessThan(1);
+    // Toward the eye at β = 0.5: 1 / (γ (1 − β)) = √3.
+    expect(sourceDoppler(3, 0, 1, 0, 6)).toBeCloseTo(Math.sqrt(3), 9);
+  });
+
+  test('β above the cap gives the cap’s factor', () => {
+    expect(sourceDoppler(12, 0, 1, 0, 6)).toBeCloseTo(sourceDoppler(3, 0, 1, 0, 6), 12);
+  });
+
+  test('a model crossing the view is turned by asin β, showing its back; head-on it is not turned', () => {
+    // Moving along +x, seen from the +y side, at β = 0.5.
+    const turn = terrellTurn(3, 0, 0, 1, 6);
+    expect(Math.abs(turn)).toBeCloseTo(Math.asin(0.5), 9);
+    const backX = -Math.cos(turn);
+    const backY = -Math.sin(turn);
+    expect(backX * 0 + backY * 1).toBeGreaterThan(0);
+    expect(terrellTurn(3, 0, 1, 0, 6)).toBeCloseTo(0, 12);
+    expect(terrellTurn(0, 0, 0, 1, 6)).toBe(0);
   });
 });

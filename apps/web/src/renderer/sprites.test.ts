@@ -22,6 +22,7 @@ import {
 import { SIDE_SHADE } from './lighting';
 import { createFloorMirror } from './mirror';
 import { SCOOTER_DECK_TILES, SCOOTER_MODEL } from './models/scooter';
+import { shiftOf } from './spectrum';
 import {
   AVATAR_RADIUS,
   BOB_HEIGHT,
@@ -1168,5 +1169,44 @@ describe('renderSprites in a pass', () => {
     drawIn({ fromCol: 300, toCol: 320, nearDepth, lastLevel: false }, facts);
     expect(facts.get('s')?.drawnColumns).toBe(25);
     expect(facts.get('s')?.projectedSize).toBeCloseTo((2 * AVATAR_RADIUS * PROJ) / 2);
+  });
+});
+
+describe('slow light (D41)', () => {
+  const disc = (over: Partial<Sprite>): Sprite => ({
+    x: 3.5,
+    y: 4.5,
+    key: 's',
+    color: RED,
+    face: null,
+    speaking: 0,
+    bob: 0,
+    itemBob: 0,
+    ride: 0,
+    sip: 0,
+    cheers: 0,
+    wobble: 0,
+    held: null,
+    boombox: false,
+    ...over,
+  });
+
+  test('a disc draws a face seen late at 64², its top half and bottom half where they belong', () => {
+    const face = new Uint32Array(64 * 64).fill(BLUE);
+    face.fill(RED, 64 * 32);
+    const fb = frame();
+    drawPeople(fb, [disc({ face })]);
+    expect(px(fb, 320, 170)).toBe(BLUE);
+    expect(px(fb, 320, 190)).toBe(RED);
+  });
+
+  test('a moving disc carries its shift in its pixels’ alpha; one at rest draws as before', () => {
+    const still = frame();
+    drawPeople(still, [disc({})]);
+    const moving = frame();
+    drawPeople(moving, [disc({ shift: 40 })]);
+    expect(px(still, 320, 180)).toBe(RED);
+    expect(shiftOf(px(moving, 320, 180) ?? 0)).toBe(40);
+    expect((px(moving, 320, 180) ?? 0) & 0xffffff).toBe(RED & 0xffffff);
   });
 });

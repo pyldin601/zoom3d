@@ -224,6 +224,153 @@ describe('slow light (D39)', () => {
     world.sample(room.session, eye, NOW, shown(createBall('b1', 14, 2), 'asleep', 0, 'me'), null, slow());
     expect(world.positions.get(objectKey('b1'))?.x).toBeCloseTo(14, 6);
   });
+
+  describe('seen state (D41): at c = 6, someone 6 tiles off is seen a second late', () => {
+    const peer = (id: string) => room.peers.get(id) as RemotePeer;
+    /** Samples and collects at `t` with slow light at c = 6. */
+    const frame = (world: ReturnType<typeof createRemoteWorld>, t: number, ball: ShownBall | null = null) => {
+      world.sample(room.session, eye, t, ball, null, slow(6));
+      world.collect(room.session, media, t, 0);
+    };
+
+    test('a lighter switched on now is seen only once its light arrives', () => {
+      const world = createRemoteWorld();
+      room.addPeer('ada', 8, 2);
+      frame(world, NOW);
+      peer('ada').info.held = 'lighter';
+      frame(world, NOW + 16);
+      frame(world, NOW + 500);
+      expect(world.lighters).toEqual([]);
+      expect(world.sprites.at(0)).toMatchObject({ held: 'beer' });
+      frame(world, NOW + 1100);
+      expect(world.lighters).toMatchObject([{ key: 'ada' }]);
+      expect(world.sprites.at(0)).toMatchObject({ held: 'lighter' });
+    });
+
+    test('the mic badge and the boombox change as late as the light', () => {
+      const world = createRemoteWorld();
+      room.addPeer('ada', 8, 2);
+      frame(world, NOW);
+      peer('ada').info.mic = false;
+      peer('ada').info.boombox = true;
+      frame(world, NOW + 500);
+      expect(world.labels.at(0)).toMatchObject({ mic: true });
+      expect(world.sprites.at(0)).toMatchObject({ boombox: false });
+      frame(world, NOW + 1600);
+      expect(world.labels.at(0)).toMatchObject({ mic: false });
+      expect(world.sprites.at(0)).toMatchObject({ boombox: true });
+    });
+
+    test('a sip is played from when its light arrives', () => {
+      const world = createRemoteWorld();
+      room.addPeer('ada', 8, 2);
+      frame(world, NOW);
+      peer('ada').gesture = { kind: 'sip', at: NOW };
+      frame(world, NOW + 16);
+      frame(world, NOW + 900);
+      expect(world.sprites.at(0)).toMatchObject({ sip: 0 });
+      frame(world, NOW + 1400);
+      expect(world.sprites.at(0)?.sip).toBeGreaterThan(0);
+    });
+
+    test('someone who joins now is unseen until their light arrives; someone from the welcome at once', () => {
+      const world = createRemoteWorld();
+      room.addPeer('ada', 8, 2);
+      room.addPeer('bob', 8, 3);
+      peer('bob').since = NOW;
+      frame(world, NOW + 500);
+      expect([...world.positions.keys()]).toEqual(['ada']);
+      frame(world, NOW + 1100);
+      expect(world.positions.has('bob')).toBe(true);
+    });
+
+    test('someone who left is drawn until their light passes, then forgotten', () => {
+      const world = createRemoteWorld();
+      room.addPeer('ada', 8, 2);
+      room.addObject('v1', 8, 3, 0);
+      frame(world, NOW);
+      room.peers.delete('ada');
+      room.objects.delete('v1');
+      frame(world, NOW + 16);
+      frame(world, NOW + 500);
+      expect(world.sprites.map((s) => s.key)).toEqual(['ada']);
+      expect(world.voxels.map((v) => v.model)).toEqual([VACUUM_MODEL]);
+      frame(world, NOW + 1200);
+      expect(world.sprites).toEqual([]);
+      expect(world.voxels).toEqual([]);
+      expect(world.positions.size).toBe(0);
+    });
+
+    test('stepping on a scooter swaps the parked one for the ridden one at one light time', () => {
+      const world = createRemoteWorld();
+      room.addObject('s1', 8, 2, 0, 'scooter');
+      room.addPeer('ada', 8, 2);
+      frame(world, NOW);
+      room.objects.delete('s1');
+      peer('ada').info.riding = 's1';
+      frame(world, NOW + 16);
+      frame(world, NOW + 500);
+      expect(world.voxels.map((v) => v.model)).toEqual([SCOOTER_MODEL]);
+      frame(world, NOW + 1100);
+      expect(world.voxels.map((v) => v.model)).toEqual([RIDDEN_SCOOTER_MODEL]);
+      expect(world.headlights).toMatchObject([{ key: 'ada' }]);
+    });
+
+    test('a ball picked up is seen loose until the pickup’s light arrives, then at the hand', () => {
+      const world = createRemoteWorld();
+      room.addPeer('ada', 8, 2);
+      room.addObject('b1', 8, 4, 0, 'ball');
+      for (let t = NOW - 2000; t < NOW; t += 16) {
+        frame(world, t, shown(createBall('b1', 10, 3)));
+      }
+      // Held from NOW: the prediction puts it at ada's hand, (9, 2).
+      for (let t = NOW; t <= NOW + 2500; t += 16) {
+        frame(world, t, shown(createBall('b1', 9, 2), 'asleep', 0, 'ada'));
+        if (t === NOW + 496) {
+          expect(world.positions.get(objectKey('b1'))).toMatchObject({ x: 10, y: 3 });
+          expect(world.sprites.at(0)).toMatchObject({ held: 'beer' });
+        }
+      }
+      expect(world.positions.get(objectKey('b1'))).toMatchObject({ x: 9, y: 2 });
+      expect(world.sprites.at(0)).toMatchObject({ held: null });
+    });
+
+    test('someone walking toward the eye is shifted up, away down, and a crossing scooter is turned', () => {
+      const world = createRemoteWorld();
+      room.addPeer('ada', 8, 2);
+      room.addPeer('bob', 8, 3);
+      room.addObject('s1', 8, 6, 0, 'scooter');
+      const walk = (buffer: SnapshotBuffer, x0: number, y0: number, vx: number, vy: number) => {
+        for (let t = NOW - 1900; t <= NOW; t += 66) {
+          buffer.push({ t, x: x0 + (vx * (t - NOW)) / 1000, y: y0 + (vy * (t - NOW)) / 1000, angle: 0 });
+        }
+      };
+      walk(peer('ada').buffer, 8, 2, -2, 0);
+      walk(peer('bob').buffer, 8, 3, 2, 0);
+      walk(room.objects.get('s1')?.buffer as SnapshotBuffer, 8, 6, 3, 0);
+      frame(world, NOW);
+      expect(world.sprites.find((s) => s.key === 'ada')?.shift).toBeGreaterThan(0);
+      expect(world.sprites.find((s) => s.key === 'bob')?.shift).toBeLessThan(0);
+      const scooter = world.voxels.find((v) => v.model === SCOOTER_MODEL);
+      expect(scooter?.turn).not.toBe(0);
+      expect(scooter?.shift).toBeLessThan(0);
+      world.sample(room.session, eye, NOW, null, null, null);
+      world.collect(room.session, media, NOW, 0);
+      expect(world.sprites.map((s) => s.shift ?? 0)).toEqual([0, 0]);
+      expect(world.voxels.map((v) => v.turn ?? 0)).toEqual([0]);
+    });
+
+    test('off, the live state shows at once', () => {
+      const world = createRemoteWorld();
+      room.addPeer('ada', 8, 2);
+      frame(world, NOW);
+      peer('ada').info.held = 'lighter';
+      frame(world, NOW + 16);
+      world.sample(room.session, eye, NOW + 32, null, null, null);
+      world.collect(room.session, media, NOW + 32, 0);
+      expect(world.lighters).toMatchObject([{ key: 'ada' }]);
+    });
+  });
 });
 
 describe('collect', () => {
@@ -520,6 +667,18 @@ describe('a ball someone else dribbles (ball dribble spec §4.2)', () => {
     world.sample(room.session, player, NOW, shown(createBall('b1', 6, 7), 'asleep', 0, 'me'));
     world.collect(room.session, media, NOW, 0);
     expect(world.voxels.find((v) => v.model === BALL_MODEL)).toMatchObject({ x: 6, y: 7 });
+  });
+
+  test('a ball gone from the room leaves no one holding it', () => {
+    const world = createRemoteWorld();
+    room.addPeer('ada', 2, 3);
+    room.addObject('b1', 9, 9, 0, 'ball');
+    (room.peers.get('ada') as RemotePeer).info.held = 'lighter';
+    world.sample(room.session, player, NOW, shown(createBall('b1', 6, 7), 'asleep', 0, 'ada'));
+    room.objects.delete('b1');
+    world.sample(room.session, player, NOW, null);
+    world.collect(room.session, media, NOW, 0);
+    expect(world.lighters).toMatchObject([{ key: 'ada' }]);
   });
 
   test('the dribbler shows no item, and letting go brings it back', () => {

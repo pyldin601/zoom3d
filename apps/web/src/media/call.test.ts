@@ -133,6 +133,8 @@ function makeCall(init: Parameters<typeof fakeLocal>[0] = {}) {
         setVideo: vi.fn(),
         setCam: vi.fn(),
         setPaused: vi.fn(),
+        history: vi.fn(),
+        seen: vi.fn(() => new Uint32Array([name.length + 100])),
         dispose: vi.fn(),
       };
       faces.set(name, face as never);
@@ -480,4 +482,34 @@ test('the boombox track reaches the transport and survives a new identity', () =
   expect(transports[1]?.setBoomboxTrack).toHaveBeenLastCalledWith(track);
   call.setBoomboxTrack(null);
   expect(transports[1]?.setBoomboxTrack).toHaveBeenLastCalledWith(null);
+});
+
+test('with slow light, faces keep a history and are read as late as asked (D41)', () => {
+  const call = makeCall();
+  call.listener.welcome?.('me', LK, true);
+  call.listener.peerJoined?.(info('a'));
+  const face = faces.get('a');
+  expect(face?.history).toHaveBeenLastCalledWith(false);
+  call.setFaceHistory(true);
+  expect(face?.history).toHaveBeenLastCalledWith(true);
+  call.listener.peerJoined?.(info('bb'));
+  expect(faces.get('bb')?.history).toHaveBeenLastCalledWith(true);
+  expect(call.faceOf('a', 500)?.at(0)).toBe(101);
+  expect(face?.seen).toHaveBeenCalledWith(500);
+  expect(call.faceOf('a')).toBe(face?.texels);
+});
+
+test('with slow light, a leaver’s face lasts until their leaving could be seen, then goes (D41)', () => {
+  const call = makeCall();
+  call.listener.welcome?.('me', LK, true);
+  call.listener.peerJoined?.(info('a'));
+  const face = faces.get('a');
+  call.setFaceHistory(true);
+  call.update(1000);
+  call.listener.peerLeft?.('a');
+  expect(call.faceOf('a', 500)?.at(0)).toBe(101);
+  expect(face?.dispose).not.toHaveBeenCalled();
+  call.update(1000 + 9000);
+  expect(face?.dispose).toHaveBeenCalled();
+  expect(call.faceOf('a', 500)).toBeNull();
 });

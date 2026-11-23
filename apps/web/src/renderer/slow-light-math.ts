@@ -63,3 +63,40 @@ export function dopplerAlong(n: Dir, motionAngle: number, beta: number): number 
   const gamma = 1 / Math.sqrt(1 - beta * beta);
   return 1 / (gamma * (1 - beta * (n.x * Math.cos(motionAngle) + n.y * Math.sin(motionAngle))));
 }
+
+/** A thing's β from its speed in tiles/s, capped as the eye's is. */
+const thingBeta = (vx: number, vy: number, lightSpeed: number) => Math.min(Math.hypot(vx, vy) / lightSpeed, MAX_BETA);
+
+/**
+ * The Doppler factor of a thing's own motion (D41): moving at (vx, vy) tiles/s, its light leaving along the unit
+ * (nx, ny) toward the eye. 1 / (γ (1 − β cos)): above 1 coming toward the eye, below going away. The eye's own motion is
+ * the bend's (dopplerAlong); the two multiply.
+ */
+export function sourceDoppler(vx: number, vy: number, nx: number, ny: number, lightSpeed: number): number {
+  const beta = thingBeta(vx, vy, lightSpeed);
+  if (beta === 0) {
+    return 1;
+  }
+  const speed = Math.hypot(vx, vy);
+  const cos = (vx * nx + vy * ny) / speed;
+  return 1 / ((1 / Math.sqrt(1 - beta * beta)) * (1 - beta * cos));
+}
+
+/**
+ * The Terrell turn of a small moving model (D41), radians to add to its angle: the light reaching the eye left it
+ * along (nx, ny) in the room, but along a direction further behind its motion in its own frame, so it is seen turned
+ * by the difference: crossing the view at β, by asin β, its back toward the eye; head-on or at rest, not at all.
+ */
+export function terrellTurn(vx: number, vy: number, nx: number, ny: number, lightSpeed: number): number {
+  const beta = thingBeta(vx, vy, lightSpeed);
+  if (beta === 0) {
+    return 0;
+  }
+  const speed = Math.hypot(vx, vy);
+  const ux = vx / speed;
+  const uy = vy / speed;
+  const room = Math.atan2(ux * ny - uy * nx, ux * nx + uy * ny);
+  const cosOwn = clamp((Math.cos(room) - beta) / (1 - beta * Math.cos(room)), -1, 1);
+  const own = Math.sign(room) * Math.acos(cosOwn);
+  return room - own;
+}

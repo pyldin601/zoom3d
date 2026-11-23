@@ -3,6 +3,7 @@ import { expect, test } from 'vitest';
 import { createFramebuffer, rgb } from './framebuffer';
 import { createBend, GRID_PX, type Shown } from './slow-light';
 import { aberrate, type Dir, type Motion } from './slow-light-math';
+import { encodeShift, shiftSteps } from './spectrum';
 
 const still: Motion = { beta: 0, angle: 0 };
 const channels = (c: number) => ({ r: c & 0xff, g: (c >>> 8) & 0xff, b: (c >>> 16) & 0xff });
@@ -155,4 +156,24 @@ test('coming to rest changes nothing: a nearly still frame and a still one look 
   const atRest = channels(out.pixels.at(180 * 640 + 320) ?? 0);
   expect(Math.abs(nearlyStill.r - atRest.r)).toBeLessThanOrEqual(1);
   expect(Math.abs(nearlyStill.b - atRest.b)).toBeLessThanOrEqual(1);
+});
+
+test('a source pixel carrying a thing’s shift toward the eye reads bluer and brighter than one at rest', () => {
+  const bend = createBend();
+  const out = wide();
+  const source = bend.fit(out);
+  source.pixels.fill(rgb(110, 110, 110));
+  bend.aim(out, still);
+  const centre = (source.height >> 1) * source.width + (source.width >> 1);
+  for (let dy = -8; dy <= 8; dy++) {
+    for (let dx = -8; dx <= 8; dx++) {
+      source.pixels[centre + dy * source.width + dx] = encodeShift(rgb(110, 110, 110), shiftSteps(Math.sqrt(3)));
+    }
+  }
+  bend.apply(source, out);
+  const shifted = channels(out.pixels.at(180 * 640 + 320) ?? 0);
+  const rest = channels(out.pixels.at(20 * 640 + 20) ?? 0);
+  expect(shifted.r + shifted.g + shifted.b).toBeGreaterThan(rest.r + rest.g + rest.b);
+  expect(shifted.b).toBeGreaterThan(shifted.r);
+  expect((out.pixels.at(180 * 640 + 320) ?? 0) >>> 24).toBe(0xff);
 });

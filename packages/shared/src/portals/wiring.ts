@@ -25,7 +25,35 @@ export interface Portals {
   list: Portal[];
   /** Tile index to portal index, -1 where the tile is no doorway. */
   byTile: Int32Array;
+  /**
+   * Per portal, 0 where its doorway isn't seen open yet (slow light, D41: its opening's light hasn't reached the eye).
+   * Absent: every portal is open, as always but for slow light.
+   */
+  open?: Uint8Array;
 }
+
+/**
+ * `p` with only the portals `open` marks (1) as portals: the same list, so portal indices hold, and `byTile` −1 on the
+ * others' tiles. Reuses `out` (and its arrays) when given.
+ */
+export function openOnly(p: Portals, open: Uint8Array, out?: Portals): Portals {
+  const byTile = out?.byTile.length === p.byTile.length ? out.byTile : new Int32Array(p.byTile.length);
+  for (let tile = 0; tile < byTile.length; tile++) {
+    const index = p.byTile[tile] as number;
+    byTile[tile] = index >= 0 && open[index] === 0 ? -1 : index;
+  }
+  const mask = out?.open?.length === open.length ? out.open : new Uint8Array(open.length);
+  mask.set(open);
+  const shown = out ?? { map: p.map, list: p.list, byTile, open: mask };
+  shown.map = p.map;
+  shown.list = p.list;
+  shown.byTile = byTile;
+  shown.open = mask;
+  return shown;
+}
+
+/** Whether portal `index` of `p` is open (slow light can hold one shut, D41). */
+export const isOpen = (p: Portals, index: number): boolean => p.open === undefined || p.open[index] !== 0;
 
 const FNV_OFFSET_BASIS = 0x811c9dc5;
 const FNV_PRIME = 0x01000193;
