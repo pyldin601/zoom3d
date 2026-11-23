@@ -31,6 +31,7 @@ import type { FrameRateMeter } from './frame-rate';
 import { createTrail, type SeenLight } from './light-delay';
 import { createLightTimeline, createSeenPortals } from './light-timeline';
 import type { LocalPlayer } from './local-player';
+import { createOwnImage } from './own-image';
 import { createOwnMotion } from './own-motion';
 import { portalPulse } from './portal-pulse';
 import type { SequenceCues } from './portal-sequence';
@@ -114,6 +115,8 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   const ownTrail = createTrail();
   const ownSeen: PlayerState = { x: 0, y: 0, angle: 0 };
   const ownImage: Apparent = { x: 0, y: 0, sees: false, through: 0, cos: 1, sin: 0 };
+  /** What the own disc held, did and showed, frame by frame: a window shows it as late as its light (D41). */
+  const ownImageLook = createOwnImage();
   /** This frame's slow light, or null while light is instant. */
   let light: SeenLight | null = null;
 
@@ -193,13 +196,19 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   const delayOwnImage = (now: number): PlayerState => {
     const eye = localPlayer.eye();
     if (light === null || light.portals === null) {
+      ownImageLook.clear();
       ownSeen.x = eye.x;
       ownSeen.y = eye.y;
       return ownSeen;
     }
     imagePosition(o.map, light.portals, eye, eye, ownImage);
     const distance = Math.hypot(ownImage.x - eye.x, ownImage.y - eye.y);
-    ownTrail.buffer.sample(now - (distance / light.lightSpeed) * 1000, ownSeen);
+    const lateMs = (distance / light.lightSpeed) * 1000;
+    ownTrail.buffer.sample(now - lateMs, ownSeen);
+    if (scene.self) {
+      ownImageLook.record(now, scene.self);
+      ownImageLook.see(scene.self, scene.ownScooter, ownTrail.buffer, ownImage, eye, now, lateMs, light.lightSpeed);
+    }
     if (scene.self) {
       scene.self.x = ownSeen.x;
       scene.self.y = ownSeen.y;
