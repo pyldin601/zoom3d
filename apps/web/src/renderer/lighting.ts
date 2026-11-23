@@ -163,6 +163,11 @@ export interface Lighting {
    * now reaching the eye shows them. Absent on every baked table.
    */
   wave?: LightAtPoint;
+  /**
+   * Bumped each time slow light's wave refills this table in place (D41), so a copy made from it knows to be made
+   * again; absent on every baked table, which never changes.
+   */
+  version?: number;
 }
 
 /** What a thing standing at a point is lit by, while slow light's wave runs (D41). */

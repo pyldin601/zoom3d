@@ -4,7 +4,7 @@ import { twoDoorways } from '../../../../packages/shared/src/portals/test-doorwa
 import { createView, setView } from './camera';
 import { createFramebuffer, DEFAULT_FOV, rgb, scaleRgb } from './framebuffer';
 import { GLOW_RADIUS, GLOW_STRENGTH, type Glow } from './glow';
-import { bakeLighting, corridorLights, REFLECTION_RANGE, SIDE_SHADE } from './lighting';
+import { bakeLighting, corridorLights, LAMP, type Lighting, REFLECTION_RANGE, SIDE_SHADE } from './lighting';
 import { BALL_MODEL } from './models/ball';
 import { firstDifference } from './test-helpers';
 import { makeTextures, TEXTURE_PX } from './textures';
@@ -1215,5 +1215,50 @@ describe('renderWalls through portals', () => {
       expect(fb.pixels[row * fb.width + 339]).not.toBe(UNDRAWN);
       expect(fb.pixels[row * fb.width + 340]).toBe(UNDRAWN);
     }
+  });
+});
+
+describe('a lighting refilled in place (slow light’s wave, D41)', () => {
+  const room = parseMap('1111111111\n1S.......1\n1........1\n1........1\n1111111111');
+  const pose = { x: 1.5, y: 2.5, angle: 0 };
+  const glow = {
+    x: 4.5,
+    y: 2.5,
+    r: GLOW_STRENGTH,
+    g: GLOW_STRENGTH,
+    b: GLOW_STRENGTH,
+    cut: null,
+    shadow: null,
+    cone: null,
+    reach: GLOW_RADIUS,
+  };
+  const render = (lighting: Lighting) => {
+    const fb = createFramebuffer();
+    renderWalls(fb, { map: room, eye: pose, textures, lighting, reflections: 'both' }, [glow]);
+    return fb;
+  };
+
+  test('with a glow in view, the floor and ceiling follow the refill, not the first frame', () => {
+    const lit = bakeLighting(room, [{ x: 5.5, y: 2.5, z: 0.85, radius: 4.5, ...LAMP }], 0.2, FLOOR, CEILING);
+    const dark = bakeLighting(room, [], 0, FLOOR, CEILING);
+    const wave: Lighting = {
+      ...lit,
+      wall: lit.wall.slice(),
+      wallLamp: lit.wallLamp.slice(),
+      wallLampSeen: lit.wallLampSeen.slice(),
+      floor: lit.floor.slice(),
+      ceiling: lit.ceiling.slice(),
+      floorLamp: lit.floorLamp.slice(),
+      floorLampSeen: lit.floorLampSeen.slice(),
+      version: 1,
+    };
+    render(wave);
+    for (const key of ['wall', 'wallLamp', 'wallLampSeen', 'floor', 'ceiling', 'floorLamp', 'floorLampSeen'] as const) {
+      wave[key].set(dark[key]);
+    }
+    wave.version = 2;
+    const refilled = render(wave);
+    const fresh = render({ ...dark });
+    expect(firstDifference(refilled.pixels, fresh.pixels)).toBe(-1);
   });
 });

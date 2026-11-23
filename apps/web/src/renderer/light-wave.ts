@@ -363,6 +363,7 @@ export function createLightWave(): LightWave {
       eyeAt.y = eye.y;
       wave ??= createWave(like);
       const w = wave;
+      w.version = (w.version ?? 0) + 1;
       if (lampsFrom) {
         w.lights = lampsFrom.lights;
         w.portals = lampsFrom.portals;
