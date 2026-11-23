@@ -11,6 +11,7 @@ import {
   PLAYER_RADIUS,
   type PlayerState,
   type Point,
+  type Portals,
 } from '@zoom3d/shared';
 import { ownLoad } from '../audio/scooter-sounds';
 import { HIDDEN_TICK_MS } from '../audio/ticker';
@@ -18,6 +19,7 @@ import type { Input } from '../input/keyboard';
 import { createSubscription } from '../media/subscription';
 import { ownAvatarShown, type RoomScene, renderHud, renderView } from '../renderer/frame';
 import type { NameLabel } from '../renderer/labels';
+import { createLightWave } from '../renderer/light-wave';
 import type { Lighting } from '../renderer/lighting';
 import { BALL_MODEL, createBallRoll, recolourBall, rollBy } from '../renderer/models/ball';
 import { createBend } from '../renderer/slow-light';
@@ -27,6 +29,7 @@ import { type StatusLine, statusText } from '../ui/room-status';
 import { createApparentWorld, placeOwnLabel } from './apparent-world';
 import type { FrameRateMeter } from './frame-rate';
 import { createTrail, type SeenLight } from './light-delay';
+import { createLightTimeline } from './light-timeline';
 import type { LocalPlayer } from './local-player';
 import { createOwnMotion } from './own-motion';
 import { portalPulse } from './portal-pulse';
@@ -113,6 +116,45 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   const ownImage: Apparent = { x: 0, y: 0, sees: false, through: 0, cos: 1, sin: 0 };
   /** This frame's slow light, or null while light is instant. */
   let light: SeenLight | null = null;
+
+  // The lights-out wave (D41): what the instant frame showed of the room's light, change by change, replayed per place.
+  const timeline = createLightTimeline();
+  let wave = createLightWave();
+  /** The room and the light the timeline was last fed: a new room, look or slow light on starts it again. */
+  let fedRoom: Room | null = null;
+  let fedLighting: Lighting | null = null;
+  let fedSight: Portals | null = null;
+  /** Long enough for any change to have travelled lamp → place → eye across the whole map. */
+  const longestPath = 2 * Math.hypot(o.map.width, o.map.height);
+
+  /** Whether going from what was fed to (lighting, sight) is this person's setting, not the room's light changing. */
+  const lookChanged = (lighting: Lighting | null, sight: Portals | null) =>
+    (lighting === null) !== (fedLighting === null) || (sight !== null && fedSight !== null && sight !== fedSight);
+
+  /** The frame's lighting with slow light: the wave while a change is still on its way somewhere, else `instant`. */
+  const seenLighting = (room: Room | null, instant: Lighting | null, sight: Portals | null): Lighting | null => {
+    if (light === null || room === null || instant === null) {
+      fedRoom = null;
+      return instant;
+    }
+    const now = performance.now();
+    if (fedRoom !== room || lookChanged(instant, sight)) {
+      if (fedRoom !== room) {
+        wave = createLightWave();
+      }
+      for (const table of room.litTables()) {
+        wave.prepare(table);
+      }
+      timeline.reset(now, instant, sight);
+    } else {
+      timeline.record(now, instant, sight);
+    }
+    fedRoom = room;
+    fedLighting = instant;
+    fedSight = sight;
+    const stillOnItsWay = timeline.changedSince(now - (longestPath / light.lightSpeed) * 1000);
+    return stillOnItsWay ? wave.update(timeline, light.eye, now, light.lightSpeed) : instant;
+  };
 
   /** Refills the slow light for this frame from the console's setting; null, and the motion forgotten, while off. */
   const updateLight = (room: Room | null, dt: number): SeenLight | null => {
@@ -328,8 +370,9 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     const reflections = litReflections(o.renderMode());
     scene.reflections = reflections ?? 'none';
     const room = o.room();
-    scene.lighting = reflections === null ? null : (room?.lighting(room.sequence.dark) ?? o.roomLighting());
     scene.portals = room?.sightPortals() ?? null;
+    const instant = reflections === null ? null : (room?.lighting(room.sequence.dark) ?? o.roomLighting());
+    scene.lighting = seenLighting(room, instant, scene.portals);
     const portalSeconds = performance.now() / 1000;
     scene.portalPulse = portalPulse(portalSeconds);
     scene.portalTime = portalSeconds;

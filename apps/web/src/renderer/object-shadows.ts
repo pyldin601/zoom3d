@@ -214,7 +214,7 @@ export function shadeFloor(
     const l = lm.lights[li] as Light;
     pass++;
     for (const v of objects) {
-      if (casts(lm, v, l)) {
+      if (casts(lm, v, l) && (lm.wave === undefined || lm.wave.lampLit(li, v.x, v.y))) {
         shadeBox(lm, objects, li, l, v, albedo, tables, inView);
       }
     }
