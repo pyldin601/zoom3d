@@ -9,6 +9,8 @@ export interface StateRing<T> {
   /** The newest value stamped at or before `t`, or the oldest; read it before the next push. */
   at(t: number): T;
   readonly empty: boolean;
+  /** When the oldest value held was stamped; +Infinity when empty. */
+  readonly oldestAt: number;
   clear(): void;
 }
 
@@ -45,6 +47,9 @@ export function createStateRing<T>(
     },
     get empty() {
       return count === 0;
+    },
+    get oldestAt() {
+      return count === 0 ? Number.POSITIVE_INFINITY : (times[slot(count - 1)] as number);
     },
     clear() {
       count = 0;

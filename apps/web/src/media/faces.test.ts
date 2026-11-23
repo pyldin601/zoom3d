@@ -324,3 +324,45 @@ describe('avatar picture', () => {
     expect(context.drawImage).not.toHaveBeenCalled();
   });
 });
+
+describe('seen as late as its light (D41)', () => {
+  /** A face fed an rvfc frame at each of `times`; each frame's texels carry a new fill byte. */
+  const fedAt = (times: number[]) => {
+    const { document } = fakeDocument();
+    const face = createFace({ name: 'Ada', color: '#e6194b', document });
+    face.history(true);
+    const video = fakeVideo({ rvfc: true });
+    face.setVideo(video as unknown as HTMLVideoElement);
+    for (const t of times) {
+      face.update(t);
+      video.callback?.(t);
+    }
+    return face;
+  };
+
+  test('late by more than a frame, it shows the frame from then, smaller', () => {
+    const face = fedAt([1000, 1033, 1066, 1100]);
+    face.update(1100);
+    expect(face.seen(0)).toBe(face.texels);
+    const then = face.seen(60);
+    expect(then).toHaveLength(128 * 128);
+    // Fill bytes: the initials 1, then frames 2, 3, 4, 5; at 1040 the frame from 1033 shows.
+    expect((then.at(0) ?? 0) & 0xff).toBe(3);
+  });
+
+  test('without a history it shows the live face', () => {
+    const { document } = fakeDocument();
+    const face = createFace({ name: 'Ada', color: '#e6194b', document });
+    expect(face.seen(500)).toBe(face.texels);
+  });
+
+  test('a camera turned off is seen off only once its light arrives', () => {
+    const face = fedAt([1000, 1033, 1066]);
+    face.setCam(false);
+    face.update(1100);
+    face.update(1400);
+    expect(face.seen(350)).toHaveLength(128 * 128);
+    expect(face.seen(0)).toHaveLength(FACE_SIZE * FACE_SIZE);
+    expect(face.seen(0)).toBe(face.texels);
+  });
+});

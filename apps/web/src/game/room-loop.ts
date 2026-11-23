@@ -76,7 +76,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   /** Where each portal doorway's hum plays from, reused from frame to frame. */
   const humSources = new Map<string, { x: number; y: number }>();
   const peerMedia: PeerMedia = {
-    faceOf: (id) => o.room()?.call.faceOf(id) ?? null,
+    faceOf: (id, lateMs) => o.room()?.call.faceOf(id, lateMs) ?? null,
     speaking: (id) => o.room()?.audio.speaking(id) ?? 0,
   };
   const scene: RoomScene = {
@@ -367,6 +367,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       const room = o.room();
       light = updateLight(room, dt);
       if (room) {
+        room.call.setFaceHistory(light !== null);
         room.call.update(now);
         followSequence(room, now);
         stepBall(room, now, dt);

@@ -12,7 +12,10 @@ export interface Call {
   /** Pass to createSession, then call attach() with the session. */
   listener: SessionListener;
   attach(session: Session): void;
-  faceOf(peerId: string): Uint32Array | null;
+  /** A peer's face texels, any square size; with `lateMs`, as their face showed that long ago (slow light, D41). */
+  faceOf(peerId: string, lateMs?: number): Uint32Array | null;
+  /** Whether faces keep their last seconds of video, for slow light (D41). */
+  setFaceHistory(on: boolean): void;
   isLive(peerId: string): boolean;
   stats(peerId: string): Promise<{ bytesReceived: number; boomboxBytesReceived: number } | null>;
   /** Which of our face sizes someone receives now; none before the media room is up. */
@@ -96,6 +99,8 @@ export function createCall(opts: CallOptions): Call {
     opts.audio?.attach(key, stream, peerId);
   };
 
+  let faceHistory = false;
+
   const ensureFace = (peer: PeerInfo) => {
     const face = faces.get(peer.id) ?? createPeerFace(peer);
     face.setCam(peer.cam);
@@ -109,6 +114,7 @@ export function createCall(opts: CallOptions): Call {
       document: opts.document,
     });
     faces.set(peer.id, face);
+    face.history(faceHistory);
     const want = wantedFrom.get(peer.id);
     if (want) {
       face.setPaused(want.video === 'off');
@@ -244,7 +250,19 @@ export function createCall(opts: CallOptions): Call {
       session = s;
       tellSessionOwnMedia();
     },
-    faceOf: (id) => faces.get(id)?.texels ?? null,
+    faceOf: (id, lateMs = 0) => {
+      const face = faces.get(id);
+      return face === undefined ? null : lateMs > 0 ? face.seen(lateMs) : face.texels;
+    },
+    setFaceHistory(on) {
+      if (on === faceHistory) {
+        return;
+      }
+      faceHistory = on;
+      for (const face of faces.values()) {
+        face.history(on);
+      }
+    },
     isLive: (id) => faces.get(id)?.live() ?? false,
     stats: async (id) => (transport ? transport.stats(id) : null),
     sendingFaces: () => transport?.sendingFaces() ?? NO_FACES_SENT,

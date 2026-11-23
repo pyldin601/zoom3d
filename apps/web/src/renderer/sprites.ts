@@ -55,7 +55,7 @@ export interface Sprite {
   y: number;
   /** Packed like rgb(). */
   color: number;
-  /** FACE_SIZE² texels shown inside the ring, or null for a flat disc. */
+  /** Square texels shown inside the ring (FACE_SIZE², or smaller seen late, D41), or null for a flat disc. */
   face: Uint32Array | null;
   /** 0..1: brightens the ring while the person talks. */
   speaking: number;
@@ -441,7 +441,7 @@ function drawAvatar(fb: Framebuffer, s: Sprite, projection: Projection, pass: Pa
 function drawDisc(fb: Framebuffer, s: Sprite, { screenX, depth, size }: Projection, pass: Pass): void {
   const { width: w, height: h, pixels, zbuffer } = fb;
   const { face } = s;
-  const faceSize = FACE_SIZE;
+  const faceSize = faceSizeOf(face);
   const shift = s.shift ?? 0;
   const ring = encodeShift(ringColour(s), shift);
   const color = encodeShift(s.color, shift);
@@ -495,6 +495,7 @@ export function mirrorDisc(fb: Framebuffer, view: View, s: Sprite, mirror: Floor
   const { width: w, height: h, zbuffer } = fb;
   const { screenX, depth, size } = mirrored;
   const { color, face } = s;
+  const faceSize = faceSizeOf(face);
   const ring = ringColour(s);
   const r = size / 2;
   const r2 = r * r;
@@ -512,7 +513,7 @@ export function mirrorDisc(fb: Framebuffer, view: View, s: Sprite, mirror: Floor
       continue;
     }
     const dx = col + 0.5 - screenX;
-    const u = faceTexel(dx, faceR, FACE_SIZE);
+    const u = faceTexel(dx, faceR, faceSize);
     for (let row = firstRow; row <= lastRow; row++) {
       const dy = row + 0.5 - centreY;
       const d2 = dx * dx + dy * dy;
@@ -520,7 +521,7 @@ export function mirrorDisc(fb: Framebuffer, view: View, s: Sprite, mirror: Floor
         continue;
       }
       const colour =
-        d2 > faceR2 ? ring : face ? (face[faceTexel(-dy, faceR, FACE_SIZE) * FACE_SIZE + u] as number) : color;
+        d2 > faceR2 ? ring : face ? (face[faceTexel(-dy, faceR, faceSize) * faceSize + u] as number) : color;
       mirror.plot(col, row, colour, 'hides');
     }
   }
@@ -536,6 +537,10 @@ function ringColour({ color, face, speaking }: Sprite): number {
   const lit = speaking > 0 ? mixWhite(color, Math.min(speaking, 1) * SPEAKING_GLOW) : color;
   return face ? lit : scaleRgb(lit, FLAT_RING_SHADE);
 }
+
+/** A face's side in texels: FACE_SIZE live, smaller for a face seen late (D41). */
+const faceSizeOf = (face: Uint32Array | null) =>
+  face === null || face.length === FACE_SIZE * FACE_SIZE ? FACE_SIZE : Math.round(Math.sqrt(face.length));
 
 /** The face texel column (or row) `offsetPx` from the disc's centre: the face's circle spans the whole texture. */
 const faceTexel = (offsetPx: number, faceRadiusPx: number, faceSize: number) =>

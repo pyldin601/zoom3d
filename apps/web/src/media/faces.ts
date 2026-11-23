@@ -1,9 +1,12 @@
 // Per-peer face textures (FACE_SIZE² texels, packed like rgb()) from live video, else the peer's
 // avatar picture, else an initials disc.
+import { createFaceHistory, type FaceHistory } from './face-history';
 import { type FrameVideo, VIDEO_POLL_MS } from './video-frames';
 
 export const FACE_SIZE = 256;
 export const FACE_STALL_MS = 2000;
+/** Light later than this is still within the frame on show: the live face is what it shows (D41). */
+const ONE_FRAME_MS = 34;
 /** Avatars are AVATAR_SIZE_PX²; anything much larger is a hostile decode bomb and is never drawn. */
 export const AVATAR_MAX_DIM = 512;
 
@@ -32,6 +35,13 @@ export interface FaceSource {
   setCam(on: boolean): void;
   /** Video is off on purpose (out of sight, 6c spec §4.4): keep showing the last live frame, however old. */
   setPaused(paused: boolean): void;
+  /** Keeps its last seconds of video while slow light is on (D41); off, the history and its memory go. */
+  history(on: boolean): void;
+  /**
+   * What the face showed `lateMs` ago: its live texels within a frame or without a history, else a smaller stored
+   * frame, or the avatar or initials where it showed no video then. Any square size: read it by its length.
+   */
+  seen(lateMs: number): Uint32Array;
   dispose(): void;
 }
 
@@ -66,6 +76,7 @@ export function createFace(opts: FaceOptions): FaceSource {
   let lastPollAt = Number.NEGATIVE_INFINITY;
   let now = 0;
   let disposed = false;
+  let history: FaceHistory | null = null;
 
   const showAvatarOnceLoaded = (src: string) => {
     const img = opts.createImage?.() ?? new Image();
@@ -94,6 +105,7 @@ export function createFace(opts: FaceOptions): FaceSource {
     liveTexels.set(new Uint32Array(data.buffer, data.byteOffset, data.byteLength / 4));
     lastFrameAt = at;
     hasFrame = true;
+    history?.record(at, liveTexels);
   };
 
   const onFrame = (at: number) => {
@@ -120,6 +132,7 @@ export function createFace(opts: FaceOptions): FaceSource {
     live: isLive,
     update(at) {
       now = at;
+      history?.mark(at, isLive() || holdLast());
       // Without requestVideoFrameCallback, poll and only count frames whose timestamp moved.
       if (video && !video.requestVideoFrameCallback && at - lastPollAt >= VIDEO_POLL_MS) {
         lastPollAt = at;
@@ -149,6 +162,20 @@ export function createFace(opts: FaceOptions): FaceSource {
         videoSetAt = now;
       }
       paused = p;
+    },
+    history(on) {
+      if (!on) {
+        history = null;
+      } else {
+        history ??= createFaceHistory();
+      }
+    },
+    seen(lateMs) {
+      const shown = isLive() || holdLast() ? liveTexels : fallbackTexels;
+      if (history === null || history.empty || lateMs < ONE_FRAME_MS) {
+        return shown;
+      }
+      return history.at(now - lateMs) ?? fallbackTexels;
     },
     dispose() {
       disposed = true;

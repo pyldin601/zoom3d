@@ -46,8 +46,8 @@ export interface PeerLabel {
 
 /** What the world shows of each peer's media. */
 export interface PeerMedia {
-  /** The face texels to draw, or null for a flat disc. */
-  faceOf(peerId: string): Uint32Array | null;
+  /** The face texels to draw (any square size), as the face showed `lateMs` ago, or null for a flat disc. */
+  faceOf(peerId: string, lateMs: number): Uint32Array | null;
   /** 0..1: how loudly they speak now. */
   speaking(peerId: string): number;
 }
@@ -541,7 +541,8 @@ export function createRemoteWorld(): RemoteWorld {
       headlights[riders++] = headlight;
     }
     const seenNow = lightOn ? (seenNows.get(id) ?? now) : now;
-    fillSprite(sprite, peer, look, pos, bob, media, seenNow, handsFull);
+    const lateMs = lightOn ? (seen.get(id)?.lateMs ?? 0) : 0;
+    fillSprite(sprite, peer, look, pos, bob, media, seenNow, lateMs, handsFull);
     sprite.shift = seeOwnMotion(id, pos, apparent?.get(id)).shift;
     fillLabel(label, peer, look, pos, apparent?.get(id) ?? pos);
     sprites[drawn] = sprite;
@@ -682,6 +683,7 @@ function fillSprite(
   bob: Bob,
   media: PeerMedia,
   seenNow: number,
+  lateMs: number,
   handsFull: boolean
 ): void {
   const { id, color } = peer.info;
@@ -689,7 +691,7 @@ function fillSprite(
   sprite.x = pos.x;
   sprite.y = pos.y;
   sprite.color = ringRgb(color);
-  sprite.face = media.faceOf(id);
+  sprite.face = media.faceOf(id, lateMs);
   sprite.speaking = media.speaking(id);
   // A rider glides on the deck: no step.
   const riding = look.riding !== null;
