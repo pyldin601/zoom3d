@@ -45,8 +45,9 @@ Goals:
    voice by the light time).
 3. **Moving things look moving.** A thing's own velocity Doppler-shifts its colour and brightness (combined with the
    local player's own shift, so both moving works), and turns its voxel model by the Terrell rotation.
-4. **The lights-out wave** (owner, 2026-11-23): lamps go out and come back for each floor cell and wall face when its
-   light reaches the eye, so the dark spreads out from the eye at c; each doorway opens or closes when its light does.
+4. **The lights-out wave** (owner, 2026-11-23): each lamp's light goes out and comes back at every lit place when the
+   change has travelled lamp → place → eye at c, so the dark grows out of each lamp, seen late by its distance; each
+   doorway opens or closes when its light reaches the eye.
 5. **One rule for everything** (owner): peers, bots, the ball, the vacuum, parked and ridden scooters all take it from
    the same code.
 
@@ -54,7 +55,8 @@ Non-goals:
 
 - **Sound stays live** (owner): voices, the boombox, the hum, motor whine, ball sounds and cries, portal hums, the
   sequence's switch sounds and the countdown. Sounds keep coming from where things are seen, as today.
-- **Lit surfaces are not timed one by one.** A remote light (face glow, lighter, headlight) lights the room from its one
+- **Moving lights are not timed place by place** (the lamps switching are, §5.5). A remote light (face glow, lighter,
+  headlight) lights the room from its one
   seen pose; the local player's own glow, lighter and headlight light it from the present. Exact would need a light
   time per lit pixel (the source's pose at `now − (|P−eye| + |P−source|)/c`).
 - **Discs keep their shape and face the eye.** By Penrose–Terrell a sphere's outline stays a circle at any speed; a
@@ -162,19 +164,29 @@ trail and the local player's own trail are its pose source as today.
 - **The room's light timeline** (my call, after the builder check): the instant-light frame already picks, each frame,
   one lighting table and one sight set (`room.lighting(room.sequence.dark)`, `room.sightPortals()`), and today's
   timing rules stay theirs (the lamps wait for the server's bend, D30). With slow light on, the room loop records each
-  change of that pair with its time in a short ring (about 16 entries; it must reach back `farthest/c`, farthest the
-  map's diagonal). The wave replays that timeline: a place at distance `d` from the eye shows the pair the instant frame
-  showed at `now − d/c`. So any sequence (`first_on`, `on`, `off`), two sequences close together, and a sequence still
+  change of that pair with its time in a short ring (about 16 entries; it must reach back `2 · farthest/c`, farthest
+  the map's diagonal). So any sequence (`first_on`, `on`, `off`), two sequences close together, and a sequence still
   spreading when the next starts all come out right without special cases. A change of the portal look (classic or
   realistic) or turning slow light on restarts the timeline: those are this person's settings, not light.
-- **When:** while the timeline holds a change newer than `now − farthest/c`. Otherwise the frame takes the room's table
-  as today.
-- **The wave table** (`renderer/light-wave.ts`): a `Lighting` with the room tables' layout, allocated once per room.
-  Each frame of the wave, every floor and ceiling cell, bounce cell and wall face whose seen table changed is copied
-  from it (`wall`, `wallLamp(Seen)` per face, `floor`, `ceiling`, `floorLamp(Seen)`, `bounce` per cell). `lights` is the
-  lamps of each distinct table in the timeline, one after the other, and each cell's lamp indices are offset by its
-  table's start. `ambient` is folded into `bounce` per cell (the dark table has neither). Things lit at a point (voxels'
-  ambient, the lamps their shadows and light come from) take the table seen at that point.
+- **Each lamp's light over its whole path** (owner, 2026-11-23): a lamp's light reaches the eye from a lit place P
+  after travelling lamp → P → eye. So, seen from the eye, lamp L lights P while the timeline at
+  `now − (|L→P| + |P→eye|) / c` has L lit. Switching off, each lamp's own spot goes dark when its distance from the eye
+  is crossed, then the dark grows outward from every lamp at c, seen late by its distance; a place lit by two lamps
+  dims in two steps, the nearer lamp first. Switching on, light grows out of each lamp the same way. A lamp's copy
+  seen through a portal (`Light.through`) already stands where its light comes from, so `|L→P|` is the path through
+  the doorway.
+- **Per-lamp light** (`renderer/light-wave.ts`): when slow light is first on in a room, each lamp of every table the
+  room can show (the plain lamps and the portal copies) gets its own share of the tables baked: floor, ceiling and
+  wall samples within its reach (4.5 tiles), linear rgb, sparse by its reach's bounding box. About 150 KB a lamp, a
+  few MB a room; baked in an idle moment like the portals-on table. Bounce and ambient fade at each place with the
+  share of its direct lamp light still seen (approximation: bounce light has paths of its own).
+- **The wave table:** a `Lighting` with the room tables' layout, allocated once per room. Each frame of the wave, every
+  floor and ceiling cell and wall sample where some lamp's seen state changed is re-summed from its lit lamps' shares
+  and packed; a lamp seen out there has its reflection slot's `floorLampSeen` / `wallLampSeen` set to 0. `lights` is
+  the lamps of every table in the timeline; each place's lamp indices point into it. Things lit at a point (voxels'
+  light, the lamps their shadows come from) count each lamp as lit by the same rule at that point.
+- **When:** while the timeline holds a change newer than `now − 2 · farthest/c`. Otherwise the frame takes the room's
+  table as today.
 - **Doorways:** a doorway is open when the sight set seen at its distance has it. While the wave runs, the sight
   portals are a pooled copy of the room's set with a per-portal open mask: `byTile` is −1 on closed doorways' tiles,
   `list` keeps every portal so the lighting's portal indices hold, and everything that walks `list` for sight
@@ -205,8 +217,10 @@ Light *Instant* runs none of §5: no rings, no faces history, no shift plane, no
 - Moving things: D = 1 at rest, > 1 approaching, < 1 receding, combined index = eye + thing; Terrell turn arcsin β
   crossing, 0 head-on, showing the back; the shift plane gets the thing's shift where it is drawn and the bend applies
   it; the widened table is the identity at D = 1.
-- Wave: bands by distance; the table equals before's before the dark reaches a cell, the dark table during, after's
-  after; lamp indices offset; doorways open by distance; with no sequence the table is the room's own.
+- Wave: a place lit by one lamp goes dark at the switch + (|lamp→P| + |P→eye|)/c and not before; lit by two, it dims
+  in two steps, nearer lamp first; switching on, the same in reverse; the per-lamp shares sum to the baked table
+  (within a byte); reflections of a lamp go out with it; doorways open by distance; with no change in the timeline
+  the table is the room's own.
 - Off: bench hashes unchanged; the existing suite passes.
 
 ## 7. Left to the builder
