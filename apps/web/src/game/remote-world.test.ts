@@ -669,6 +669,18 @@ describe('a ball someone else dribbles (ball dribble spec §4.2)', () => {
     expect(world.voxels.find((v) => v.model === BALL_MODEL)).toMatchObject({ x: 6, y: 7 });
   });
 
+  test('a ball gone from the room leaves no one holding it', () => {
+    const world = createRemoteWorld();
+    room.addPeer('ada', 2, 3);
+    room.addObject('b1', 9, 9, 0, 'ball');
+    (room.peers.get('ada') as RemotePeer).info.held = 'lighter';
+    world.sample(room.session, player, NOW, shown(createBall('b1', 6, 7), 'asleep', 0, 'ada'));
+    room.objects.delete('b1');
+    world.sample(room.session, player, NOW, null);
+    world.collect(room.session, media, NOW, 0);
+    expect(world.lighters).toMatchObject([{ key: 'ada' }]);
+  });
+
   test('the dribbler shows no item, and letting go brings it back', () => {
     const world = createRemoteWorld();
     room.addPeer('ada', 2, 3);

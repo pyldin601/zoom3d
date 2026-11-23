@@ -8,6 +8,9 @@ import type { LocalMediaController } from './local-media';
 import type { RemoteMedia } from './remote-media';
 import { type FacesSent, type MediaTransport, NO_FACES_SENT, type TransportOptions } from './transport';
 
+/** How long a leaver's face is kept with slow light on (D41): the face history's length, about 8 s. */
+const LEAVER_SEEN_MS = 8000;
+
 export interface Call {
   /** Pass to createSession, then call attach() with the session. */
   listener: SessionListener;
@@ -100,6 +103,17 @@ export function createCall(opts: CallOptions): Call {
   };
 
   let faceHistory = false;
+  /** Faces of people who left, kept while slow light may still show them: up to the face history's length. */
+  const leaving = new Map<string, { face: FaceSource; at: number }>();
+  let lastUpdate = 0;
+  const forgetLeaving = (before: number) => {
+    for (const [id, { face, at }] of leaving) {
+      if (at <= before) {
+        face.dispose();
+        leaving.delete(id);
+      }
+    }
+  };
 
   const ensureFace = (peer: PeerInfo) => {
     const face = faces.get(peer.id) ?? createPeerFace(peer);
@@ -145,7 +159,13 @@ export function createCall(opts: CallOptions): Call {
     remote.detach(boomboxKey(peerId));
     opts.audio?.detach(peerId);
     opts.audio?.detach(boomboxKey(peerId));
-    faces.get(peerId)?.dispose();
+    const face = faces.get(peerId);
+    // With slow light a leaver is still seen for their light time (D41): their face history goes later.
+    if (face && faceHistory) {
+      leaving.set(peerId, { face, at: lastUpdate });
+    } else {
+      face?.dispose();
+    }
     faces.delete(peerId);
     early.delete(peerId);
     wantedFrom.delete(peerId);
@@ -251,7 +271,7 @@ export function createCall(opts: CallOptions): Call {
       tellSessionOwnMedia();
     },
     faceOf: (id, lateMs = 0) => {
-      const face = faces.get(id);
+      const face = faces.get(id) ?? (lateMs > 0 ? leaving.get(id)?.face : undefined);
       return face === undefined ? null : lateMs > 0 ? face.seen(lateMs) : face.texels;
     },
     setFaceHistory(on) {
@@ -261,6 +281,9 @@ export function createCall(opts: CallOptions): Call {
       faceHistory = on;
       for (const face of faces.values()) {
         face.history(on);
+      }
+      if (!on) {
+        forgetLeaving(Number.POSITIVE_INFINITY);
       }
     },
     isLive: (id) => faces.get(id)?.live() ?? false,
@@ -288,9 +311,11 @@ export function createCall(opts: CallOptions): Call {
     },
     localState: () => ({ ...ownMedia }),
     update(now) {
+      lastUpdate = now;
       for (const face of faces.values()) {
         face.update(now);
       }
+      forgetLeaving(now - LEAVER_SEEN_MS);
     },
     dispose() {
       unsubscribe();

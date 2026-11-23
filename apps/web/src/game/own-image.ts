@@ -23,8 +23,8 @@ interface OwnLook {
   ride: number;
 }
 
-/** Eight seconds of frames at 60 Hz, the longest light time at the slowest c. */
-const LOOK_CAPACITY = 512;
+/** Eight seconds of frames at 144 Hz, the longest light time at the slowest c. */
+const LOOK_CAPACITY = 1200;
 
 const LOOK_KEYS = ['held', 'boombox', 'sip', 'cheers', 'wobble', 'bob', 'itemBob', 'ride'] as const;
 

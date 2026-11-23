@@ -168,7 +168,7 @@ export interface LightWave {
 /** Most changes a frame looks back over: the timeline's capacity. */
 const MAX_CHANGES = 16;
 /** A place with more lamp entries than fit a signature is re-summed every frame. */
-const SIGNATURE_ENTRIES = 26;
+const SIGNATURE_ENTRIES = 21;
 
 export function createLightWave(): LightWave {
   const shareOf = new Map<Lighting, TableShares>();
@@ -297,7 +297,7 @@ export function createLightWave(): LightWave {
   };
 
   /** Re-sums wall sample column `at`, its ambient from the change `ambientBack` shows. */
-  const sumSample = (w: Lighting, samples: SampleShares, at: number, dEye: number, ambientBack: number) => {
+  const sumSample = (w: Lighting, at: number, dEye: number, ambientBack: number) => {
     const shown = shownAt[ambientBack] ?? null;
     const ambientShares = isLit(shown) ? shareOf.get(shown)?.samples : undefined;
     const ar = ambientShares ? (ambientShares.ambient[at * 3] as number) : 0;
@@ -335,7 +335,8 @@ export function createLightWave(): LightWave {
 
   /** What place `at` shows: the change its ambient comes from, and which of its lamps' shares are seen lit. */
   const signatureOf = (at: number, dEye: number, ambientBack: number, shares: (t: Lighting) => Shares) => {
-    let signature = ambientBack;
+    // Which tables are lit matters too: a cell whose lamps light from another table must be re-summed.
+    let signature = ambientBack * MAX_CHANGES + litTables.length;
     let entries = 0;
     for (const table of litTables) {
       const own = shares(table);
@@ -405,7 +406,7 @@ export function createLightWave(): LightWave {
         const signature = signatureOf(at, dEye, ambientBack, samplesOf);
         if (signature !== sampleSignature[at] || signature === -2) {
           sampleSignature[at] = signature;
-          sumSample(w, samples, at, dEye, ambientBack);
+          sumSample(w, at, dEye, ambientBack);
         }
       }
       return w;

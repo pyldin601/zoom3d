@@ -67,8 +67,6 @@ export interface RemoteWorld {
   readonly lighters: readonly LighterSource[];
   /** This frame's riders' headlights, from `collect`: where each rider is drawn and the scooter's heading. */
   readonly headlights: readonly HeadlightSource[];
-  /** How late the light shows a peer (by id) or object (by objectKey), with slow light; undefined while it is off. */
-  seenOf(key: string): Seen | undefined;
   /**
    * Samples every peer's and object's position at `now`: every frame, and from the hidden-tab ticker. The ball is the
    * one object not drawn from its buffer: it is where the client's prediction has it, in the present (ball spec §3.3).
@@ -358,7 +356,8 @@ export function createRemoteWorld(): RemoteWorld {
     }
     ballTrail.push(now, ball.x, ball.y, 0);
     const lightLeftAt = seenAt(ballTrail.buffer, light, now, at);
-    const record = seenRecord(objectKey(shown?.ball?.id ?? ''));
+    const ballId = shown?.ball?.id ?? '';
+    const record = seenRecord(objectKeys.get(ballId) ?? objectKey(ballId));
     record.lateMs = now - lightLeftAt;
     seeMotion(record, ballTrail.buffer, lightLeftAt);
     holderNow.by = holder;
@@ -637,9 +636,10 @@ export function createRemoteWorld(): RemoteWorld {
     voxels,
     lighters,
     headlights,
-    seenOf: (key) => (lightOn ? seen.get(key) : undefined),
     sample(s, player, now, ball = null, portals = null, light = null) {
       lightOn = light !== null;
+      // With a ball in sight seeBall says who holds it as seen; without, no one does.
+      dribbler = ball?.heldBy ?? null;
       lastLight = light;
       noteDepartures(s, now);
       forgetGone();

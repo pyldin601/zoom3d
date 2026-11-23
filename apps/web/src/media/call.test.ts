@@ -498,3 +498,18 @@ test('with slow light, faces keep a history and are read as late as asked (D41)'
   expect(face?.seen).toHaveBeenCalledWith(500);
   expect(call.faceOf('a')).toBe(face?.texels);
 });
+
+test('with slow light, a leaver’s face lasts until their leaving could be seen, then goes (D41)', () => {
+  const call = makeCall();
+  call.listener.welcome?.('me', LK, true);
+  call.listener.peerJoined?.(info('a'));
+  const face = faces.get('a');
+  call.setFaceHistory(true);
+  call.update(1000);
+  call.listener.peerLeft?.('a');
+  expect(call.faceOf('a', 500)?.at(0)).toBe(101);
+  expect(face?.dispose).not.toHaveBeenCalled();
+  call.update(1000 + 9000);
+  expect(face?.dispose).toHaveBeenCalled();
+  expect(call.faceOf('a', 500)).toBeNull();
+});

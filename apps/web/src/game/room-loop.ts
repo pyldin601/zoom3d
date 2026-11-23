@@ -76,6 +76,9 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   const apparentWorld = createApparentWorld();
   /** The remote things (people, world objects and portal hums) with their places, reused from frame to frame. */
   let apparent: ReadonlyMap<string, Apparent> = new Map();
+  /** The same places through the doorways as seen while a slow light change spreads (D41): labels go there. */
+  const seenApparentWorld = createApparentWorld();
+  let labelled: ReadonlyMap<string, Apparent> = apparent;
   const things: { id: string; x: number; y: number }[] = [];
   /** Where each portal doorway's hum plays from, reused from frame to frame. */
   const humSources = new Map<string, { x: number; y: number }>();
@@ -123,6 +126,8 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   // The lights-out wave (D41): what the instant frame showed of the room's light, change by change, replayed per place.
   const timeline = createLightTimeline();
   let wave = createLightWave();
+  /** The room the wave's lamp shares were baked for: baked once per room, however often the look is turned on. */
+  let waveRoom: Room | null = null;
   const seenPortals = createSeenPortals();
   /** The sight portals the last frame drew, doorway by doorway as seen: the light delay looks through them too. */
   let drawnSight: Portals | null = null;
@@ -148,8 +153,9 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     }
     const now = performance.now();
     if (fedRoom !== room || lookChanged(instant, sight)) {
-      if (fedRoom !== room) {
+      if (waveRoom !== room) {
         wave = createLightWave();
+        waveRoom = room;
       }
       for (const table of room.litTables()) {
         wave.prepare(table);
@@ -366,6 +372,8 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     }
     things.length = n;
     apparent = apparentWorld.update(o.map, room.sightPortals(), localPlayer.eye(), things);
+    // Sounds come through the live doorways; what is drawn, through those seen open.
+    labelled = spreading ? seenApparentWorld.update(o.map, drawnSight, localPlayer.eye(), things) : apparent;
   };
 
   const placeEveryoneElse = (room: Room, now: number, dt: number) => {
@@ -373,7 +381,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     world.sample(session, localPlayer.pose, now, room.ball, room.portals(), light);
     rollBallPattern(room);
     placeApparently(room);
-    world.collect(session, peerMedia, now, dt, apparent);
+    world.collect(session, peerMedia, now, dt, labelled);
     room.objectSounds.sync(session.objects, world.objectPoses, dt);
     room.scooterSounds.sync(session.peers, world.positions, dt, now);
     const { speed, bump } = localPlayer.ride;
