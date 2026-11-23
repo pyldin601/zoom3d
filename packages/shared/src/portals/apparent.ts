@@ -6,7 +6,7 @@ import type { GameMap } from '../map/map';
 import { NEAR_TILES } from '../protocol/protocol';
 import { crossedPortal, fractionAcrossPlane } from './crossing';
 import { applyPoint } from './transform';
-import { type Portal, type Portals, photonPortals } from './wiring';
+import { isOpen, type Portal, type Portals, photonPortals } from './wiring';
 
 /** As hasLineOfSight, but false when the straight segment crosses a plane front→back. */
 export function hasPortalLineOfSight(
@@ -165,7 +165,7 @@ function considerImages(
 ): void {
   for (let first = 0; first < p.list.length; first++) {
     const firstPortal = p.list.at(first);
-    if (firstPortal === undefined || !isWorthTrying(firstPortal, fromX, fromY)) {
+    if (firstPortal === undefined || !isOpen(p, first) || !isWorthTrying(firstPortal, fromX, fromY)) {
       continue;
     }
     applyPoint(firstPortal.fromDest, toX, toY, image);
@@ -177,7 +177,11 @@ function considerImages(
     applyPoint(firstPortal.toDest, fromX, fromY, virtualEye);
     for (let second = 0; second < p.list.length; second++) {
       const secondPortal = p.list.at(second);
-      if (secondPortal === undefined || !isWorthTrying(secondPortal, virtualEye.x, virtualEye.y)) {
+      if (
+        secondPortal === undefined ||
+        !isOpen(p, second) ||
+        !isWorthTrying(secondPortal, virtualEye.x, virtualEye.y)
+      ) {
         continue;
       }
       applyPoint(secondPortal.fromDest, toX, toY, deeperImage);

@@ -1,7 +1,7 @@
 // Every eye a frame's passes may draw from: the frame's own, and each carried through a window it may show, down to
 // WINDOW_LEVELS (portal doorways spec §2.5), each seeing only its window's columns. What none of them sees, no pass
 // draws. Its eyes are reused objects.
-import { applyDir, applyPoint, type Portal, type Portals } from '@zoom3d/shared';
+import { applyDir, applyPoint, isOpen, type Portal, type Portals } from '@zoom3d/shared';
 import { type View, WINDOW_LEVELS } from './camera';
 
 /** Where an eye stands and which way it looks, as a View has it. */
@@ -124,8 +124,9 @@ export function createFrameEyes(): FrameEyes {
         const levelEnd = count;
         for (let i = levelStart; i < levelEnd; i++) {
           const from = eyes.at(i);
-          for (const portal of portals.list) {
-            if (from && mayShowWindow(from, portal)) {
+          for (let index = 0; index < portals.list.length; index++) {
+            const portal = portals.list[index] as Portal;
+            if (from && isOpen(portals, index) && mayShowWindow(from, portal)) {
               addThrough(portal, from, from.left, from.right);
             }
           }

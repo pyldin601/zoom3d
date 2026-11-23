@@ -29,7 +29,7 @@ import { type StatusLine, statusText } from '../ui/room-status';
 import { createApparentWorld, placeOwnLabel } from './apparent-world';
 import type { FrameRateMeter } from './frame-rate';
 import { createTrail, type SeenLight } from './light-delay';
-import { createLightTimeline } from './light-timeline';
+import { createLightTimeline, createSeenPortals } from './light-timeline';
 import type { LocalPlayer } from './local-player';
 import { createOwnMotion } from './own-motion';
 import { portalPulse } from './portal-pulse';
@@ -120,6 +120,11 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   // The lights-out wave (D41): what the instant frame showed of the room's light, change by change, replayed per place.
   const timeline = createLightTimeline();
   let wave = createLightWave();
+  const seenPortals = createSeenPortals();
+  /** The sight portals the last frame drew, doorway by doorway as seen: the light delay looks through them too. */
+  let drawnSight: Portals | null = null;
+  /** Whether a change is still on its way somewhere: the wave and the doorways are drawn as seen. */
+  let spreading = false;
   /** The room and the light the timeline was last fed: a new room, look or slow light on starts it again. */
   let fedRoom: Room | null = null;
   let fedLighting: Lighting | null = null;
@@ -135,6 +140,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
   const seenLighting = (room: Room | null, instant: Lighting | null, sight: Portals | null): Lighting | null => {
     if (light === null || room === null || instant === null) {
       fedRoom = null;
+      spreading = false;
       return instant;
     }
     const now = performance.now();
@@ -152,9 +158,15 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     fedRoom = room;
     fedLighting = instant;
     fedSight = sight;
-    const stillOnItsWay = timeline.changedSince(now - (longestPath / light.lightSpeed) * 1000);
-    return stillOnItsWay ? wave.update(timeline, light.eye, now, light.lightSpeed) : instant;
+    spreading = timeline.changedSince(now - (longestPath / light.lightSpeed) * 1000);
+    return spreading ? wave.update(timeline, light.eye, now, light.lightSpeed) : instant;
   };
+
+  /** The sight portals to draw: doorway by doorway as their light shows them while a change spreads, else `live`. */
+  const seenSight = (live: Portals | null): Portals | null =>
+    light !== null && fedRoom !== null && spreading
+      ? seenPortals.update(timeline, light.eye, performance.now(), light.lightSpeed)
+      : live;
 
   /** Refills the slow light for this frame from the console's setting; null, and the motion forgotten, while off. */
   const updateLight = (room: Room | null, dt: number): SeenLight | null => {
@@ -164,7 +176,7 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
       return null;
     }
     const eye = localPlayer.eye();
-    seenLight.portals = room?.sightPortals() ?? null;
+    seenLight.portals = spreading ? drawnSight : (room?.sightPortals() ?? null);
     seenLight.eye.x = eye.x;
     seenLight.eye.y = eye.y;
     seenLight.lightSpeed = lightSpeed;
@@ -370,9 +382,11 @@ export function createRoomLoop(o: RoomLoopOptions): RoomLoop {
     const reflections = litReflections(o.renderMode());
     scene.reflections = reflections ?? 'none';
     const room = o.room();
-    scene.portals = room?.sightPortals() ?? null;
+    const sight = room?.sightPortals() ?? null;
     const instant = reflections === null ? null : (room?.lighting(room.sequence.dark) ?? o.roomLighting());
-    scene.lighting = seenLighting(room, instant, scene.portals);
+    scene.lighting = seenLighting(room, instant, sight);
+    scene.portals = seenSight(sight);
+    drawnSight = scene.portals;
     const portalSeconds = performance.now() / 1000;
     scene.portalPulse = portalPulse(portalSeconds);
     scene.portalTime = portalSeconds;

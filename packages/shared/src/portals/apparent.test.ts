@@ -14,7 +14,7 @@ import {
 } from './apparent';
 import { twoDoorways } from './test-doorways';
 import { invert, type RigidTransform } from './transform';
-import { type Portal, type Portals, photonPortals, wirePortals } from './wiring';
+import { openOnly, type Portal, type Portals, photonPortals, wirePortals } from './wiring';
 
 interface PortalSpec {
   x: number;
@@ -347,5 +347,25 @@ describe('isNearEitherWay', () => {
     for (const [a, b] of pairs.slice(0, 50)) {
       expect(isNearEitherWay(null, a, b)).toBe(isNear(null, a, b));
     }
+  });
+});
+
+describe('doorways not yet seen open (slow light, D41)', () => {
+  test('through a closed doorway there is no image; open again, there is', () => {
+    const closed = openOnly(ROOM_PORTALS, new Uint8Array(ROOM_PORTALS.list.length));
+    const out = apparentPosition(ROOMS, closed, at(2.5, 1.5), BEHIND_B, blank());
+    expect(out.through).toBe(0);
+    const open = openOnly(ROOM_PORTALS, new Uint8Array(ROOM_PORTALS.list.length).fill(1));
+    expect(apparentPosition(ROOMS, open, at(2.5, 1.5), BEHIND_B, blank()).through).toBe(1);
+  });
+
+  test('a closed doorway’s tiles are no portal to a ray; the open ones still are', () => {
+    const mask = new Uint8Array(ROOM_PORTALS.list.length).fill(1);
+    mask[0] = 0;
+    const some = openOnly(ROOM_PORTALS, mask);
+    ROOM_PORTALS.byTile.forEach((index, tile) => {
+      expect(some.byTile[tile]).toBe(index === 0 ? -1 : index);
+    });
+    expect(some.list).toBe(ROOM_PORTALS.list);
   });
 });
