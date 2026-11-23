@@ -26,14 +26,11 @@ test('every grid point reads inside the source at the cap, whichever way the mot
     const source = bend.fit(out);
     for (let deg = 0; deg < 360; deg += 15) {
       bend.aim(out, { beta: 0.5, angle: (deg * Math.PI) / 180 });
-      for (const x of bend.gridX) {
-        expect(x).toBeGreaterThanOrEqual(0);
-        expect(x).toBeLessThan(source.width);
-      }
-      for (const y of bend.gridY) {
-        expect(y).toBeGreaterThanOrEqual(0);
-        expect(y).toBeLessThan(source.height);
-      }
+      // One expect per bound, not per grid point: hundreds of thousands of them timed out on CI.
+      expect(Math.min(...bend.gridX)).toBeGreaterThanOrEqual(0);
+      expect(Math.max(...bend.gridX)).toBeLessThan(source.width);
+      expect(Math.min(...bend.gridY)).toBeGreaterThanOrEqual(0);
+      expect(Math.max(...bend.gridY)).toBeLessThan(source.height);
     }
   }
 });
