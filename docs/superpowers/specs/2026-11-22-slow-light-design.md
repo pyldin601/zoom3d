@@ -66,8 +66,10 @@ Turning on the spot is no velocity.
 For each remote thing the drawn time is `now − tierDelay − d / c`, where `tierDelay` is today's (`PeerDelay`, or
 `INTERP_DELAY_MS` for objects) and d is the distance from the eye now to the thing's apparent position at the drawn
 time: one portal deep through `room.sightPortals()`, the same image `apparentPosition` gives. d depends on the drawn
-time, so solve it by a few fixed-point steps (start from today's drawn pose, two or three steps, builder checks
-convergence at the speeds above; things faster than c can have several solutions: take the latest).
+time, so the solve brackets it and narrows by false position to 0.5 ms (`seenAt`). Plain fixed-point steps were the
+first build. Three of them swung past the light time for anything moving away at more than c/2, so a kicked ball
+looked stuck at its kick (fixed 2026-11-24). Things approaching faster than c can have several solutions, and the
+solve keeps the closest one it finds.
 
 Everything that reads drawn positions follows: discs, riders' scooters, held items, glows, lighters and headlights,
 labels, the automap, face subscription, and every sound placed from them (voices, the vacuum hum, motor whine, ball
