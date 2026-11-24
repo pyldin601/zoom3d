@@ -49,6 +49,31 @@ test('a receding thing is seen more recently than an approaching one now as far:
   expect(10_000 - away).toBeLessThan(10_000 - toward);
 });
 
+/** How far `t` is from the light time of what `out` holds: the time light takes from there to the eye, in ms. */
+const lightTimeError = (t: number, drawnAt: number, out: { x: number; y: number }, c: number) =>
+  Math.abs(drawnAt - t - (Math.hypot(out.x - 2, out.y - 2) / c) * 1000);
+
+test.each([
+  ['away at 2/3 c', 3, 8, 12],
+  ['away faster than light', 3, 8, 6],
+  ['toward at 2/3 c', 17, -8, 12],
+])('a fast thing moving %s is seen at its light time', (_, x0, speed, c) => {
+  const out = pose();
+  const t = seenAt(walker(x0, 2, speed), light(c), 1500, out);
+  expect(lightTimeError(t, 1500, out, c)).toBeLessThan(0.5);
+});
+
+test('a ball kicked away is seen leaving once its light from the kick arrives', () => {
+  const buffer = new SnapshotBuffer(HISTORY_CAPACITY);
+  for (let t = 0; t <= 3500; t += 66) {
+    buffer.push({ t, x: t < 3000 ? 2.6 : 2.6 + (8 * (t - 3000)) / 1000, y: 2, angle: 0 });
+  }
+  const out = pose();
+  const t = seenAt(buffer, light(6), 3500, out);
+  expect(lightTimeError(t, 3500, out, 6)).toBeLessThan(0.5);
+  expect(out.x).toBeGreaterThan(3);
+});
+
 test('faster than light stays finite', () => {
   const out = pose();
   expect(Number.isFinite(seenAt(walker(3, 2, 30), light(6), 10_000, out))).toBe(true);

@@ -21,14 +21,51 @@ export interface SeenLight {
 
 /** Pose history kept per peer and object: at the slowest c, light crosses the room (~40 tiles) in about 7 s. */
 export const HISTORY_CAPACITY = 128;
-/** Each step moves the drawn time to the light time of the pose sampled before; three settle at walking speeds. */
-const LIGHT_STEPS = 3;
+/**
+ * The light time is solved to within this (ms). At the ball's top speed a thing moves 0.005 tiles in it.
+ */
+const SETTLED_MS = 0.5;
+/**
+ * The most poses a solve samples. A still thing settles in 2 and a kicked ball in about 5. Light from a thing
+ * approaching faster than light can leave it at several times, and the solve keeps its best.
+ */
+const MAX_LOOKS = 16;
 
 const image: Apparent = { x: 0, y: 0, sees: false, through: 0, cos: 1, sin: 0 };
+
+/** The solve under way: the time closest to the light time so far, its miss, and how many poses it sampled. */
+const solve = { best: 0, bestMiss: 0, looks: 0 };
+
+/**
+ * How much earlier than `t` the light reaching the eye at `drawnAt` would have left the pose at `t` (ms). The light
+ * time is where this is zero: it is negative at a time too late and positive at one too early. Samples the pose into
+ * `out` and keeps the best time in `solve`.
+ */
+function missAt(
+  buffer: Pick<SnapshotBuffer, 'sample'>,
+  light: SeenLight,
+  drawnAt: number,
+  t: number,
+  out: PlayerState
+) {
+  buffer.sample(t, out);
+  apparentPosition(light.map, light.portals, light.eye, out, image, 1);
+  const miss = drawnAt - t - (Math.hypot(image.x - light.eye.x, image.y - light.eye.y) / light.lightSpeed) * 1000;
+  solve.looks++;
+  if (Math.abs(miss) < Math.abs(solve.bestMiss)) {
+    solve.best = t;
+    solve.bestMiss = miss;
+  }
+  return miss;
+}
+
+const unsettled = () => solve.looks < MAX_LOOKS && Math.abs(solve.bestMiss) >= SETTLED_MS;
 
 /**
  * Samples `out` where the thing was when the light reaching the eye now left it, starting from `drawnAt` (ms, the time
  * it would be drawn at with instant light), and returns that time; NaN when the buffer is empty. Allocation-free.
+ * The light time is bracketed and then narrowed by false position (Illinois). Plain repeated steps from `drawnAt` swing
+ * past it for anything moving away at more than half of c, and a kicked ball looked stuck at its kick.
  */
 export function seenAt(
   buffer: Pick<SnapshotBuffer, 'sample'>,
@@ -36,16 +73,44 @@ export function seenAt(
   drawnAt: number,
   out: PlayerState
 ): number {
-  let t = drawnAt;
-  for (let step = 0; step < LIGHT_STEPS; step++) {
-    if (!buffer.sample(t, out)) {
-      return Number.NaN;
-    }
-    apparentPosition(light.map, light.portals, light.eye, out, image, 1);
-    t = drawnAt - (Math.hypot(image.x - light.eye.x, image.y - light.eye.y) / light.lightSpeed) * 1000;
+  if (!buffer.sample(drawnAt, out)) {
+    return Number.NaN;
   }
-  buffer.sample(t, out);
-  return t;
+  solve.best = drawnAt;
+  solve.bestMiss = Number.POSITIVE_INFINITY;
+  solve.looks = 0;
+  let late = drawnAt;
+  let lateMiss = missAt(buffer, light, drawnAt, late, out);
+
+  // Bracket: step back by the miss, doubling the step, until a time is too early.
+  let early = late + lateMiss;
+  let earlyMiss = missAt(buffer, light, drawnAt, early, out);
+  for (let reach = 2; earlyMiss < 0 && unsettled(); reach *= 2) {
+    late = early;
+    lateMiss = earlyMiss;
+    early = late + lateMiss * reach;
+    earlyMiss = missAt(buffer, light, drawnAt, early, out);
+  }
+
+  // Narrow: when the same end moves twice running, the other end's miss is halved, so it can't stay stuck.
+  let lastMoved: 'early' | 'late' | null = null;
+  while (earlyMiss > 0 && unsettled()) {
+    const t = early + (earlyMiss / (earlyMiss - lateMiss)) * (late - early);
+    const miss = missAt(buffer, light, drawnAt, t, out);
+    if (miss < 0) {
+      late = t;
+      lateMiss = miss;
+      earlyMiss = lastMoved === 'late' ? earlyMiss / 2 : earlyMiss;
+      lastMoved = 'late';
+    } else {
+      early = t;
+      earlyMiss = miss;
+      lateMiss = lastMoved === 'early' ? lateMiss / 2 : lateMiss;
+      lastMoved = 'early';
+    }
+  }
+  buffer.sample(solve.best, out);
+  return solve.best;
 }
 
 /**
